@@ -210,7 +210,7 @@ jobs:
     # "frontendDist path doesn't exist". The release workflow runs
     # `pnpm --filter tray-ui build` for the same reason; this job
     # needs the same prep before clippy/test touch starstats-client.
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -239,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -271,7 +271,7 @@ jobs:
       with:
         shared-key: openapi-ubuntu-latest
         save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -304,7 +304,7 @@ jobs:
     if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.web == 'true'
     steps:
     - uses: actions/checkout@v4
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -338,7 +338,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -404,7 +404,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
-    - uses: pnpm/action-setup@v4
+    - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
