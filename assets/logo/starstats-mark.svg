@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="StarStats compass star">
+  <title>StarStats — compass star (solid)</title>
+  <desc>Brand atom. Four-point compass star, two-tone. Source: brand book §03 .ss-star clip-path polygons (Stanton amber accent over precomputed accent/bg midpoint).</desc>
+  <polygon points="50,0 56,44 100,50 56,56 50,100 44,56 0,50 44,44" fill="#E8A23C"/>
+  <polygon points="50,12 54,46 88,50 54,54 50,88 46,54 12,50 46,46" fill="#7A5527"/>
+</svg>

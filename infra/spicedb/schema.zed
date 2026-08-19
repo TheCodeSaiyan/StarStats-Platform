@@ -1,0 +1,56 @@
+// StarStats authorization schema (Zanzibar-style ReBAC)
+// Apply with: zed schema write infra/spicedb/schema.zed
+
+definition user {}
+
+// Org-wide membership and roles
+definition organization {
+    relation member: user
+    relation admin: user
+    relation owner: user
+
+    // Direct permissions
+    permission view = member + admin + owner
+    permission manage_members = admin + owner
+    permission manage_org = owner
+    permission view_all_member_stats = admin + owner
+}
+
+// A user's stats record (kills, deaths, sessions, etc.)
+definition stats_record {
+    relation owner: user
+
+    // Visibility scopes — any one grants view permission
+    relation share_with_org: organization
+    relation share_with_user: user
+    relation public_view: user:*  // wildcard = anyone, including unauthenticated
+
+    // Single line on purpose: SpiceDB's schema parser does NOT accept
+    // a leading `+` on a continuation line — it terminates the
+    // expression at the previous line's last operand and then chokes
+    // on `+` as an unexpected token (caught on first dockerprime
+    // deploy: "parse error ... line N column 8: Expected end of
+    // statement or definition, found: TokenTypePlus"). If splitting
+    // for readability, put the `+` at the END of the previous line,
+    // not the start of the next one — that the parser does accept.
+    permission view = owner + share_with_user + share_with_org->view + share_with_org->view_all_member_stats + public_view
+    permission edit = owner
+}
+
+// 3rd-party OAuth application registered by a user
+definition oauth_app {
+    relation owner: user
+
+    permission manage = owner
+    permission read   = owner
+}
+
+// OAuth-issued access token, scoped to specific resources
+// Tokens "act on behalf of" their granting user — permission checks
+// chain back to the user via #user
+definition oauth_token {
+    relation user: user
+    relation app: oauth_app
+    relation scope_stats_read: oauth_token#user
+    relation scope_org_read: oauth_token#user
+}

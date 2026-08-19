@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 180" width="280" height="180" role="img" aria-label="StarStats vertical lockup">
+  <title>StarStats — vertical lockup (mark above wordmark)</title>
+  <desc>Compass star centered above the wordmark. Used where horizontal width is constrained (avatars, posters, slide titles).</desc>
+  <!-- Compass star, larger (80×80), centered horizontally -->
+  <g transform="translate(100, 8) scale(0.80)">
+    <polygon points="50,0 56,44 100,50 56,56 50,100 44,56 0,50 44,44" fill="#E8A23C"/>
+    <polygon points="50,12 54,46 88,50 54,54 50,88 46,54 12,50 46,46" fill="#7A5527"/>
+  </g>
+  <!-- Wordmark centered below -->
+  <text
+    x="140" y="148"
+    text-anchor="middle"
+    font-family="Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-weight="600"
+    font-size="40"
+    letter-spacing="-1.4"
+  >
+    <tspan fill="#ECE7DD">Star</tspan><tspan fill="#E8A23C">Stats</tspan>
+  </text>
+</svg>

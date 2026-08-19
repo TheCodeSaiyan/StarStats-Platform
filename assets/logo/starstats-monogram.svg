@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="StarStats SS monogram">
+  <title>StarStats — boxed SS monogram</title>
+  <desc>Small-form alternative to the compass star, used at sizes ≤ 256px (favicons, app icons). Source: brand book §03 .ss-monogram.</desc>
+  <rect x="0" y="0" width="100" height="100" rx="14" ry="14" fill="#E8A23C"/>
+  <text
+    x="50" y="68"
+    text-anchor="middle"
+    font-family="Geist Mono, ui-monospace, Consolas, 'Courier New', monospace"
+    font-weight="700"
+    font-size="46"
+    letter-spacing="-2"
+    fill="#1A1208"
+  >SS</text>
+</svg>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  StarStats — WiX fragment for upgrade-friendly metadata.
+
+  This fragment is appended to Tauri's auto-generated MSI by setting
+  `bundle.windows.wix.fragmentPaths` in tauri.conf.json. Two effects:
+
+    1. Add/Remove Programs (ARP) metadata that lets the user see who
+       made the app, where to find the project, and how to remove it.
+
+    2. A namespaced Property (`STARSTATS_UPGRADE_DETECTED`) that mirrors
+       Windows Installer's built-in `WIX_UPGRADE_DETECTED`. A future
+       full WiX UI template override (see docs/WINDOWS_INSTALLER_UPGRADE.md)
+       will key its conditional welcome-dialog text off this property.
+
+  Limitation: visible "Upgrading..." dialog text during install
+  requires overriding Tauri's default WixUI_Minimal template. That is
+  intentionally NOT in this fragment — see the design note for the
+  template-override path. This fragment is the metadata foundation
+  that template work will sit on top of.
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- ARP entries surfaced in Settings → Apps & features. -->
+    <Property Id="ARPURLINFOABOUT" Value="https://starstats.app" />
+    <Property Id="ARPHELPLINK" Value="https://starstats.app/help" />
+    <Property Id="ARPURLUPDATEINFO" Value="https://starstats.app/help" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <Property Id="ARPNOREPAIR" Value="1" />
+
+    <!-- Mirror the WIX_UPGRADE_DETECTED signal under our namespace so a
+         future custom UI fragment doesn't have to reach into WixUI's
+         internals. CustomAction Type 51 = "set property". -->
+    <CustomAction
+      Id="StarStatsMarkUpgrade"
+      Property="STARSTATS_UPGRADE_DETECTED"
+      Value="1"
+      Execute="immediate" />
+    <InstallExecuteSequence>
+      <Custom Action="StarStatsMarkUpgrade" After="FindRelatedProducts">
+        WIX_UPGRADE_DETECTED
+      </Custom>
+    </InstallExecuteSequence>
+    <InstallUISequence>
+      <Custom Action="StarStatsMarkUpgrade" After="FindRelatedProducts">
+        WIX_UPGRADE_DETECTED
+      </Custom>
+    </InstallUISequence>
+  </Fragment>
+</Wix>

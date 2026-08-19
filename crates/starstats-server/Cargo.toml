@@ -1,0 +1,101 @@
+[package]
+name = "starstats-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "StarStats API server — ingest, query, OAuth2"
+
+[[bin]]
+name = "starstats-server"
+path = "src/main.rs"
+
+# Tiny helper bin that prints the OpenAPI spec to stdout. Used by the
+# TS codegen pipeline so we don't need a running database to dump the
+# spec. Imports the same `openapi::ApiDoc` the live server serves.
+[[bin]]
+name = "starstats-server-openapi"
+path = "src/bin/openapi.rs"
+
+[dependencies]
+# QR generation for TOTP enrolment. Local, because the provisioning URI
+# contains the shared secret and must never leave the server.
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+starstats-core.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+axum.workspace = true
+tower.workspace = true
+tower-http.workspace = true
+chrono.workspace = true
+chrono-tz.workspace = true
+uuid.workspace = true
+clap.workspace = true
+metrics.workspace = true
+metrics-exporter-prometheus.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
+sqlx.workspace = true
+async-trait = "0.1"
+jsonwebtoken.workspace = true
+argon2.workspace = true
+aes-gcm.workspace = true
+totp-lite.workspace = true
+base32.workspace = true
+lettre.workspace = true
+# Used by `rsi_verify` to fetch public RSI profile pages and check
+# whether the user has pasted our verification code into their bio.
+# Workspace pin: 0.12 with rustls-tls + json (rustls so we don't drag
+# in OpenSSL on the deploy image; json is unused for this call but
+# free given the workspace alias).
+reqwest.workspace = true
+# HTML parsing for the RSI citizen-profile snapshot. Used by
+# `rsi_verify::HttpRsiClient::fetch_profile` to lift display name,
+# enlistment date, location, badges, bio, and primary-org summary
+# off the public profile page.
+scraper.workspace = true
+spicedb-client.workspace = true
+spicedb-grpc.workspace = true
+aws-sdk-s3.workspace = true
+aws-credential-types.workspace = true
+aws-smithy-runtime-api.workspace = true
+utoipa.workspace = true
+axum-extra = { version = "0.9", features = ["typed-header"] }
+base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
+# Signs the parser-definition manifest (F10). Off unless
+# STARSTATS_PARSER_SIGNING_KEY is set; the client verifies against a pinned
+# public key.
+ed25519-dalek = "2"
+rsa = "0.9"
+rand = "0.8"
+hex = "0.4"
+subtle = "2.6"
+# Per-IP rate limiting on auth endpoints. Pinned to 0.4 (axum 0.7
+# compatible — 0.5+ targets axum 0.8). `SmartIpKeyExtractor` reads
+# `Forwarded` / `X-Forwarded-For` / `X-Real-IP` so we get the real
+# client IP behind Traefik, falling back to peer addr in dev.
+tower_governor = "0.4"
+url.workspace = true
+# Mirrors migration 0061's `regexp_replace` quantity-stripping for
+# `contracts.required_item` — see `contracts::strip_item_qty`.
+regex.workspace = true
+once_cell.workspace = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

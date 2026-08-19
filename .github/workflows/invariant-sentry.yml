@@ -1,0 +1,144 @@
+name: Invariant sentry
+
+# Catches silent violations of the branch-model invariants. The release
+# workflows back-merge `main` into `next` after every release, but that
+# step soft-fails on merge conflicts (rather than failing the release,
+# which has already shipped). When that soft-fail fires, Invariant #1
+# stays violated until someone notices — usually the next live
+# promotion's `git merge --ff-only` blocking with a confusing error
+# weeks later.
+#
+# This workflow runs on pull requests to main/next
+# and opens an issue if Invariant #1 is violated. The issue auto-closes
+# itself once the next back-merge brings things back in line.
+#
+# Invariants checked:
+#   #1: `main` is a strict ancestor of `next`. Concretely:
+#       `git log next..main` MUST be empty.
+
+on:
+  pull_request:
+    branches: [main, next]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: invariant-sentry
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check invariants
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        # Default ref (HEAD of triggering branch) is fine — we use
+        # explicit origin/* refs below.
+
+    - name: Ensure both refs are present
+      run: |
+        git fetch --no-tags origin main next
+
+    - name: Check Invariant #1 (main strict ancestor of next)
+      id: inv1
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Strict-ancestor check: every commit reachable from main must
+        # also be reachable from next. `git log next..main` lists the
+        # commits on main that are NOT on next — empty is healthy.
+        VIOLATIONS=$(git log --no-merges --pretty=format:'%h %s' origin/next..origin/main)
+        if [ -z "$VIOLATIONS" ]; then
+          echo "::notice::Invariant #1 holds (main is a strict ancestor of next)"
+          echo "violated=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        echo "::warning::Invariant #1 violated — commits on main not in next:"
+        echo "$VIOLATIONS"
+        echo "violated=true" >> "$GITHUB_OUTPUT"
+        {
+          echo "violation_body<<__EOF__"
+          echo "## Invariant #1 violation: commits on \`main\` not in \`next\`"
+          echo
+          echo "The release workflow's back-merge step failed silently (or"
+          echo "someone pushed to \`main\` without running \`hotfix-finish\`)."
+          echo "Until this resolves, the next live promotion's"
+          echo "\`git merge --ff-only\` will reject."
+          echo
+          echo "### Commits on \`main\` missing from \`next\` (\`git log next..main\`)"
+          echo
+          echo '```'
+          echo "$VIOLATIONS"
+          echo '```'
+          echo
+          echo "### Fix"
+          echo
+          echo '```bash'
+          echo "node scripts/release-promote.mjs hotfix-finish"
+          echo '```'
+          echo
+          echo "Or manually:"
+          echo
+          echo '```bash'
+          echo "git checkout next && git pull --ff-only"
+          echo "git merge origin/main --no-ff -m 'merge main into next (invariant restoration)'"
+          echo "git push origin next"
+          echo '```'
+          echo
+          echo "_This issue was opened by the \`invariant-sentry\` workflow"
+          echo "and will be auto-closed when the next run sees the"
+          echo "invariant restored._"
+          echo "__EOF__"
+        } >> "$GITHUB_OUTPUT"
+
+    # Open or reuse a single tracking issue. We dedupe by title rather
+    # than label so the issue can be hand-closed by a fix without the
+    # workflow racing to reopen it (next clean run silently closes any
+    # open match, so a manual fix + a manual close ends up no-op).
+    - name: Open or close tracking issue
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VIOLATED: ${{ steps.inv1.outputs.violated }}
+        VIOLATION_BODY: ${{ steps.inv1.outputs.violation_body }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        TITLE="Invariant #1 violation: main not ancestor of next"
+        # Find any open issue with this exact title (jq filter is exact-match).
+        EXISTING=$(gh issue list \
+          --state open \
+          --search "in:title \"$TITLE\"" \
+          --json number,title \
+          --jq ".[] | select(.title == \"$TITLE\") | .number" \
+          | head -1)
+        if [ "$VIOLATED" = "true" ]; then
+          if [ -n "$EXISTING" ]; then
+            echo "Issue #$EXISTING already open; refreshing with current violation"
+            gh issue comment "$EXISTING" --body "$VIOLATION_BODY"
+          else
+            # Ensure the label exists before referencing it — gh issue
+            # create fails hard if the label is missing, which left the
+            # sentry detecting violations but unable to surface them
+            # (run 26349188328 on 2026-05-24). `--force` is harmless if
+            # the label already exists; just refreshes its description.
+            gh label create ci-sentry \
+              --color FF6B35 \
+              --description "Issues opened by the invariant-sentry CI workflow" \
+              --force >/dev/null 2>&1 || true
+            gh issue create \
+              --title "$TITLE" \
+              --body "$VIOLATION_BODY" \
+              --label 'ci-sentry'
+          fi
+        else
+          if [ -n "$EXISTING" ]; then
+            echo "Invariant healthy and tracking issue #$EXISTING is open; closing"
+            gh issue close "$EXISTING" \
+              --comment "Auto-closed: \`invariant-sentry\` ran cleanly. Invariant #1 holds."
+          fi
+        fi

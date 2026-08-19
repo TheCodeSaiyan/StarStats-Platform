@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>About — StarStats</title>
+<meta name="description" content="StarStats is a fan-built, local-first event tracker and manifest archive for Star Citizen players. Not affiliated with Cloud Imperium Games or Roberts Space Industries." />
+
+<link rel="preconnect" href="https://rsms.me/" />
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" />
+
+<style>
+  /* === Minimal token subset (Stanton theme) — kept in sync with tokens.css === */
+  :root {
+    --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, 'JetBrains Mono', Consolas, monospace;
+
+    --fs-xs: 11px;   --fs-sm: 13px;   --fs-base: 14px;   --fs-md: 16px;
+    --fs-lg: 20px;   --fs-xl: 28px;   --fs-2xl: 40px;    --fs-3xl: 64px;
+
+    --tracking-tight: -0.02em;
+    --tracking-wider: 0.12em;
+
+    --r-sm: 6px;   --r-md: 10px;
+
+    --s2: 8px;  --s3: 12px;  --s4: 16px;  --s5: 24px;  --s6: 32px;  --s7: 48px;  --s8: 64px;
+
+    /* Stanton theme — canonical marketing */
+    --bg: #0F0E12;
+    --bg-elev: #15131A;
+    --surface: #1A1820;
+    --fg: #ECE7DD;
+    --fg-muted: #A09A8E;
+    --fg-dim: #6B6760;
+    --border: rgba(255, 230, 200, 0.07);
+    --border-strong: rgba(255, 230, 200, 0.14);
+    --accent: #E8A23C;
+    --accent-soft: rgba(232, 162, 60, 0.14);
+    --accent-fg: #1A1208;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--fg); }
+  body {
+    font-family: var(--font-sans);
+    font-size: var(--fs-md);
+    line-height: 1.6;
+    margin: 0;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--accent); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 120ms ease; }
+  a:hover, a:focus-visible { border-bottom-color: currentColor; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+
+  /* === Brand atom — compass star (verbatim from brand book §03) === */
+  .ss-star {
+    --size: 64px;
+    --color: var(--accent);
+    width: var(--size); height: var(--size);
+    position: relative; display: inline-block;
+  }
+  .ss-star::before, .ss-star::after {
+    content: "";
+    position: absolute; inset: 0;
+    background: var(--color);
+  }
+  .ss-star::before {
+    clip-path: polygon(50% 0, 56% 44%, 100% 50%, 56% 56%, 50% 100%, 44% 56%, 0 50%, 44% 44%);
+  }
+  .ss-star::after {
+    clip-path: polygon(50% 12%, 54% 46%, 88% 50%, 54% 54%, 50% 88%, 46% 54%, 12% 50%, 46% 46%);
+    background: color-mix(in oklab, var(--color) 50%, var(--bg));
+  }
+
+  /* === Wordmark === */
+  .ss-wordmark {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    letter-spacing: -0.035em;
+    display: inline-flex; align-items: baseline; gap: 0;
+  }
+  .ss-wordmark em { font-style: normal; color: var(--accent); }
+
+  /* === Page layout === */
+  .doc {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 96px 32px 128px;
+  }
+  @media (max-width: 600px) {
+    .doc { padding: 56px 20px 88px; }
+  }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--accent);
+    margin-bottom: var(--s5);
+  }
+  .eyebrow::before {
+    content: "";
+    width: 24px; height: 1px;
+    background: var(--accent);
+  }
+
+  h1 {
+    font-size: clamp(36px, 6vw, 56px);
+    letter-spacing: var(--tracking-tight);
+    line-height: 1.05;
+    margin: 0 0 var(--s4);
+    font-weight: 600;
+  }
+  .lede {
+    font-size: var(--fs-lg);
+    color: var(--fg-muted);
+    line-height: 1.55;
+    margin: 0 0 var(--s7);
+    max-width: 60ch;
+  }
+
+  .header-lockup {
+    display: flex; align-items: center; gap: var(--s3);
+    margin-bottom: var(--s6);
+  }
+
+  /* Section dividers */
+  .sec {
+    padding-top: var(--s7);
+    margin-top: var(--s7);
+    border-top: 1px solid var(--border);
+  }
+  .sec-eyebrow {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--fg-dim);
+    margin-bottom: var(--s3);
+  }
+  h2 {
+    font-size: var(--fs-xl);
+    letter-spacing: var(--tracking-tight);
+    margin: 0 0 var(--s4);
+    font-weight: 600;
+    line-height: 1.2;
+  }
+  p { margin: 0 0 var(--s4); color: var(--fg); }
+  p.muted { color: var(--fg-muted); }
+
+  /* Disclaimer panel — required, verbatim. Styling matches brand book §11. */
+  .disclaimer {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-md);
+    padding: var(--s5);
+    background: var(--bg-elev);
+    margin: var(--s5) 0 0;
+  }
+  .disclaimer-label {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--fg-dim);
+    margin-bottom: var(--s3);
+  }
+  .disclaimer-body {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    line-height: 1.7;
+    color: var(--fg-muted);
+    margin: 0;
+  }
+
+  /* Credit card */
+  .credit {
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    padding: var(--s5);
+    background: var(--surface);
+    display: flex; align-items: center; gap: var(--s4);
+    flex-wrap: wrap;
+  }
+  .credit-meta {
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    color: var(--fg-dim);
+    margin-bottom: 4px;
+  }
+  .credit-name {
+    font-size: var(--fs-md);
+    font-weight: 500;
+    color: var(--fg);
+  }
+  .credit-handle {
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+    color: var(--accent);
+  }
+
+  /* Resource list */
+  .resources { list-style: none; padding: 0; margin: var(--s4) 0 0; display: grid; gap: var(--s2); }
+  .resources li {
+    display: flex; align-items: baseline; gap: var(--s3);
+  }
+  .resources li::before {
+    content: "→";
+    color: var(--fg-dim);
+    font-family: var(--font-mono);
+    font-size: var(--fs-sm);
+  }
+  .resources .resource-note {
+    font-size: var(--fs-sm);
+    color: var(--fg-dim);
+    margin-left: var(--s2);
+  }
+
+  /* Attribution lockup — verbatim pattern from brand book §11 */
+  .attribution-lockup {
+    margin-top: var(--s7);
+    display: inline-flex; flex-direction: column; gap: 6px;
+    padding: 18px 22px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--r-sm);
+    background: var(--bg-elev);
+  }
+  .attribution-lockup .top {
+    font-family: var(--font-mono); font-size: 10px;
+    text-transform: uppercase; letter-spacing: var(--tracking-wider);
+    color: var(--fg-muted);
+  }
+  .attribution-lockup .mid {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--fg); letter-spacing: 0.02em;
+  }
+  .attribution-lockup .bot {
+    font-family: var(--font-mono); font-size: 9px;
+    text-transform: uppercase; letter-spacing: var(--tracking-wider);
+    color: var(--fg-dim); margin-top: 4px;
+  }
+
+  footer {
+    margin-top: var(--s8);
+    padding-top: var(--s5);
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: var(--fs-xs);
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    letter-spacing: var(--tracking-wider);
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: var(--s5) var(--s4);
+  }
+  footer .links { display: flex; flex-wrap: wrap; gap: var(--s4); }
+  footer .links a { color: var(--fg-muted); border-bottom-color: var(--border); }
+  footer .links a:hover, footer .links a:focus-visible { color: var(--accent); border-bottom-color: var(--accent); }
+</style>
+</head>
+<body>
+
+<main class="doc">
+
+  <div class="header-lockup" aria-label="StarStats">
+    <span class="ss-star" style="--size: 40px;" aria-hidden="true"></span>
+    <span class="ss-wordmark" style="font-size: 40px;">Star<em>Stats</em></span>
+  </div>
+
+  <div class="eyebrow">About</div>
+
+  <h1>A pilot's logbook. Nothing more.</h1>
+
+  <p class="lede">
+    StarStats is a fan-built, local-first event tracker and manifest archive for Star Citizen players.
+    It pairs with the game, parses your raw log files on your own machine, and turns them into a
+    clean, exportable session-by-session record you actually own.
+  </p>
+
+  <!-- ============================================================ -->
+  <!-- What is StarStats -->
+  <!-- ============================================================ -->
+  <section class="sec">
+    <div class="sec-eyebrow">01 — What it is</div>
+    <h2>Made by a player, for players.</h2>
+    <p>
+      Every session, the game writes a log. StarStats reads it, sorts it, and gives you back a
+      logbook — kills, deaths, cargo, contracts, jumps, ships flown, time on station — without
+      uploading anything you didn't ask it to upload. Your manifest lives on your drive. Sync is
+      opt-in. Export is always available, in NDJSON, ZIP, or CSV, so you can leave whenever you want.
+    </p>
+    <p class="muted">
+      It does one job and tries to do it well. Pairing, parsing, viewing, and exporting are
+      free — and will always be. There's a supporter tier with cosmetic recognition and longer
+      retention, but no part of the core utility sits behind a paywall.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Made by — TODO: fill in your real credit -->
+  <!-- ============================================================ -->
+  <section class="sec">
+    <div class="sec-eyebrow">02 — Made by</div>
+    <h2>People, not a publisher.</h2>
+    <div class="credit" role="note" aria-label="Project credit">
+      <span class="ss-star" style="--size: 36px;" aria-hidden="true"></span>
+      <div>
+        <div class="credit-meta">Builder</div>
+        <div class="credit-name">Nigel Tatschner</div>
+        <div class="credit-handle">@TheCodeSaiyan · <a href="https://thecodesaiyan.io" target="_blank" rel="noopener">thecodesaiyan.io</a></div>
+      </div>
+    </div>
+    <p class="muted" style="margin-top: var(--s4); font-size: var(--fs-sm);">
+      StarStats is a community project. Contributions, bug reports, and pull requests are welcome
+      on the project's source repository.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Community data sources — wiki / StarCitizenTools acknowledgement -->
+  <!-- ============================================================ -->
+  <section class="sec" id="community-data-sources">
+    <div class="sec-eyebrow">03 — Community data sources</div>
+    <h2>Standing on the shoulders of the wiki.</h2>
+    <p>
+      The names, manufacturers, roles, and sizes that StarStats uses to turn opaque
+      engine identifiers like <code>AEGS_Avenger_Stalker</code> into "Aegis Avenger
+      Stalker" come from the community-run
+      <a href="https://starcitizen.tools" rel="noopener" target="_blank">Star Citizen Wiki</a>
+      — a volunteer effort maintained by the
+      <a href="https://github.com/StarCitizenTools" rel="noopener" target="_blank">StarCitizenTools</a>
+      team and the wider editor community.
+    </p>
+    <p class="muted">
+      <strong>Attribution.</strong> Wiki content is &copy; Star Citizen Wiki
+      contributors and licensed under the
+      <a href="https://creativecommons.org/licenses/by-sa/4.0/" rel="noopener" target="_blank">Creative
+      Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0)</a>. The
+      credit on this page, in the footer of every signed-in surface, in the per-entry
+      "View on Star Citizen Wiki" link on each Knowledge Base detail page, and in
+      <code>NOTICE</code> exists so that attribution travels with the data.
+    </p>
+    <p class="muted">
+      <strong>Modifications.</strong> StarStats does not republish the wiki dataset
+      verbatim. We strip internal bookkeeping fields (<code>id</code>,
+      <code>created_at</code>, <code>updated_at</code>, <code>version</code>),
+      restructure per-category extras into a single JSONB <code>metadata</code> column,
+      and join each entry to the engine class identifier that appears in your
+      <code>Game.log</code> so the catalogue can be looked up by class name. Entries
+      that lack a usable class identifier are dropped because they can't link back to a
+      game event. The redistributed portion (the public <code>/v1/reference/*</code>
+      API and the <code>/kb</code> Knowledge Base pages) is offered under the same
+      CC BY-SA 4.0 terms.
+    </p>
+    <p class="muted">
+      <strong>No warranty.</strong> The wiki is community-edited and may be incomplete,
+      out of date, or wrong about a given entity; StarStats passes the data through
+      without warranties of accuracy, completeness, or fitness for purpose. If
+      something looks off, the canonical place to fix it is upstream on the wiki itself.
+    </p>
+    <p class="muted">
+      <strong>How we fetch.</strong> A scheduled task on the StarStats server fetches
+      the public API (<code>api.star-citizen.wiki</code>) once a day with a generic
+      user agent and no user data attached. The catalogue is cached server-side and
+      joined to your events at render time — your browser never talks to the wiki
+      directly.
+    </p>
+    <p class="muted">
+      <strong>Ship specifications &amp; imagery.</strong> For vehicles, the spec sheets,
+      flavour descriptions, and ship images shown on Knowledge Base pages are enriched
+      directly from Roberts Space Industries' official
+      <a href="https://robertsspaceindustries.com/ship-matrix" rel="noopener" target="_blank">Ship Matrix</a>.
+      Those specifications, descriptions, and images are &copy; Cloud Imperium Rights LLC /
+      Cloud Imperium Rights Ltd and are shown here as unofficial fan reference, not endorsed
+      by or affiliated with Cloud Imperium Games or Roberts Space Industries. Each vehicle
+      page carries this notice inline, and we honour removal or adjustment requests — see the
+      disclaimer in §04 below.
+    </p>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Required fan-fiction disclaimer — VERBATIM from brand book §11 -->
+  <!-- ============================================================ -->
+  <section class="sec">
+    <div class="sec-eyebrow">04 — Compliance · fan-fiction disclaimer</div>
+    <h2>The legal floor.</h2>
+    <p>
+      StarStats is a fan-built site and desktop tool, not a derivative work, mod, or replacement
+      of any game. It is published as fan fiction and fan tooling under the spirit of Cloud
+      Imperium's published fandom guidelines. The text below appears verbatim wherever it is
+      required.
+    </p>
+    <aside class="disclaimer" aria-label="Fan-fiction disclaimer">
+      <div class="disclaimer-label">Required — fan-fiction disclaimer (verbatim)</div>
+      <p class="disclaimer-body">
+        StarStats is a work of fan fiction and fan tooling. All characters, places, events, ships,
+        ship designs, and other content originating from Star Citizen, Squadron 42, or other
+        content produced or created by their publishers or developers, are the property of Cloud
+        Imperium Rights LLC and Cloud Imperium Rights Ltd. StarStats is unofficial, fan-made
+        content not endorsed by or affiliated with Cloud Imperium Games or Roberts Space Industries.
+      </p>
+    </aside>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Verify our posture — required outbound links -->
+  <!-- ============================================================ -->
+  <section class="sec">
+    <div class="sec-eyebrow">05 — Verify</div>
+    <h2>Check our work.</h2>
+    <p>
+      We try to read CIG's fandom guidelines conservatively. If you want to confirm what they
+      actually allow — and where StarStats sits within those boundaries — these are the source
+      documents we work from.
+    </p>
+    <ul class="resources">
+      <li>
+        <a href="https://support.robertsspaceindustries.com/hc/en-us/articles/360006895793" rel="noopener" target="_blank">Star Citizen Fankit and Fandom FAQ</a>
+      </li>
+      <li>
+        <a href="https://support.robertsspaceindustries.com/hc/en-us/articles/115013196127" rel="noopener" target="_blank">Fandom FAQ — Videos, writing, and more</a>
+      </li>
+      <li>
+        <a href="https://support.robertsspaceindustries.com/hc/en-us/articles/5422808416151" rel="noopener" target="_blank">Fan Film and Machinima Policy</a>
+        <span class="resource-note">— for video creators; informs but does not govern this tool</span>
+      </li>
+      <li>
+        <a href="https://robertsspaceindustries.com/en/fankit" rel="noopener" target="_blank">RSI Fankit — download &amp; terms</a>
+      </li>
+      <li>
+        <a href="https://robertsspaceindustries.com/tos" rel="noopener" target="_blank">RSI Terms of Service</a>
+      </li>
+    </ul>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- Required attribution lockup — visible reminder on every public page -->
+  <!-- ============================================================ -->
+  <div class="attribution-lockup" aria-label="Fan-made attribution">
+    <div class="top">Fan-made · Not affiliated with</div>
+    <div class="mid">Cloud Imperium Games · RSI</div>
+    <div class="bot">Star Citizen™ &amp; Squadron 42™ are trademarks of CIG</div>
+  </div>
+
+  <footer>
+    <span>StarStats · About · v1 · Fan-built · Independent</span>
+    <span class="links">
+      <a href="https://support.robertsspaceindustries.com/hc/en-us/articles/360006895793" rel="noopener" target="_blank">Fandom FAQ</a>
+      <a href="https://robertsspaceindustries.com/en/fankit" rel="noopener" target="_blank">RSI Fankit</a>
+      <a href="https://robertsspaceindustries.com/tos" rel="noopener" target="_blank">RSI TOS</a>
+    </span>
+  </footer>
+
+</main>
+
+</body>
+</html>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="StarStats reticle badge">
+  <title>StarStats — reticle (alternate badge mark)</title>
+  <desc>Concentric circles + crosshair. Used as a badge mark where the compass star would compete with surrounding type (e.g., section dividers, status indicators).</desc>
+  <!-- Outer ring -->
+  <circle cx="50" cy="50" r="46" fill="none" stroke="#E8A23C" stroke-width="1.5"/>
+  <!-- Inner ring -->
+  <circle cx="50" cy="50" r="28" fill="none" stroke="#E8A23C" stroke-width="1.5"/>
+  <!-- Crosshair (gaps between center and outer ring) -->
+  <line x1="50" y1="2"  x2="50" y2="20" stroke="#E8A23C" stroke-width="1.5"/>
+  <line x1="50" y1="80" x2="50" y2="98" stroke="#E8A23C" stroke-width="1.5"/>
+  <line x1="2"  y1="50" x2="20" y2="50" stroke="#E8A23C" stroke-width="1.5"/>
+  <line x1="80" y1="50" x2="98" y2="50" stroke="#E8A23C" stroke-width="1.5"/>
+  <!-- Center dot -->
+  <circle cx="50" cy="50" r="3" fill="#E8A23C"/>
+</svg>

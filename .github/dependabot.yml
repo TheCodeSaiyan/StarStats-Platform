@@ -1,0 +1,90 @@
+# Dependabot config for StarStats.
+#
+# Three ecosystems are watched:
+#   - cargo  (Rust workspace at the repo root)
+#   - npm    (pnpm workspace at the repo root — apps/* and packages/*)
+#   - github-actions (workflows under .github/workflows)
+#
+# Major bumps for the framework anchors (Tauri, React) are silenced —
+# those carry breaking renderer / API changes and we want to handle them
+# in dedicated PRs with manual smoke tests, not have Dependabot open them
+# alongside routine patch noise.
+
+version: 2
+updates:
+  # Rust workspace. The root Cargo.toml is the workspace manifest; all
+  # member crates inherit shared deps from [workspace.dependencies], so
+  # rooting at `/` is enough for Dependabot to see the full graph.
+  # Cargo.lock is committed (workspace pattern) and Dependabot will
+  # update it automatically when crates bump.
+  - package-ecosystem: cargo
+    directory: /
+    target-branch: next
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Tauri 2.x bumps require coordinated checks against the
+      # webview / wix bundle / signing pipeline — handle by hand.
+      - dependency-name: tauri
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tauri-plugin-*
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tauri-build
+        update-types: ["version-update:semver-major"]
+      # aws-sdk-s3 1.122+ raises the transitive aws-smithy-* MSRV to
+      # rustc 1.91, but the workspace pins the toolchain at 1.88
+      # (rust-toolchain.toml). Hold at 1.121.x until the toolchain is
+      # bumped in lockstep. See the pin note in Cargo.toml. The other
+      # direct aws deps (aws-credential-types, aws-smithy-runtime-api)
+      # are already capped there, so holding aws-sdk-s3 keeps the whole
+      # smithy chain on its 1.88-compatible versions.
+      - dependency-name: aws-sdk-s3
+        versions: [">=1.122.0"]
+
+  # pnpm workspace lives at the repo root (pnpm-workspace.yaml lists
+  # apps/* and packages/*). Pointing Dependabot at `/` covers every
+  # workspace member through the single root pnpm-lock.yaml.
+  - package-ecosystem: npm
+    directory: /
+    target-branch: next
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      npm-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # React majors land with concurrent-mode / hook-rule changes —
+      # take them in a dedicated PR with full e2e re-runs.
+      - dependency-name: react
+        update-types: ["version-update:semver-major"]
+      - dependency-name: react-dom
+        update-types: ["version-update:semver-major"]
+      # Tauri JS API tracks the Rust crate; majors must move in
+      # lockstep with the workspace bump.
+      - dependency-name: "@tauri-apps/*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: next
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope

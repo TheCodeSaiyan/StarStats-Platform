@@ -1,0 +1,310 @@
+@import 'design-tokens/starstats-tokens.css';
+@import 'design-tokens/theme-transition.css';
+@import 'design-tokens/hud.css';
+
+:root {
+  /* Defensive fallbacks (Stanton values) for the case where `<html>`
+   * has no `data-theme` attribute. Theme blocks in
+   * `styles/starstats-tokens.css` use `:root[data-theme="..."]`
+   * (specificity 0,2,0) so they correctly override these (0,1,0)
+   * fallbacks. Don't rewrite the theme selectors to bare
+   * `[data-theme="..."]` — that ties on specificity with `:root` and
+   * source order (this block imported AFTER the theme blocks) lets the
+   * fallback clobber every theme. */
+  --bg: #0F0E12;
+  --bg-elev: #15131A;
+  --surface: #1A1820;
+  --surface-2: #221F2A;
+  --surface-3: #2A2734;
+  --fg: #ECE7DD;
+  --fg-muted: #A09A8E;
+  --fg-dim: #7E7B75;
+  --border: rgba(255, 230, 200, 0.07);
+  --border-strong: rgba(255, 230, 200, 0.14);
+  --accent: #E8A23C;
+  --accent-soft: rgba(232, 162, 60, 0.14);
+  --accent-glow: rgba(232, 162, 60, 0.28);
+  --accent-fg: #1A1208;
+  --ok: #74C68A;
+  --warn: #E8C53C;
+  --danger: #E8674C;
+  --info: #6FA8E8;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app__main {
+  /* The design assumes ~720px viewport. Tauri lets the window resize,
+   * so cap the content column and let extra horizontal space sit as
+   * empty padding on wider tray windows. */
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.error {
+  /* Translucent tone via color-mix (mirrors `.ss-alert--danger` in
+   * design-tokens/starstats-tokens.css) instead of a full-strength
+   * `--danger` border + hardcoded rgba() background — the hardcoded
+   * value baked in the dark-theme hue and read wrong on the Nyx light
+   * theme, where `--danger` is a different colour entirely. */
+  background: color-mix(in oklab, var(--danger) 8%, var(--bg-elev));
+  border: 1px solid color-mix(in oklab, var(--danger) 40%, transparent);
+  color: var(--danger);
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+}
+
+.loading {
+  color: var(--fg-muted);
+  font-style: italic;
+}
+
+/* --- H7: keyboard focus ring ---------------------------------------
+ * `:focus-visible` fires only for keyboard / programmatic focus, never
+ * on pointer clicks — so keyboard users get a clear accent ring without
+ * a mouse click-halo. Several tray controls previously set inline
+ * `outline: 'none'`, which killed the focus indicator entirely; those
+ * suppressions were removed in favour of this. The tray styles most
+ * interactive elements inline, so target elements directly. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role='button']:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs, 4px);
+}
+
+/* --- M2: tray primitives adopt `.ss-*` hover/focus treatments -------
+ * `apps/tray-ui/src/components/tray/primitives.tsx` styles its buttons
+ * and inputs inline (for the tray's tighter ~720px density), but inline
+ * `style` always wins over a stylesheet rule regardless of specificity —
+ * even a `:hover`/`:focus` rule can't repaint an inline-set property. So
+ * the colour/border-color GhostButton, DangerButton, and TextInput need
+ * to vary by interaction state live here instead, applied via className.
+ * These mirror `.ss-btn--ghost`, `.ss-btn--danger`, and `.ss-input` in
+ * design-tokens/starstats-tokens.css — same treatment, tray's own padding.
+ */
+.tray-btn-ghost {
+  color: var(--fg-muted);
+  border-color: var(--border-strong);
+}
+.tray-btn-ghost:hover:not(:disabled) {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.tray-btn-danger {
+  color: var(--danger);
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+}
+.tray-btn-danger:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--danger) 10%, transparent);
+}
+
+.tray-input-focus:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* --- Parser submissions / unknown-line review pane -----------------
+ * H2 fix (2026-07-09): these classes previously resolved to NO CSS
+ * rule, so the pane rendered UA-default light form controls on the
+ * dark theme. Styled here with the design tokens; native <input>,
+ * <textarea>, <button> and the checkbox are explicitly skinned. */
+
+.submissions-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  padding: var(--s4);
+}
+
+.review-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.review-pane-empty {
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  padding: var(--s5) var(--s4);
+  text-align: center;
+}
+
+.shape-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s4);
+}
+
+.shape-row header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.shape-row header code {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--fg-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 55%;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 2px var(--s2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--fg-muted);
+}
+
+.badge.interest {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.badge.tag {
+  font-family: var(--font-mono);
+  background: var(--surface-3);
+  color: var(--fg);
+}
+
+.raw {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--s2) var(--s3);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.pii-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+.pii-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: var(--fs-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+
+.pii-toggle input[type='checkbox'] {
+  accent-color: var(--accent);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+
+.shape-row input[type='text'],
+.shape-row textarea {
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--s2) var(--s3);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.shape-row textarea {
+  min-height: 60px;
+  resize: vertical;
+}
+
+.shape-row input[type='text']::placeholder,
+.shape-row textarea::placeholder {
+  color: var(--fg-dim);
+}
+
+.shape-row input[type='text']:focus-visible,
+.shape-row textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.actions {
+  display: flex;
+  gap: var(--s2);
+  justify-content: flex-end;
+}
+
+.actions button {
+  font-family: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: var(--s2) var(--s4);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--fg);
+}
+
+/* First action is Submit (primary accent); second is Dismiss (ghost). */
+.actions button:first-child {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+
+.actions button:hover {
+  border-color: var(--border-strong);
+}
+
+.actions button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for the StarStats main window.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-hide",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:event:default",
+    "core:menu:default",
+    "core:tray:default",
+    "shell:allow-open",
+    "notification:default",
+    "updater:allow-check",
+    "process:default",
+    "autostart:default"
+  ]
+}

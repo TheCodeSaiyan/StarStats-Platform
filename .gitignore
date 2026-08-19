@@ -1,0 +1,112 @@
+# --- Rust ---
+target/
+**/*.rs.bk
+Cargo.lock.bak
+
+# --- Local RSI fetch cache (used during parser development to inspect
+# real RSI HTML/JSON without re-fetching). Contains fully-rendered
+# pages from RSI which may include account-private data when fetched
+# with a session cookie — must never be committed.
+.rsi-fetch/
+
+# --- Design handoff bundles fetched at development time. The design
+# Design tooling exports a tar.gz of HTML/JSX prototypes; we extract
+# locally as a reference but it's large (~1.4 MB) and regenerable on
+# demand, so it shouldn't live in the repo.
+# --- Node / pnpm ---
+node_modules/
+.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# --- Next.js ---
+.next/
+out/
+
+# --- Build / cache ---
+dist/
+build/
+.turbo/
+.tauri/
+*.tsbuildinfo
+next-env.d.ts
+
+# --- Coverage / test ---
+coverage/
+*.lcov
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# --- Playwright ---
+playwright-report/
+test-results/
+playwright/.cache/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# --- Environment ---
+.env
+.env.local
+.env.*.local
+
+# --- Secrets / personal ---
+*.session
+*.cookies
+cookies.txt
+*.pem
+*.key
+
+# --- Local DB / captures ---
+*.db
+*.sqlite
+*.sqlite3
+captures/
+
+# --- IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+.fleet/
+
+# --- OS ---
+Thumbs.db
+.DS_Store
+
+# --- Tauri ---
+crates/starstats-client/gen/
+src-tauri/target/
+
+# --- Generated ---
+# `packages/api-client-ts/src/generated/schema.ts` is the only file
+# under `generated/`. It IS committed — the `openapi-drift` CI job
+# regenerates it from the live OpenAPI spec and fails the build if
+# the committed copy is out of sync. Web-side typecheck depends on
+# the committed copy too. Keep this directory tracked.
+
+# --- Local agent/tool working state ---
+# Local tool state is never committed.
+
+# by the agent's brainstorming workflow stays local per developer.
+
+# Top-level design-bundle landing dir (separate from the
+# fetches here when working on an audit).
+/_fetched/
+
+# Self-contained brand-book exports (inline-assets HTML, ~7 MB).
+# Generated from the brand pack source for external sharing; the
+# tracked About.html and brand pack source files are the canonical
+# inputs. Keep these out of git history to avoid blob bloat.
+docs/*.standalone.html
+
+# AI-assisted planning artifacts (specs/plans/runbooks). Internal dev
+# process output, not product or contributor docs — keep out of the
+# public repo. Local copies are fine; they just never get tracked.
+the release design notes

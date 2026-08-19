@@ -1,0 +1,226 @@
+{
+  "_comment": "Bundled-into-the-tray bootstrap snapshot of the Star Citizen location catalogue. Loaded on first launch when no server-side refresh has happened yet (offline first run, fresh install). The full ~1955-row catalogue ships from /v1/reference/location at runtime; this file just covers the major hero locations so the tray's classifier resolves something rather than nothing on day-zero. Regenerated periodically from a production /v1/reference/location dump; ordering is alphabetical for diff stability. See docs/PLAN-LOCATION-TAXONOMY-V2.md.",
+  "version": 1,
+  "generated_at": "2026-05-22",
+  "entries": [
+    {
+      "slug": "aberdeen",
+      "display_name": "Aberdeen",
+      "class_name": "Aberdeen",
+      "system": "Stanton",
+      "parent_body": "Hurston",
+      "engine_tag": "Stanton1b",
+      "classification": "Moon",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "moon"
+      }
+    },
+    {
+      "slug": "area18",
+      "display_name": "Area18",
+      "class_name": "Area18",
+      "system": "Stanton",
+      "parent_body": "ArcCorp",
+      "engine_tag": "Area18",
+      "classification": "Landing Zone",
+      "taxonomy": {
+        "tier": "landing_zone",
+        "subtype": "city",
+        "placement": {
+          "kind": "on_body",
+          "body": "ArcCorp"
+        }
+      }
+    },
+    {
+      "slug": "arccorp",
+      "display_name": "ArcCorp",
+      "class_name": "ArcCorp",
+      "system": "Stanton",
+      "parent_body": "Stanton",
+      "engine_tag": "Stanton3",
+      "classification": "Planet",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "planet"
+      }
+    },
+    {
+      "slug": "crusader",
+      "display_name": "Crusader",
+      "class_name": "Crusader",
+      "system": "Stanton",
+      "parent_body": "Stanton",
+      "engine_tag": "Stanton2",
+      "classification": "Planet",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "planet"
+      }
+    },
+    {
+      "slug": "daymar",
+      "display_name": "Daymar",
+      "class_name": "Daymar",
+      "system": "Stanton",
+      "parent_body": "Crusader",
+      "engine_tag": "Stanton2b",
+      "classification": "Moon",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "moon"
+      }
+    },
+    {
+      "slug": "grim-hex",
+      "display_name": "Grim HEX",
+      "class_name": "GrimHEX",
+      "system": "Stanton",
+      "parent_body": "Yela",
+      "engine_tag": "GrimHEX",
+      "classification": "Space Station",
+      "taxonomy": {
+        "tier": "space_station",
+        "subtype": "sealed_settlement",
+        "placement": {
+          "kind": "orbits_body",
+          "body": "Yela"
+        },
+        "faction": "Nine Tails"
+      }
+    },
+    {
+      "slug": "hurston",
+      "display_name": "Hurston",
+      "class_name": "Hurston",
+      "system": "Stanton",
+      "parent_body": "Stanton",
+      "engine_tag": "Stanton1",
+      "classification": "Planet",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "planet"
+      }
+    },
+    {
+      "slug": "lorville",
+      "display_name": "Lorville",
+      "class_name": "Lorville",
+      "system": "Stanton",
+      "parent_body": "Hurston",
+      "engine_tag": "Lorville",
+      "classification": "Settlement",
+      "taxonomy": {
+        "tier": "landing_zone",
+        "subtype": "city",
+        "placement": {
+          "kind": "on_body",
+          "body": "Hurston"
+        },
+        "operator": "Hurston Dynamics"
+      }
+    },
+    {
+      "slug": "microtech",
+      "display_name": "microTech",
+      "class_name": "MicroTech",
+      "system": "Stanton",
+      "parent_body": "Stanton",
+      "engine_tag": "Stanton4",
+      "classification": "Planet",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "planet"
+      }
+    },
+    {
+      "slug": "new-babbage",
+      "display_name": "New Babbage",
+      "class_name": "NewBabbage",
+      "system": "Stanton",
+      "parent_body": "microTech",
+      "engine_tag": "NewBabbage",
+      "classification": "Landing Zone",
+      "taxonomy": {
+        "tier": "landing_zone",
+        "subtype": "city",
+        "placement": {
+          "kind": "on_body",
+          "body": "microTech"
+        }
+      }
+    },
+    {
+      "slug": "orison",
+      "display_name": "Orison",
+      "class_name": "Orison",
+      "system": "Stanton",
+      "parent_body": "Crusader",
+      "engine_tag": "Orison",
+      "classification": "Landing Zone",
+      "taxonomy": {
+        "tier": "landing_zone",
+        "subtype": "city",
+        "placement": {
+          "kind": "on_body",
+          "body": "Crusader"
+        },
+        "operator": "Crusader Industries"
+      }
+    },
+    {
+      "slug": "port-olisar",
+      "display_name": "Port Olisar",
+      "class_name": "PortOlisar",
+      "system": "Stanton",
+      "parent_body": "Crusader",
+      "engine_tag": "PortOlisar",
+      "classification": "Space Station",
+      "taxonomy": {
+        "tier": "space_station",
+        "subtype": "orbital_station",
+        "placement": {
+          "kind": "orbits_body",
+          "body": "Crusader"
+        },
+        "operator": "Crusader Industries"
+      }
+    },
+    {
+      "slug": "stanton-system",
+      "display_name": "Stanton system",
+      "class_name": "Stanton",
+      "system": "Stanton",
+      "engine_tag": "Stanton",
+      "classification": "Solar System",
+      "taxonomy": {
+        "tier": "system"
+      }
+    },
+    {
+      "slug": "pyro-system",
+      "display_name": "Pyro system",
+      "class_name": "Pyro",
+      "system": "Pyro",
+      "engine_tag": "Pyro",
+      "classification": "Solar System",
+      "taxonomy": {
+        "tier": "system"
+      }
+    },
+    {
+      "slug": "yela",
+      "display_name": "Yela",
+      "class_name": "Yela",
+      "system": "Stanton",
+      "parent_body": "Crusader",
+      "engine_tag": "Stanton2a",
+      "classification": "Moon",
+      "taxonomy": {
+        "tier": "astronomical_object",
+        "subtype": "moon"
+      }
+    }
+  ]
+}

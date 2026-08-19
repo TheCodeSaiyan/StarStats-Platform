@@ -1,0 +1,366 @@
+@import 'design-tokens/starstats-tokens.css';
+@import 'design-tokens/hud.css';
+@import 'design-tokens/theme-transition.css';
+
+:root {
+  /* Defensive fallbacks for the theme tokens. tokens.css scopes its
+   * theme blocks to `:root[data-theme="..."]` (specificity 0,2,0);
+   * this `:root { ... }` block is specificity 0,1,0, so the theme
+   * blocks strictly win when a `data-theme` attribute is set and
+   * fall back to these Stanton defaults when it isn't. Keep in sync
+   * with tokens.css `:root[data-theme="stanton"]`. */
+  --bg: #0F0E12;
+  --bg-elev: #15131A;
+  --surface: #1A1820;
+  --surface-2: #221F2A;
+  --surface-3: #2A2734;
+  --fg: #ECE7DD;
+  --fg-muted: #A09A8E;
+  --fg-dim: #7E7B75;
+  --border: rgba(255, 230, 200, 0.07);
+  --border-strong: rgba(255, 230, 200, 0.14);
+  --accent: #E8A23C;
+  --accent-soft: rgba(232, 162, 60, 0.14);
+  --accent-glow: rgba(232, 162, 60, 0.28);
+  --accent-fg: #1A1208;
+  --ok: #74C68A;
+  --warn: #E8C53C;
+  --danger: #E8674C;
+  --info: #6FA8E8;
+
+  /* Legacy bespoke vars aliased to the StarStats token system. The
+   * 2FA page (settings/2fa/page.tsx) and a handful of skeleton/footer
+   * rules still reference these names; once those migrate the alias
+   * block can disappear. */
+  --card-bg: var(--surface);
+  --card-border: var(--border);
+  --muted: var(--fg-muted);
+  --error: var(--danger);
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Skip-to-content link (M-W9). Rendered first in <body> so it's the
+   first thing a keyboard/AT user reaches; visually hidden off the top
+   edge until focused, then slides down. Targets each page's `#main`
+   wrapper. */
+.ss-skip-link {
+  position: fixed;
+  top: 0;
+  left: 8px;
+  z-index: 1000;
+  transform: translateY(-120%);
+  padding: 8px 16px;
+  background: var(--surface-2);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: 0 0 var(--r-sm) var(--r-sm);
+  font-size: var(--fs-sm);
+  transition: transform 0.15s ease;
+}
+.ss-skip-link:focus,
+.ss-skip-link:focus-visible {
+  transform: translateY(0);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Bare `<main>` keeps the legacy 720px column for marketing/auth/legal.
+ * Per-page classes (.dashboard) override at higher specificity, and
+ * the app shell wraps app pages in `.ss-main` from tokens.css. */
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+main h1 {
+  margin-top: 0;
+  /* Audit v2 §03 type plateau: drop the default browser 2em (~32px)
+     down to 28px so inner pages don't compete with top-of-funnel
+     surfaces. Top-level pages that want the louder 32px set it
+     inline; detail pages can opt into a smaller tier the same way. */
+  font-size: 28px;
+}
+
+.muted {
+  color: var(--fg-muted);
+}
+
+/* Sign-out anchor pinned to the bottom of the left rail. */
+.ss-rail-footer {
+  margin-top: auto;
+  padding: 12px;
+  font-size: 11px;
+}
+.ss-rail-footer a {
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+.ss-rail-footer a:hover {
+  color: var(--fg);
+}
+
+/* Email-not-verified banner — uses the warn alert tokens. Sits inside
+ * `<main>` so it tucks under the topbar/rail in the app shell. */
+.unverified-banner {
+  display: block;
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in oklab, var(--warn) 40%, transparent);
+  background: color-mix(in oklab, var(--warn) 10%, var(--bg-elev));
+  color: var(--warn);
+  font-size: var(--fs-sm);
+}
+.unverified-banner a {
+  color: var(--warn);
+  text-decoration: underline;
+  font-weight: 600;
+  margin-left: 4px;
+}
+.unverified-banner a:hover {
+  filter: brightness(1.15);
+}
+
+/* Marketing footer — rendered by layout.tsx's signed-out branch.
+ * Outer is full-bleed so border-top spans the viewport; inner caps
+ * at 1080px (the marketing content column). */
+.site-footer {
+  margin-top: 48px;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.site-footer-inner {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px;
+}
+.site-footer a {
+  color: var(--fg-muted);
+}
+.site-footer a:hover {
+  color: var(--fg);
+}
+
+/* The 2FA wizard (settings/2fa/page.tsx) still wraps its forms in
+ * `.form` and the page in `.dashboard` / `.dashboard__header`. A future
+ * pass can lift those to ss-* primitives; for now keep the rules. */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 420px;
+  margin: 24px 0;
+}
+.form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.form span {
+  color: var(--fg-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.form input {
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+}
+.form input:focus {
+  border-color: var(--accent);
+}
+.form small {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.form button {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 12px 20px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.form button:hover {
+  filter: brightness(1.1);
+}
+
+.dashboard {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dashboard__header h1 {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+.dashboard__header p {
+  margin: 4px 0 0;
+}
+
+/* Skeleton loaders rendered by app/loading.tsx, dashboard/loading.tsx,
+ * auth/loading.tsx. Two-tone pulse matches the surface aesthetic. */
+.skeleton {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* ---- Metrics redesign (v0.0.2-beta) -------------------------------
+ * Cards, pills, and chart shells consumed by `components/metrics/*`.
+ * Token-driven so theme swaps just repaint.
+ * ----------------------------------------------------------------- */
+
+/* Screen-reader-only utility. Used by `MetricCard` for the table
+ * fallback that mirrors each chart's data for keyboard / SR users. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.metric-card {
+  display: flex;
+  flex-direction: column;
+}
+.metric-card__header {
+  padding: 20px 24px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.metric-card__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.metric-card__caption {
+  margin: 6px 0 0;
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+.metric-card__body {
+  padding: 16px 24px 22px;
+}
+.metric-card__empty,
+.metric-card__error {
+  padding: 24px;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+.metric-card__error {
+  color: var(--danger);
+}
+.metric-card__badge {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--fg-muted);
+  cursor: help;
+}
+.metric-card__badge--best-effort {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.chart-card__chart {
+  padding: 0 24px;
+}
+
+.sparkline-pill {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.sparkline-pill__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.sparkline-pill__value {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+.sparkline-pill__label {
+  font-size: 12px;
+  color: var(--fg-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.sparkline-pill__svg {
+  display: block;
+  margin-top: 6px;
+}
+.sparkline-pill__svg--empty {
+  height: 28px;
+  background: var(--surface-2);
+  border-radius: var(--r-xs);
+}
+.sparkline-pill__caption {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--fg-dim);
+}
+
+.year-heatmap {
+  scrollbar-width: thin;
+}

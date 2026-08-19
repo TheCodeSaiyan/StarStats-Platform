@@ -1,0 +1,417 @@
+name: Build & Test
+
+on:
+  pull_request:
+    branches: [main, next]
+  push:
+    branches: [main, next]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded runs on branches, but NEVER on main: main pushes
+  # (release-manifest auto-commits, docs catch-ups, fmt fixes) arrive in
+  # bursts and cancelling mid-run leaves the gate red for the commit
+  # that matters, and would fight required-check branch protection (L10).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  # rust-cache best practice: incremental compilation produces a much
+  # larger, slower-to-restore cache for no CI benefit (every job starts
+  # from a clean checkout, so there's nothing to incrementally build
+  # on). Dropping dev/test debuginfo shrinks target/ further — release
+  # builds use the `release` profile and are unaffected.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  # Lint workflow YAML syntax + GitHub Actions semantics. Catches
+  # mistakes (typos in `if:` expressions, unknown context fields,
+  # malformed `needs:` graphs) at PR time rather than at first run.
+  # Only fires when workflow files actually change — actionlint is
+  # cheap (~5s) but useless on non-workflow PRs.
+  actionlint:
+    name: Lint workflows
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Run actionlint on changed workflow files
+      shell: bash
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        set -euo pipefail
+        CHANGED=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- '.github/workflows/*.yml' '.github/workflows/*.yaml' || true)
+        if [ -z "$CHANGED" ]; then
+          echo "No workflow files changed in this PR; skipping actionlint."
+          exit 0
+        fi
+        echo "Changed workflow files:"
+        echo "$CHANGED"
+        # Pin the bootstrap script to a release tag (not main) and pin
+        # the downloaded actionlint version, so a upstream repoint of
+        # main can't silently change what runs in CI (L10 supply-chain).
+        bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+        # shellcheck disable=SC2086
+        ./actionlint -color $CHANGED
+
+  # Gate the rest of the matrix on a 5-second commit-message check.
+  # The version-bump commit and the channel-manifest commit don't
+  # change anything that affects Rust/Web/Playwright/Tauri compilation
+  # — Cargo's version field, tauri.conf.json's version field, and
+  # release-manifests/*.json are inert from the build's perspective.
+  # Their parent commit already passed the full matrix on the previous
+  # push. Skipping these bot commits cuts CI runs from 3 to 1 per
+  # release cycle on the Tauri matrix specifically (the most expensive
+  # one — ~15-20 min per OS).
+  #
+  # Pull-request events always run; only push events are skippable.
+  should-run:
+    name: Should run
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+    - id: check
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        MSG: ${{ github.event.head_commit.message }}
+      shell: bash
+      run: |
+        if [[ "$EVENT_NAME" != "push" ]]; then
+          echo "run=true" >> "$GITHUB_OUTPUT"
+          echo "Non-push event ($EVENT_NAME); proceeding."
+          exit 0
+        fi
+        # Only inspect the first line — multi-line commit bodies could
+        # contain any prefix in their body and we don't want to skip
+        # on that.
+        FIRST_LINE="${MSG%%$'\n'*}"
+        # `chore: bump tray to ` + `chore: bump platform to ` added in
+        # the release-tracks split (the release design notes
+        # 2026-05-23-release-tracks-split.md). Legacy `chore: bump to v`
+        # kept for back-compat with bot commits authored before the
+        # split landed; safe to remove after the first post-split live
+        # release ships.
+        case "$FIRST_LINE" in
+          "chore: bump to v"*|"chore: bump tray to "*|"chore: bump platform to "*|"release-manifests:"*)
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::skipping CI matrix on bot commit: $FIRST_LINE" ;;
+          *)
+            echo "run=true" >> "$GITHUB_OUTPUT" ;;
+        esac
+
+  # Per-area path filter. Each downstream job consumes a boolean from
+  # `outputs` and gates itself via `if:`, so unchanged areas skip their
+  # heavy steps while the job name still reports in the run (future-
+  # proofs against required-status-check branch protection — see
+  # docs/RELEASING.md). `pull_request` events compare against the PR
+  # base; `push` events compare against the parent commit. Every filter
+  # group includes `.github/workflows/ci.yml` itself so a workflow tweak
+  # never silently skips its own validation.
+  changed:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      rust:    ${{ steps.f.outputs.rust }}
+      web:     ${{ steps.f.outputs.web }}
+      tray:    ${{ steps.f.outputs.tray }}
+      openapi: ${{ steps.f.outputs.openapi }}
+      tauri:   ${{ steps.f.outputs.tauri }}
+      scripts: ${{ steps.f.outputs.scripts }}
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dorny/paths-filter@v4
+      id: f
+      with:
+        filters: |
+          rust:
+            - 'crates/**'
+            - 'Cargo.toml'
+            - 'Cargo.lock'
+            - 'rust-toolchain*'
+            - '.github/workflows/ci.yml'
+          web:
+            - 'apps/web/**'
+            - 'packages/**'
+            - 'package.json'
+            - 'pnpm-lock.yaml'
+            - 'pnpm-workspace.yaml'
+            - '.github/workflows/ci.yml'
+          tray:
+            - 'apps/tray-ui/**'
+            - 'packages/**'
+            - 'package.json'
+            - 'pnpm-lock.yaml'
+            - 'pnpm-workspace.yaml'
+            - '.github/workflows/ci.yml'
+          openapi:
+            - 'crates/starstats-server/**'
+            - 'crates/starstats-core/**'
+            - 'packages/api-client-ts/**'
+            - 'Cargo.toml'
+            - 'Cargo.lock'
+            - '.github/workflows/ci.yml'
+          tauri:
+            - 'crates/starstats-client/**'
+            - 'crates/starstats-core/**'
+            - 'apps/tray-ui/**'
+            - 'Cargo.toml'
+            - 'Cargo.lock'
+            - '.github/workflows/ci.yml'
+          scripts:
+            - 'scripts/**'
+            - '.github/workflows/ci.yml'
+
+  rust:
+    name: Rust ${{ matrix.os }}
+    needs: [should-run, changed]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.rust == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@1.88.0
+      with:
+        components: clippy, rustfmt
+    # mold cuts link time dramatically; Linux-only (no Windows build).
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    # `continue-on-error: true` so a transient Actions cache-service
+    # flake in the Post-Run save step doesn't fail the whole CI job.
+    # Cache is pure build-time optimisation; no-cache is just a cold
+    # compile. See release.yml for the production-side justification.
+    # `save-if` restricts cache WRITES to next/main so PR runs restore
+    # from the shared cache but never pollute it with throwaway state.
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: ${{ matrix.os }}
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+    # Tauri (used by starstats-client) needs the GTK + WebKit2 stack
+    # on Linux. Windows runners ship Edge WebView2 pre-installed, so
+    # the install step is gated to Ubuntu. Mirrors the release workflow.
+    - name: Linux Tauri deps
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
+    # The Tauri proc-macro `tauri::generate_context!()` validates the
+    # `frontendDist` path (apps/tray-ui/dist) at compile time. Without
+    # the built UI on disk, both clippy and test fail with
+    # "frontendDist path doesn't exist". The release workflow runs
+    # `pnpm --filter tray-ui build` for the same reason; this job
+    # needs the same prep before clippy/test touch starstats-client.
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm --filter tray-ui build
+    - name: cargo fmt
+      run: cargo fmt --all --check
+    - name: cargo clippy (workspace)
+      run: cargo clippy -p starstats-core -p starstats-server -p starstats-client --all-targets -- -D warnings
+    - name: cargo test (workspace)
+      run: cargo test -p starstats-core -p starstats-server -p starstats-client --all-targets
+    # `--all-targets` deliberately excludes doctests, so the doc examples
+    # (e.g. templates::build_loadout_categories) were never compiled or
+    # run in CI — a broken example could ship green. Run them explicitly
+    # (L10).
+    - name: cargo test (doctests)
+      run: cargo test -p starstats-core -p starstats-server -p starstats-client --doc
+
+  web:
+    name: Web (Next.js)
+    needs: [should-run, changed]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm --filter web typecheck
+    - run: pnpm --filter web lint
+    - run: pnpm --filter web run test:run
+    - run: pnpm --filter web build
+
+  openapi-drift:
+    name: OpenAPI codegen drift
+    needs: [should-run, changed]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.openapi == 'true'
+    runs-on: ubuntu-latest
+    # Catches the case where someone changes a route signature or
+    # response shape and forgets to regenerate the TS schema. We
+    # generate the spec from the freshly-built Cargo bin and diff
+    # against the committed `schema.ts` — non-zero diff fails the job.
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: openapi-ubuntu-latest
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - name: Dump OpenAPI spec
+      run: cargo run --quiet -p starstats-server --bin starstats-server-openapi > /tmp/openapi.json
+    - name: Regenerate schema.ts
+      env:
+        OPENAPI_SPEC: /tmp/openapi.json
+      run: pnpm --filter api-client-ts run generate
+    - name: Detect drift
+      run: |
+        if ! git diff --quiet -- packages/api-client-ts/src/generated/schema.ts; then
+          # Backticks in the message are intentional (markdown-style
+          # emphasis in the GitHub annotation), not command substitution.
+          # shellcheck disable=SC2016
+          echo '::error::generated schema.ts is out of date — run `pnpm --filter api-client-ts run generate` and commit'
+          git --no-pager diff -- packages/api-client-ts/src/generated/schema.ts
+          exit 1
+        fi
+    - run: pnpm --filter api-client-ts run typecheck
+
+  web-e2e:
+    name: Web E2E (Playwright)
+    runs-on: ubuntu-latest
+    needs: [should-run, changed, web]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.web == 'true'
+    steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - name: Install Playwright browsers
+      run: pnpm --filter web exec playwright install --with-deps chromium
+    - name: Run Playwright tests
+      run: pnpm --filter web run test:e2e
+      env:
+        CI: 'true'
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report
+        path: apps/web/playwright-report
+        retention-days: 7
+    - uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: playwright-test-results
+        path: apps/web/test-results
+        retention-days: 7
+
+  tray-ui:
+    name: Tray UI (Vite)
+    needs: [should-run, changed]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.tray == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - run: pnpm --filter tray-ui typecheck
+    # H3: the 178-test vitest suite previously never gated CI — a test
+    # could rot silently. Runs between typecheck and build.
+    - run: pnpm --filter tray-ui run test:run
+    - run: pnpm --filter tray-ui build
+
+  # Same class of gap as H3 above (the tray-ui suite that "previously
+  # never gated CI"), one level up: the `scripts/` node:test suites ran
+  # in NO workflow at all. `scripts/` has no package.json and is not a
+  # pnpm workspace member, so `turbo run test` never reached it — the
+  # 107 tests across release-promote.test.mjs (89) and
+  # publish-roadmap-drafts.test.mjs (18) could rot silently.
+  #
+  # That matters more than a normal orphaned suite: release-promote.mjs
+  # is the script that performs live promotions to `main`. Its pure
+  # helpers (computeNextVersion, detectChannel, bumpCargoToml,
+  # latestSemverFromTags, …) are exported precisely so they can be
+  # tested, and nothing was running the tests.
+  #
+  # No `pnpm install`: these scripts are deliberately zero-dep (see the
+  # header of release-promote.mjs), so checkout + node is the whole
+  # environment.
+  scripts:
+    name: Release scripts (node:test)
+    needs: [should-run, changed]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - run: node --test scripts/*.test.mjs
+
+  tauri-client:
+    name: Tauri client ${{ matrix.os }}
+    needs: [should-run, changed]
+    if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.tauri == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: tauri-${{ matrix.os }}
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+    - name: Install Linux Tauri deps
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+    - name: Build tray-ui (frontendDist for tauri::generate_context!)
+      run: pnpm --filter tray-ui build
+    - run: cargo check -p starstats-client

@@ -1,0 +1,199 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/starstats-core",
+    "crates/starstats-server",
+    "crates/starstats-client",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+authors = ["StarStats contributors"]
+rust-version = "1.88"
+repository = "https://github.com/TheCodeSaiyan/StarStats-Platform"
+homepage = "https://starstats.app"
+documentation = "https://starstats.app/help"
+
+# Workspace-wide clippy posture. The CI clippy step runs with
+# `-D warnings`, so anything that fires a warning becomes a build
+# failure. The lints below are all stylistic / pedantic — none of
+# them indicate real bugs in this codebase, but several would fire
+# across dozens of unrelated files and bloat unrelated PRs with
+# mechanical fixes. Allowing them at workspace level keeps the
+# clippy gate honest about what it's actually catching.
+#
+# Periodically review this list — when one of these lints starts
+# catching genuine smells in new code, flip it back on and fix the
+# call sites in the same change.
+[workspace.lints.clippy]
+# `Response` (axum) is intentionally large; boxing every Result<_,
+# Response> site adds noise without changing the runtime shape.
+result_large_err = "allow"
+# Doc-comment list formatting nitpicks — both about how rustdoc
+# renders nested bullets. Doesn't affect emitted docs.
+doc_lazy_continuation = "allow"
+doc_overindented_list_items = "allow"
+# Long tuple types appear in repo query rows that map directly to
+# SELECT column orders — type aliases would obscure the column→field
+# correspondence rather than help.
+type_complexity = "allow"
+# `format!("{}", x)` vs `format!("{x}")` — both are fine and the
+# captured-arg form sometimes hurts readability when the variable is
+# computed inline.
+uninlined_format_args = "allow"
+# `let _ = expr;` is sometimes load-bearing as a "do not warn on
+# unused result" anchor — clippy can't tell the intent apart from
+# accidental discards.
+let_unit_value = "allow"
+# `.map_or(default, f)` is fine when we want explicit defaults; the
+# suggested rewrite isn't always more readable.
+unnecessary_map_or = "allow"
+
+[workspace.dependencies]
+# Shared internal crate
+starstats-core = { path = "crates/starstats-core" }
+
+# Async runtime
+tokio = { version = "1.52", features = ["full"] }
+
+# Serde
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+tracing-opentelemetry = "0.27"
+opentelemetry = "0.26"
+opentelemetry_sdk = { version = "0.26", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.26", features = ["grpc-tonic", "tls"] }
+
+# HTTP server / middleware
+axum = "0.7"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors", "compression-zstd", "request-id"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "macros"] }
+
+# Time / IDs
+chrono = { version = "0.4", features = ["serde"] }
+# IANA timezone database. Needed because "what hour do you play" is
+# meaningless without the player's zone, and a fixed UTC offset is wrong by
+# an hour for half the year wherever DST applies.
+chrono-tz = "0.10"
+uuid = { version = "1.11", features = ["v4", "v5", "v7", "serde"] }
+
+# Parsing
+regex = "1.11"
+once_cell = "1.20"
+url = "2.5"
+# HTML parsing for the RSI public-profile snapshot. `scraper` wraps
+# `html5ever` + a small CSS-selector engine; pulled at the workspace
+# layer so any future crate that needs to parse upstream HTML lands
+# on the same version.
+scraper = "0.20"
+
+# Metrics
+metrics = "0.24"
+metrics-exporter-prometheus = "0.16"
+
+# Misc
+clap = { version = "4.5", features = ["derive", "env"] }
+# OpenAPI / spec generation
+# Plain `utoipa` only — `utoipa-axum` churns its feature surface across
+# minor versions, so we wire routes manually and use the derive macro
+# for spec definition. `axum_extras` enables Path/Query helpers,
+# `chrono` and `uuid` teach the macro how to render those types.
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+
+# Auth
+jsonwebtoken = { version = "10.4", default-features = false, features = ["aws_lc_rs", "use_pem"] }
+argon2 = "0.5"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# AES-256-GCM for TOTP secret encryption at rest. We hold the KEK in a
+# server-local file (analogous to the JWT signing key) and never write
+# the plaintext shared secret to the database. `aes-gcm` is the standard
+# RustCrypto AEAD; `aead` re-export pulls in the trait surface.
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+# TOTP (RFC 6238) — tiny crate, sha1 + truncation only. We feed the
+# raw secret bytes directly; base32-encoded provisioning URIs are
+# produced by hand at the boundary.
+totp-lite = "2"
+base32 = "0.5"
+
+# OS keychain wrapper. The tray uses this to hold the user's RSI
+# session cookie at the OS-user trust boundary — only the same OS
+# account that pasted the cookie can read it back. Default features
+# are empty in 3.x; we explicitly enable a backend for each desktop
+# target (Windows Credential Manager / macOS Keychain / Linux D-Bus
+# Secret Service via dbus-secret-service + RustCrypto, matching the
+# rest of the workspace's rustls-only posture).
+keyring = { version = "3", default-features = false, features = [
+    "apple-native",
+    "windows-native",
+    "sync-secret-service",
+    "crypto-rust",
+] }
+# Process enumeration. The hangar fetcher reads this to skip cycles
+# while StarCitizen.exe is running so overlapping authenticated HTTP
+# from the same machine doesn't trip Easy Anti-Cheat heuristics.
+# Pinned to 0.30 — 0.31+ changed `refresh_processes` to require a
+# `ProcessesToUpdate` argument and `process.name()` to return
+# `&OsStr` instead of `&str`. We can take that bump in a separate
+# pass.
+sysinfo = { version = "0.30", default-features = false }
+
+# Mail (SMTP — async via tokio + rustls). Used for verification emails.
+# `default-features = false` drops the native-tls path so we don't pull
+# in the system OpenSSL; rustls matches the rest of the stack.
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
+
+# Authorization (SpiceDB / Zanzibar-style ReBAC)
+# `spicedb-client` is the ergonomic wrapper; it pulls `spicedb-grpc`
+# (proto types) and `tonic` 0.12 transitively.
+spicedb-client = "0.1"
+spicedb-grpc = "0.1"
+
+# Object storage (MinIO via S3 protocol)
+# We deliberately avoid `aws-config`'s default credential chain (no SSO,
+# IMDS, or STS); the server uses a static access key from a Docker
+# secret. `behavior-version-latest` opts in to current SigV4 defaults.
+# Pinned to 1.121.0 — it's the last aws-sdk-s3 release with MSRV 1.88
+# (matches the workspace `rust-version`); 1.122+ require rustc 1.91
+# (via aws-smithy-types 1.5 / aws-smithy-json 0.62.5). Dependabot is
+# told to ignore aws-sdk-s3 in .github/dependabot.yml so it stops
+# re-proposing the MSRV-breaking bump until the toolchain moves.
+# Direct sub-deps capped to the last 1.88-compatible patch; later
+# patches bump MSRV to 1.91. Transitive aws-smithy-* deps drift the
+# same way — the lockfile tracks the working versions; bump rust
+# toolchain in lockstep when upgrading them.
+# `rt-tokio` is required for `behavior-version-latest`'s stalled-stream
+# protection — it provides the default tokio-based async sleep impl that
+# protection needs. Without it `Client::from_conf` panics at runtime with
+# "An async sleep implementation is required for stalled stream
+# protection to work" (caught on first production deploy of v0.3.11).
+# We can't take the easier path of restoring `default-features = true`
+# because the SDK default pulls in the full `aws-config` credential
+# chain (STS / SSO / IMDS) which we deliberately avoid — production
+# uses a static MinIO access key from a Docker secret.
+aws-sdk-s3 = { version = "=1.121.0", default-features = false, features = ["rustls", "behavior-version-latest", "rt-tokio"] }
+aws-credential-types = ">=1.2.8, <1.2.12"
+aws-smithy-runtime-api = ">=1.10, <1.11.4"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+opt-level = 3
+
+[profile.release-fast]
+inherits = "release"
+lto = "off"
+codegen-units = 16

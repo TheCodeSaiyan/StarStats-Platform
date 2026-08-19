@@ -1,0 +1,106 @@
+name: Parser rule request
+description: Ask for a new Game.log event to be recognised by the tray client's classifier.
+title: "parser-rule: <event-name> — <short description>"
+labels: ["parser-rule"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        StarStats classifies `Game.log` lines in two passes
+        (see `crates/starstats-core/src/parser.rs`):
+
+        1. **Structural** — pulls out timestamp, level, event name, and the
+           bracketed tags from the stable shell.
+        2. **Classify** — dispatches on `(event_name, tags)` and runs a small,
+           focused regex per known event variant. Lines that pass step 1 but
+           don't match any classifier in step 2 are recorded as
+           `unknown_event_samples` rows in the local SQLite store and
+           surfaced in the tray's `Status → Coverage` card.
+
+        **Before filing**, please open the tray, hit `Status → Coverage`,
+        and confirm your event name actually appears there. If it doesn't,
+        the issue is upstream of classification (the line isn't being
+        structurally parsed at all, or `Game.log` isn't being tailed) — file
+        a bug report instead.
+  - type: input
+    id: event_name
+    attributes:
+      label: Event name
+      description: |
+        The `<EventName>` token from the line — e.g. `<Vehicle Destruction>`,
+        `<Actor Death>`, `<Mission Marker>`. Copy it verbatim including spaces.
+      placeholder: "<Vehicle Stowed>"
+    validations:
+      required: true
+  - type: textarea
+    id: raw_line
+    attributes:
+      label: Sample raw log line
+      description: |
+        Paste the full line **as it appears in `Game.log`**, including the
+        `Game-Build(...)` filename suffix and any trailing `[Team_X][Y][Z]`
+        tags. Multiple samples (especially with body variations) help a lot.
+
+        Redact your RSI handle / character name if it appears in the body
+        — replace with `<HANDLE>`.
+      render: text
+      placeholder: |
+        <2026-05-08T12:34:56.789Z> [Notice] <Vehicle Stowed> ... [Team_GameRules][0][...]
+    validations:
+      required: true
+  - type: textarea
+    id: meaning
+    attributes:
+      label: What this event represents in-game
+      description: |
+        What did the player just do (or have happen to them) when this line
+        was emitted? Helps maintainers pick the right classifier slot and
+        decide which `GameEvent` variant it should produce.
+      placeholder: |
+        Stowed my Cutlass Black at a hangar terminal at New Babbage. The
+        line fires on the confirmation step, not when the elevator request
+        is sent.
+    validations:
+      required: true
+  - type: textarea
+    id: fields
+    attributes:
+      label: Fields you'd want extracted
+      description: |
+        For each field, give a name and the substring of the raw line it
+        comes from. Common ones: `timestamp`, `player_handle`, `vehicle_id`,
+        `vehicle_class`, `zone`, `damage_type`, `weapon`. If you don't know,
+        list what you'd want to see in a chart and we'll work backwards.
+      placeholder: |
+        - timestamp: from the leading `<...>` (already handled by Pass 1)
+        - vehicle_class: e.g. `DRAK_Cutlass_Black`
+        - zone: e.g. `New_Babbage`
+        - terminal_id: GUID-like token in the body
+    validations:
+      required: true
+  - type: checkboxes
+    id: coverage_checked
+    attributes:
+      label: Coverage check
+      description: Confirm you've actually seen this in the tray's `unknown_event_samples` surface.
+      options:
+        - label: I checked `Status → Coverage` in the tray and confirmed this `event_name` is **not** already in the known-events list (i.e. it's showing under unknown samples or not at all).
+          required: true
+  - type: input
+    id: build
+    attributes:
+      label: Star Citizen build
+      description: |
+        Patch version + branch where you captured the line — e.g. `4.0.1 LIVE`,
+        `4.1.0 PTU`. Helps when CIG re-words a line between patches.
+      placeholder: "4.0.1 LIVE"
+    validations:
+      required: true
+  - type: input
+    id: starstats_version
+    attributes:
+      label: StarStats version
+      description: From `Settings → Updates` in the tray — e.g. `v0.3.2-alpha`.
+      placeholder: "v0.3.2-alpha"
+    validations:
+      required: true

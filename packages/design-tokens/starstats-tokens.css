@@ -1,0 +1,1514 @@
+/* StarStats — design tokens
+ * Four themes (Stanton/Pyro/Terra/Nyx). Tokens cover surfaces, text,
+ * borders, accents. Type & spacing live outside the theme so swapping
+ * is just a paint change.
+ */
+
+:root {
+  /* Default to a dark UA color-scheme so native controls (checkboxes,
+   * date pickers, scrollbars, form widgets) render dark before
+   * `data-theme` resolves and on the three dark themes. Nyx overrides
+   * to light. (M-W13) */
+  color-scheme: dark;
+  /* Type scale — 8pt grid */
+  /* Font-family vars carry a literal-family fallback so this ONE shared file
+   * works in both apps: the web sets --font-ibm-plex-sans/-mono/-michroma via
+   * next/font; the tray leaves them unset and hits the literal fallback, which
+   * @fontsource provides (main.tsx). Neither app needs a per-app override. */
+  --font-sans: var(--font-ibm-plex-sans, 'IBM Plex Sans'), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-ibm-plex-mono, 'IBM Plex Mono'), ui-monospace, 'JetBrains Mono', Consolas, monospace;
+  /* Placards + eyebrows ONLY — never headings, body, or data. */
+  --font-display: var(--font-michroma, 'Michroma'), 'IBM Plex Sans', ui-sans-serif, sans-serif;
+  --placard-size: 0.6875rem;
+  --placard-tracking: 0.18em;
+
+  --fs-xs: 11px;
+  --fs-sm: 13px;
+  --fs-base: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-xl: 28px;
+  --fs-2xl: 40px;
+  --fs-3xl: 64px;
+
+  --tracking-tight: -0.02em;
+  --tracking-wide: 0.04em;
+  --tracking-wider: 0.12em;
+
+  /* Radius — instrument-squared (bridge). Card = --r-md. */
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-lg: 6px;
+  --r-xl: 8px;
+  --r-pill: 999px;
+
+  /* Structure — bridge signature elements */
+  --bracket-size: 10px;   /* corner-bracket arm; live panes only */
+  --rail-width: 232px;    /* telemetry rail (desktop); wired in Phase 2 */
+
+  /* Semantic aliases (M-W8): components referenced these names but they
+     weren't defined, so cards rendered with no radius, insets with no
+     recessed background, etc. Alias to the primitives; the surface/bg/border
+     ones resolve per-theme at use time via the cascade. */
+  --r-card: var(--r-lg);
+  --r-input: var(--r-sm);
+  --surface-1: var(--surface);
+  --border-dim: var(--border);
+  --bg-sunken: var(--bg);
+
+  /* Spacing */
+  --s1: 4px;  --s2: 8px;  --s3: 12px;  --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px;  --s8: 64px;
+
+  /* Motion */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-fast: 120ms;   /* also the bridge micro-tick */
+  --t-base: 180ms;
+  --t-slow: 320ms;
+
+  /* Single orchestrated route-change power-on sweep (bridge).
+     Retuned onto .ss-screen-enter in Phase 2. */
+  --sweep: 420ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Reduced motion zeroes the sweep + tick tokens (the global animation /
+   transition kill-switch further down also applies). */
+@media (prefers-reduced-motion: reduce) {
+  :root { --sweep: 0ms; --t-fast: 0ms; }
+}
+
+/* === Stanton (default, dark, warm amber) =====================
+ * Theme blocks are scoped to `:root[data-theme="..."]` (specificity
+ * 0,2,0) so they unambiguously beat the defensive `:root` fallback
+ * in globals.css (specificity 0,1,0) regardless of CSS import
+ * order. Bare `[data-theme="..."]` ties with `:root` on specificity
+ * and loses to source order — that bug shipped in v1.3.0 for the
+ * tray and is fixed here for the web app the same way.
+ */
+:root[data-theme="stanton"] {
+  color-scheme: dark;
+  --bg: #0F0E12;
+  --bg-elev: #15131A;
+  --surface: #1A1820;
+  --surface-2: #221F2A;
+  --surface-3: #2A2734;
+
+  --fg: #ECE7DD;
+  --fg-muted: #A09A8E;
+  /* Lightened from #6B6760 (3.42:1, failed WCAG AA) to pass AA (4.56:1)
+     while staying clearly dimmer than --fg-muted (6.88:1). */
+  --fg-dim: #7E7B75;
+
+  --border: rgba(255, 230, 200, 0.07);
+  --border-strong: rgba(255, 230, 200, 0.14);
+
+  --accent: #E8A23C;
+  --accent-soft: rgba(232, 162, 60, 0.14);
+  --accent-glow: rgba(232, 162, 60, 0.28);
+  --accent-fg: #1A1208;
+
+  --ok: #74C68A;
+  --warn: #E8C53C;
+  --danger: #E8674C;
+  --info: #6FA8E8;
+
+  --grid-empty: rgba(255, 230, 200, 0.04);
+  --grid-1: rgba(232, 162, 60, 0.18);
+  --grid-2: rgba(232, 162, 60, 0.38);
+  --grid-3: rgba(232, 162, 60, 0.62);
+  --grid-4: rgba(232, 162, 60, 0.92);
+}
+
+/* === Pyro (dark, molten coral, more aggressive) ============== */
+:root[data-theme="pyro"] {
+  color-scheme: dark;
+  --bg: #100C0E;
+  --bg-elev: #1A1213;
+  --surface: #1F1517;
+  --surface-2: #281A1C;
+  --surface-3: #321F22;
+
+  --fg: #F2E6E0;
+  --fg-muted: #A89690;
+  /* AA bump: #6F605C (3.24:1) → 4.57:1, still dimmer than --fg-muted. */
+  --fg-dim: #857874;
+
+  --border: rgba(255, 200, 180, 0.07);
+  --border-strong: rgba(255, 200, 180, 0.16);
+
+  --accent: #F25C3F;
+  --accent-soft: rgba(242, 92, 63, 0.14);
+  --accent-glow: rgba(242, 92, 63, 0.34);
+  --accent-fg: #1A0905;
+
+  --ok: #74C68A;
+  --warn: #E8C53C;
+  --danger: #E8674C;
+  --info: #6FA8E8;
+
+  --grid-empty: rgba(255, 200, 180, 0.04);
+  --grid-1: rgba(242, 92, 63, 0.20);
+  --grid-2: rgba(242, 92, 63, 0.42);
+  --grid-3: rgba(242, 92, 63, 0.66);
+  --grid-4: rgba(242, 92, 63, 0.96);
+}
+
+/* === Terra (dark, cool teal, clinical) ======================= */
+:root[data-theme="terra"] {
+  color-scheme: dark;
+  --bg: #0B1014;
+  --bg-elev: #0F161B;
+  --surface: #131C22;
+  --surface-2: #19232B;
+  --surface-3: #1F2C36;
+
+  --fg: #E2EAEC;
+  --fg-muted: #8FA0A8;
+  /* AA bump: #5E6D75 (3.57:1) → 4.63:1, still dimmer than --fg-muted. */
+  --fg-dim: #717F86;
+
+  --border: rgba(180, 220, 230, 0.07);
+  --border-strong: rgba(180, 220, 230, 0.14);
+
+  --accent: #4FB8A1;
+  --accent-soft: rgba(79, 184, 161, 0.14);
+  --accent-glow: rgba(79, 184, 161, 0.30);
+  --accent-fg: #051613;
+
+  --ok: #74C68A;
+  --warn: #E8C53C;
+  --danger: #E8674C;
+  --info: #6FA8E8;
+
+  --grid-empty: rgba(180, 220, 230, 0.04);
+  --grid-1: rgba(79, 184, 161, 0.18);
+  --grid-2: rgba(79, 184, 161, 0.40);
+  --grid-3: rgba(79, 184, 161, 0.64);
+  --grid-4: rgba(79, 184, 161, 0.94);
+}
+
+/* === Nyx (light, deep violet on warm off-white) ============== */
+:root[data-theme="nyx"] {
+  color-scheme: light;
+  --bg: #F4F1EC;
+  --bg-elev: #ECE8E1;
+  --surface: #FFFFFF;
+  --surface-2: #F7F4EE;
+  --surface-3: #ECE6DC;
+
+  --fg: #1B1722;
+  --fg-muted: #5F586B;
+  /* AA bump (light theme): #908AA0 (2.95:1) → 4.63:1, darkened toward
+     ink so it stays dimmer than --fg-muted (6.02:1). */
+  --fg-dim: #6F6A7B;
+
+  --border: rgba(40, 30, 60, 0.10);
+  --border-strong: rgba(40, 30, 60, 0.18);
+
+  --accent: #5B3FD9;
+  --accent-soft: rgba(91, 63, 217, 0.10);
+  --accent-glow: rgba(91, 63, 217, 0.22);
+  --accent-fg: #FFFFFF;
+
+  --ok: #2E8C4D;
+  --warn: #B98A0F;
+  --danger: #C8412C;
+  --info: #2F6FB8;
+
+  --grid-empty: rgba(40, 30, 60, 0.05);
+  --grid-1: rgba(91, 63, 217, 0.18);
+  --grid-2: rgba(91, 63, 217, 0.38);
+  --grid-3: rgba(91, 63, 217, 0.62);
+  --grid-4: rgba(91, 63, 217, 0.92);
+}
+
+/* === Reset / base =========================================== */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.mono { font-family: var(--font-mono); font-feature-settings: "ss01", "ss02", "tnum"; }
+
+/* === Atoms ================================================== */
+.ss-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.ss-card--elev {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+}
+.ss-card-pad {
+  padding: var(--s5) var(--s6);
+}
+
+/* Eyebrow == placard (bridge). Converged to Michroma so every remaining
+   eyebrow across the app reads as an engraved placard without a per-call
+   className change. Same footprint as before (fs-xs == --placard-size,
+   11px); only the face + tracking change. New code should prefer
+   .ss-placard, but the two are now identical. */
+.ss-eyebrow {
+  font-family: var(--font-display);
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: var(--placard-tracking);
+  line-height: 1;
+  color: var(--fg-muted);
+}
+
+/* Placard — the engraved hull-plate label (bridge). Michroma at a tiny,
+   wide-tracked, uppercase size — for placards + eyebrows ONLY, never
+   headings/body/data. Introduced with the /lore reskin; existing
+   .ss-eyebrow usages migrate to this per screen. Michroma is a single
+   weight (400), so no font-weight is set. */
+.ss-placard {
+  font-family: var(--font-display);
+  font-size: var(--placard-size);
+  letter-spacing: var(--placard-tracking);
+  text-transform: uppercase;
+  line-height: 1;
+  color: var(--fg-muted);
+}
+
+/* The marketing-nav tagline is a horizontal-space-constrained subtitle in a
+   tight nav row, not a section placard — keep it in the body face so
+   Michroma's wider glyphs don't wrap/overflow. (Exception to the eyebrow
+   convergence above.) */
+.ss-marketing-nav .ss-eyebrow {
+  font-family: var(--font-sans);
+  letter-spacing: var(--tracking-wider);
+  white-space: nowrap;
+}
+
+/* Command-bar route placard: single-line; hidden on the tight mobile bar. */
+.ss-route-placard { white-space: nowrap; }
+@media (max-width: 640px) { .ss-route-placard { display: none; } }
+
+.ss-rule {
+  height: 1px;
+  background: var(--border);
+  border: 0;
+  margin: 0;
+}
+
+.ss-input {
+  width: 100%;
+  background: var(--bg-elev);
+  color: var(--fg);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+  transition: border-color var(--t-base) var(--ease-out),
+              box-shadow var(--t-base) var(--ease-out);
+}
+.ss-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ss-input::placeholder { color: var(--fg-dim); }
+
+.ss-label {
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ss-label-text {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--fg-muted);
+}
+
+/* Button */
+.ss-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  font: inherit;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  transition: transform var(--t-fast) var(--ease-out),
+              box-shadow var(--t-base) var(--ease-out),
+              background var(--t-base) var(--ease-out),
+              border-color var(--t-base) var(--ease-out);
+  user-select: none;
+}
+.ss-btn:active { transform: scale(0.98); }
+
+/* Keyboard focus ring. `:focus-visible` fires only for keyboard /
+   programmatic focus — never on pointer clicks — so this gives keyboard
+   users a clear accent ring without a click-halo for mouse users. It
+   covers the interactive primitives that previously fell back to the
+   UA default outline, which is frequently invisible on the dark `--bg`.
+   `.ss-input` keeps its own border + glow focus treatment above. */
+.ss-btn:focus-visible,
+.ss-rail-item:focus-visible,
+.ss-marketing-nav a:focus-visible,
+.site-footer a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-xs, 4px);
+}
+
+.ss-btn--primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.ss-btn--primary:hover {
+  box-shadow: 0 0 0 1px var(--accent),
+              0 0 14px -2px var(--accent-glow);
+}
+
+.ss-btn--ghost {
+  background: transparent;
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+.ss-btn--ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.ss-btn--danger {
+  background: transparent;
+  color: var(--danger);
+  /* Derive from the theme's --danger token via color-mix (matching the
+     .ss-badge--danger / .ss-alert--danger pattern) instead of the
+     hardcoded dark-theme rgba(232,103,76) — which was the wrong hue on
+     the Nyx light theme (--danger: #C8412C there). L6. */
+  border-color: color-mix(in oklab, var(--danger) 40%, transparent);
+}
+.ss-btn--danger:hover {
+  background: color-mix(in oklab, var(--danger) 10%, transparent);
+}
+
+.ss-btn--link {
+  background: transparent;
+  color: var(--accent);
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+.ss-btn--link:hover { text-decoration: underline; }
+
+/* Badge */
+.ss-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide);
+  border: 1px solid var(--border-strong);
+  color: var(--fg-muted);
+}
+.ss-badge--ok    { color: var(--ok); border-color: color-mix(in oklab, var(--ok) 40%, transparent); background: color-mix(in oklab, var(--ok) 10%, transparent); }
+.ss-badge--warn  { color: var(--warn); border-color: color-mix(in oklab, var(--warn) 40%, transparent); background: color-mix(in oklab, var(--warn) 10%, transparent); }
+.ss-badge--danger{ color: var(--danger); border-color: color-mix(in oklab, var(--danger) 40%, transparent); background: color-mix(in oklab, var(--danger) 10%, transparent); }
+.ss-badge--accent{ color: var(--accent); border-color: color-mix(in oklab, var(--accent) 40%, transparent); background: var(--accent-soft); }
+.ss-badge-dot {
+  width: 6px; height: 6px; border-radius: 999px;
+  background: currentColor;
+}
+
+/* Alert / banner */
+.ss-alert {
+  display: flex; gap: 12px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elev);
+  font-size: var(--fs-sm);
+}
+.ss-alert--ok    { border-color: color-mix(in oklab, var(--ok) 40%, transparent); background: color-mix(in oklab, var(--ok) 8%, var(--bg-elev)); color: var(--ok); }
+.ss-alert--warn  { border-color: color-mix(in oklab, var(--warn) 40%, transparent); background: color-mix(in oklab, var(--warn) 8%, var(--bg-elev)); color: var(--warn); }
+.ss-alert--danger{ border-color: color-mix(in oklab, var(--danger) 40%, transparent); background: color-mix(in oklab, var(--danger) 8%, var(--bg-elev)); color: var(--danger); }
+
+/* KV list */
+.ss-kv {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 14px 24px;
+  margin: 0;
+}
+.ss-kv dt {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--fg-muted);
+}
+.ss-kv dd { margin: 0; color: var(--fg); }
+
+/* Table */
+.ss-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.ss-table th, .ss-table td {
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+.ss-table th {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--fg-muted);
+}
+.ss-table tbody tr:hover { background: var(--bg-elev); }
+.ss-table--zebra tbody tr:nth-child(even) { background: var(--bg-elev); }
+.ss-num { text-align: right; font-feature-settings: "tnum"; }
+
+/* Toggle */
+.ss-toggle {
+  --w: 36px; --h: 20px;
+  display: inline-flex; align-items: center; gap: 12px;
+  cursor: pointer; user-select: none;
+  font-size: var(--fs-sm);
+}
+.ss-toggle-track {
+  position: relative;
+  width: var(--w); height: var(--h);
+  border-radius: var(--r-pill);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  transition: background var(--t-base) var(--ease-out),
+              border-color var(--t-base) var(--ease-out);
+  flex: none;
+}
+.ss-toggle-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  border-radius: 999px;
+  background: var(--fg);
+  transition: transform var(--t-base) var(--ease-spring),
+              background var(--t-base) var(--ease-out);
+}
+.ss-toggle[data-on="true"] .ss-toggle-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.ss-toggle[data-on="true"] .ss-toggle-thumb {
+  transform: translateX(calc(var(--w) - var(--h)));
+  background: var(--accent-fg);
+}
+
+/* Code/secret block */
+.ss-secret {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 12px 14px;
+}
+.ss-secret-code {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  letter-spacing: 0.06em;
+  color: var(--fg);
+  word-break: break-all;
+}
+
+/* Segmented 6-digit input */
+.ss-otp { display: flex; gap: 8px; }
+.ss-otp-cell {
+  width: 44px; height: 56px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  font-family: var(--font-mono);
+  font-size: var(--fs-xl);
+  text-align: center;
+  color: var(--fg);
+  outline: none;
+  font-feature-settings: "tnum";
+  caret-color: var(--accent);
+  transition: border-color var(--t-base) var(--ease-out),
+              box-shadow var(--t-base) var(--ease-out);
+}
+.ss-otp-cell:focus,
+.ss-otp-cell[data-focused="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.ss-otp-sep { width: 8px; align-self: center; height: 1px; background: var(--border-strong); }
+
+/* Heatmap (calendar) */
+.ss-heatmap {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 14px);
+  gap: 3px;
+}
+.ss-heatcell {
+  width: 14px; height: 14px;
+  border-radius: 3px;
+  background: var(--grid-empty);
+  transition: transform var(--t-fast) var(--ease-out);
+}
+.ss-heatcell:hover { transform: scale(1.25); outline: 1px solid var(--accent); }
+.ss-heatcell[data-l="1"] { background: var(--grid-1); }
+.ss-heatcell[data-l="2"] { background: var(--grid-2); }
+.ss-heatcell[data-l="3"] { background: var(--grid-3); }
+.ss-heatcell[data-l="4"] { background: var(--grid-4); }
+
+/* App shell */
+.ss-app {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 56px 1fr;
+  height: 100%;
+  min-height: 100%;
+}
+.ss-topbar {
+  grid-column: 1 / -1;
+  display: flex; align-items: center;
+  /* Horizontal gap between every topbar child (drawer toggle, brand,
+     location chip, flex spacer, search form, @handle). Without this
+     the brand mark and the location chip sit flush against each
+     other, which is what made the chip read as "more brand text"
+     instead of a separate affordance. */
+  gap: var(--s4);
+  padding: 0 var(--s5) 0 var(--s5);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  /* Sticky so the brand + handle stay visible while the main content
+     area scrolls underneath. z-index sits above in-page sticky chip
+     strips (range bar, tab headers) but below the mobile drawer
+     overlay (z-index 50 in the open state). */
+  position: sticky;
+  top: 0;
+  z-index: 40;
+}
+.ss-rail {
+  border-right: 1px solid var(--border);
+  padding: var(--s5) var(--s3);
+  background: var(--bg);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.ss-rail-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 12px;
+  font-size: var(--fs-sm);
+  border-radius: var(--r-sm);
+  color: var(--fg-muted);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out);
+  border: 1px solid transparent;
+}
+.ss-rail-item:hover { color: var(--fg); background: var(--bg-elev); }
+.ss-rail-item[data-active="true"] {
+  color: var(--fg);
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+.ss-rail-item[data-active="true"] .ss-rail-dot { background: var(--accent); }
+/* Inline count badge on a rail entry (e.g. inbound share count on
+   the Sharing item). Sized to fit the rail height without growing
+   the row; tabular numerics so 2-digit counts don't shift width. */
+.ss-rail-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 9px;
+}
+.ss-rail-dot {
+  width: 6px; height: 6px; border-radius: 999px; background: var(--fg-dim);
+}
+.ss-rail-section {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--fg-dim);
+  padding: 12px 12px 4px;
+}
+
+.ss-main {
+  padding: var(--s7) var(--s7);
+  overflow-y: auto;
+}
+
+/* Brand mark */
+.ss-mark {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-weight: 700;
+  letter-spacing: var(--tracking-tight);
+  font-size: var(--fs-md);
+  color: var(--fg);
+}
+.ss-mark-glyph {
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+/* Hero */
+.hero-rotator {
+  position: relative;
+  display: inline-block;
+  min-width: 8ch;
+  vertical-align: baseline;
+  line-height: inherit;
+}
+.hero-word {
+  display: inline-block;
+  white-space: nowrap;
+  background: linear-gradient(
+    90deg,
+    var(--fg) 0%,
+    var(--fg) 35%,
+    var(--accent) 50%,
+    var(--fg) 65%,
+    var(--fg) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: heroIn 700ms var(--ease-out) both,
+             heroSweep 1400ms var(--ease-out) 200ms;
+}
+.hero-word[data-state="out"] {
+  animation: heroOut 500ms var(--ease-out) both;
+}
+@keyframes heroIn {
+  from { opacity: 0; transform: translateY(8px); letter-spacing: 0.04em; }
+  to   { opacity: 1; transform: translateY(0);   letter-spacing: var(--tracking-tight); }
+}
+@keyframes heroOut {
+  from { opacity: 1; transform: translateY(0); letter-spacing: var(--tracking-tight); }
+  to   { opacity: 0; transform: translateY(-8px); letter-spacing: -0.04em; }
+}
+@keyframes heroSweep {
+  from { background-position: 100% 0; }
+  to   { background-position: -100% 0; }
+}
+
+/* Star field — subtle background */
+.starfield {
+  position: absolute; inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 12% 20%, color-mix(in oklab, var(--fg) 30%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 38% 78%, color-mix(in oklab, var(--fg) 22%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 62% 14%, color-mix(in oklab, var(--fg) 28%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 84% 62%, color-mix(in oklab, var(--fg) 24%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 92% 22%, color-mix(in oklab, var(--fg) 18%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 22% 92%, color-mix(in oklab, var(--fg) 30%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 70% 88%, color-mix(in oklab, var(--fg) 16%, transparent) 50%, transparent 51%),
+    radial-gradient(1px 1px at 50% 50%, color-mix(in oklab, var(--accent) 60%, transparent) 50%, transparent 51%);
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* ============================================================
+ * Motion — page transitions, component highlights, animated bg
+ * ========================================================== */
+
+/* Quantum-jump ribbons — slow horizontal streaks evoking warp flight.
+ * Replaces the starfield trope with something distinctive: thin
+ * accent-tinted lines drift across the viewport at varied depths. */
+.ss-bg-warp {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 50%,
+      transparent 0%,
+      color-mix(in oklab, var(--bg) 70%, transparent) 70%,
+      var(--bg) 100%);
+}
+.ss-bg-warp::before,
+.ss-bg-warp::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-repeat: repeat;
+  opacity: 0.22;
+}
+/* Layer 1 — fine ribbons, fast drift */
+.ss-bg-warp::before {
+  background-image:
+    linear-gradient(90deg,
+      transparent 0%,
+      transparent 40%,
+      color-mix(in oklab, var(--accent) 60%, transparent) 50%,
+      transparent 60%,
+      transparent 100%),
+    linear-gradient(90deg,
+      transparent 0%,
+      transparent 30%,
+      color-mix(in oklab, var(--fg) 30%, transparent) 50%,
+      transparent 70%,
+      transparent 100%);
+  background-size: 800px 1px, 1200px 1px;
+  background-position: 0 22%, 0 67%;
+  animation: warpRibbonsA 18s linear infinite;
+  filter: blur(0.5px);
+}
+/* Layer 2 — thicker, slower band */
+.ss-bg-warp::after {
+  background-image:
+    linear-gradient(90deg,
+      transparent 0%,
+      transparent 35%,
+      color-mix(in oklab, var(--accent) 40%, transparent) 50%,
+      transparent 65%,
+      transparent 100%),
+    linear-gradient(90deg,
+      transparent 0%,
+      transparent 42%,
+      color-mix(in oklab, var(--accent) 25%, #4060ff) 50%,
+      transparent 58%,
+      transparent 100%);
+  background-size: 1600px 2px, 2000px 1px;
+  background-position: 0 41%, 0 83%;
+  animation: warpRibbonsB 32s linear infinite;
+  filter: blur(1px);
+  opacity: 0.16;
+}
+@keyframes warpRibbonsA {
+  from { background-position: -800px 22%, -1200px 67%; }
+  to   { background-position: 800px 22%,  1200px 67%; }
+}
+@keyframes warpRibbonsB {
+  from { background-position: 1600px 41%, 2000px 83%; }
+  to   { background-position: -1600px 41%, -2000px 83%; }
+}
+
+/* Soft accent vignette pulse — adds a slow breath to the scene */
+.ss-bg-pulse {
+  position: fixed; inset: 0;
+  pointer-events: none; z-index: 0;
+  background: radial-gradient(ellipse 70% 55% at 50% 40%,
+    color-mix(in oklab, var(--accent) 18%, transparent) 0%,
+    transparent 55%);
+  opacity: 0.35;
+  animation: warpPulse 14s ease-in-out infinite alternate;
+  mix-blend-mode: screen;
+}
+@keyframes warpPulse {
+  from { opacity: 0.22; transform: scale(1); }
+  to   { opacity: 0.40; transform: scale(1.04); }
+}
+
+/* Screen transition: gentle fade + small lift, no blur. */
+.ss-screen-enter {
+  animation: screenIn 320ms var(--ease-out) both;
+}
+@keyframes screenIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Component highlight on mount — shimmer sweep + soft accent halo. */
+.ss-card,
+.ss-card--elev {
+  position: relative;
+  isolation: isolate;
+  animation: cardIn 380ms var(--ease-out) both;
+}
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+/* Stagger: cards lit up in sequence (max ~6 visible on a screen). */
+.ss-screen-enter .ss-card:nth-child(1) { animation-delay: 30ms; }
+.ss-screen-enter .ss-card:nth-child(2) { animation-delay: 70ms; }
+.ss-screen-enter .ss-card:nth-child(3) { animation-delay: 110ms; }
+.ss-screen-enter .ss-card:nth-child(4) { animation-delay: 150ms; }
+.ss-screen-enter .ss-card:nth-child(5) { animation-delay: 190ms; }
+.ss-screen-enter .ss-card:nth-child(n+6) { animation-delay: 220ms; }
+
+/* Card hover lift — minimal */
+.ss-card {
+  transition: transform var(--t-base) var(--ease-out),
+              border-color var(--t-base) var(--ease-out),
+              box-shadow var(--t-base) var(--ease-out);
+}
+.ss-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in oklab, var(--accent) 18%, var(--border));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .ss-bg-warp::before, .ss-bg-warp::after,
+  .ss-bg-pulse { animation: none !important; }
+  .ss-screen-enter, .ss-card { animation: none !important; }
+  .ss-card:hover { transform: none !important; }
+}
+
+/* Theme swatch (settings preview) */
+.ss-theme-swatch {
+  position: relative;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border-strong);
+  padding: 14px;
+  cursor: pointer;
+  background: var(--surface);
+  display: flex; flex-direction: column; gap: 10px;
+  min-height: 120px;
+  transition: transform var(--t-fast) var(--ease-out),
+              box-shadow var(--t-base) var(--ease-out);
+  overflow: hidden;
+}
+.ss-theme-swatch:hover { transform: translateY(-1px); }
+.ss-theme-swatch[data-active="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.ss-theme-swatch-bars {
+  display: flex; gap: 4px;
+  height: 10px;
+}
+.ss-theme-swatch-bars > span { flex: 1; border-radius: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* Marketing-nav hamburger toggle. Hidden while the links sit inline;
+   the ≤1239px block below reveals it and collapses the link row into a
+   dropdown panel. That bound is measured, not a device class — see the
+   band table there. */
+.ss-mnav-toggle { display: none; }
+
+/* Marketing-nav width strategy — three bands.
+ *
+ * The link row carries ELEVEN items (eight text links plus GitHub, Sign in
+ * and the CTA), not the eight you'd count by eye. Measured widths:
+ *
+ *   ≥1366px          full spacing (28px gap / 48px padding) fits.
+ *   1240–1365px      needs the compressed spacing below to fit.
+ *   ≤1239px          collapses to the drawer.
+ *
+ * The compressed row's min-content is ~1185px on Windows and ~1187px on
+ * the Linux CI runner: text metrics differ per platform, so the real
+ * bound is a range, not a number. A first cut at 1180px passed locally
+ * and failed CI by exactly 7px. 1240px carries ~50px of headroom.
+ * The cost is that a viewport between ~1190 and 1240px gets a hamburger
+ * it could technically fit without — cheap. The other side of that trade
+ * is the signup CTA off the edge of the screen.
+ *
+ * The drawer used to start at 640px, which was right when the nav held six
+ * links. It hasn't for a long time: measured before any of this, the
+ * document scrolled 51px wider than its client box at 1200px and 94px at
+ * 1025px. There is no horizontal scrollbar on these pages, so nothing
+ * revealed it — `Get started`, the primary conversion CTA, simply sat
+ * off-screen on any window narrower than ~1320px.
+ *
+ * Dropping a link would also work and is worse: every one is load-bearing,
+ * /terms most of all — signup fine-print says you agreed to it, so a nav
+ * without it strands the document (MarketingNav.test.tsx records this).
+ *
+ * !important is required, not defensive: MarketingNav sets padding and gap
+ * as INLINE styles, which no selector specificity beats. */
+@media (min-width: 1240px) and (max-width: 1365px) {
+  .ss-marketing-nav { padding: 16px 24px !important; }
+  .ss-marketing-nav nav.ss-mnav-links { gap: 16px !important; }
+}
+
+/* Marketing nav → hamburger dropdown. The inline link row is hidden and
+   re-shown as an absolutely-positioned panel under the header when the
+   toggle sets data-open="true".
+   Scoped to the nav alone — deliberately NOT folded into the ≤1024px
+   tablet block or the ≤640px mobile one, because this boundary is set by
+   the link row's own min-content width and drifts every time a link is
+   added or renamed. Keeping it standalone means re-measuring moves one
+   number here rather than re-cutting a shared breakpoint. */
+@media (max-width: 1239px) {
+  .ss-marketing-nav { position: relative; }
+  .ss-mnav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 38px;
+    height: 38px;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r-sm);
+    color: var(--fg);
+    cursor: pointer;
+  }
+  /* Both display declarations below need `!important`, for the same
+     reason the padding/gap overrides do: MarketingNav renders the row
+     with an inline `display:flex`, which plain CSS cannot beat. That is
+     why the drawer never actually collapsed anything — the hide silently
+     lost to the inline style, and `flex-wrap: wrap` masked it by
+     spilling the row onto a second line. Measured 2026-08-08: a
+     hamburger AND a wrapped row at 520px, header 138px vs 67px.
+
+     Do not open this comment with the word "!important". cssnano trims
+     leading whitespace before testing a comment for a leading `!`, so a
+     comment starting with that word is treated as a legal notice and
+     survives minification — this one shipped 552 bytes into production
+     CSS, the only surviving comment in a 60KB file. */
+  .ss-marketing-nav nav.ss-mnav-links { display: none !important; }
+  .ss-marketing-nav nav.ss-mnav-links[data-open="true"] {
+    display: flex !important;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px !important;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border-strong);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.4);
+    padding: 12px 24px 20px;
+    z-index: 60;
+  }
+  .ss-marketing-nav nav.ss-mnav-links[data-open="true"] > a,
+  .ss-marketing-nav nav.ss-mnav-links[data-open="true"] > .ss-btn {
+    padding: 10px 4px;
+  }
+}
+
+
+/* ============================================================
+ * Responsive — three breakpoints
+ *   Mobile  : ≤ 640px   (single column, drawer nav)
+ *   Tablet  : 641-1024  (compressed rail, 2-col grids)
+ *   Desktop : ≥ 1025px  (current layout)
+ * Keeps existing inline-styled grids working by overriding their
+ * grid-template-columns + flex direction at the breakpoint.
+ * ========================================================== */
+
+/* --- Tablet -------------------------------------------------- */
+@media (max-width: 1024px) {
+  .ss-app {
+    grid-template-columns: 60px 1fr;   /* icon-only rail */
+  }
+  .ss-rail-item span:not(.ss-rail-dot) { display: none; }
+  .ss-rail-section { display: none; }
+  .ss-rail { padding: var(--s4) 8px; align-items: center; }
+  .ss-rail-item { justify-content: center; padding: 10px; }
+  .ss-rail > div:last-child { display: none; } /* signed-in footer */
+
+  .ss-main { padding: var(--s5) var(--s5); }
+
+  /* Force common 2/3-col grids to 2-col on tablet */
+  [data-rspgrid="3"] { grid-template-columns: repeat(2, 1fr) !important; }
+  [data-rspgrid="2"] { grid-template-columns: 1fr !important; }
+  [data-rsprow="nowrap"] { flex-wrap: wrap !important; }
+
+  /* Landing hero stacks slightly */
+  .ss-hero {
+    padding: 80px 32px 60px !important;
+    grid-template-columns: 1fr !important;
+    gap: 48px !important;
+  }
+  .ss-hero-mock { max-width: 460px !important; }
+
+  .ss-marketing-nav { padding: 16px 24px !important; }
+  .ss-marketing-nav nav { gap: 16px !important; }
+}
+
+/* --- Mobile -------------------------------------------------- */
+@media (max-width: 640px) {
+  :root {
+    --fs-base: 14px;
+    --s5: 16px;
+    --s6: 20px;
+    --s7: 24px;
+  }
+
+  /* App shell becomes single column; rail becomes a drawer */
+  .ss-app {
+    grid-template-columns: 1fr !important;
+    grid-template-rows: 52px 1fr;
+  }
+  .ss-topbar {
+    padding: 0 16px;
+    gap: 8px;
+  }
+  .ss-topbar .ss-mark span:nth-child(2) { font-size: 13px; }
+  .ss-topbar .ss-mark span.ss-eyebrow { display: none; }
+
+  /* The marketing-nav hamburger rules used to live here. They now sit in
+     their own ≤1239px block above, because the link row stopped fitting
+     long before 640px — see the note there. */
+
+  /* Rail → off-canvas drawer */
+  .ss-rail {
+    position: fixed;
+    top: 52px; bottom: 0; left: 0;
+    width: 240px;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 220ms var(--ease-out);
+    background: var(--bg);
+    border-right: 1px solid var(--border-strong);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.4);
+    padding: var(--s4) var(--s3);
+    align-items: stretch;
+  }
+  .ss-rail-item span:not(.ss-rail-dot) { display: inline; }
+  .ss-rail-item { justify-content: flex-start; padding: 10px 12px; }
+  .ss-rail-section { display: block; }
+  .ss-rail > div:last-child { display: block; }
+  body[data-drawer="open"] .ss-rail { transform: translateX(0); }
+  .ss-drawer-scrim {
+    position: fixed; inset: 52px 0 0 0; z-index: 49;
+    background: rgba(0,0,0,0.5);
+    opacity: 0; pointer-events: none;
+    transition: opacity 220ms var(--ease-out);
+  }
+  body[data-drawer="open"] .ss-drawer-scrim {
+    opacity: 1; pointer-events: auto;
+  }
+  .ss-drawer-toggle {
+    display: inline-flex !important;
+    width: 36px; height: 36px;
+    align-items: center; justify-content: center;
+    border-radius: var(--r-sm); border: 1px solid var(--border-strong);
+    background: var(--bg-elev); color: var(--fg);
+    cursor: pointer;
+  }
+
+  .ss-main { padding: var(--s4); }
+
+  /* Force every multi-col grid to single column */
+  [data-rspgrid] { grid-template-columns: 1fr !important; }
+  [data-rsprow="nowrap"] { flex-wrap: wrap !important; }
+  [data-rspstack-mobile] { flex-direction: column !important; align-items: stretch !important; }
+
+  /* Headings shrink — but NOT the HUD instrument-strip titles, which
+   * carry deliberate inline 14-18px sizes on every signed-in dashboard.
+   * The bare `h1/h2 !important` used to beat those inline sizes and
+   * blow them up to 26/22px on mobile (M-W7). Every HUD strip title has
+   * `.hud-tile__title`, so excluding that class leaves them untouched
+   * while marketing/legal/prose headings still shrink. `.ss-hero h1`
+   * (equal specificity, later in source) still wins for the landing. */
+  h1:not(.hud-tile__title) { font-size: 26px !important; }
+  h2:not(.hud-tile__title) { font-size: 22px !important; }
+
+  /* Marketing chrome */
+  .ss-marketing-nav {
+    padding: 14px 16px !important;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .ss-marketing-nav nav { gap: 10px !important; flex-wrap: wrap; font-size: 12px !important; }
+  /* H5 (2026-07-09): the old `nav a:nth-child(1..3){display:none}` block
+   * hid Features / Org platform / Privacy UNCONDITIONALLY — including
+   * inside the open hamburger dropdown, so those pages were unreachable
+   * from mobile. The `.ss-mnav-toggle` dropdown (added later) already
+   * collapses the nav when closed, so the hide is obsolete and was
+   * removed. All links now show when `data-open="true"`. */
+
+  .ss-hero {
+    padding: 56px 16px 40px !important;
+    grid-template-columns: 1fr !important;
+    gap: 32px !important;
+  }
+  .ss-hero h1 {
+    font-size: clamp(34px, 9vw, 48px) !important;
+  }
+  .ss-hero p { font-size: 15px !important; }
+  .ss-hero-mock { transform: none !important; }
+  .ss-hero-buttons { flex-wrap: wrap; }
+  .ss-hero-buttons .ss-btn { flex: 1 1 100%; }
+
+  .ss-features {
+    padding: 0 16px 60px !important;
+  }
+  .ss-features h2 { font-size: 22px !important; }
+
+  .ss-footer {
+    padding: 24px 16px !important;
+    flex-direction: column !important; align-items: flex-start !important;
+  }
+
+  /* Device pairing-code: smaller display */
+  .ss-pair-code { font-size: 28px !important; padding: 18px !important; }
+
+  /* KV list: collapse to single column */
+  .ss-kv {
+    grid-template-columns: 1fr !important;
+    gap: 4px 0 !important;
+  }
+  .ss-kv dt { margin-top: 12px; }
+  .ss-kv dt:first-child { margin-top: 0; }
+
+  /* Tables — wrap with horizontal scroll on mobile */
+  .ss-table-wrap {
+    margin: 0 -16px;
+    overflow-x: auto;
+    padding: 0 16px;
+  }
+  .ss-table { min-width: 480px; }
+
+  /* Tweaks panel doesn't need to flex full-width */
+  .tweaks-panel { right: 8px !important; left: auto !important; bottom: 8px !important; max-width: calc(100vw - 16px) !important; }
+
+  /* Heatmap — let it scroll horizontally so weeks aren't squashed */
+  .ss-heatmap-wrap { overflow-x: auto; }
+
+  /* Auth cards full-width */
+  .ss-auth-card { padding: 28px 20px !important; max-width: 100% !important; }
+
+  /* Hide marketing top-bar's brand glyph if very tight */
+  .ss-marketing-nav .ss-eyebrow { display: none; }
+}
+
+/* --- Drawer toggle — only visible on mobile ----------------- */
+.ss-drawer-toggle { display: none; }
+.ss-drawer-scrim { display: none; }
+@media (max-width: 640px) {
+  .ss-drawer-scrim { display: block; }
+}
+
+
+/* Auth frame mobile padding */
+@media (max-width: 640px) {
+  .ss-auth-frame > header { padding: 16px 16px !important; }
+  .ss-auth-frame > main { padding: 16px 16px 40px !important; }
+  .ss-auth-frame > footer { padding: 14px 16px !important; }
+}
+
+
+/* Hero + button polish at small widths */
+@media (max-width: 640px) {
+  /* Hero: bigger top breathing room, tighter line height, no clipped rotator */
+  .ss-hero {
+    padding: 40px 18px 36px !important;
+    gap: 28px !important;
+  }
+  .ss-hero h1 {
+    font-size: 38px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.02em !important;
+  }
+  .ss-hero h1 > span:first-child {
+    font-size: 18px !important;
+    margin-bottom: 8px !important;
+  }
+  .hero-rotator {
+    min-width: 0 !important;
+    display: block !important;
+  }
+  .hero-word {
+    white-space: normal !important;
+    display: inline-block !important;
+  }
+  .ss-hero p {
+    font-size: 14px !important;
+    margin-top: 18px !important;
+  }
+  /* CTA buttons: stop crushing labels — let them wrap naturally onto two lines */
+  .ss-hero-buttons {
+    margin-top: 24px !important;
+    gap: 10px !important;
+  }
+  .ss-hero-buttons .ss-btn {
+    flex: 1 1 100% !important;
+    padding: 12px 16px !important;
+    font-size: 14px !important;
+    white-space: normal !important;
+  }
+  /* Trust row: stack tighter */
+  .ss-hero > div > div:last-child {
+    flex-wrap: wrap !important;
+    gap: 12px 16px !important;
+    margin-top: 22px !important;
+  }
+  /* Hero mock: don't tilt it on mobile, keep it readable */
+  .ss-hero-mock .ss-card {
+    transform: none !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Tablet hero — keep h1 big but constrained */
+@media (max-width: 1024px) and (min-width: 641px) {
+  .ss-hero h1 { font-size: 56px !important; }
+}
+
+/* Generic button safety: never squish labels into ellipsis at narrow widths */
+.ss-btn { white-space: nowrap; }
+@media (max-width: 640px) {
+  .ss-btn { white-space: normal; line-height: 1.2; }
+}
+
+
+/* Landing wrapper — let it flow vertically; only clip horizontally */
+.ss-landing { overflow-x: hidden; }
+
+@media (max-width: 640px) {
+  /* Smaller hero h1 to actually fit a 390px viewport with padding */
+  .ss-hero h1 {
+    font-size: 32px !important;
+  }
+  .ss-hero h1 > span:first-child {
+    font-size: 15px !important;
+  }
+  .ss-hero {
+    padding: 32px 16px 28px !important;
+  }
+  /* Eyebrow above title */
+  .ss-hero .ss-eyebrow {
+    margin-bottom: 14px !important;
+  }
+  /* Hero mock card padding shrinks too */
+  .ss-hero-mock .ss-card { padding: 16px 16px !important; }
+  .ss-hero-mock { padding: 0 !important; }
+}
+
+
+@media (max-width: 640px) {
+  /* Hero stat preview card: shrink heatmap + numbers so the mock isn't huge */
+  .ss-hero-mock .ss-card .ss-heatmap {
+    grid-template-rows: repeat(7, 9px) !important;
+    gap: 2px !important;
+  }
+  .ss-hero-mock .ss-card .ss-heatcell {
+    width: 9px !important; height: 9px !important;
+  }
+  /* Big numbers in mock: smaller */
+  .ss-hero-mock .mono {
+    font-size: 18px !important;
+  }
+  /* Eyebrows in mock fit one line */
+  .ss-hero-mock .ss-eyebrow {
+    font-size: 10px !important;
+  }
+  /* Inner row gap */
+  .ss-hero-mock .ss-card > div:last-child { gap: 12px !important; }
+
+  /* Trust row: smaller */
+  .ss-hero > div > div:last-child > span {
+    font-size: 11px !important;
+  }
+  /* Aggressive: kill the absolute glow blob behind the mock so it doesn't
+     bleed past the viewport edges */
+  .ss-hero-mock > div:first-child { display: none !important; }
+}
+
+
+/* Tablet/mobile: never scroll horizontally — clip stray overflow instead */
+@media (max-width: 1024px) {
+  html, body { overflow-x: hidden; }
+  .ss-app { overflow-x: hidden; max-width: 100vw; }
+  .ss-main { overflow-x: hidden; max-width: 100%; }
+  .ss-landing { overflow-x: hidden; max-width: 100vw; }
+
+  /* Stat-strip: at tablet, force a 2x2 layout cleanly */
+  [data-rsprow="nowrap"] {
+    flex-wrap: wrap !important;
+  }
+  [data-rsprow="nowrap"] > * {
+    flex: 1 1 calc(50% - 6px) !important;
+    min-width: 0 !important;
+  }
+
+  /* Tables: still allow horizontal scroll inside their wrapper, but keep
+     the wrapper inside the page bounds */
+  .ss-table-wrap { max-width: 100%; }
+
+  /* Heatmap: clip and scroll inside its card so the card itself doesn't
+     widen past the screen */
+  .ss-card .ss-heatmap-wrap,
+  .ss-card .ss-heatmap {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+
+/* ===========================================================
+   /about + compliance atoms — brand book §11
+   Mirrors docs/About.html. The disclaimer-body text is verbatim
+   and must stay in lockstep with the standalone artifact.
+   =========================================================== */
+.ss-about {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 96px 32px 128px;
+}
+@media (max-width: 600px) {
+  .ss-about { padding: 56px 20px 88px; }
+}
+.ss-about h2 {
+  font-size: var(--fs-xl);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--s4);
+  font-weight: 600;
+  line-height: 1.2;
+}
+.ss-about p {
+  margin: 0 0 var(--s4);
+  color: var(--fg);
+  line-height: 1.6;
+}
+.ss-about-section {
+  padding-top: var(--s7);
+  margin-top: var(--s7);
+  border-top: 1px solid var(--border);
+}
+.ss-about-section-eyebrow {
+  /* Placard (bridge): Michroma section marker on /about. */
+  font-family: var(--font-display);
+  font-size: var(--placard-size);
+  text-transform: uppercase;
+  letter-spacing: var(--placard-tracking);
+  color: var(--fg-dim);
+  margin-bottom: var(--s3);
+}
+
+.ss-disclaimer {
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  padding: var(--s5);
+  background: var(--bg-elev);
+  margin: var(--s5) 0 0;
+}
+.ss-disclaimer-label {
+  /* Placard label above the (verbatim, untouched) disclaimer body. */
+  font-family: var(--font-display);
+  font-size: var(--placard-size);
+  text-transform: uppercase;
+  letter-spacing: var(--placard-tracking);
+  color: var(--fg-dim);
+  margin-bottom: var(--s3);
+}
+.ss-disclaimer-body {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--fg-muted);
+  margin: 0;
+}
+
+.ss-credit {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: var(--s5);
+  background: var(--surface, var(--bg-elev));
+  display: flex; align-items: center; gap: var(--s4);
+  flex-wrap: wrap;
+}
+.ss-credit-meta {
+  /* Placard (bridge). */
+  font-family: var(--font-display);
+  font-size: var(--placard-size);
+  text-transform: uppercase;
+  letter-spacing: var(--placard-tracking);
+  color: var(--fg-dim);
+  margin-bottom: var(--s1);
+}
+.ss-credit-name { font-size: var(--fs-md); font-weight: 500; color: var(--fg); }
+.ss-credit-handle { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent); }
+.ss-credit-handle a { color: inherit; }
+
+.ss-resources { list-style: none; padding: 0; margin: var(--s4) 0 0; display: grid; gap: var(--s2); }
+.ss-resources li { display: flex; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+.ss-resources li::before {
+  content: "→";
+  color: var(--fg-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+.ss-resource-note { font-size: var(--fs-sm); color: var(--fg-dim); }
+
+/* Attribution lockup — verbatim pattern from brand book §11.
+   Used on /about and as a compact chip in the global footer. */
+.ss-attribution-lockup {
+  margin-top: var(--s7);
+  display: inline-flex; flex-direction: column; gap: 6px;
+  padding: 18px 22px;
+  border: 1px dashed var(--border-strong, var(--border));
+  border-radius: 6px;
+  background: var(--bg-elev);
+}
+.ss-attribution-top {
+  font-family: var(--font-mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--fg-muted);
+}
+.ss-attribution-mid {
+  font-family: var(--font-mono); font-size: 12px;
+  color: var(--fg); letter-spacing: 0.02em;
+}
+.ss-attribution-bot {
+  font-family: var(--font-mono); font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.12em;
+  color: var(--fg-dim); margin-top: 4px;
+}
+
+/* Compact footer chip variant — single line, lower visual weight */
+.ss-footer-attribution {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--fg-dim);
+  letter-spacing: 0.04em;
+}
+
+/* Beta-waitlist interstitial (BetaGate) — a temporary full-page overlay
+   shown while the invite-only gate is on. Sits above everything, including
+   the QuantumWarpBackground. */
+.ss-beta-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--s4);
+  background: color-mix(in oklab, var(--bg) 82%, transparent);
+  backdrop-filter: blur(6px);
+  overflow-y: auto;
+}
+.ss-beta-gate-panel {
+  max-width: 42rem;
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--s6);
+}
+.ss-beta-gate-dismiss {
+  margin-top: var(--s4);
+  background: none;
+  border: none;
+  color: var(--fg-muted);
+  cursor: pointer;
+  font: inherit;
+}

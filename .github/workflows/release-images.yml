@@ -1,0 +1,667 @@
+name: Release images
+
+# Container + config images for the homelab deploy. Split out from
+# `release.yml` in v0.0.2-beta so a registry-side outage stops blocking
+# the desktop tray release (Tauri installers + GitHub Release +
+# channel manifest). The two workflows share a tag trigger but run
+# independently — image failures no longer mark the tray release as
+# failed, and either side can be re-run on its own via
+# `workflow_dispatch` when the registry comes back.
+
+on:
+  push:
+    # Tag pushes — versioned releases. Image tags carry the version
+    # number (e.g. `:0.0.2-beta`). Tag pushes do NOT move floating
+    # tags (`:latest` / `:next`) — those track branch HEAD only.
+    tags: ['v*']
+    # Branch pushes — auto-deploy the homelab.
+    #   `main` → image tags carry `dev-<sha7>` plus `:latest`.
+    #   `next` → image tags carry `dev-<sha7>` plus `:next`.
+    # Komodo pulls the floating tag on its sync tick so new commits
+    # land in the appropriate homelab slot automatically.
+    branches: [main, next]
+  workflow_dispatch:
+
+# Partition by commit SHA plus ref type, with cancel-in-progress:false.
+#
+# A live promote pushes the version tag AND fast-forwards `main` onto
+# the same commit, so two events (tag push + branch push) fire for ONE
+# SHA. Under the old per-ref group they landed in different concurrency
+# groups and ran side-by-side — each cold-built the identical image and
+# the two fought over the shared build cache (a 275 MB cache layer took
+# ~38 min at ~1 Mbps on 2026-07-20; runs 30168321364 + 30168321020 both
+# built SHA 0798342…). Grouping by SHA funnels both events into one
+# queue: the second waits for the first, then its preflight finds the
+# immutable `:<sha>` images already pushed and RETAGS them for its own
+# event instead of rebuilding (see the `images` / `config-images` jobs).
+#
+# cancel-in-progress MUST stay false. Cancelling by SHA would be the
+# "naive" trap — it could kill the queued *tag* run and lose its version
+# tag + roadmap event. With it false, a running job is never interrupted;
+# the tag run always reaches its version-tag push and the
+# `roadmap-emit-event` job. Trade-off: branch pushes no longer
+# auto-cancel superseded in-flight builds (a newer commit has a
+# different SHA → a different group). The branch-aware skip rules on the
+# `images` job already drop the high-churn commits (auto-alpha bumps,
+# manifest/docs bots), and any survivor builds its own SHA exactly once.
+#
+# ⚠️ AMENDED 2026-07-26 — the group is SHA **plus ref_type**, not SHA alone.
+#
+# Grouping on the bare SHA assumed the two same-SHA events would QUEUE
+# ("the second waits for the first, then retags"). They do not always.
+# GitHub allows only ONE *pending* run per concurrency group: when a
+# second run is queued while the first is still pending, the older
+# pending run is CANCELLED, and `cancel-in-progress: false` does not
+# prevent it — that flag protects a run that has already STARTED.
+#
+# The live promote for v1.8.131 hit exactly this. The `main` push and the
+# `v1.8.131` tag push fired ~1s apart for SHA b4e399b8; the tag run
+# evicted the still-pending `main` run (run 30207585411, conclusion
+# `cancelled`). That is the worst possible loser: per the floating-tag
+# rules above, **only the `main` branch run moves `:latest`**, so the
+# promote reported success, a green tag build ran, and the deployment
+# would have kept serving the previous image indefinitely. It needed a
+# manual re-run to recover.
+#
+# The comment below anticipated the tag run being the casualty; in
+# practice it was the branch run, which is strictly worse.
+#
+# It is also TIMING-DEPENDENT — if the first run gets a runner before the
+# second is queued, both survive. So it fails intermittently, which is
+# how v1.8.127 and v1.8.129 promoted cleanly and v1.8.131 did not.
+#
+# Adding `ref_type` puts the branch push and the tag push in separate
+# groups, so neither can evict the other. The live-tag preflight below
+# then waits (bounded, with build fallback) for the sibling `main` run's
+# immutable SHA manifests. This preserves both independently-required
+# runs without normally cold-building the same API/web images twice.
+concurrency:
+  group: release-images-${{ github.sha }}-${{ github.ref_type }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+# All CI image writes + cache/manifest lookups go through the DNS-only
+# `registry-direct.tatux.in`. It hits the SAME Distribution backend as
+# the Cloudflare-proxied `registry.tatux.in` but bypasses the proxy,
+# which throttled large transfers to ~1 Mbps and 413'd oversized blobs.
+# Used for the registry login and every `api` / `web` / config image tag
+# and `imagetools` reference below — the old proxied-host registry secret
+# is no longer referenced by this workflow.
+env:
+  REGISTRY: registry-direct.tatux.in
+
+jobs:
+  # Guard A (mirror of release.yml): when triggered by a tag, verify
+  # the tag commit lives on the branch that owns its channel.
+  # Non-tag triggers (main/next pushes, workflow_dispatch) skip this
+  # job entirely via the `if:` condition — downstream jobs gate on
+  # `needs.validate-tag.result` to allow either success or skipped.
+  validate-tag:
+    name: Validate release tag
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.validate.outputs.channel }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate tag against branch invariants
+      id: validate
+      shell: bash
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+        git fetch --no-tags origin main next || true
+
+        die() { echo "::error::$*" >&2; exit 1; }
+
+        # Pre-migration transition fallback dropped 2026-05-23 — the
+        # `origin/next` branch has existed for many cycles, so any
+        # absence now is a real misconfiguration, not a migration
+        # window. Refuse rather than fall through to suffix-only
+        # routing (which would let a misrouted tag ship).
+        git rev-parse --verify origin/next >/dev/null 2>&1 \
+          || die "origin/next not present — refusing tag validation (the pre-2026-05-22 transition fallback was dropped). Verify the repo + checkout fetched origin/next."
+
+        case "$TAG" in
+          v*.*.*-alpha|v*.*.*-alpha.*|v*.*.*-beta|v*.*.*-beta.*|v*.*.*-rc|v*.*.*-rc.*)
+            git merge-base --is-ancestor "$TAG_COMMIT" origin/next \
+              || die "pre-release tag $TAG not reachable from next"
+            if git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+              # A pre-release commit on main is normally a mistag. There
+              # is one legitimate case: a live promote overtook this
+              # tag's own queued run. Merging to next auto-alphas, and a
+              # promote fired soon after fast-forwards main over that
+              # same commit — so by the time this job validates, a
+              # correctly-created alpha finds itself on main.
+              #
+              # The two are distinguishable. Overtaken-by-promote always
+              # leaves a BARE semver tag on main at or ahead of this
+              # commit (that is what the promote created). A genuine
+              # mistag has no such tag, because nothing promoted it.
+              #
+              # `--contains` lists tags whose commit is a descendant of
+              # (or equal to) TAG_COMMIT. Both filters below are
+              # load-bearing: without the bare-semver check a sibling
+              # pre-release tag would vouch for this one, and without
+              # the on-main check a bare tag cut on a side branch would.
+              superseded=""
+              for cand in $(git tag --list 'v*.*.*' --contains "$TAG_COMMIT"); do
+                case "$cand" in
+                  *-alpha|*-alpha.*|*-beta|*-beta.*|*-rc|*-rc.*) continue ;;
+                esac
+                cand_commit="$(git rev-list -n 1 "$cand")"
+                if git merge-base --is-ancestor "$cand_commit" origin/main; then
+                  # Carries its own qualifier so the notice reads
+                  # naturally for either signal ("by live tag vX" /
+                  # "by version X").
+                  superseded="live tag $cand"
+                  break
+                fi
+              done
+              # Second signal, and the one that survives the promote
+              # window. The bare-tag check above only fires once the
+              # promote has CREATED its tag; between main being
+              # fast-forwarded and that tag appearing there is a gap of
+              # a few seconds, and a queued alpha run validating inside
+              # it finds no bare tag and dies. That is exactly what
+              # happened to v1.8.149-alpha.6: its run validated at
+              # 16:11:51 and the live tag's run was created at 16:11:56.
+              #
+              # The promote bumps the version FILE before it tags, so
+              # the bump is visible even when the tag is not. A commit
+              # carrying a BARE version equal to this tag's base has
+              # therefore been promoted — a pre-release commit that has
+              # not been promoted still reads `X.Y.Z-alpha.N`.
+              tag_base="${TAG#v}"
+              tag_base="${tag_base%%-*}"
+              # `|| true` is load-bearing: the step runs under
+              # `set -euo pipefail`, so a missing Cargo.toml makes
+              # `git show` fail, pipefail propagates it, and the whole
+              # validation aborts instead of falling through to the
+              # checks below. An absent version file must leave this
+              # signal silent, not kill the script.
+              commit_version="$(git show "$TAG_COMMIT:Cargo.toml" 2>/dev/null \
+                | sed -n 's/^version[[:space:]]*=[[:space:]]*"\(.*\)"$/\1/p' \
+                | head -n1 || true)"
+              case "$commit_version" in
+                *-*) ;;  # still a pre-release version: not promoted
+                "$tag_base")
+                  superseded="version $commit_version"
+                  ;;
+              esac
+
+              if [ -n "$superseded" ]; then
+                echo "::notice::pre-release tag $TAG was superseded by $superseded before this run validated; skipping rather than failing (its content already shipped as $tag_base)"
+                echo "channel=superseded" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+              die "pre-release tag $TAG is on main with no live tag at or ahead of it and no promoted version bump; use a bare semver tag for live"
+            fi
+            ;;
+          v*.*.*)
+            git merge-base --is-ancestor "$TAG_COMMIT" origin/main \
+              || die "live tag $TAG not on main; promote next → main first"
+            ;;
+          *)
+            die "tag $TAG matches no known channel pattern"
+            ;;
+        esac
+
+        case "$TAG" in
+          v*.*.*-alpha|v*.*.*-alpha.*) channel=alpha ;;
+          v*.*.*-beta|v*.*.*-beta.*)   channel=beta ;;
+          v*.*.*-rc|v*.*.*-rc.*)       channel=rc ;;
+          v*.*.*)                      channel=live ;;
+          *) die "tag $TAG matches no known channel pattern" ;;
+        esac
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+        echo "resolved channel=$channel for tag=$TAG"
+
+  images:
+    name: Build & push container images
+    needs: [validate-tag]
+    # validate-tag is skipped on non-tag triggers; allow either success
+    # or skipped so branch pushes proceed without it.
+    #
+    # Skip rules are branch-aware:
+    #
+    # **Tag-triggered** — only LIVE tags (bare `vX.Y.Z`) build images.
+    #   Pre-release tags (`-alpha.N` / `-beta.N` / `-rc.N`) are skipped:
+    #   every push to `next` auto-alphas, so each one used to fire a
+    #   full cold image build whose content `:next` had already
+    #   published from the branch push moments earlier — the same
+    #   artifact built twice, for a tag nothing deploys from. A live
+    #   promote still runs twice by design (main push + `vX.Y.Z` tag),
+    #   but the live-tag preflight waits for the main run and normally
+    #   turns the tag run into a cheap retag.
+    #
+    #   Detection matches the documented rule (see docs/ENGINEERING.md, the
+    #   `release.yml` prerelease-flag pitfall): test for the CHANNEL
+    #   suffixes, never `contains(ref_name, '-')` — since the tracks
+    #   split, `tray-v1.8.8` contains a hyphen with no channel meaning.
+    #
+    #   NOTE: the trigger is deliberately left as `tags: ['v*']` rather
+    #   than filtering pre-releases out at the `on:` level, so the
+    #   `validate-tag` job still runs on them. It is the ONLY guard
+    #   enforcing "pre-release tags live on `next`, not `main`" for the
+    #   platform track; dropping the trigger would silently retire it.
+    #
+    # **`main` branch push** — the only paths that land here are live
+    #   promotions and the post-release back-merge of the manifest
+    #   bot. Live promotions advance `:latest` via this trigger, so
+    #   the `chore: bump platform to ` pattern MUST NOT skip on main
+    #   even though it does on `next`. (The `live platform` promote
+    #   script fast-forwards main onto the existing prerelease bump
+    #   commit, whose subject line matches the bump pattern.) On main
+    #   we skip only the purely-metadata commits (release-manifests /
+    #   docs) — anything else, including bump commits, gets a full
+    #   rebuild + floating-tag move. Surfaced 2026-05-27 when the
+    #   v1.8.8 live promotion left `:latest` pointing at the
+    #   pre-v1.8.8 image.
+    #
+    # **`next` branch push** — auto-alpha bumps + manifest bot
+    #   commits arrive constantly; the parent already built the same
+    #   image content, so skip the full set.
+    #
+    #   Matched as `== 'refs/heads/next'`, NOT `!= 'refs/heads/main'`.
+    #   The negated form is true for a TAG ref too, so once the tag
+    #   clause above stopped being unconditionally true it would have
+    #   let a pre-release tag fall through to here and build whenever
+    #   its head commit wasn't a bump/manifest/docs commit — exactly the
+    #   case this change exists to stop.
+    if: |
+      always() &&
+      (needs.validate-tag.result == 'success' || needs.validate-tag.result == 'skipped') &&
+      (
+        (
+          startsWith(github.ref, 'refs/tags/v') &&
+          !contains(github.ref_name, '-alpha') &&
+          !contains(github.ref_name, '-beta') &&
+          !contains(github.ref_name, '-rc')
+        ) ||
+        github.event_name != 'push' ||
+        (
+          github.ref == 'refs/heads/main' &&
+          !(
+            startsWith(github.event.head_commit.message, 'release-manifests:') ||
+            startsWith(github.event.head_commit.message, 'docs:') ||
+            startsWith(github.event.head_commit.message, 'docs(')
+          )
+        ) ||
+        (
+          github.ref == 'refs/heads/next' &&
+          !(
+            startsWith(github.event.head_commit.message, 'chore: bump to v') ||
+            startsWith(github.event.head_commit.message, 'chore: bump platform to ') ||
+            startsWith(github.event.head_commit.message, 'chore: bump tray to ') ||
+            startsWith(github.event.head_commit.message, 'release-manifests:') ||
+            startsWith(github.event.head_commit.message, 'docs:') ||
+            startsWith(github.event.head_commit.message, 'docs(')
+          )
+        )
+      )
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: docker/setup-buildx-action@v3
+
+    - name: Login to private registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+
+    - name: Determine tag
+      id: meta
+      run: |
+        # Floating tag (`latest` / `next`) only moves on branch
+        # pushes — tag pushes carry the version + sha but must NOT
+        # repoint the channel-tracking floating tag. Branch routing:
+        #   refs/heads/main → :latest
+        #   refs/heads/next → :next
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          TAG="${GITHUB_REF#refs/tags/v}"
+          FLOATING=""
+        elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+          TAG="dev-${GITHUB_SHA::7}"
+          FLOATING="latest"
+        elif [[ "$GITHUB_REF" == refs/heads/next ]]; then
+          TAG="dev-${GITHUB_SHA::7}"
+          FLOATING="next"
+        else
+          TAG="dev-${GITHUB_SHA::7}"
+          FLOATING=""
+        fi
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "floating_tag=$FLOATING" >> "$GITHUB_OUTPUT"
+        echo "resolved tag=$TAG floating_tag=$FLOATING"
+
+    # Preflight (one build per SHA). Every build ALWAYS pushes the
+    # immutable `:<full-sha>` tag, so its presence in the registry means
+    # this SHA has already been built by an earlier run (typically the
+    # sibling branch/tag event for the same commit — see the concurrency
+    # comment). When it exists we skip the rebuild and only retag; when
+    # it is missing we do a full build. Checked per-image so a partial
+    # prior failure rebuilds only the image that is actually absent.
+    # A bare live-tag run waits up to 20 minutes for the sibling `main`
+    # run to publish both manifests. The main run never waits, and
+    # prerelease tag image jobs remain excluded by the job-level guard.
+    # After the bounded wait, any still-missing image falls through to
+    # `build` — preserving recovery when the sibling run never starts or
+    # fails. `imagetools inspect` errors are treated as missing.
+    - name: Preflight — do the immutable SHA images already exist?
+      id: preflight
+      shell: bash
+      run: |
+        set -uo pipefail
+        exists() { docker buildx imagetools inspect "$1" >/dev/null 2>&1; }
+        api_ref="${REGISTRY}/starstats/api:${GITHUB_SHA}"
+        web_ref="${REGISTRY}/starstats/web:${GITHUB_SHA}"
+        api_ready=false
+        web_ready=false
+
+        exists "$api_ref" && api_ready=true
+        exists "$web_ref" && web_ready=true
+
+        if [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+          && { [[ "$api_ready" == false ]] || [[ "$web_ready" == false ]]; }; then
+          attempts="${SIBLING_WAIT_ATTEMPTS:-80}"
+          delay="${SIBLING_WAIT_SECONDS:-15}"
+          echo "live tag: waiting for sibling main run manifests (up to $((attempts * delay))s)"
+          for ((attempt = 1; attempt <= attempts; attempt++)); do
+            sleep "$delay"
+            [[ "$api_ready" == true ]] || { exists "$api_ref" && api_ready=true; }
+            [[ "$web_ready" == true ]] || { exists "$web_ref" && web_ready=true; }
+            if [[ "$api_ready" == true && "$web_ready" == true ]]; then
+              echo "live tag: sibling main manifests are available after $attempt probe(s)"
+              break
+            fi
+          done
+        fi
+
+        if [[ "$api_ready" == true ]]; then
+          echo "api=retag" >> "$GITHUB_OUTPUT"; echo "api: :${GITHUB_SHA} exists → retag"
+        else
+          echo "api=build" >> "$GITHUB_OUTPUT"; echo "api: :${GITHUB_SHA} missing → build"
+        fi
+        if [[ "$web_ready" == true ]]; then
+          echo "web=retag" >> "$GITHUB_OUTPUT"; echo "web: :${GITHUB_SHA} exists → retag"
+        else
+          echo "web=build" >> "$GITHUB_OUTPUT"; echo "web: :${GITHUB_SHA} missing → build"
+        fi
+
+    - name: Build & push API
+      if: steps.preflight.outputs.api == 'build'
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: crates/starstats-server/Dockerfile
+        push: true
+        # The floating-tag line collapses to an empty string on tag
+        # triggers; docker/build-push-action ignores empty lines in
+        # the `tags:` list.
+        tags: |
+          ${{ steps.meta.outputs.floating_tag != '' && format('{0}/starstats/api:{1}', env.REGISTRY, steps.meta.outputs.floating_tag) || '' }}
+          ${{ env.REGISTRY }}/starstats/api:${{ steps.meta.outputs.tag }}
+          ${{ env.REGISTRY }}/starstats/api:${{ github.sha }}
+        cache-from: type=gha,scope=starstats-api
+        cache-to: type=gha,mode=max,scope=starstats-api
+
+    # Retag path — the `:<full-sha>` API manifest already exists, so point
+    # this event's tags at it by digest (no layer transfer, no rebuild).
+    # `imagetools create` copies the source OCI index wholesale, so any
+    # provenance / SBOM attestation manifests attached at build time are
+    # preserved unchanged.
+    - name: Retag existing API manifest
+      if: steps.preflight.outputs.api == 'retag'
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+        FLOATING: ${{ steps.meta.outputs.floating_tag }}
+      run: |
+        set -euo pipefail
+        src="${REGISTRY}/starstats/api:${GITHUB_SHA}"
+        echo "Retagging existing manifest $src (no rebuild)"
+        docker buildx imagetools create -t "${REGISTRY}/starstats/api:${IMAGE_TAG}" "$src"
+        if [[ -n "${FLOATING}" ]]; then
+          docker buildx imagetools create -t "${REGISTRY}/starstats/api:${FLOATING}" "$src"
+        fi
+
+    - name: Build & push Web
+      if: steps.preflight.outputs.web == 'build'
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: apps/web/Dockerfile
+        push: true
+        tags: |
+          ${{ steps.meta.outputs.floating_tag != '' && format('{0}/starstats/web:{1}', env.REGISTRY, steps.meta.outputs.floating_tag) || '' }}
+          ${{ env.REGISTRY }}/starstats/web:${{ steps.meta.outputs.tag }}
+          ${{ env.REGISTRY }}/starstats/web:${{ github.sha }}
+        # Server Actions encryption key — baked into the bundle at
+        # build time so action IDs are stable across deploys. The
+        # runtime env must carry the SAME value or the server will
+        # fail to decrypt incoming action references. Build-arg
+        # syntax (not `secrets:`) because Next reads it as a regular
+        # env var via `process.env.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY`
+        # inside `next build`. Soft-degrades when the GH secret is
+        # unset — expansion is empty, matching the pre-fix behaviour
+        # of a fresh random key per build.
+        build-args: |
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+        cache-from: type=gha,scope=starstats-web
+        cache-to: type=gha,mode=max,scope=starstats-web
+
+    - name: Retag existing Web manifest
+      if: steps.preflight.outputs.web == 'retag'
+      shell: bash
+      env:
+        IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+        FLOATING: ${{ steps.meta.outputs.floating_tag }}
+      run: |
+        set -euo pipefail
+        src="${REGISTRY}/starstats/web:${GITHUB_SHA}"
+        echo "Retagging existing manifest $src (no rebuild)"
+        docker buildx imagetools create -t "${REGISTRY}/starstats/web:${IMAGE_TAG}" "$src"
+        if [[ -n "${FLOATING}" ]]; then
+          docker buildx imagetools create -t "${REGISTRY}/starstats/web:${FLOATING}" "$src"
+        fi
+
+  # Thin "config images": each FROM upstream + COPY config. Built so
+  # the homelab pulls fully-versioned images instead of bind-mounting
+  # configs from a host directory.
+  config-images:
+    name: Build & push ${{ matrix.image }} config image
+    runs-on: ubuntu-latest
+    needs: [validate-tag, images]
+    if: always() && needs.images.result == 'success' && (needs.validate-tag.result == 'success' || needs.validate-tag.result == 'skipped')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - { image: otel-collector, context: infra/otel-collector }
+        - { image: loki,           context: infra/loki }
+        - { image: tempo,          context: infra/tempo }
+        - { image: prometheus,     context: infra/prometheus }
+        - { image: db-init,        context: infra/init }
+    steps:
+    - uses: actions/checkout@v4
+    - uses: docker/setup-buildx-action@v3
+    - name: Login to private registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ secrets.REGISTRY_USERNAME }}
+        password: ${{ secrets.REGISTRY_PASSWORD }}
+    - name: Determine tag
+      id: meta
+      run: |
+        # Same routing as the `images` job — see the longer comment
+        # there. Floating tag (`latest`/`next`) moves only on branch
+        # pushes.
+        if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          TAG="${GITHUB_REF#refs/tags/v}"
+          FLOATING=""
+        elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+          TAG="dev-${GITHUB_SHA::7}"
+          FLOATING="latest"
+        elif [[ "$GITHUB_REF" == refs/heads/next ]]; then
+          TAG="dev-${GITHUB_SHA::7}"
+          FLOATING="next"
+        else
+          TAG="dev-${GITHUB_SHA::7}"
+          FLOATING=""
+        fi
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "floating_tag=$FLOATING" >> "$GITHUB_OUTPUT"
+        echo "resolved tag=$TAG floating_tag=$FLOATING"
+    # Same one-build-per-SHA preflight as the `images` job (see comment
+    # there). Config images normally build in under a minute, so a bare
+    # live-tag run waits up to five minutes for its sibling `main` job.
+    # Missing manifests or inspect errors still fall back to `build`.
+    - name: Preflight — does the immutable SHA image already exist?
+      id: preflight
+      shell: bash
+      env:
+        IMAGE: ${{ matrix.image }}
+      run: |
+        set -uo pipefail
+        ref="${REGISTRY}/starstats/${IMAGE}:${GITHUB_SHA}"
+        ready=false
+        if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+          ready=true
+        fi
+
+        if [[ "$GITHUB_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ "$ready" == false ]]; then
+          attempts="${SIBLING_WAIT_ATTEMPTS:-20}"
+          delay="${SIBLING_WAIT_SECONDS:-15}"
+          echo "live tag: waiting for sibling main run ${IMAGE} manifest (up to $((attempts * delay))s)"
+          for ((attempt = 1; attempt <= attempts; attempt++)); do
+            sleep "$delay"
+            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+              ready=true
+              echo "live tag: sibling main ${IMAGE} manifest is available after $attempt probe(s)"
+              break
+            fi
+          done
+        fi
+
+        if [[ "$ready" == true ]]; then
+          echo "img=retag" >> "$GITHUB_OUTPUT"; echo "${IMAGE}: :${GITHUB_SHA} exists → retag"
+        else
+          echo "img=build" >> "$GITHUB_OUTPUT"; echo "${IMAGE}: :${GITHUB_SHA} missing → build"
+        fi
+    - name: Build & push ${{ matrix.image }}
+      if: steps.preflight.outputs.img == 'build'
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ matrix.context }}
+        push: true
+        tags: |
+          ${{ steps.meta.outputs.floating_tag != '' && format('{0}/starstats/{1}:{2}', env.REGISTRY, matrix.image, steps.meta.outputs.floating_tag) || '' }}
+          ${{ env.REGISTRY }}/starstats/${{ matrix.image }}:${{ steps.meta.outputs.tag }}
+          ${{ env.REGISTRY }}/starstats/${{ matrix.image }}:${{ github.sha }}
+        cache-from: type=gha,scope=starstats-${{ matrix.image }}
+        cache-to: type=gha,mode=max,scope=starstats-${{ matrix.image }}
+    # Retag path — same digest-copy approach as the `images` job; keeps
+    # provenance/SBOM attestations intact.
+    - name: Retag existing ${{ matrix.image }} manifest
+      if: steps.preflight.outputs.img == 'retag'
+      shell: bash
+      env:
+        IMAGE: ${{ matrix.image }}
+        IMAGE_TAG: ${{ steps.meta.outputs.tag }}
+        FLOATING: ${{ steps.meta.outputs.floating_tag }}
+      run: |
+        set -euo pipefail
+        src="${REGISTRY}/starstats/${IMAGE}:${GITHUB_SHA}"
+        echo "Retagging existing manifest $src (no rebuild)"
+        docker buildx imagetools create -t "${REGISTRY}/starstats/${IMAGE}:${IMAGE_TAG}" "$src"
+        if [[ -n "${FLOATING}" ]]; then
+          docker buildx imagetools create -t "${REGISTRY}/starstats/${IMAGE}:${FLOATING}" "$src"
+        fi
+
+  # Roadmap pipeline event emitter — the PLATFORM-track mirror of the
+  # `roadmap-emit-event` job in `release.yml`. That job is gated on
+  # `refs/tags/tray-v`, so it covers the tray track only: a platform
+  # release (bare `vX.Y.Z`) built and pushed its images but never POSTed
+  # a roadmap CI event, leaving a linked roadmap item stuck at
+  # "proposed" even though the release had shipped (#210).
+  #
+  # Kept deliberately identical to the release.yml job (same slug
+  # resolution, same env contract, same no-op semantics) — #210 was
+  # itself a two-tracks-drifted bug, so divergence here is what plants
+  # the next one.
+  #
+  # Tag-triggered only. Branch pushes to main/next redeploy the floating
+  # tags (`:latest` / `:next`) with already-released content rather than
+  # shipping a new channel, and `validate-tag` — the source of CHANNEL —
+  # is skipped on them, so there is nothing meaningful to emit.
+  #
+  # `needs: images` (not `always()`): a roadmap event says "this shipped".
+  # If the image build failed there is no artifact to deploy, so the
+  # event must not fire. config-images is deliberately NOT a dependency —
+  # it builds ancillary infra configs (otel/loki/tempo/prometheus/db-init)
+  # whose failure doesn't mean the app didn't ship, and it runs
+  # `fail-fast: false` for that reason.
+  roadmap-emit-event:
+    name: Emit roadmap pipeline event
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [validate-tag, images]
+    runs-on: ubuntu-latest
+    steps:
+    # `fetch-depth: 0` so the tag object + its annotation body are
+    # available locally. promote.yml + release-promote.mjs annotate the
+    # tag with a `Roadmap-Item: <slug>` line when the operator passes
+    # `roadmap_item_slug` on workflow_dispatch.
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Resolve roadmap item slug
+      id: slug
+      shell: bash
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        # `%(contents)` returns the annotation body for annotated tags
+        # and an empty string for lightweight tags. Parse out the
+        # first `Roadmap-Item: <slug>` line if present.
+        MSG="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null || true)"
+        SLUG="$(printf '%s\n' "$MSG" | sed -n 's/^Roadmap-Item:[[:space:]]*//p' | head -n1 | tr -d '\r')"
+        if [[ -n "$SLUG" ]]; then
+          echo "Resolved slug from tag annotation: $SLUG"
+        else
+          echo "No Roadmap-Item annotation on tag $TAG; falling back to repo variable"
+        fi
+        echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - name: Emit signed event
+      env:
+        CHANNEL: ${{ needs.validate-tag.outputs.channel }}
+        COMMIT_SHA: ${{ github.sha }}
+        BUILD_ID: ${{ github.run_id }}
+        CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        TAG: ${{ github.ref_name }}
+        # Slug resolution order mirrors release.yml: tag annotation (set
+        # by promote.yml's roadmap_item_slug dispatch input) → repo
+        # variable. The `ROADMAP_ITEM_SLUG` repo variable is currently
+        # DELETED on purpose — a standing default annotated whichever
+        # item it named onto every release, and the slug is a per-release
+        # fact — so this fallback is inert today and kept only for parity
+        # with the tray job. Empty → the script no-ops cleanly.
+        ROADMAP_ITEM_SLUG: ${{ steps.slug.outputs.slug != '' && steps.slug.outputs.slug || vars.ROADMAP_ITEM_SLUG }}
+        # Secrets — both must exist for the script to actually emit.
+        # If either is missing, the script no-ops.
+        ROADMAP_CI_EVENT_HMAC_KEY: ${{ secrets.ROADMAP_CI_EVENT_HMAC_KEY }}
+        ROADMAP_EVENTS_URL: ${{ secrets.ROADMAP_EVENTS_URL }}
+      run: node scripts/roadmap-emit-event.mjs

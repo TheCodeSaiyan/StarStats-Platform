@@ -1,0 +1,11 @@
+# Static-link the MSVC C runtime on Windows so the Tauri binary
+# doesn't depend on `VCRUNTIME140.dll` / `MSVCP140.dll` being
+# installed system-wide. Machines without the Visual C++
+# Redistributable would otherwise hit a silent pre-main DLL load
+# failure on launch — static linking removes that whole class of
+# failure at the cost of a few MB of binary size.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.i686-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

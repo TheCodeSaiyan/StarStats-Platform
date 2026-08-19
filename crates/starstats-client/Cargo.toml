@@ -1,0 +1,120 @@
+[package]
+name = "starstats-client"
+# Decoupled from workspace.package.version after the tray/platform
+# release-track split (see the release design notes/2026-05-23-
+# release-tracks-split.md). `starstats-core` and `starstats-server`
+# still inherit the workspace version (= "platform" version). This
+# crate is bumped independently by `release-promote.mjs prerelease
+# tray <channel>` / `live tray`.
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+homepage.workspace = true
+documentation.workspace = true
+description = "StarStats Tauri tray client"
+
+[[bin]]
+name = "starstats-client"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+starstats-core.workspace = true
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-autostart = "2"
+
+# Async runtime + I/O
+tokio = { workspace = true }
+
+# WebSocket client for the opt-in org-platform connector
+# (org_connector.rs) — pushes read-only presence telemetry to a
+# self-hosted org platform's /ws/member channel. rustls + webpki roots
+# to match the workspace's rustls-only TLS posture (no native-tls /
+# system OpenSSL); shares the same rustls 0.23 as reqwest/sqlx so there's
+# no duplicate TLS stack. `futures-util` supplies the Sink/Stream combinators
+# (split/send/next) the WebSocketStream needs.
+tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+
+# Filesystem watch
+notify = "8.2"
+
+# Local storage (bundled SQLite, no system dep)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
+# Cross-platform user dirs
+directories = "6.0"
+
+# Config file format
+toml = "1.1"
+
+# Synchronisation primitives
+parking_lot = "0.12"
+
+# Errors / serde / time / tracing
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+# Daily-rolling file appender for the tray's persistent log. With
+# `windows_subsystem = "windows"` stdout is detached in release
+# builds, so without this the only way to diagnose a setup-time
+# panic is to rebuild a debug binary.
+tracing-appender = "0.2"
+
+# IDs (idempotency keys)
+uuid.workspace = true
+
+# Sync worker + hangar fetcher — HTTP client. `cookies` lets reqwest
+# preserve any Set-Cookie RSI's WAF emits during the 30x dance on the
+# pledges page; `gzip` matches RSI's default content-encoding so we
+# don't either fail to decode or lug the uncompressed body around.
+reqwest = { workspace = true, features = ["cookies", "gzip"] }
+
+# HTML parsing for the RSI pledge ledger scrape (hangar fetcher).
+# Same crate the server uses for the public-profile parser, so version
+# drift between client and server is impossible.
+scraper = { workspace = true }
+
+# OS keychain wrapper for the RSI session cookie.
+keyring = { workspace = true }
+
+# Process detection — EAC-aware scheduling guard for the hangar
+# fetcher (skip cycles while StarCitizen.exe is running).
+sysinfo = { workspace = true }
+
+# Decoding the JWT payload returned from device pairing (no signature
+# check — the server already validated it).
+base64 = "0.22"
+# Verifies the parser-definition manifest signature against a pinned
+# public key (F10). Dormant until PARSER_SIGNING_PUBKEY_B64 is pinned.
+ed25519-dalek = "2"
+
+# Error type derivation — used by `preferences_client` for its public
+# `PreferencesClientError` enum (must be in [dependencies], not
+# [dev-dependencies], because the type is part of the public API).
+thiserror.workspace = true
+
+[dev-dependencies]
+tempfile = "3.10"
+# HTTP mock server used by `preferences_client` integration tests.
+wiremock = "0.6"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+[lints]
+workspace = true

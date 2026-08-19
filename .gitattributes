@@ -1,0 +1,44 @@
+# Line-ending policy — supersedes per-machine `core.autocrlf`.
+#
+# Default: detect text vs binary, store text as LF in the repo,
+# and check out as LF in the working tree on every platform.
+# Without this file, Git on Windows (with `core.autocrlf=true`)
+# emits "LF will be replaced by CRLF the next time Git touches
+# it" warnings on every edit — annoying noise that hides real
+# diff signal.
+* text=auto eol=lf
+
+# Lockfiles — keep LF, never let autocrlf touch them.
+Cargo.lock      text eol=lf
+pnpm-lock.yaml  text eol=lf
+package-lock.json text eol=lf
+yarn.lock       text eol=lf
+
+# Shell scripts must be LF or they break on POSIX runners.
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# Windows batch/PowerShell — keep CRLF so cmd.exe is happy.
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+*.ps1           text eol=crlf
+
+# Explicit binaries — suppress any text conversion / diff.
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.webp          binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.otf           binary
+*.eot           binary
+*.zip           binary
+*.gz            binary
+*.tar           binary
+*.pdf           binary
+*.mp4           binary
+*.mov           binary
+*.webm          binary

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 80" width="360" height="80" role="img" aria-label="StarStats wordmark">
+  <title>StarStats — wordmark only</title>
+  <desc>Geist 600, -0.035em tracking. "Star" in foreground; "Stats" in Stanton amber.</desc>
+  <text
+    x="0" y="60"
+    font-family="Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-weight="600"
+    font-size="64"
+    letter-spacing="-2.24"
+  >
+    <tspan fill="#ECE7DD">Star</tspan><tspan fill="#E8A23C">Stats</tspan>
+  </text>
+</svg>

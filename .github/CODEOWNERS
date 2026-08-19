@@ -1,0 +1,15 @@
+# StarStats code owners.
+#
+# Solo-maintained for now: every file requires review from @ntatschner.
+# As the project grows, append more specific patterns ABOVE the catch-all
+# (later patterns win in CODEOWNERS, so the wildcard stays last). For
+# example, when a frontend co-maintainer joins:
+#
+#   apps/web/**             @ntatschner @web-co-maintainer
+#   apps/tray-ui/**         @ntatschner @ui-co-maintainer
+#   crates/starstats-core/  @ntatschner @parser-reviewer
+#   *                       @ntatschner
+#
+# See https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @ntatschner

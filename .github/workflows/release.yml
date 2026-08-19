@@ -1,0 +1,681 @@
+name: Release tray
+
+# Tauri client installers + GitHub Release publication + channel
+# manifest commit. Container + config images live in the sibling
+# `release-images.yml` workflow.
+#
+# Since the release-tracks split (the release design notes
+# 2026-05-23-release-tracks-split.md), tray and platform ship under
+# independent tag schemes: this workflow fires on `tray-vX.Y.Z`,
+# release-images.yml fires on bare `vX.Y.Z`. The two no longer share
+# a tag, so a tray release and a platform release are fully decoupled.
+# Glob `tray-v*` matches starting-with-`tray-v`; the bare-prefix glob
+# `v*` in release-images.yml doesn't match `tray-v*` (anchored at
+# start), so the two workflows naturally fan out without `tags-ignore`.
+
+on:
+  push:
+    tags: ['tray-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  # rust-cache best practice: incremental compilation bloats the cache
+  # for no benefit on a clean-checkout CI runner. Dev/test debuginfo
+  # is dropped too; the Tauri release bundles build under the
+  # `release` Cargo profile and are unaffected by either setting.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  # Guard A: validate that the tag's commit is reachable from the
+  # branch that owns its channel (see the release design notes/
+  # 2026-05-22-next-branch-promotion-design.md §"Guard A"). Pre-release
+  # tags must live on `next` and NOT on `main`; bare-semver `vX.Y.Z`
+  # tags must live on `main`. The job is transition-safe: if
+  # `origin/next` doesn't exist yet (pre-migration), it falls back to
+  # suffix-only channel routing with a warning, preserving today's
+  # behaviour. Downstream jobs consume the `channel` output instead of
+  # re-deriving it from the tag suffix.
+  validate-tag:
+    name: Validate release tag
+    if: startsWith(github.ref, 'refs/tags/tray-v')
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.validate.outputs.channel }}
+      bare_version: ${{ steps.validate.outputs.bare_version }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Validate tag against branch invariants
+      id: validate
+      shell: bash
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        # Strip the `tray-` track prefix to get the bare `vX.Y.Z[-...]`
+        # form that the channel-routing case statements already speak.
+        # If the tag doesn't have the prefix we expect, fail loudly —
+        # `if: startsWith(github.ref, 'refs/tags/tray-v')` already
+        # gated us in, so this is defence-in-depth.
+        case "$TAG" in
+          tray-v*) VERSION_PART="${TAG#tray-}" ;;
+          *)       echo "::error::tag $TAG missing expected tray- prefix" >&2; exit 1 ;;
+        esac
+        # `bare_version` is the version with no `tray-` and no leading
+        # `v`, useful for installer filenames + manifest payloads.
+        echo "bare_version=${VERSION_PART#v}" >> "$GITHUB_OUTPUT"
+        TAG_COMMIT="$(git rev-list -n 1 "$TAG")"
+        git fetch --no-tags origin main next || true
+
+        die() { echo "::error::$*" >&2; exit 1; }
+
+        # Pre-migration transition fallback dropped 2026-05-24 — the
+        # two-branch model has been live for many cycles; an absent
+        # origin/next is now a real misconfiguration, not a migration
+        # window. Falling back to suffix-only routing would silently
+        # let a misrouted tag ship. Mirrors the same drop already done
+        # in release-images.yml (PR #93).
+        git rev-parse --verify origin/next >/dev/null 2>&1 \
+          || die "origin/next not present — refusing tag validation (the pre-2026-05-22 transition fallback was dropped). Verify the repo + checkout fetched origin/next."
+
+        case "$VERSION_PART" in
+          v*.*.*-alpha|v*.*.*-alpha.*|v*.*.*-beta|v*.*.*-beta.*|v*.*.*-rc|v*.*.*-rc.*)
+            git merge-base --is-ancestor "$TAG_COMMIT" origin/next \
+              || die "pre-release tag $TAG not reachable from next"
+            if git merge-base --is-ancestor "$TAG_COMMIT" origin/main; then
+              die "pre-release tag $TAG is on main; use a bare semver tag for live"
+            fi
+            ;;
+          v*.*.*)
+            git merge-base --is-ancestor "$TAG_COMMIT" origin/main \
+              || die "live tag $TAG not on main; promote next → main first"
+            ;;
+          *)
+            die "tag $TAG (version part $VERSION_PART) matches no known channel pattern"
+            ;;
+        esac
+
+        case "$VERSION_PART" in
+          v*.*.*-alpha|v*.*.*-alpha.*) channel=alpha ;;
+          v*.*.*-beta|v*.*.*-beta.*)   channel=beta ;;
+          v*.*.*-rc|v*.*.*-rc.*)       channel=rc ;;
+          v*.*.*)                      channel=live ;;
+          *) die "tag $TAG (version part $VERSION_PART) matches no known channel pattern" ;;
+        esac
+        echo "channel=$channel" >> "$GITHUB_OUTPUT"
+        echo "resolved channel=$channel for tag=$TAG"
+
+  client-binaries:
+    name: Tauri client ${{ matrix.os }}
+    if: startsWith(github.ref, 'refs/tags/tray-v')
+    needs: [validate-tag]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+    - uses: actions/checkout@v4
+    - uses: dtolnay/rust-toolchain@1.88.0
+    # mold cuts link time dramatically; Linux-only (no Windows build).
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    # `continue-on-error: true` so a transient Actions cache-service
+    # flake in the Post-Run save step (which has bitten the Windows
+    # runner at least once — v1.3.2, run 26106262933) can't cascade
+    # into blocking the `Publish GitHub Release` job. Cache here is
+    # pure build-time optimisation; the worst case of "no cache" is
+    # a cold compile, never a wrong artefact. `save-if` restricts
+    # cache writes to next/main pushes; this job only ever runs on tag
+    # pushes or workflow_dispatch, so in practice it always restores
+    # from the shared next/main-written cache and never writes its own
+    # (release builds aren't the branch that should own cache writes).
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: tauri-release-${{ matrix.os }}
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+    - name: Install Linux Tauri deps
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+        cache: pnpm
+    - run: pnpm install --frozen-lockfile
+
+    # Import the self-signed Windows code-signing cert (PFX from a
+    # base64 GitHub secret) into the runner's user cert store, then
+    # inject the entire `bundle.windows` block into tauri.conf.json
+    # so Tauri's bundler invokes signtool with a real thumbprint.
+    # No-op on Linux. If WINDOWS_CERTIFICATE is unset, this step
+    # exits cleanly and `tauri build` produces an unsigned installer
+    # — `bundle.windows` is intentionally absent from the committed
+    # config, so an empty/missing secret cannot trigger a signtool
+    # call with `identity ""`. Signing only activates when the
+    # secret is populated.
+    - name: Import Windows code-signing cert
+      if: matrix.os == 'windows-latest'
+      shell: pwsh
+      env:
+        WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+        WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      run: |
+        if (-not $env:WINDOWS_CERTIFICATE) {
+          Write-Host "::warning::WINDOWS_CERTIFICATE secret not set; building unsigned"
+          exit 0
+        }
+        $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+        $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfxPath, $bytes)
+        if ($env:WINDOWS_CERTIFICATE_PASSWORD) {
+          $securePass = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePass
+        } else {
+          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My
+        }
+        Remove-Item $pfxPath -Force
+        $thumbprint = $cert.Thumbprint
+        Write-Host "Imported cert; thumbprint=$thumbprint"
+        # Inject a fresh bundle.windows block. The committed config
+        # has no windows section — adding it here ensures signtool
+        # is only ever invoked when we actually have a thumbprint.
+        $confPath = "crates/starstats-client/tauri.conf.json"
+        $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+        $windowsBlock = [ordered]@{
+          digestAlgorithm = "sha256"
+          timestampUrl = "http://timestamp.digicert.com"
+          certificateThumbprint = $thumbprint
+        }
+        $conf.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]$windowsBlock) -Force
+        ($conf | ConvertTo-Json -Depth 20) | Set-Content -Path $confPath -Encoding utf8 -NoNewline
+        # Fail loudly if the rewrite didn't take — better than a
+        # downstream `signtool ... with identity ""` mystery.
+        $verify = Get-Content $confPath -Raw | ConvertFrom-Json
+        if ($verify.bundle.windows.certificateThumbprint -ne $thumbprint) {
+          throw "thumbprint injection failed: expected '$thumbprint', got '$($verify.bundle.windows.certificateThumbprint)'"
+        }
+        Write-Host "Verified: bundle.windows.certificateThumbprint = $($verify.bundle.windows.certificateThumbprint)"
+
+    - name: Build Tauri bundles
+      shell: bash
+      # The updater plugin is wired into Cargo.toml + tauri.conf.json
+      # (Team B). When TAURI_SIGNING_PRIVATE_KEY is set we pass a
+      # one-shot --config override to enable updater artifact
+      # generation (the signed *.sig minisign files alongside each
+      # bundle). The committed config keeps createUpdaterArtifacts
+      # off so local `tauri build` runs without the secret stay
+      # quiet and unsigned.
+      env:
+        TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      run: |
+        cd crates/starstats-client
+        if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+          pnpm exec tauri build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+        else
+          echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set; skipping updater artifacts"
+          pnpm exec tauri build
+        fi
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: starstats-client-${{ matrix.os }}
+        path: |
+          target/release/bundle/**/StarStats*
+          target/release/bundle/**/*.sig
+        if-no-files-found: error
+
+  # Aggregate the per-OS Tauri bundles into a single GitHub Release.
+  # Only fires on tag pushes (not workflow_dispatch). Generates a
+  # Tauri 2 updater manifest pointing at the release download URLs
+  # and attaches every installer + sig + the manifest to the release.
+  release-publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/tray-v')
+    needs: [validate-tag, client-binaries]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download Tauri client artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: ./artifacts
+        pattern: starstats-client-*
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+
+    - name: Generate updater manifest
+      shell: bash
+      env:
+        BARE_VERSION: ${{ needs.validate-tag.outputs.bare_version }}
+      run: |
+        # Use the bare semver from validate-tag (handles the `tray-`
+        # prefix correctly). The pre-split `TAG="${GITHUB_REF#refs/tags/v}"`
+        # idiom no longer works since the tag now starts with `tray-v`,
+        # not `v`.
+        node scripts/generate-updater-manifest.mjs \
+          --artifacts-dir ./artifacts \
+          --version "$BARE_VERSION" \
+          --tag "${{ github.ref_name }}" \
+          --base-url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}" \
+          --output ./updater-manifest.json
+        echo "--- manifest ---"
+        cat ./updater-manifest.json
+
+    # Flatten the per-OS artifact subdirs into a single deduped folder.
+    # `softprops/action-gh-release@v2` races when the upload glob picks
+    # up the same filename from two artifact dirs (e.g. `StarStats.desktop`
+    # under both deb/ and appimage/ in the Linux artifact) — parallel
+    # uploads then 404 on the metadata-update API. `cp -f` collapses
+    # duplicates by name; the assets are byte-identical across subdirs.
+    - name: Flatten release files (dedupe duplicates)
+      shell: bash
+      run: |
+        mkdir -p ./release-files
+        find ./artifacts -type f \( -name 'StarStats*' -o -name '*.sig' \) \
+          -exec cp -f {} ./release-files/ \;
+        cp ./updater-manifest.json ./release-files/
+        echo "--- release-files contents ---"
+        ls -la ./release-files/
+
+    # Check whether the release for this tag has already been
+    # published. Immutable releases reject `softprops/action-gh-release`'s
+    # attempt to replace existing assets ("Cannot delete asset from
+    # an immutable release"), so re-runs (workflow_dispatch on an
+    # already-shipped tag) must skip the upload but should still
+    # proceed to the channel-manifest commit below — that step is
+    # idempotent and may be re-run to land a missing manifest.
+    - name: Detect already-published release
+      id: existing
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      shell: bash
+      run: |
+        if gh release view "${{ github.ref_name }}" --json isDraft,name >/tmp/rel.json 2>/dev/null; then
+          if grep -q '"isDraft": *false' /tmp/rel.json; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "release ${{ github.ref_name }} is already published (immutable) — skipping asset upload"
+            exit 0
+          fi
+        fi
+        echo "skip=false" >> "$GITHUB_OUTPUT"
+
+    # Per-component changelog: list only commits since the previous
+    # `tray-v*` tag that touched tray-relevant paths. Without this
+    # filter, GitHub's auto-generated notes (or a naive `git log
+    # PREV..HEAD`) would include platform-only commits that landed in
+    # between two tray releases — noise the user can't action.
+    #
+    # Filter set mirrors the `tray` group in promote.yml's
+    # paths-filter setup job: starstats-client crate, tray-ui frontend,
+    # shared starstats-core crate, root Cargo manifest/lockfile, and
+    # the release workflow itself.
+    #
+    # Falls back gracefully when this is the first-ever tray-v* tag
+    # (no previous to diff against → show all of history filtered to
+    # tray paths).
+    - name: Generate per-component changelog
+      if: steps.existing.outputs.skip != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        # `git describe` would pick any matching tag including the
+        # current one; use `git tag --sort` + grep to walk strictly
+        # backwards from this tag.
+        PREV_TAG="$(git tag --list 'tray-v*' --sort=-version:refname \
+          | awk -v cur="$TAG" '$0 != cur { print; exit }')"
+        echo "previous tray tag: ${PREV_TAG:-<none>}"
+
+        TRAY_PATHS=(
+          'crates/starstats-client'
+          'crates/starstats-core'
+          'apps/tray-ui'
+          'Cargo.toml'
+          'Cargo.lock'
+          '.github/workflows/release.yml'
+        )
+
+        {
+          echo "StarStats tray release **${TAG}**."
+          echo
+          echo "Installers and Tauri updater bundles are attached. The"
+          echo "\`updater-manifest.json\` file is consumed by the in-app"
+          echo "auto-updater (tauri-plugin-updater)."
+          echo
+          echo "## Changes"
+          echo
+          if [ -z "$PREV_TAG" ]; then
+            echo "_First tray release after the release-tracks split._"
+            echo "_(Earlier tray builds shipped under the unified \`vX.Y.Z\` tag scheme.)_"
+          else
+            RANGE="${PREV_TAG}..${TAG}"
+            # `--no-merges` keeps the list to operator-meaningful work;
+            # the back-merge commits from release.yml's manifest sync
+            # are noise here. `%h %s` keeps each entry compact.
+            COMMITS=$(git log --no-merges --pretty=format:'- %h %s' "$RANGE" -- "${TRAY_PATHS[@]}" || true)
+            if [ -z "$COMMITS" ]; then
+              echo "_No tray-scoped changes since \`${PREV_TAG}\` — this release is a no-op rebuild_"
+              echo "_(useful for refreshing the signed installer or replaying the updater manifest)._"
+            else
+              echo "$COMMITS"
+            fi
+          fi
+        } > ./release-body.md
+        echo "--- release-body.md ---"
+        cat ./release-body.md
+
+    # Two-step publish to satisfy GitHub's "immutable releases"
+    # policy: we can't upload assets after a release is published, so
+    # we create-as-draft + upload assets atomically here, then flip
+    # the draft to published in the next step. The error message
+    # softprops/action-gh-release surfaces explicitly recommends this
+    # path for prereleases with assets on immutable-release repos.
+    - name: Create GitHub Release (draft + asset upload)
+      id: release
+      if: steps.existing.outputs.skip != 'true'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
+        draft: true
+        # Only bare semver (e.g. `tray-v0.2.0`) gets marked Latest on
+        # the GH releases page; anything with an `-alpha` / `-beta` /
+        # `-rc` channel suffix is a pre-release.
+        #
+        # IMPORTANT: do NOT test for a hyphen in `ref_name` — the
+        # post-2026-05-23 track split prefixes every tray tag with
+        # `tray-`, so the previous `contains(ref_name, '-')` form
+        # evaluated true for live tags too. Result: every release
+        # from tray-v1.8.5 onward was wrongly flagged Pre-release in
+        # the GH UI. Match against the channel tokens explicitly so
+        # the test is stable against any future tag-prefix change.
+        prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+        # `make_latest` is independent of `prerelease`. Setting it
+        # explicitly here so live tags grab the Latest badge at
+        # creation time. Without this, when a release was previously
+        # mis-created as prerelease and then edited to non-prerelease
+        # (the 2026-05-27 backfix of tray-v1.8.7 / tray-v1.8.8), the
+        # Latest badge stayed on the older live tag — because flipping
+        # `prerelease` doesn't touch `make_latest`. Quoted strings
+        # because the action expects "true"/"false"/"legacy", not
+        # YAML booleans. Mirrors the prerelease expression inverted.
+        make_latest: ${{ (contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc')) && 'false' || 'true' }}
+        # `generate_release_notes: false` — our per-component changelog
+        # in release-body.md replaces GH's auto-generated notes, which
+        # would otherwise leak platform-only commits into the tray
+        # release body (the auto-detector picks the literal previous
+        # tag, which after the split can be a platform vX.Y.Z).
+        generate_release_notes: false
+        body_path: ./release-body.md
+        files: ./release-files/*
+
+    - name: Publish GitHub Release
+      if: steps.existing.outputs.skip != 'true'
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        gh release edit "${{ github.ref_name }}" --draft=false
+
+    # Commit the just-published manifest to
+    # `release-manifests/tray-<channel>.json` on `main`. The in-app
+    # updater polls these files via raw.githubusercontent.com, which
+    # gives every channel a stable URL that doesn't depend on
+    # `/releases/latest/` (which 404s for prereleases). The tag's
+    # pre-release suffix selects the channel:
+    #   - `tray-vX.Y.Z-alpha[.N]` → tray-alpha.json
+    #   - `tray-vX.Y.Z-beta[.N]`  → tray-beta.json
+    #   - `tray-vX.Y.Z-rc[.N]`    → tray-rc.json
+    #   - `tray-vX.Y.Z`           → tray-live.json
+    # The `tray-` filename prefix is per the release-tracks split spec
+    # — only tray ships an auto-update manifest (server + web have no
+    # equivalent; the homelab pulls floating container tags via Komodo).
+    # Anything else fails the step so unrecognised tags don't silently
+    # overwrite a channel.
+    - name: Update channel manifest on main
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        CHANNEL: ${{ needs.validate-tag.outputs.channel }}
+      shell: bash
+      run: |
+        TAG="${GITHUB_REF#refs/tags/}"
+        if [ -z "${CHANNEL:-}" ]; then
+          echo "::error::no channel resolved from validate-tag job (tag=$TAG)" >&2
+          exit 1
+        fi
+        MANIFEST_PATH="release-manifests/tray-${CHANNEL}.json"
+        echo "channel=$CHANNEL"
+        echo "manifest_path=$MANIFEST_PATH"
+
+        # Refresh the working tree to the tip of main — `actions/checkout`
+        # in the earlier step gave us the tag commit, which is detached.
+        git fetch origin main
+        git checkout main
+        git pull --ff-only origin main
+
+        mkdir -p release-manifests
+        cp ./updater-manifest.json "$MANIFEST_PATH"
+
+        # Stage the candidate FIRST, then diff against the index. The
+        # previous `git diff --quiet <path>` check silently returned 0
+        # for untracked files (git diff doesn't consider untracked) so
+        # first-ever channel manifests were never committed — the
+        # auto-updater then 404'd on raw.githubusercontent.com until
+        # the manifest was published by hand.
+        git config user.name  "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add "$MANIFEST_PATH"
+
+        # Skip the commit only if there is genuinely nothing staged —
+        # happens when re-running the workflow against an unchanged
+        # release.
+        if git diff --cached --quiet -- "$MANIFEST_PATH"; then
+          echo "no change to $MANIFEST_PATH — skipping commit"
+          exit 0
+        fi
+
+        git commit -m "release-manifests: tray-${CHANNEL} → ${TAG}"
+        git push origin main
+
+        # Keep `next` in sync: merge the just-pushed manifest commit
+        # into `next` so Invariant #1 ("main is a strict ancestor of
+        # next") survives across release cycles. Without this, every
+        # alpha tag drifts `main` ahead of `next` by one bot commit
+        # and the next live promotion's `git merge --ff-only` refuses
+        # with "origin/main is not an ancestor of <next-sha>".
+        #
+        # Uses a non-fast-forward merge because `next` typically has
+        # its own commits ahead of `main` (the feature work being
+        # cooked for the next release). The merge commit on `next`
+        # is content-free aside from the manifest update — release
+        # manifests are rarely touched by feature work, so conflicts
+        # are vanishingly unlikely. If a conflict DOES occur, we
+        # abort the merge and emit a warning rather than fail the
+        # whole release (the live release on main has already
+        # succeeded; the back-merge is hygiene, not blocking).
+        #
+        # Pushed via the default GITHUB_TOKEN — does not trigger
+        # downstream workflows (no recursion into promote.yml's
+        # auto-alpha). That's the desired behaviour: a manifest
+        # commit on `next` shouldn't kick off a fresh pre-release
+        # cycle, it's just bookkeeping.
+        # Deshallowing: actions/checkout@v4 defaults to depth=1, so
+        # the local repo has only the tag's commit. `git merge` then
+        # refuses with "refusing to merge unrelated histories" because
+        # it can't find the common ancestor between main and next
+        # locally. --unshallow extends the clone to full history;
+        # errors harmlessly on a non-shallow repo, which we swallow.
+        #
+        # The merge itself runs inside `set +e` so a refusal (or a
+        # real conflict) doesn't kill the whole step via the implicit
+        # `bash -e`. We capture the exit status, warn on failure, and
+        # exit 0 so the live release (already shipped) isn't marked
+        # failed for what's purely an Invariant #1 hygiene step.
+        echo "--- syncing manifest into next ---"
+        git fetch --unshallow origin 2>/dev/null || true
+        if ! git fetch --no-tags origin next; then
+          echo "::warning::could not fetch origin/next; skipping back-merge"
+          exit 0
+        fi
+        git checkout next
+        git pull --ff-only origin next
+        if git merge-base --is-ancestor origin/main HEAD; then
+          echo "Invariant #1 already holds (main is ancestor of next); no merge needed"
+          exit 0
+        fi
+        # `-X theirs`: when the back-merge hits a conflict on a
+        # release-manifest file (which is the only realistic conflict
+        # source here — main's `release-manifests/tray-*.json` keeps
+        # advancing past next's snapshot), take main's version. By
+        # definition main's version is freshest: this same workflow
+        # just wrote it three steps ago. Without -X theirs, every
+        # release after the first leaves Invariant #1 violated because
+        # the auto-merge silently soft-fails on the manifest conflict
+        # (set +e ... exit 0 below). Surfaced 2026-05-24 after the
+        # release-tracks split's tray- prefix rename left next holding
+        # stale renamed-from-{channel}.json content while main got
+        # fresh release manifests.
+        set +e
+        git merge -X theirs origin/main --no-ff \
+          -m "merge ${CHANNEL} manifest into next (from ${TAG})"
+        merge_status=$?
+        set -e
+        if [ "$merge_status" -ne 0 ]; then
+          echo "::warning::merge main → next failed (exit $merge_status); skipping back-merge to keep release green"
+          # Clean up any partial merge state — tolerant of "nothing to abort".
+          git merge --abort 2>/dev/null || true
+          exit 0
+        fi
+        git push origin next
+
+  # Roadmap pipeline event emitter (Phase 9). Fires once per
+  # release that ships a tracked roadmap item — driven by the
+  # `ROADMAP_ITEM_SLUG` workflow_dispatch input (or repository
+  # variable). The script no-ops gracefully when the pipeline
+  # isn't configured (secrets unset) or when no slug is supplied
+  # for this release, so this job is safe to leave wired even
+  # before Phase 0 prerequisites are met.
+  #
+  # Multi-item releases would loop on a comma-separated list of
+  # slugs (deferred — most releases ship one tracked item or
+  # none).
+  roadmap-emit-event:
+    name: Emit roadmap pipeline event
+    if: startsWith(github.ref, 'refs/tags/tray-v')
+    needs: [validate-tag, release-publish]
+    runs-on: ubuntu-latest
+    steps:
+    # `fetch-depth: 0` so the tag object + its annotation body are
+    # available locally. promote.yml + release-promote.mjs annotate
+    # the tag with a `Roadmap-Item: <slug>` line when the operator
+    # passes `roadmap_item_slug` on workflow_dispatch.
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Resolve roadmap item slug
+      id: slug
+      shell: bash
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        # `%(contents)` returns the annotation body for annotated tags
+        # and an empty string for lightweight tags. Parse out the
+        # first `Roadmap-Item: <slug>` line if present.
+        MSG="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null || true)"
+        SLUG="$(printf '%s\n' "$MSG" | sed -n 's/^Roadmap-Item:[[:space:]]*//p' | head -n1 | tr -d '\r')"
+        if [[ -n "$SLUG" ]]; then
+          echo "Resolved slug from tag annotation: $SLUG"
+        else
+          echo "No Roadmap-Item annotation on tag $TAG; falling back to repo variable"
+        fi
+        echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - name: Emit signed event
+      env:
+        CHANNEL: ${{ needs.validate-tag.outputs.channel }}
+        COMMIT_SHA: ${{ github.sha }}
+        BUILD_ID: ${{ github.run_id }}
+        CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        TAG: ${{ github.ref_name }}
+        # Slug resolution order: tag annotation (set by promote.yml's
+        # roadmap_item_slug dispatch input) → repo variable (manual
+        # fallback for releases minted outside the promote flow). Empty
+        # → script no-ops cleanly.
+        ROADMAP_ITEM_SLUG: ${{ steps.slug.outputs.slug != '' && steps.slug.outputs.slug || vars.ROADMAP_ITEM_SLUG }}
+        # Secrets — both must exist for the script to actually emit.
+        # If either is missing, the script no-ops.
+        ROADMAP_CI_EVENT_HMAC_KEY: ${{ secrets.ROADMAP_CI_EVENT_HMAC_KEY }}
+        ROADMAP_EVENTS_URL: ${{ secrets.ROADMAP_EVENTS_URL }}
+      run: node scripts/roadmap-emit-event.mjs
+
+  # Auto-publish the changelog draft produced by `roadmap-emit-event`
+  # above. Gated on `channel == live` because a Live shipment is the
+  # only release class where users actually see the tray "What's new"
+  # card — alpha/beta drafts stay in admin "pending review" purgatory
+  # until manually published via the admin UI (spec §8.4 + comment in
+  # crates/starstats-server/src/roadmap/admin_changelog_routes.rs:12).
+  #
+  # Authentication: same HMAC scheme as `roadmap-emit-event` above
+  # (`ROADMAP_CI_EVENT_HMAC_KEY`). The script no-ops when the secret
+  # isn't set, matching the emit job. The original JWT-based path
+  # required STARSTATS_ADMIN_TOKEN (a short-lived JWT that expired
+  # on a ~1-hour cadence), which forced a secret rotation per release;
+  # the HMAC path eliminates that toil because HMAC secrets don't
+  # expire and are already provisioned for the emit endpoint.
+  roadmap-publish-changelog:
+    name: Auto-publish roadmap changelog (Live only)
+    if: |
+      startsWith(github.ref, 'refs/tags/tray-v') &&
+      needs.validate-tag.outputs.channel == 'live'
+    needs: [validate-tag, roadmap-emit-event]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Resolve roadmap item slug
+      id: slug
+      shell: bash
+      run: |
+        set -euo pipefail
+        TAG="${GITHUB_REF#refs/tags/}"
+        MSG="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null || true)"
+        SLUG="$(printf '%s\n' "$MSG" | sed -n 's/^Roadmap-Item:[[:space:]]*//p' | head -n1 | tr -d '\r')"
+        echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - name: Publish drafts for slug
+      env:
+        # Slug resolution mirrors roadmap-emit-event: tag annotation
+        # first, repo variable fallback.
+        ROADMAP_ITEM_SLUG: ${{ steps.slug.outputs.slug != '' && steps.slug.outputs.slug || vars.ROADMAP_ITEM_SLUG }}
+        # Channel filter — only publish the live-channel draft. Without
+        # this, lingering unpublished alpha/beta drafts on the same
+        # slug would also publish, surprising users who expected the
+        # "Live only" framing.
+        CHANNEL: live
+        # HMAC auth (reused from the emit job's secret).
+        ROADMAP_CI_EVENT_HMAC_KEY: ${{ secrets.ROADMAP_CI_EVENT_HMAC_KEY }}
+        # API base URL — the publish endpoint path is appended by the
+        # script. Reuses the existing STARSTATS_API_URL secret rather
+        # than a separate per-endpoint URL secret.
+        STARSTATS_API_URL: ${{ secrets.STARSTATS_API_URL }}
+      run: node scripts/auto-publish-changelog.mjs

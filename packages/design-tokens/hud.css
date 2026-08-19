@@ -1,0 +1,624 @@
+/* HUD density layer — derived from starstats-tokens. Tight, content-sized. */
+:root { --hud-gap: 6px; --hud-pad: 7px 9px; }
+.hud-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--hud-gap); align-items: start; }
+@media (max-width: 720px) { .hud-grid { grid-template-columns: 1fr; } .hud-tile { grid-column: span 1 !important; } }
+
+/* M7 free drag/resize grid. 24 fine columns; per-tile placement via
+   grid-column/grid-row set inline from the stored {x,y,w,h}. Row height
+   is fixed (--hud-row) so vertical position/size is deterministic and a
+   tile's body scrolls inside itself when content exceeds the box. */
+:root { --hud-row: 22px; }
+.hud-freegrid {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  grid-auto-rows: var(--hud-row);
+  gap: var(--hud-gap);
+  align-items: stretch;
+}
+.hud-freegrid > .hud-tile { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
+.hud-freegrid > .hud-tile > .hud-tile__body { overflow: auto; min-height: 0; flex: 1; }
+/* Edit mode: faint anchor-grid so the snapping points are visible, and a
+   grab cursor hint. The overlay is behind the tiles. */
+.hud-freegrid[data-editing="true"] {
+  background-image:
+    repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px calc(100% / 24)),
+    repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px var(--hud-row));
+  background-size: 100% 100%;
+  border-radius: var(--r-sm);
+  opacity: 1;
+}
+.hud-freegrid[data-editing="true"][data-snap="off"] {
+  /* Finer visual grid when snapping is off — twice the anchor density. */
+  background-image:
+    repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px calc(100% / 48)),
+    repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px calc(var(--hud-row) / 2));
+}
+/* Bottom-right pointer resize affordance (edit mode only). */
+.hud-freegrid__resize {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 0 50%, var(--fg-dim) 50% 60%, transparent 60% 70%, var(--fg-dim) 70% 80%, transparent 80%);
+  opacity: 0.6;
+}
+.hud-freegrid__resize:hover { opacity: 1; }
+/* Mobile: geometry collapses to a readable single column, tiles auto-size
+   to content (no fixed-row clipping on small screens). */
+@media (max-width: 720px) {
+  .hud-freegrid {
+    grid-template-columns: 1fr;
+    grid-auto-rows: auto;
+    background-image: none !important;
+  }
+  .hud-freegrid > .hud-tile {
+    grid-column: 1 / -1 !important;
+    grid-row: auto !important;
+    overflow: visible;
+  }
+  .hud-freegrid > .hud-tile > .hud-tile__body { overflow: visible; }
+  .hud-freegrid__resize { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-freegrid > .hud-tile { transition: none !important; }
+}
+
+/* ── Responsive content (M7 v3) ───────────────────────────────────────
+   Each free-grid tile is its own query container, so widget CONTENT reacts
+   to the tile's actual width — not the viewport. GOAL: a tile never scrolls
+   for data — widgets render a bounded summary and link full depth via
+   "See more →". Until every widget is verified to FIT its tile, the body
+   keeps `overflow: auto` as a SAFETY NET: a widget whose content still
+   exceeds its height scrolls rather than being silently CLIPPED (clipping
+   hid travel's routes+map in v1.8.107 — a scrollbar is the lesser evil to
+   losing data). Long tokens wrap instead of overflowing horizontally. */
+.hud-freegrid > .hud-tile { container-type: inline-size; container-name: tile; }
+.hud-freegrid > .hud-tile > .hud-tile__body {
+  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+}
+.hud-freegrid > .hud-tile > .hud-tile__body::-webkit-scrollbar { width: 6px; height: 6px; }
+.hud-freegrid > .hud-tile > .hud-tile__body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+/* Secondary rows (captions, extra breakdowns) collapse when the tile is
+   squeezed toward its min width, leaving the core readout. Full depth
+   returns as the owner widens the tile toward its max. */
+@container tile (max-width: 210px) {
+  .hud-secondary { display: none; }
+}
+
+/* ── Focus lens projection (M7 v2) ────────────────────────────────────
+   When a lens is active the grid renders a single centered column (the
+   inline grid-column/grid-row still position each tile); this softens the
+   surrounding grid to signal the isolated view. Tiles auto-size to content
+   in focus so an enlarged single widget isn't clipped by fixed rows. */
+.hud-freegrid[data-focus="true"] { grid-auto-rows: minmax(var(--hud-row), auto); }
+.hud-freegrid[data-focus="true"] > .hud-tile { overflow: visible; }
+.hud-freegrid[data-focus="true"] > .hud-tile > .hud-tile__body { overflow: visible; }
+
+/* ── Add-widget palette (edit mode) ──────────────────────────────────── */
+.hud-palette { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.hud-palette__hd { margin: 0 0 8px; font-family: var(--font-display); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim); }
+.hud-palette__empty { margin: 0; font-size: 11px; color: var(--fg-dim); }
+.hud-palette__grid { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.hud-palette__item {
+  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
+  width: 168px; padding: 8px 9px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-sm);
+}
+.hud-palette__item:hover { border-color: var(--accent); }
+.hud-palette__title { font-size: 12px; font-weight: 700; color: var(--fg); }
+.hud-palette__desc { font-size: 10px; line-height: 1.35; color: var(--fg-dim); }
+.hud-palette__item .hud-chip { margin-top: 2px; }
+@media (max-width: 640px) {
+  .hud-palette__grid { flex-direction: column; }
+  .hud-palette__item { width: 100%; }
+}
+
+.hud-tile { position: relative; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--hud-pad); }
+/* Live/streaming telemetry pane (bridge): squared + four accent corner
+   brackets, drawn as gradient L's over the panel colour. Applied via
+   <Tile live> — the widget canvas only, never static content. This is the
+   sole surface that "earns" brackets. */
+.hud-tile--live {
+  border-radius: 0;
+  background-image:
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent)),
+    linear-gradient(var(--accent), var(--accent)), linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-size:
+    var(--bracket-size) 1px, 1px var(--bracket-size),
+    var(--bracket-size) 1px, 1px var(--bracket-size),
+    var(--bracket-size) 1px, 1px var(--bracket-size),
+    var(--bracket-size) 1px, 1px var(--bracket-size);
+  background-position:
+    top left, top left, top right, top right,
+    bottom left, bottom left, bottom right, bottom right;
+}
+.hud-tile__hd { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+.hud-tile__eyebrow { font-family: var(--font-display); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim); }
+
+/* Telemetry rail — persistent live-readout frames under the nav (bridge). */
+.ss-rail-telemetry { margin-top: auto; padding-top: var(--s4); display: flex; flex-direction: column; gap: var(--s2); }
+/* NB: background-COLOR, not the `background` shorthand — the shorthand would
+   reset the background-image that .hud-tile--live paints the corner brackets
+   with (these rules come after it in source order). */
+.ss-rail-frame { background-color: var(--bg-elev); border: 1px solid var(--border); padding: var(--s2) var(--s3); }
+.ss-rail-frame__label { display: block; font-size: 9px; letter-spacing: .1em; color: var(--fg-dim); }
+.ss-rail-frame__value { margin-top: 2px; font-size: var(--fs-sm); color: var(--fg); font-variant-numeric: tabular-nums; }
+
+/* Mobile telemetry ticker — on mobile the vertical rail telemetry lives in
+   the off-canvas drawer, so surface the same frames as a horizontal
+   scrollable strip pinned under the command bar. Hidden on desktop. */
+.ss-telemetry-ticker { display: none; }
+.ss-ticker-frame { display: flex; flex-direction: column; gap: 1px; padding: var(--s1) var(--s2); background-color: var(--bg-elev); border: 1px solid var(--border); white-space: nowrap; }
+.ss-ticker-frame__label { font-size: 9px; letter-spacing: .1em; color: var(--fg-dim); }
+.ss-ticker-frame__value { font-size: var(--fs-sm); color: var(--fg); font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) {
+  .ss-rail-telemetry { display: none; }
+  .ss-telemetry-ticker {
+    display: flex;
+    gap: var(--s2);
+    overflow-x: auto;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    margin: 0 0 var(--s3);
+    padding: var(--s2) 0;
+    background: var(--bg);
+    scrollbar-width: none;
+  }
+  .ss-telemetry-ticker::-webkit-scrollbar { display: none; }
+  .ss-ticker-frame { flex: 0 0 auto; }
+}
+.hud-tile__title { font-size: 12px; font-weight: 700; color: var(--fg); }
+.hud-tile__sub { margin-left: auto; font-size: 9px; color: var(--fg-dim); font-family: var(--font-mono, ui-monospace, monospace); }
+.hud-tile__body { font-size: 12px; color: var(--fg-muted); }
+.hud-tile__empty { margin: 2px 0 0; font-size: 10px; font-style: italic; color: var(--fg-dim); }
+.hud-tile__chrome { position: absolute; top: 5px; right: 6px; display: flex; gap: 5px; }
+.hud-strip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 2px 8px; border-bottom: 1px solid var(--border); margin-bottom: 8px; }
+.hud-controls { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+
+/* HUD chip control — squared mono toggle button for control strips (range /
+   lens filters, edit toolbar). Active via aria-pressed / aria-current so the
+   same class drives buttons and links. Consolidates the pattern previously
+   hand-rolled inline in RangeBar / lens nav / EditToggle / edit toolbar. */
+.hud-chip {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px; line-height: 1; letter-spacing: .02em;
+  padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
+  background: transparent; color: var(--fg-muted);
+  text-decoration: none; cursor: pointer;
+}
+.hud-chip:hover { border-color: var(--accent); color: var(--fg); }
+.hud-chip[aria-pressed="true"], .hud-chip[aria-current="page"] {
+  background: var(--accent); border-color: var(--accent); color: var(--bg);
+}
+.hud-chip--sm { padding: 2px 6px; font-size: 11px; }
+.hud-chip--ghost { border-color: transparent; background: transparent; }
+.hud-chip--ghost:hover { border-color: transparent; color: var(--fg); }
+.hud-chip--grip { cursor: grab; font-size: 14px; }
+.hud-chip[aria-checked="false"] { color: var(--fg-dim); }
+/* Inline accent text button (e.g. the empty-profile "Edit layout" prompt). */
+.hud-textbtn { background: transparent; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
+.hud-readout { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; color: var(--fg); }
+.hud-readout .k { font-size: 9px; text-transform: uppercase; color: var(--fg-dim); margin-right: 3px; }
+
+/* ── Shared HUD readout layouts (composed by the /me stat tiles) ──── */
+.hud-readout-wrap { display: flex; flex-wrap: wrap; gap: 12px; }
+.hud-readout-stack { display: flex; flex-direction: column; gap: 10px; }
+.hud-readout-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.hud-readout-row { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+
+/* Shared distribution meter — CSS-var-driven fill (--val); reusable by
+   any widget that renders a share-of-total bar (not one-off per tile). */
+.hud-meter-row { list-style: none; display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 8px; }
+.hud-meter-row .k { font-size: 9px; text-transform: uppercase; color: var(--fg-dim); }
+.hud-meter { display: block; height: 6px; border-radius: 3px; background: var(--bg-elev); overflow: hidden; }
+.hud-meter__fill { display: block; height: 100%; border-radius: 3px; background: var(--accent); width: var(--val, 0%); }
+
+/* Secondary sub-line under a tile's primary readouts (dim caption / caveat).
+   Shared so widget bodies stop hand-rolling `fontSize: 10/11` inline notes. */
+.hud-note { margin: 4px 0 0; font-size: 10px; color: var(--fg-dim); }
+.hud-note a { color: var(--accent); text-decoration: none; }
+
+/* Readout tint + truncation helpers — shared so list-style widgets
+   (recent activity, hangar) don't re-declare dim colour / ellipsis inline. */
+.hud-readout--dim { color: var(--fg-dim); }
+.hud-trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+/* ── Loadout paperdoll (/me/loadout) ─────────────────────────────── */
+.loadout-page { padding: var(--s4); max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--s5); }
+.loadout-page__title { margin: 0; font-size: var(--fs-xl); font-weight: 700; letter-spacing: var(--tracking-tight); color: var(--fg); }
+.loadout-page__empty { font-size: var(--fs-sm); color: var(--fg-dim); font-style: italic; }
+.loadout-page__armor { display: flex; justify-content: center; }
+.loadout-page__gear { display: flex; flex-direction: column; gap: var(--s4); }
+
+/* Body outline — centered column of slot rows */
+.body-outline { display: flex; flex-direction: column; align-items: center; gap: var(--s2); width: 100%; max-width: 540px; }
+.body-outline__row { display: flex; justify-content: center; gap: var(--s2); width: 100%; }
+.body-outline__slot { flex: 0 1 160px; min-width: 0; }
+.body-outline__slot--empty { display: flex; align-items: center; justify-content: center; min-height: 92px; border: 1px dashed var(--border-strong); border-radius: var(--r-sm); }
+.body-outline__slot-label { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-dim); }
+
+/* Item tile — thumbnail + name */
+.loadout-item-tile { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2); min-width: 0; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-sm); }
+.loadout-item-tile__img { width: 100%; height: 72px; object-fit: contain; object-position: center; border-radius: var(--r-xs); background: var(--surface); }
+.loadout-item-tile__name { font-size: var(--fs-xs); line-height: 1.3; color: var(--fg-muted); word-break: break-word; }
+.loadout-item-tile__name a { color: var(--fg-muted); text-decoration: none; }
+.loadout-item-tile__name a:hover { color: var(--accent); }
+
+/* Carried-gear groups */
+.gear-group { display: flex; flex-direction: column; gap: var(--s2); }
+.gear-group__title { margin: 0; font-size: var(--fs-sm); font-weight: 700; text-transform: uppercase; letter-spacing: var(--tracking-wide); color: var(--fg-dim); }
+.gear-group__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: var(--s2); }
+
+@media (max-width: 720px) {
+  .gear-group__grid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+  .body-outline__slot, .body-outline__slot--empty { flex-basis: 108px; }
+}
+
+/* ── No-signal empty state (shared) ──────────────────────────────────
+   A HUD scope graphic for "no telemetry" rather than a blank box.
+   Used by the widget-canvas fallback and any widget's own empty body. */
+.hud-nosignal { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s2); padding: var(--s4) var(--s3); text-align: center; color: var(--fg-dim); }
+.hud-nosignal--compact { padding: var(--s3) var(--s2); gap: var(--s1); }
+.hud-nosignal__scope { width: 96px; height: 60px; opacity: 0.9; }
+.hud-nosignal--compact .hud-nosignal__scope { width: 64px; height: 40px; }
+.hud-nosignal__frame { fill: none; stroke: var(--border-strong); stroke-width: 1; opacity: 0.6; }
+.hud-nosignal__wave { fill: none; stroke: var(--fg-dim); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; opacity: 0.55; }
+.hud-nosignal__flat { fill: none; stroke: var(--accent); stroke-width: 1.5; stroke-linecap: round; stroke-dasharray: 3 3; }
+.hud-nosignal__sweep { stroke: var(--accent); stroke-width: 1; opacity: 0.3; animation: hud-nosignal-sweep 3.2s ease-in-out infinite; }
+.hud-nosignal__title { display: block; font-size: var(--fs-sm); font-weight: 600; color: var(--fg-muted); letter-spacing: var(--tracking-wide); }
+.hud-nosignal--compact .hud-nosignal__title { font-size: var(--fs-xs); }
+.hud-nosignal__hint { display: block; font-size: var(--fs-xs); color: var(--fg-dim); margin-top: 2px; max-width: 32ch; }
+@keyframes hud-nosignal-sweep {
+  0%, 100% { transform: translateX(-13px); opacity: 0.12; }
+  50% { transform: translateX(13px); opacity: 0.4; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-nosignal__sweep { animation: none; }
+}
+
+/* ---------------------------------------------------------------------------
+   Settings two-pane layout (M2) — categorised scroll-spy sidebar + a
+   scrollable content pane of grouped `.ss-card` sections. Composes the
+   existing tokens/rail grammar; nothing here hardcodes a colour. The
+   signed-in shell scrolls inside `.ss-main`, so the sidebar sticks
+   relative to that scrollport.
+   --------------------------------------------------------------------------- */
+.ss-settings-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--s5);
+  align-items: start;
+}
+/* Scroll-margin so anchor jumps (and the server-action `#id` redirects)
+   don't tuck the target under the sticky sidebar / topbar. Applied to
+   every direct child so it also covers component-owned sections
+   (SecuritySection's `#security`, the HangarCard wrapper). */
+.ss-settings-content > * { scroll-margin-top: var(--s5); }
+.ss-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-width: 0;
+}
+.ss-settings-nav {
+  position: sticky;
+  top: var(--s4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: calc(100vh - 56px - var(--s6));
+  overflow-y: auto;
+}
+.ss-settings-nav-group { display: flex; flex-direction: column; gap: 2px; }
+.ss-settings-nav-cat {
+  margin: 0;
+  padding: var(--s3) var(--s3) var(--s1);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wider);
+  color: var(--fg-dim);
+}
+.ss-settings-nav-group:first-child .ss-settings-nav-cat { padding-top: 0; }
+.ss-settings-nav-link {
+  display: block;
+  padding: 7px 12px;
+  font-size: var(--fs-sm);
+  border-radius: var(--r-sm);
+  color: var(--fg-muted);
+  text-decoration: none;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease-out),
+              color var(--t-fast) var(--ease-out);
+}
+.ss-settings-nav-link:hover { color: var(--fg); background: var(--bg-elev); }
+.ss-settings-nav-link[aria-current="true"] {
+  color: var(--fg);
+  background: var(--accent-soft);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+.ss-settings-nav-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+/* Mobile: sidebar collapses to a sticky horizontal pill scroller above
+   the content. Category headings drop out and their items flatten into
+   the row via `display: contents`. */
+@media (max-width: 767px) {
+  .ss-settings-layout { grid-template-columns: 1fr; gap: var(--s4); }
+  .ss-settings-nav {
+    position: sticky;
+    top: 0;
+    flex-direction: row;
+    gap: var(--s1);
+    max-height: none;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding: var(--s2) 0;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    z-index: 5;
+    scrollbar-width: none;
+  }
+  .ss-settings-nav::-webkit-scrollbar { display: none; }
+  .ss-settings-nav-group { display: contents; }
+  .ss-settings-nav-cat { display: none; }
+  .ss-settings-nav-link { flex: 0 0 auto; }
+}
+
+/* ── InfoTip — inline "how is this calculated?" [i] + popover ─────────
+   Reveals a plain-language explanation for an INFERRED metric on hover,
+   keyboard focus, or tap. The popover resets the small-caps/tracking of
+   its host label so the explanation reads as normal prose. */
+.infotip { position: relative; display: inline-flex; align-items: center; margin-left: 4px; vertical-align: middle; }
+.infotip__btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; padding: 0; line-height: 1;
+  border: 1px solid var(--border-strong); border-radius: 50%;
+  background: transparent; color: var(--fg-dim);
+  font: italic 700 9px/1 Georgia, 'Times New Roman', serif;
+  cursor: help;
+}
+.infotip__btn:hover, .infotip__btn:focus-visible { color: var(--accent); border-color: var(--accent); }
+.infotip__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Portaled to <body> and positioned in JS — see InfoTip.tsx. `fixed` is
+   load-bearing, not stylistic: as an absolutely-positioned child it was
+   clipped by the tile body (overflow-y:auto), the tile (overflow:hidden)
+   and .ss-main, so it opened invisibly inside every widget. The z-index
+   clears the tile grid and the sticky chrome. */
+.infotip__pop {
+  position: fixed; top: 0; left: 0; z-index: 200;
+  width: max-content; max-width: 240px;
+  padding: var(--s2) var(--s3);
+  font-size: var(--fs-xs); font-weight: 400; line-height: 1.45;
+  letter-spacing: 0; text-transform: none; text-align: left;
+  color: var(--fg); background: var(--bg-elev);
+  border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  visibility: hidden; opacity: 0; pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity var(--t-fast) var(--ease-out), transform var(--t-fast) var(--ease-out);
+}
+.infotip__pop--open { visibility: visible; opacity: 1; pointer-events: auto; transform: translateY(0); }
+@media (prefers-reduced-motion: reduce) { .infotip__pop { transition: none; } }
+
+/* ── Travel leaderboard — ranked quantum destinations (/me/travel) ────
+   A dense ranked list: 2-digit mono rank, destination label with a thin
+   underline meter beneath (width = share of the busiest destination),
+   and the trip count right-aligned in mono. Uncapped on the detail page. */
+.tl-lead-list { list-style: none; margin: 0; padding: 0; }
+.tl-lead {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tl-lead:last-child { border-bottom: 0; }
+.tl-lead__rank {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+}
+.tl-lead__rank--top { color: var(--accent); }
+.tl-lead__lab {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-lead__meter {
+  display: block;
+  height: 2px;
+  margin-top: 4px;
+  background: var(--accent);
+  opacity: 0.55;
+  border-radius: var(--r-sm);
+}
+.tl-lead__num {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── Corridors widget — top A ⇄ B travel corridors (/me dashboard) ────
+   Each row: an undirected pair (accent ⇄ glyph) + trip count in mono,
+   with a full-width weight bar underneath (share of the busiest
+   corridor). Capped list — the tile never scrolls. */
+/* Player Facts (#368). Each fact is a headline claim with its arithmetic
+   underneath; the headline composes .hud-readout so it inherits the shared
+   instrument type scale rather than inventing a per-widget one. Wraps to as
+   many lines as the claim needs — a truncated fact is a broken fact. */
+.facts-list { list-style: none; margin: 0; padding: 0; }
+.fact {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.fact:last-child { border-bottom: 0; }
+.fact-headline {
+  display: block;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  color: var(--fg);
+  /* Headlines are sentences, not readouts of a single number, so the
+     mono/tabular treatment .hud-readout applies to figures is dropped. */
+  font-family: inherit;
+  font-variant-numeric: normal;
+}
+.fact .hud-note { margin: 2px 0 0; }
+
+.corr-list { list-style: none; margin: 0; padding: 0; }
+.corr {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 10px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+.corr:last-child { border-bottom: 0; }
+.corr .pair {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+.corr .pair .arr {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  padding: 0 2px;
+}
+.corr .num {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--fg);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.corr .cbar {
+  grid-column: 1 / -1;
+  height: 2px;
+  background: rgba(255, 230, 200, 0.06);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.corr .cbar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.6;
+}
+
+/* Travel /me/travel — System breakdown (route map, option E): group stops by
+   system -> location with visit-weighted meters. */
+.sys {
+  margin-bottom: 10px;
+}
+.sys-hd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-strong);
+  padding-bottom: 3px;
+  margin-bottom: 5px;
+}
+.sys-hd .nm {
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.sys-hd .ct {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-dim);
+}
+.loc {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0 2px 10px;
+}
+.loc .l {
+  font-size: 12px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.loc .l small {
+  color: var(--fg-dim);
+}
+.loc .n {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+.loc .mtr {
+  grid-column: 1 / -1;
+  height: 2px;
+  background: rgba(255, 230, 200, 0.06);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-left: 10px;
+}
+.loc .mtr i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+/* Travel /me/travel — Traffic matrix (route map, option F): stop x stop heat
+   grid, cell shade = trips between the pair. */
+.mtx {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--fg-muted);
+  overflow-x: auto;
+}
+.mtx table {
+  border-collapse: collapse;
+}
+.mtx th {
+  font-weight: 400;
+  color: var(--fg-dim);
+  padding: 2px 3px;
+  text-align: right;
+  white-space: nowrap;
+}
+.mtx th.col {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  text-align: left;
+  height: 54px;
+  vertical-align: bottom;
+  padding: 0 1px;
+}
+.mtx td {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--bg-elev);
+}

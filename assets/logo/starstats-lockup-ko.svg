@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 120" width="420" height="120" role="img" aria-label="StarStats knock-out lockup on accent">
+  <title>StarStats — knock-out lockup on Stanton amber</title>
+  <desc>Inverse treatment for use on amber accent fields. Mark + wordmark render in accent-fg (#1A1208) with the second wordmark half held at 0.55 opacity for the brand book's signature pairing tension.</desc>
+  <!-- Full amber background -->
+  <rect x="0" y="0" width="420" height="120" fill="#E8A23C"/>
+  <!-- Compass star in accent-fg with subtly darker inner star -->
+  <g transform="translate(28, 28) scale(0.64)">
+    <polygon points="50,0 56,44 100,50 56,56 50,100 44,56 0,50 44,44" fill="#1A1208"/>
+    <polygon points="50,12 54,46 88,50 54,54 50,88 46,54 12,50 46,46" fill="#3D2C18"/>
+  </g>
+  <!-- Wordmark: full opacity "Star" + half-opacity "Stats" (brand book §03 KO card) -->
+  <text
+    x="112" y="80"
+    font-family="Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-weight="600"
+    font-size="64"
+    letter-spacing="-2.24"
+  >
+    <tspan fill="#1A1208">Star</tspan><tspan fill="#1A1208" opacity="0.55">Stats</tspan>
+  </text>
+</svg>

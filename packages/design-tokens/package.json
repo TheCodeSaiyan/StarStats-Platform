@@ -1,0 +1,11 @@
+{
+  "name": "design-tokens",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shared StarStats design system: canonical CSS custom-property tokens + theme-transition, consumed by both apps/web and apps/tray-ui so the design language can't drift.",
+  "files": [
+    "starstats-tokens.css",
+    "theme-transition.css",
+    "hud.css"
+  ]
+}

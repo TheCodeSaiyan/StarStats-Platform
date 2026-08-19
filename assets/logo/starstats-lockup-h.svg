@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 80" width="420" height="80" role="img" aria-label="StarStats horizontal lockup">
+  <title>StarStats — horizontal lockup (mark + wordmark)</title>
+  <desc>Compass star at cap-height beside wordmark. Clear space = 0.5× cap-height (brand book §04).</desc>
+  <!-- Compass star at 64×64, vertically centered -->
+  <g transform="translate(8, 8) scale(0.64)">
+    <polygon points="50,0 56,44 100,50 56,56 50,100 44,56 0,50 44,44" fill="#E8A23C"/>
+    <polygon points="50,12 54,46 88,50 54,54 50,88 46,54 12,50 46,46" fill="#7A5527"/>
+  </g>
+  <!-- Wordmark to the right of the star -->
+  <text
+    x="92" y="60"
+    font-family="Geist, system-ui, -apple-system, 'Segoe UI', sans-serif"
+    font-weight="600"
+    font-size="64"
+    letter-spacing="-2.24"
+  >
+    <tspan fill="#ECE7DD">Star</tspan><tspan fill="#E8A23C">Stats</tspan>
+  </text>
+</svg>

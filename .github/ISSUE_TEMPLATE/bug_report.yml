@@ -1,0 +1,105 @@
+name: Bug report
+description: Something in StarStats (tray client, web app, or API) is misbehaving.
+title: "bug: <one-line summary>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug.
+
+        StarStats is **EAC-safe by design** — read-only `Game.log` tail and
+        authenticated `robertsspaceindustries.com` page scraping only. If your
+        report involves anything that touches the running Star Citizen process,
+        injects code, hooks input, or modifies game files, please open it as a
+        security report via [SECURITY.md](../../blob/main/SECURITY.md) instead.
+
+        Please search [existing issues](../../issues?q=is%3Aissue) first to
+        avoid duplicates.
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the bug.
+      placeholder: "Re-parse button hangs the tray when Game.log is rotating"
+    validations:
+      required: true
+  - type: textarea
+    id: what_happened
+    attributes:
+      label: What happened
+      description: What did you observe? Include any error toast text from the tray or web app verbatim.
+    validations:
+      required: true
+  - type: textarea
+    id: what_expected
+    attributes:
+      label: What you expected
+      description: What did you expect to happen instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproducer steps
+      description: Numbered steps so a maintainer can reproduce locally. Mention the release channel (Alpha / RC / Live) you're tracking if relevant.
+      placeholder: |
+        1. Open the tray and click `Settings`...
+        2. Switch the release channel to `RC`...
+        3. Click `Re-parse`...
+        4. Tray hangs for ~30s, then...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: StarStats version
+      description: |
+        Find this in `Settings → Updates` (the kicker beside the channel selector — e.g. `v0.3.2-alpha`).
+        Web-only bug? Note the commit short SHA from the page footer if available, otherwise just say "web".
+      placeholder: "v0.3.2-alpha"
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Which surface
+      description: Where does the bug show up?
+      options:
+        - Tray client (Tauri)
+        - Web app (starstats.app)
+        - API server
+        - Updater / installer
+        - Other / not sure
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS + architecture
+      description: e.g. `Windows 11 24H2 x64`, `Ubuntu 24.04 x64`, `Fedora 41 x64`.
+      placeholder: "Windows 11 24H2 x64"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log excerpts
+      description: |
+        Paste the smallest excerpt that shows the failure. Logs live at:
+
+        - **Windows tray**: `%APPDATA%\StarStats\tray\data\client.log.YYYY-MM-DD`
+        - **Linux tray**: `$XDG_DATA_HOME/StarStats/tray/client.log.YYYY-MM-DD`
+        - **Crash trace** (always written): `panic.log` in the same directory.
+
+        `client.log` is only written when `Settings → Updates → Debug logging`
+        is enabled — flip it on, reproduce, then attach.
+      render: text
+  - type: checkboxes
+    id: redaction
+    attributes:
+      label: Redaction confirmation
+      description: Logs and screenshots may contain personal data. Tick the box once you've checked.
+      options:
+        - label: I have redacted my RSI handle, session cookie, JWT, and any other secrets from anything I've pasted or attached.
+          required: true

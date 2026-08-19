@@ -1,0 +1,15 @@
+# Force users into one of the structured templates above. Free-form
+# issues skip too much context (no version, no surface, no repro) and
+# usually round-trip once before they're actionable.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Help & FAQ
+    url: https://starstats.app/help
+    about: Setup, account, and general usage questions — check here before opening an issue.
+  - name: GitHub Discussions
+    url: https://github.com/TheCodeSaiyan/StarStats-Platform/discussions
+    about: Open-ended questions, ideas, and show-and-tell. Use this instead of an issue if you're not sure something is a bug yet.
+  - name: Security report
+    url: https://github.com/TheCodeSaiyan/StarStats-Platform/blob/main/SECURITY.md
+    about: Suspected EAC-safety regression, credential handling concern, or anything you'd rather not file in public. Do not open a public issue.

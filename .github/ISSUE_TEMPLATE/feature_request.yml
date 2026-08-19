@@ -1,0 +1,57 @@
+name: Feature request
+description: Suggest a new capability for the tray, web app, or API.
+title: "feat: <one-line summary>"
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Before filing, a quick check:
+
+        - **EAC-safety is non-negotiable.** StarStats only reads `Game.log` and
+          scrapes authenticated RSI web pages. Features that hook the SC
+          process, read game memory, drive input, or modify game files will
+          be declined regardless of how useful they would be.
+        - **Parser-rule requests** (you want a new `Game.log` event recognised)
+          have their own template — please use that one instead.
+
+        Search [existing issues](../../issues?q=is%3Aissue) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user-facing pain or gap does this address? Describe the situation, not the solution.
+      placeholder: |
+        I track aUEC earnings per session, but there's no way to see
+        cumulative earnings broken down by commodity over a time range...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? UI sketches, mock JSON, route shapes, or prose are all welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried, or other shapes the feature could take. "None" is a fine answer.
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Who's affected
+      description: Where does this need to live?
+      options:
+        - Single-user feature (tray client only — local SQLite)
+        - Server feature (API + web app — needs an account)
+        - Both (cross-cutting — tray emits, server aggregates, web displays)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, links to similar tools, related issues.

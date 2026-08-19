@@ -1,0 +1,31 @@
+-- 0041_events_resolved_location.sql -- ResolvedLocation JSONB on events.
+--
+-- The tray's sync batcher classifies each event's location against its
+-- local catalogue snapshot (the shared `starstats_core` fuzzy matcher)
+-- and stamps the result onto the wire `EventEnvelope.resolved_location`
+-- BEFORE shipping. ~70% of wiki locations carry no engine `tag`, so a
+-- server-side exact join can't resolve them; computing the resolution
+-- once on the tray and persisting it verbatim here lets the web event
+-- views render the same fuzzy-resolved location (and `/kb` link) the
+-- tray already shows, with no server-side re-classification.
+--
+-- Semantics:
+--  * NULL = a row written before this migration, OR an event that
+--    carries no location field, OR an envelope from a pre-resolution
+--    client. Read sites surface the column when present and fall back
+--    to the existing render path (raw text / exact `catalog.get`)
+--    when NULL. No fan-out, no SQL-side default.
+--  * `ingest::handle` writes whatever the envelope carried — the
+--    server never re-derives it (the tray is the single source of
+--    truth, so the tray's recent-events view and the web stay in
+--    lockstep). v1/pre-resolution clients simply leave it NULL.
+--  * Additive + byte-immutable per the migration contract: NULL
+--    default, no NOT NULL, no DROP. Backward-compat parsing in Rust
+--    rides `#[serde(default, skip_serializing_if)]` on the wire type.
+--
+-- No index: the column is never a query predicate — it's read inline
+-- with the row on the per-handle / per-entity event reads that already
+-- select the row by `claimed_handle` + cursor.
+
+ALTER TABLE events
+    ADD COLUMN IF NOT EXISTS resolved_location JSONB;

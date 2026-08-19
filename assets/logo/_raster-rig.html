@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>StarStats — Icon Raster Rig</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@700&display=swap');
+
+  html, body { margin: 0; padding: 0; overflow: hidden; height: 100%; }
+  body {
+    background: #0F0E12;
+    display: flex; align-items: center; justify-content: center;
+  }
+  /* Monogram SVG carries its own amber fill, so let it sit on transparent
+     (renders cleanly whether host viewer expects opaque or alpha). */
+  body[data-icon="monogram"] { background: transparent; }
+
+  .icon { width: 100vw; height: 100vh; display: block; }
+  body[data-icon="monogram"] .star     { display: none; }
+  body[data-icon="star"]     .monogram { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Monogram (boxed SS) — opaque amber fill in the SVG itself -->
+<svg class="icon monogram" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="100" height="100" rx="14" ry="14" fill="#E8A23C"/>
+  <text
+    x="50" y="68"
+    text-anchor="middle"
+    font-family="Geist Mono, ui-monospace, Consolas, 'Courier New', monospace"
+    font-weight="700"
+    font-size="46"
+    letter-spacing="-2"
+    fill="#1A1208"
+  >SS</text>
+</svg>
+
+<!-- Compass star — two-tone polygons over body background -->
+<svg class="icon star" viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">
+  <polygon points="50,0 56,44 100,50 56,56 50,100 44,56 0,50 44,44" fill="#E8A23C"/>
+  <polygon points="50,12 54,46 88,50 54,54 50,88 46,54 12,50 46,46" fill="#7A5527"/>
+</svg>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  document.body.dataset.icon = params.get('icon') || 'monogram';
+  document.title = 'raster — ' + document.body.dataset.icon;
+
+  // Signal when fonts are loaded (relevant only for monogram)
+  document.fonts.ready.then(() => {
+    document.body.dataset.fontsReady = '1';
+  });
+</script>
+
+</body>
+</html>

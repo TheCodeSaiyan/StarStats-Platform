@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="256" height="256" role="img" aria-label="StarStats compass star, outlined">
+  <title>StarStats — compass star (outlined)</title>
+  <desc>Outline variant. Circle stroke + smaller solid four-point star. Source: brand book §03 .ss-star[data-style="outline"].</desc>
+  <circle cx="50" cy="50" r="48" fill="none" stroke="#E8A23C" stroke-width="2"/>
+  <polygon points="50,18 54,46 82,50 54,54 50,82 46,54 18,50 46,46" fill="#E8A23C"/>
+</svg>

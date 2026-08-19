@@ -1,0 +1,23 @@
+-- How many reference_registry rows an entity name matched.
+--
+-- Resolution stores a slug only when EXACTLY ONE row matched, so before
+-- this column "no match" and "several matches" were indistinguishable —
+-- both left ref_slug NULL and both rendered as plain text.
+--
+-- They are not the same thing. Several matches means we KNOW the
+-- knowledge base holds entries for this name and simply cannot say which
+-- one; that is the case the maintainer's rule covers — ambiguity links
+-- to a search, never to a guess. No match means we know nothing, and a
+-- search link would be a dead end we cannot justify.
+--
+-- Measured 2026-07-31 on the 35 published contracts: of 29 distinct
+-- unresolved entity values, roughly a third were registry duplicates
+-- such as "Sunset Berries", which exists three times as sunset-berries,
+-- sunset-berries-2 and sunset-berries-3. Those are not semantically
+-- ambiguous at all, and rendering them as dead text was the strict rule
+-- doing the wrong thing for the right reason.
+--
+-- Defaults to 0 so existing rows read as "no match", which is how they
+-- already behave. They are rewritten on the next publish anyway.
+ALTER TABLE contract_entities
+    ADD COLUMN IF NOT EXISTS ref_match_count INTEGER NOT NULL DEFAULT 0;

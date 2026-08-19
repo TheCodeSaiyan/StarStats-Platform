@@ -1,0 +1,473 @@
+name: Promote release
+
+# Manual + automated channel promotion. Wraps scripts/release-promote.mjs
+# so promotions can be triggered without a local repo checkout.
+#
+# Since the release-tracks split (the release design notes
+# 2026-05-23-release-tracks-split.md) promotions are per-track:
+# `tray` (Tauri desktop client) and `platform` (server + web container
+# images) ship under independent tag schemes (`tray-vX.Y.Z` vs
+# `vX.Y.Z`) and bump independent version fields.
+#
+# Triggers:
+#   - workflow_dispatch: pick track (tray|platform|both), channel
+#     (alpha|beta|rc|live), optional sha + n, optional dry-run. Live
+#     requires reviewer approval via the `production-release` GitHub
+#     Environment.
+#   - push to `next`: auto-fires an alpha bump for each track whose
+#     paths changed in the push (per the same paths-filter pattern as
+#     ci.yml's `changed` job). A push that only touches docs/CI files
+#     fires nothing. Skipped on the workflow's own bump commits to
+#     avoid an infinite loop.
+#
+# Secrets / config required:
+#   - secrets.RELEASE_PROMOTE_PAT — Personal Access Token (fine-scoped,
+#     `contents: write` on this repo). Used to push the bump commit +
+#     tag. The default GITHUB_TOKEN cannot be used here because tags
+#     pushed by GITHUB_TOKEN do NOT trigger downstream workflows
+#     (release.yml + release-images.yml), which would defeat the
+#     point of the automation.
+#   - Environment `production-release` configured under Settings →
+#     Environments with required reviewers. Gates the live jobs.
+#
+# Concurrency: all next-targeting promotion runs share `promote-next`
+# so per-track auto-alphas can't race manual dispatches (any of them
+# may bump Cargo.toml or the client Cargo.toml). Live runs on their
+# own `promote-live` group since they target `main`.
+
+on:
+  workflow_dispatch:
+    inputs:
+      track:
+        description: 'Which release track to promote'
+        required: true
+        type: choice
+        options: [tray, platform, both]
+      channel:
+        description: 'Release channel'
+        required: true
+        type: choice
+        options: [alpha, beta, rc, live]
+      sha:
+        description: 'Target SHA on next (default: next HEAD; ignored for live unless explicitly set)'
+        required: false
+        type: string
+      n:
+        description: 'Explicit pre-release N (optional; ignored for live). Must advance forward.'
+        required: false
+        type: string
+      roadmap_item_slug:
+        description: 'Optional. Slug of the roadmap item this release ships (annotates the tag so the roadmap-emit-event job in release.yml picks it up automatically). Auto-alpha pushes to next never get a slug.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Print actions without pushing'
+        required: false
+        type: boolean
+        default: false
+  push:
+    branches: [next]
+
+concurrency:
+  group: ${{ (github.event_name == 'workflow_dispatch' && inputs.channel == 'live') && 'promote-live' || 'promote-next' }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read  # writes happen via the PAT, not GITHUB_TOKEN
+
+env:
+  # rust-cache best practice: incremental compilation bloats the cache
+  # for no benefit on a clean-checkout CI runner; dev/test debuginfo is
+  # dropped too. These promote jobs mostly bump manifests, not build
+  # release binaries, so this is pure cache/compile-time hygiene.
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+
+jobs:
+  # Decide which tracks this run should touch, and on push events also
+  # decide whether to fire at all. Outputs `tray` / `platform` booleans
+  # that downstream jobs consume via `if:`.
+  #
+  # - workflow_dispatch: derive from inputs.track (`tray` / `platform`
+  #   set true individually; `both` sets both).
+  # - push: use dorny/paths-filter@v4 against the parent commit. Skip
+  #   entirely on this workflow's own bump commits (otherwise auto-alpha
+  #   recurses).
+  detect-tracks:
+    name: Detect tracks
+    runs-on: ubuntu-latest
+    outputs:
+      tray:     ${{ steps.decide.outputs.tray }}
+      platform: ${{ steps.decide.outputs.platform }}
+    steps:
+    - uses: actions/checkout@v4
+    # Path detection — only runs on push events. dorny/paths-filter
+    # on push compares against the parent commit, which is what we
+    # want (incremental detection per commit).
+    - uses: dorny/paths-filter@v4
+      id: f
+      if: github.event_name == 'push'
+      with:
+        filters: |
+          tray:
+            - 'crates/starstats-client/**'
+            - 'crates/starstats-core/**'
+            - 'apps/tray-ui/**'
+            - 'packages/design-tokens/**'
+            - 'Cargo.toml'
+            - 'Cargo.lock'
+            - '.github/workflows/release.yml'
+            - '.github/workflows/promote.yml'
+          platform:
+            - 'crates/starstats-server/**'
+            - 'crates/starstats-core/**'
+            - 'apps/web/**'
+            - 'packages/api-client-ts/**'
+            - 'packages/design-tokens/**'
+            - 'Cargo.toml'
+            - 'Cargo.lock'
+            - '.github/workflows/release-images.yml'
+            - '.github/workflows/promote.yml'
+    - id: decide
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_TRACK: ${{ inputs.track }}
+        MSG: ${{ github.event.head_commit.message }}
+        PF_TRAY:     ${{ steps.f.outputs.tray }}
+        PF_PLATFORM: ${{ steps.f.outputs.platform }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        TRAY=false
+        PLATFORM=false
+        case "$EVENT_NAME" in
+          workflow_dispatch)
+            case "$INPUT_TRACK" in
+              tray)     TRAY=true ;;
+              platform) PLATFORM=true ;;
+              both)     TRAY=true; PLATFORM=true ;;
+              *) echo "::error::unknown track input: $INPUT_TRACK" >&2; exit 1 ;;
+            esac
+            ;;
+          push)
+            # Skip our own bump commits to break the auto-alpha loop
+            # (mirrors the `should-run` job's prefix list in ci.yml)
+            # AND skip docs-only commits (`docs:` / `docs(scope):`) so
+            # docs/ENGINEERING.md / memory/ / docs/ updates never trigger an
+            # auto-alpha. Belt-and-suspenders alongside paths-filter:
+            # a docs commit that incidentally touches a tracked path
+            # (e.g. Cargo workspace docs) would otherwise slip through.
+            #
+            # ALSO skip the release-cycle back-merge bookkeeping commits:
+            #   - "merge <channel> manifest into next (from <tag>)" — the
+            #     channel-manifest sync release.yml lands on `next` after
+            #     each tag (Invariant #1 upkeep).
+            #   - "merge main into next after hotfix" — release-promote.mjs
+            #     hotfix-finish.
+            # release.yml pushes these with GITHUB_TOKEN, which can't
+            # trigger downstream workflows, so CI's own back-merges never
+            # reach here. But the documented manual local-release path
+            # (docs/RELEASING.md §5 / when Actions are unavailable) pushes
+            # the same merges with a user PAT, which DOES re-enter this
+            # workflow and would otherwise spawn a spurious extra alpha.
+            FIRST_LINE="${MSG%%$'\n'*}"
+            case "$FIRST_LINE" in
+              "chore: bump tray to "*|"chore: bump platform to "*|"chore: bump to v"*|"release-manifests:"*|"merge "*" manifest into next"*|"merge main into next"*|"docs:"*|"docs("*)
+                echo "::notice::auto-alpha skipped on bot/docs commit: $FIRST_LINE"
+                ;;
+              *)
+                # Plain `if`, not `A && B || C` — the latter trips shellcheck
+                # SC2015 (C can run when A is true).
+                if [ "$PF_TRAY"     = "true" ]; then TRAY=true;     fi
+                if [ "$PF_PLATFORM" = "true" ]; then PLATFORM=true; fi
+                ;;
+            esac
+            ;;
+          *)
+            echo "::warning::unrecognised event $EVENT_NAME; promoting nothing"
+            ;;
+        esac
+        echo "tray=$TRAY"         | tee -a "$GITHUB_OUTPUT"
+        echo "platform=$PLATFORM" | tee -a "$GITHUB_OUTPUT"
+
+  # ---------------------------------------------------------------------------
+  # Prerelease jobs — fan out per track. Each job runs only when
+  # detect-tracks says its track should be bumped AND the event is
+  # either a workflow_dispatch (channel != live) or a non-bump push.
+  # ---------------------------------------------------------------------------
+
+  prerelease-tray:
+    name: Promote tray prerelease
+    needs: [detect-tracks]
+    if: |
+      needs.detect-tracks.outputs.tray == 'true' &&
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.channel != 'live') ||
+        github.event_name == 'push'
+      )
+    runs-on: ubuntu-latest
+    steps:
+    - name: Determine channel
+      id: cfg
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+      run: |
+        if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          echo "channel=$INPUT_CHANNEL" >> "$GITHUB_OUTPUT"
+        else
+          echo "channel=alpha" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout next
+      uses: actions/checkout@v4
+      with:
+        ref: next
+        fetch-depth: 0
+        token: ${{ secrets.RELEASE_PROMOTE_PAT }}
+        persist-credentials: true
+
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: promote-prerelease-tray
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+
+    - name: Configure git identity
+      run: |
+        git config user.name  "release-promote"
+        git config user.email "release-promote@users.noreply.github.com"
+
+    - name: Promote
+      env:
+        CHANNEL: ${{ steps.cfg.outputs.channel }}
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_N: ${{ inputs.n }}
+        INPUT_ROADMAP_SLUG: ${{ inputs.roadmap_item_slug }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        set -euo pipefail
+        ARGS=(prerelease tray "$CHANNEL")
+        if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        if [[ -n "${INPUT_N:-}" ]];   then ARGS+=(--n   "$INPUT_N");   fi
+        if [[ -n "${INPUT_ROADMAP_SLUG:-}" ]]; then ARGS+=(--roadmap-item-slug "$INPUT_ROADMAP_SLUG"); fi
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then ARGS+=(--dry-run); fi
+        echo "Running: node scripts/release-promote.mjs ${ARGS[*]}"
+        node scripts/release-promote.mjs "${ARGS[@]}"
+
+  prerelease-platform:
+    name: Promote platform prerelease
+    # Serialized AFTER prerelease-tray (not just detect-tracks) so the two
+    # never push a bump commit to `next` concurrently. When a change touches
+    # `starstats-core` BOTH tracks bump, and running in parallel raced — the
+    # loser's `git push` was rejected non-fast-forward and that track silently
+    # didn't ship. `!cancelled()` lets platform still run when prerelease-tray
+    # was skipped (tray unchanged) or failed; the `platform == 'true'` gate
+    # keeps it from firing on tray-only changes.
+    needs: [detect-tracks, prerelease-tray]
+    if: |
+      !cancelled() &&
+      needs.detect-tracks.outputs.platform == 'true' &&
+      (
+        (github.event_name == 'workflow_dispatch' && inputs.channel != 'live') ||
+        github.event_name == 'push'
+      )
+    runs-on: ubuntu-latest
+    steps:
+    - name: Determine channel
+      id: cfg
+      env:
+        EVENT_NAME: ${{ github.event_name }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+      run: |
+        if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+          echo "channel=$INPUT_CHANNEL" >> "$GITHUB_OUTPUT"
+        else
+          echo "channel=alpha" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Checkout next
+      uses: actions/checkout@v4
+      with:
+        ref: next
+        fetch-depth: 0
+        token: ${{ secrets.RELEASE_PROMOTE_PAT }}
+        persist-credentials: true
+
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: promote-prerelease-platform
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+
+    - name: Configure git identity
+      run: |
+        git config user.name  "release-promote"
+        git config user.email "release-promote@users.noreply.github.com"
+
+    - name: Promote
+      env:
+        CHANNEL: ${{ steps.cfg.outputs.channel }}
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_N: ${{ inputs.n }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        set -euo pipefail
+        ARGS=(prerelease platform "$CHANNEL")
+        if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        if [[ -n "${INPUT_N:-}" ]];   then ARGS+=(--n   "$INPUT_N");   fi
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then ARGS+=(--dry-run); fi
+        echo "Running: node scripts/release-promote.mjs ${ARGS[*]}"
+        node scripts/release-promote.mjs "${ARGS[@]}"
+
+  # ---------------------------------------------------------------------------
+  # Live promotion jobs. Gated on the `production-release` Environment —
+  # configure required reviewers under repo Settings → Environments
+  # before the first live promotion can complete. workflow_dispatch
+  # only (live is never automatic).
+  # ---------------------------------------------------------------------------
+
+  live-tray:
+    name: Promote tray to live
+    needs: [detect-tracks]
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      inputs.channel == 'live' &&
+      needs.detect-tracks.outputs.tray == 'true'
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.RELEASE_PROMOTE_PAT }}
+        persist-credentials: true
+
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: promote-live-tray
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+
+    - name: Configure git identity
+      run: |
+        git config user.name  "release-promote"
+        git config user.email "release-promote@users.noreply.github.com"
+
+    - name: Preview computed version
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+      run: |
+        set -euo pipefail
+        ARGS=(live tray --dry-run)
+        if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        echo "Dry-run preview (no side effects):"
+        node scripts/release-promote.mjs "${ARGS[@]}"
+
+    - name: Promote
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+        INPUT_ROADMAP_SLUG: ${{ inputs.roadmap_item_slug }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        set -euo pipefail
+        ARGS=(live tray)
+        if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then ARGS+=(--dry-run); fi
+        echo "Running: node scripts/release-promote.mjs ${ARGS[*]}"
+        node scripts/release-promote.mjs "${ARGS[@]}"
+
+  live-platform:
+    name: Promote platform to live
+    # Serialized after live-tray for the same anti-race reason as the
+    # prerelease jobs (a `track=both` live dispatch would otherwise have both
+    # jobs push to `main` concurrently). `!cancelled()` lets it run when
+    # live-tray is skipped (platform-only) or failed. NOTE: a true `both`
+    # live promote also needs `next` rebased onto `main` between tracks
+    # (see docs/RELEASING.md §5) — that dance is still operator-driven.
+    needs: [detect-tracks, live-tray]
+    if: |
+      !cancelled() &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.channel == 'live' &&
+      needs.detect-tracks.outputs.platform == 'true'
+    runs-on: ubuntu-latest
+    environment: production-release
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        token: ${{ secrets.RELEASE_PROMOTE_PAT }}
+        persist-credentials: true
+
+    - uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+    - uses: actions/setup-node@v7
+      with:
+        node-version: 20
+    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: rui314/setup-mold@v1
+      if: runner.os == 'Linux'
+    - uses: Swatinem/rust-cache@v2
+      continue-on-error: true
+      with:
+        shared-key: promote-live-platform
+        save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
+
+    - name: Configure git identity
+      run: |
+        git config user.name  "release-promote"
+        git config user.email "release-promote@users.noreply.github.com"
+
+    - name: Preview computed version
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+      run: |
+        set -euo pipefail
+        ARGS=(live platform --dry-run)
+        if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        echo "Dry-run preview (no side effects):"
+        node scripts/release-promote.mjs "${ARGS[@]}"
+
+    - name: Promote
+      env:
+        INPUT_SHA: ${{ inputs.sha }}
+        DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        set -euo pipefail
+        ARGS=(live platform)
+        if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        if [[ -n "${INPUT_ROADMAP_SLUG:-}" ]]; then ARGS+=(--roadmap-item-slug "$INPUT_ROADMAP_SLUG"); fi
+        if [[ "${DRY_RUN:-false}" == "true" ]]; then ARGS+=(--dry-run); fi
+        echo "Running: node scripts/release-promote.mjs ${ARGS[*]}"
+        node scripts/release-promote.mjs "${ARGS[@]}"

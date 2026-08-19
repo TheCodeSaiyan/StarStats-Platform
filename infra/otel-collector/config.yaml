@@ -1,0 +1,118 @@
+# OpenTelemetry Collector — gateway-mode for the starstats homelab.
+# Receives: OTLP from instrumented services, Docker container logs via filelog.
+# Exports:  Loki (logs), Tempo (traces), Prometheus (metrics).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+          - https://app.example.com
+          - https://api.example.com
+
+  # Tail every container's JSON log file. Promtail not needed.
+  filelog:
+    include:
+    - /var/lib/docker/containers/*/*-json.log
+    start_at: end
+    include_file_path: true
+    operators:
+    - type: json_parser
+      parse_from: body
+      parse_to: attributes
+      timestamp:
+        parse_from: attributes.time
+        layout: '%Y-%m-%dT%H:%M:%S.%LZ'
+    - type: regex_parser
+      regex: '^.*/(?P<container_id>[^/]+)/.*-json\.log$'
+      parse_from: attributes["log.file.path"]
+    - type: move
+      from: attributes.log
+      to: body
+
+  # Self-observability
+  prometheus/self:
+    config:
+      scrape_configs:
+      - job_name: otelcol
+        scrape_interval: 30s
+        static_configs:
+        - targets: [localhost:8888]
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  resource:
+    attributes:
+    - key: deployment.environment
+      value: production
+      action: upsert
+    - key: service.namespace
+      value: starstats
+      action: upsert
+
+  # Map Docker container_name → service.name attribute when not set
+  resourcedetection/docker:
+    detectors: [docker, env]
+    timeout: 2s
+    override: false
+
+exporters:
+  # Logs → Loki (Loki accepts OTLP natively from v3+)
+  otlphttp/loki:
+    endpoint: http://loki:3100/otlp
+    tls:
+      insecure: true
+
+  # Traces → Tempo
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics scraped via Prometheus pull from collector's own /metrics
+
+  # Self-metrics passthrough
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: otelcol
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+    endpoint: localhost:1777
+
+service:
+  extensions: [health_check, pprof]
+  telemetry:
+    logs:
+      level: info
+      encoding: json
+    metrics:
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection/docker, resource, batch]
+      exporters: [otlp/tempo]
+    metrics:
+      receivers: [otlp, prometheus/self]
+      processors: [memory_limiter, resourcedetection/docker, resource, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp, filelog]
+      processors: [memory_limiter, resourcedetection/docker, resource, batch]
+      exporters: [otlphttp/loki]
