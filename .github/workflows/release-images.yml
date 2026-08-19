@@ -400,7 +400,7 @@ jobs:
 
     - name: Build & push API
       if: steps.preflight.outputs.api == 'build'
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         file: crates/starstats-server/Dockerfile
@@ -437,7 +437,7 @@ jobs:
 
     - name: Build & push Web
       if: steps.preflight.outputs.web == 'build'
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: .
         file: apps/web/Dockerfile
@@ -561,7 +561,7 @@ jobs:
         fi
     - name: Build & push ${{ matrix.image }}
       if: steps.preflight.outputs.img == 'build'
-      uses: docker/build-push-action@v6
+      uses: docker/build-push-action@v7
       with:
         context: ${{ matrix.context }}
         push: true
