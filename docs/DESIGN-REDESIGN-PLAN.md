@@ -1,8 +1,8 @@
 # StarStats — Design Redesign Plan
 
-Plan derived from the **`design_handoff_starstats`** package
-(`StarStats (1).zip`, 2026-05-05) extracted to
-`%TEMP%\starstats-design\design_handoff_starstats\`.
+Plan derived from the original design handoff package (2026-05-05). That
+package is no longer in the repository; this document is the surviving
+record of what it specified.
 
 This document is a **review + plan**, not an implementation. Implementation
 should not begin until the open questions in §8 are answered.

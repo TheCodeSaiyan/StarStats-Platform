@@ -1,7 +1,8 @@
 # StarStats Tray UI — Redesign Plan
 
-Plan derived from the **`design_handoff_starstats/tray-prototype`** bundle
-(`StarStats (3).zip`, 2026-05-06) staged under `design/tray-prototype/`.
+Plan derived from the original tray-prototype design bundle (2026-05-06).
+That bundle is no longer in the repository; this document is the surviving
+record of what it specified.
 
 Companion to `docs/DESIGN-REDESIGN-PLAN.md` (which covers the web app).
 
@@ -108,7 +109,7 @@ Shipped: `max-width: 720px; margin: 0 auto;` on `.app__main` so the design holds
 
 ## 7. References
 
-- Design source: `design/tray-prototype/`
+- Design source: the original tray-prototype bundle (no longer in-repo)
 - Existing components: `apps/tray-ui/src/components/{StatusPane,SettingsPane}.tsx`
 - Existing API: `apps/tray-ui/src/api.ts`
 - Wave 8.1/8.2/8.3 web counterpart: `docs/DESIGN-REDESIGN-PLAN.md`
