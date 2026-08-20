@@ -61,7 +61,7 @@
       "endpoints": [
         "https://raw.githubusercontent.com/TheCodeSaiyan/StarStats-Platform/main/release-manifests/tray-live.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEMyQzA2QkNGQUUzMzVENDQKUldSRVhUT3V6MnZBd24zOTIvbTZacUhZRWc4OVp4aUNBaDZwNmpJakN0QWxvelNrL21KaWRaeUkK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDI1MURBOUU0NDZFQkMwMApSV1FBdkc1RW50cFJBdllaQVFoNSttSm82bFl6dnNMNXQrUFlFUFNYN2ZqNVZDdDR4VTR0WjJPawo=",
       "windows": {
         "installMode": "passive"
       }
