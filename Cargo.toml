@@ -121,7 +121,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 # server-local file (analogous to the JWT signing key) and never write
 # the plaintext shared secret to the database. `aes-gcm` is the standard
 # RustCrypto AEAD; `aead` re-export pulls in the trait surface.
-aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+aes-gcm = { version = "0.11", default-features = false, features = ["aes", "alloc"] }
 # TOTP (RFC 6238) — tiny crate, sha1 + truncation only. We feed the
 # raw secret bytes directly; base32-encoded provisioning URIs are
 # produced by hand at the boundary.
