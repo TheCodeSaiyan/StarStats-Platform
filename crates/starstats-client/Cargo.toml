@@ -100,7 +100,7 @@ sysinfo = { workspace = true }
 base64 = "0.22"
 # Verifies the parser-definition manifest signature against a pinned
 # public key (F10). Dormant until PARSER_SIGNING_PUBKEY_B64 is pinned.
-ed25519-dalek = "2"
+ed25519-dalek = "3"
 
 # Error type derivation — used by `preferences_client` for its public
 # `PreferencesClientError` enum (must be in [dependencies], not
