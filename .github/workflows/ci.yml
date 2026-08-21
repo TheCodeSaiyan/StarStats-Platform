@@ -179,7 +179,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: dtolnay/rust-toolchain@1.100.0
       with:
         components: clippy, rustfmt
     # mold cuts link time dramatically; Linux-only (no Windows build).
@@ -263,7 +263,7 @@ jobs:
     # against the committed `schema.ts` — non-zero diff fails the job.
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: dtolnay/rust-toolchain@1.100.0
     - uses: rui314/setup-mold@v1
       if: runner.os == 'Linux'
     - uses: Swatinem/rust-cache@v2
@@ -391,7 +391,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: dtolnay/rust-toolchain@1.100.0
     - uses: rui314/setup-mold@v1
       if: runner.os == 'Linux'
     - uses: Swatinem/rust-cache@v2

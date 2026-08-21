@@ -131,7 +131,7 @@ jobs:
       ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: dtolnay/rust-toolchain@1.100.0
     # mold cuts link time dramatically; Linux-only (no Windows build).
     - uses: rui314/setup-mold@v1
       if: runner.os == 'Linux'
