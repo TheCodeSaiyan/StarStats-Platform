@@ -69,10 +69,10 @@ thiserror = "2.0"
 # Logging / tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
-tracing-opentelemetry = "0.27"
-opentelemetry = "0.26"
-opentelemetry_sdk = { version = "0.26", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.26", features = ["grpc-tonic", "tls"] }
+tracing-opentelemetry = "0.33"
+opentelemetry = "0.32"
+opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "tls"] }
 
 # HTTP server / middleware
 axum = "0.7"
