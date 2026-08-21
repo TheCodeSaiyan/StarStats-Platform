@@ -48,7 +48,7 @@ jobs:
       channel: ${{ steps.validate.outputs.channel }}
       bare_version: ${{ steps.validate.outputs.bare_version }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - name: Validate tag against branch invariants
@@ -130,7 +130,7 @@ jobs:
       # self-signed certificate path below.
       ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@1.88.0
     # mold cuts link time dramatically; Linux-only (no Windows build).
     - uses: rui314/setup-mold@v1
@@ -313,7 +313,7 @@ jobs:
     needs: [validate-tag, client-binaries]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - name: Download Tauri client artifacts
       uses: actions/download-artifact@v8
@@ -580,7 +580,7 @@ jobs:
         # auto-alpha). That's the desired behaviour: a manifest
         # commit on `next` shouldn't kick off a fresh pre-release
         # cycle, it's just bookkeeping.
-        # Deshallowing: actions/checkout@v4 defaults to depth=1, so
+        # Deshallowing: actions/checkout@v7 defaults to depth=1, so
         # the local repo has only the tag's commit. `git merge` then
         # refuses with "refusing to merge unrelated histories" because
         # it can't find the common ancestor between main and next
@@ -650,7 +650,7 @@ jobs:
     # available locally. promote.yml + release-promote.mjs annotate
     # the tag with a `Roadmap-Item: <slug>` line when the operator
     # passes `roadmap_item_slug` on workflow_dispatch.
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - name: Resolve roadmap item slug
@@ -713,7 +713,7 @@ jobs:
     needs: [validate-tag, roadmap-emit-event]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - name: Resolve roadmap item slug

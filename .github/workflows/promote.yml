@@ -100,7 +100,7 @@ jobs:
       tray:     ${{ steps.decide.outputs.tray }}
       platform: ${{ steps.decide.outputs.platform }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     # Path detection — only runs on push events. dorny/paths-filter
     # on push compares against the parent commit, which is what we
     # want (incremental detection per commit).
@@ -220,7 +220,7 @@ jobs:
         fi
 
     - name: Checkout next
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         ref: next
         fetch-depth: 0
@@ -296,7 +296,7 @@ jobs:
         fi
 
     - name: Checkout next
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         ref: next
         fetch-depth: 0
@@ -356,7 +356,7 @@ jobs:
     environment: production-release
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
@@ -423,7 +423,7 @@ jobs:
     environment: production-release
     steps:
     - name: Checkout
-      uses: actions/checkout@v4
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
