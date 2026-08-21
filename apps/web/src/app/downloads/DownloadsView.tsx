@@ -206,6 +206,49 @@ export function DownloadsView({
         download once.
       </p>
 
+      <details className="ss-card" style={{ padding: '14px 18px' }}>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
+          Windows will say “Unknown publisher” — here’s why, and how to check
+        </summary>
+        <div
+          style={{
+            marginTop: 10,
+            color: 'var(--fg-dim)',
+            fontSize: 13,
+            lineHeight: 1.6,
+          }}
+        >
+          <p style={{ margin: '0 0 10px' }}>
+            The installer <em>is</em> signed, but with our own certificate rather
+            than one bought from a certificate authority. Windows shows “Unknown
+            publisher” for any signature it can’t trace back to a root it already
+            trusts, so SmartScreen will warn you: choose <strong>More info</strong>{' '}
+            → <strong>Run anyway</strong>. A CA-issued certificate is on the list;
+            it costs money and takes weeks to validate, and we’d rather ship the
+            beta first.
+          </p>
+          <p style={{ margin: '0 0 10px' }}>
+            You don’t have to take our word for it. Right-click the download →{' '}
+            <strong>Properties</strong> → <strong>Digital Signatures</strong> →{' '}
+            <strong>Details</strong>. It should name{' '}
+            <code>CN=StarStats, O=TheCodeSaiyan, C=GB</code> and this thumbprint:
+          </p>
+          <p
+            style={{
+              margin: '0 0 10px',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              color: 'var(--fg-muted)',
+              wordBreak: 'break-all',
+            }}
+          >
+            10B7 4595 1DB5 0B9F F046 C39D 5A79 1F65 2EDF E85C
+          </p>
+          <p style={{ margin: 0 }}>
+            Anything else and the file did not come from us — don’t run it.
+          </p>
+        </div>
+      </details>
+
       {stable.notes && (
         <details className="ss-card" style={{ padding: '14px 18px' }}>
           <summary style={{ cursor: 'pointer', fontWeight: 600 }}>

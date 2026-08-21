@@ -119,6 +119,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+    permissions:
+      contents: read
+      # Required for the OIDC token used by Azure Artifact Signing. Harmless
+      # when Artifact Signing is not configured — no token is requested.
+      id-token: write
+    env:
+      # Presence of this decides which signing path runs. Empty (the default
+      # until Artifact Signing identity validation completes) keeps the
+      # self-signed certificate path below.
+      ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
     steps:
     - uses: actions/checkout@v4
     - uses: dtolnay/rust-toolchain@1.88.0
@@ -164,8 +174,64 @@ jobs:
     # config, so an empty/missing secret cannot trigger a signtool
     # call with `identity ""`. Signing only activates when the
     # secret is populated.
+    # --- Signing path A: Azure Artifact Signing (CA-issued, public trust) ---
+    # Runs only once ARTIFACT_SIGNING_ACCOUNT is set, which cannot happen
+    # until org identity validation completes. Auth is OIDC — no long-lived
+    # secret to rot. Instead of a thumbprint, Tauri is handed a signCommand
+    # so the bundler shells out to signtool with Microsoft's dlib; the key
+    # never exists on the runner.
+    - name: Azure login (Artifact Signing)
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Configure Artifact Signing
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      shell: pwsh
+      env:
+        ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+        ARTIFACT_SIGNING_PROFILE: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+      run: |
+        foreach ($v in 'ARTIFACT_SIGNING_ENDPOINT','ARTIFACT_SIGNING_PROFILE') {
+          if (-not (Get-Item "env:$v" -ErrorAction SilentlyContinue).Value) {
+            throw "$v is empty but ARTIFACT_SIGNING_ACCOUNT is set — refusing to build a half-configured signing path"
+          }
+        }
+        $tools = Join-Path $env:RUNNER_TEMP 'signing'
+        New-Item -ItemType Directory -Force $tools | Out-Null
+        nuget install Microsoft.Trusted.Signing.Client -Version 1.0.53 -OutputDirectory $tools -Verbosity quiet
+        $dlib = (Get-ChildItem $tools -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' | Select-Object -First 1).FullName
+        if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll not found after nuget install' }
+        $meta = Join-Path $tools 'metadata.json'
+        @{
+          Endpoint               = $env:ARTIFACT_SIGNING_ENDPOINT
+          CodeSigningAccountName = $env:ARTIFACT_SIGNING_ACCOUNT
+          CertificateProfileName = $env:ARTIFACT_SIGNING_PROFILE
+        } | ConvertTo-Json | Set-Content -Path $meta -Encoding utf8
+        $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter 'signtool.exe' |
+                     Where-Object { $_.FullName -like '*x64*' } | Select-Object -Last 1).FullName
+        if (-not $signtool) { throw 'signtool.exe not found on the runner' }
+        # %1 is the file Tauri asks us to sign.
+        $signCommand = "`"$signtool`" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib `"$dlib`" /dmdf `"$meta`" `"%1`""
+        $confPath = "crates/starstats-client/tauri.conf.json"
+        $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+        $windowsBlock = [ordered]@{
+          digestAlgorithm = "sha256"
+          timestampUrl    = "http://timestamp.acs.microsoft.com"
+          signCommand     = $signCommand
+        }
+        $conf.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]$windowsBlock) -Force
+        ($conf | ConvertTo-Json -Depth 20) | Set-Content -Path $confPath -Encoding utf8 -NoNewline
+        $verify = Get-Content $confPath -Raw | ConvertFrom-Json
+        if (-not $verify.bundle.windows.signCommand) { throw 'signCommand injection failed' }
+        Write-Host "Artifact Signing configured; profile=$env:ARTIFACT_SIGNING_PROFILE"
+
+    # --- Signing path B: self-signed certificate (fallback) ---
     - name: Import Windows code-signing cert
-      if: matrix.os == 'windows-latest'
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT == ''
       shell: pwsh
       env:
         WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}

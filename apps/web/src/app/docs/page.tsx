@@ -68,6 +68,14 @@ export default function DocsPage() {
           <code>.deb</code>.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
+          Windows will warn you that the publisher is unknown. It is signed,
+          but with our own certificate rather than a bought one, and Windows
+          treats those the same as unsigned. Choose <strong>More info</strong>{' '}
+          → <strong>Run anyway</strong>, or verify the signature first —{' '}
+          <Link href="/downloads">the downloads page</Link> lists the
+          thumbprint to check it against.
+        </p>
+        <p style={{ color: 'var(--fg-muted)' }}>
           The desktop app is the thing that reads your log. Everything
           else on this page is about connecting it to your account.
         </p>
