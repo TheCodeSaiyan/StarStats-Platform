@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - name: Run actionlint on changed workflow files
@@ -125,7 +125,7 @@ jobs:
       tauri:   ${{ steps.f.outputs.tauri }}
       scripts: ${{ steps.f.outputs.scripts }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: dorny/paths-filter@v4
       id: f
       with:
@@ -178,7 +178,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@1.88.0
       with:
         components: clippy, rustfmt
@@ -238,7 +238,7 @@ jobs:
     if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
@@ -262,7 +262,7 @@ jobs:
     # generate the spec from the freshly-built Cargo bin and diff
     # against the committed `schema.ts` — non-zero diff fails the job.
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@1.88.0
     - uses: rui314/setup-mold@v1
       if: runner.os == 'Linux'
@@ -303,7 +303,7 @@ jobs:
     needs: [should-run, changed, web]
     if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.web == 'true'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
@@ -337,7 +337,7 @@ jobs:
     if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.tray == 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: pnpm/action-setup@v6
       with:
         version: 9.15.0
@@ -374,7 +374,7 @@ jobs:
     if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.scripts == 'true'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: actions/setup-node@v7
       with:
         node-version: 20
@@ -390,7 +390,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: dtolnay/rust-toolchain@1.88.0
     - uses: rui314/setup-mold@v1
       if: runner.os == 'Linux'

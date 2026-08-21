@@ -106,7 +106,7 @@ jobs:
     outputs:
       channel: ${{ steps.validate.outputs.channel }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - name: Validate tag against branch invariants
@@ -308,7 +308,7 @@ jobs:
       )
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     - uses: docker/setup-buildx-action@v3
 
@@ -493,7 +493,7 @@ jobs:
         - { image: prometheus,     context: infra/prometheus }
         - { image: db-init,        context: infra/init }
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
     - uses: docker/setup-buildx-action@v3
     - name: Login to private registry
       uses: docker/login-action@v4
@@ -622,7 +622,7 @@ jobs:
     # available locally. promote.yml + release-promote.mjs annotate the
     # tag with a `Roadmap-Item: <slug>` line when the operator passes
     # `roadmap_item_slug` on workflow_dispatch.
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
       with:
         fetch-depth: 0
     - name: Resolve roadmap item slug
