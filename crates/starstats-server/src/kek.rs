@@ -79,9 +79,10 @@ impl Kek {
             ));
         };
 
-        let key = Key::<Aes256Gcm>::from_slice(&bytes);
+        let key = Key::<Aes256Gcm>::try_from(&bytes[..])
+            .map_err(|_| anyhow!("KEK must be {KEY_LEN} bytes, got {}", bytes.len()))?;
         Ok(Self {
-            cipher: Aes256Gcm::new(key),
+            cipher: Aes256Gcm::new(&key),
         })
     }
 
@@ -93,10 +94,10 @@ impl Kek {
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<(Vec<u8>, Vec<u8>)> {
         let mut nonce_bytes = [0u8; NONCE_LEN];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        let nonce = Nonce::from(nonce_bytes);
         let ct = self
             .cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|e| anyhow!("aes-gcm encrypt: {e}"))?;
         Ok((ct, nonce_bytes.to_vec()))
     }
@@ -112,9 +113,10 @@ impl Kek {
                 nonce.len()
             ));
         }
-        let nonce = Nonce::from_slice(nonce);
+        let nonce = Nonce::try_from(nonce)
+            .map_err(|_| anyhow!("nonce length {} != expected {NONCE_LEN}", nonce.len()))?;
         self.cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|e| anyhow!("aes-gcm decrypt: {e}"))
     }
 }
@@ -144,9 +146,9 @@ mod tests {
     fn round_trip_returns_original() {
         let mut bytes = [0u8; KEY_LEN];
         rand::thread_rng().fill_bytes(&mut bytes);
-        let key = Key::<Aes256Gcm>::from_slice(&bytes);
+        let key = Key::<Aes256Gcm>::from(bytes);
         let kek = Kek {
-            cipher: Aes256Gcm::new(key),
+            cipher: Aes256Gcm::new(&key),
         };
 
         let plaintext = b"super-secret-totp-shared-key-bytes";
@@ -159,9 +161,9 @@ mod tests {
     fn decrypt_rejects_tampered_ciphertext() {
         let mut bytes = [0u8; KEY_LEN];
         rand::thread_rng().fill_bytes(&mut bytes);
-        let key = Key::<Aes256Gcm>::from_slice(&bytes);
+        let key = Key::<Aes256Gcm>::from(bytes);
         let kek = Kek {
-            cipher: Aes256Gcm::new(key),
+            cipher: Aes256Gcm::new(&key),
         };
 
         let (mut ct, nonce) = kek.encrypt(b"plaintext").unwrap();
@@ -173,9 +175,9 @@ mod tests {
     fn decrypt_rejects_wrong_nonce() {
         let mut bytes = [0u8; KEY_LEN];
         rand::thread_rng().fill_bytes(&mut bytes);
-        let key = Key::<Aes256Gcm>::from_slice(&bytes);
+        let key = Key::<Aes256Gcm>::from(bytes);
         let kek = Kek {
-            cipher: Aes256Gcm::new(key),
+            cipher: Aes256Gcm::new(&key),
         };
 
         let (ct, _) = kek.encrypt(b"plaintext").unwrap();
@@ -187,9 +189,9 @@ mod tests {
     fn each_encrypt_uses_fresh_nonce() {
         let mut bytes = [0u8; KEY_LEN];
         rand::thread_rng().fill_bytes(&mut bytes);
-        let key = Key::<Aes256Gcm>::from_slice(&bytes);
+        let key = Key::<Aes256Gcm>::from(bytes);
         let kek = Kek {
-            cipher: Aes256Gcm::new(key),
+            cipher: Aes256Gcm::new(&key),
         };
 
         let plaintext = b"same plaintext twice";
