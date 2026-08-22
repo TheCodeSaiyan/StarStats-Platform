@@ -214,8 +214,29 @@ jobs:
         $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter 'signtool.exe' |
                      Where-Object { $_.FullName -like '*x64*' } | Select-Object -Last 1).FullName
         if (-not $signtool) { throw 'signtool.exe not found on the runner' }
-        # %1 is the file Tauri asks us to sign.
-        $signCommand = "`"$signtool`" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib `"$dlib`" /dmdf `"$meta`" `"%1`""
+        # Tauri will not tolerate a signCommand whose PROGRAM path contains
+        # spaces. Passing signtool.exe directly from
+        # "C:\Program Files (x86)\Windows Kits\..." failed the bundle with
+        # `os error 123` (ERROR_INVALID_NAME) at process-creation time — and
+        # only AFTER a full 8-minute release compile, so it is an expensive
+        # way to find out (tray-v0.1.3-alpha.9).
+        #
+        # Rather than depend on exactly how Tauri parses the string, put the
+        # real command in a batch file whose own path has no spaces and point
+        # signCommand at that. `cmd /c` is required because CreateProcess
+        # cannot exec a .cmd directly. %* forwards whatever Tauri appends.
+        if ($tools -match '\s') {
+          throw "signing dir '$tools' contains a space; the signCommand wrapper needs a space-free path"
+        }
+        $wrapper = Join-Path $tools 'sign.cmd'
+        @(
+          '@echo off',
+          ('"{0}" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib "{1}" /dmdf "{2}" %*' -f $signtool, $dlib, $meta)
+        ) | Set-Content -Path $wrapper -Encoding ascii
+        # Bare %1 (not "%1") matches Tauri's own documented example; it is the
+        # file Tauri asks us to sign, forwarded into signtool by %* above.
+        $signCommand = "cmd /c $wrapper %1"
+        Write-Host "sign wrapper: $wrapper"
         $confPath = "crates/starstats-client/tauri.conf.json"
         $conf = Get-Content $confPath -Raw | ConvertFrom-Json
         $windowsBlock = [ordered]@{
