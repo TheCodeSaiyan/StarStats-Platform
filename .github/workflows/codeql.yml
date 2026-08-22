@@ -5,19 +5,20 @@ name: CodeQL
 # RSI session cookies. Findings land in the Security tab rather than as PR
 # noise.
 #
-# Two languages are analysed:
+# Three languages are analysed:
+#   rust                  — crates/starstats-{core,server,client}. Analysis
+#                           went generally available in CodeQL 2.23.3
+#                           (October 2025), as did build-free scanning, so
+#                           no compile step is needed. It does need rustup
+#                           and cargo on PATH, hence the toolchain step
+#                           below, pinned to the same 1.88.0 the rest of CI
+#                           uses so findings match what actually ships.
 #   javascript-typescript — apps/web + apps/tray-ui + release scripts
 #   actions               — the workflows themselves. Worth having: these
 #                           files run with RELEASE_PROMOTE_PAT, the Azure
 #                           signing identity and registry credentials, so a
 #                           bad pattern there is worth more to an attacker
 #                           than a bug in the app.
-#
-# Rust is deliberately absent. It is the larger share of the codebase, but
-# CodeQL's Rust support has moved through preview and needs verifying
-# against a real run before it becomes a required signal; adding it blind
-# would either fail the workflow or produce results nobody trusts. Add it as
-# a follow-up once checked.
 #
 # Actions are pinned to commit SHAs for the same reason as everywhere else
 # in this repo — a mutable tag is a supply-chain hole in a workflow that can
@@ -50,9 +51,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: [javascript-typescript, actions]
+        language: [rust, javascript-typescript, actions]
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+    # Rust analysis is build-free but still shells out to cargo to resolve
+    # the dependency graph, so the toolchain has to exist. Pinned to the
+    # same version the Rust CI jobs use — analysing against a different
+    # compiler than we ship would make findings hard to act on.
+    - name: Install Rust toolchain
+      if: matrix.language == 'rust'
+      uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
@@ -62,9 +71,9 @@ jobs:
         # security queries so the Security tab stays actionable.
         queries: security-extended
 
-    # No build step: both languages analysed here are interpreted /
-    # declarative, so CodeQL's autobuild is unnecessary. If Rust is added
-    # later it WILL need an explicit build.
+    # No build step for any of the three: JS/TS and actions are
+    # interpreted/declarative, and Rust scanning is build-free since
+    # CodeQL 2.23.3.
     - name: Perform CodeQL analysis
       uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
       with:

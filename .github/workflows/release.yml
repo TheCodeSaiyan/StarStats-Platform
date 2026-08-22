@@ -48,7 +48,7 @@ jobs:
       channel: ${{ steps.validate.outputs.channel }}
       bare_version: ${{ steps.validate.outputs.bare_version }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         fetch-depth: 0
     - name: Validate tag against branch invariants
@@ -130,7 +130,7 @@ jobs:
       # self-signed certificate path below.
       ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
     - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
     # mold cuts link time dramatically; Linux-only (no Windows build).
     - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
@@ -158,7 +158,7 @@ jobs:
     - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
         cache: pnpm
@@ -398,7 +398,7 @@ jobs:
         }
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       with:
         name: starstats-client-${{ matrix.os }}
         path: |
@@ -416,15 +416,15 @@ jobs:
     needs: [validate-tag, client-binaries]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
     - name: Download Tauri client artifacts
-      uses: actions/download-artifact@v8
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         path: ./artifacts
         pattern: starstats-client-*
 
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - name: Generate updater manifest
@@ -752,7 +752,7 @@ jobs:
     # available locally. promote.yml + release-promote.mjs annotate
     # the tag with a `Roadmap-Item: <slug>` line when the operator
     # passes `roadmap_item_slug` on workflow_dispatch.
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         fetch-depth: 0
     - name: Resolve roadmap item slug
@@ -772,7 +772,7 @@ jobs:
           echo "No Roadmap-Item annotation on tag $TAG; falling back to repo variable"
         fi
         echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - name: Emit signed event
@@ -815,7 +815,7 @@ jobs:
     needs: [validate-tag, roadmap-emit-event]
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         fetch-depth: 0
     - name: Resolve roadmap item slug
@@ -827,7 +827,7 @@ jobs:
         MSG="$(git tag -l --format='%(contents)' "$TAG" 2>/dev/null || true)"
         SLUG="$(printf '%s\n' "$MSG" | sed -n 's/^Roadmap-Item:[[:space:]]*//p' | head -n1 | tr -d '\r')"
         echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - name: Publish drafts for slug
