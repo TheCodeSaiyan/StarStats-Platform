@@ -97,7 +97,7 @@ jobs:
         found=$(git ls-files -- "${patterns[@]}")
         if [ -n "$found" ]; then
           echo "::error::Agent/tooling files are tracked in a public repo:"
-          echo "$found" | sed 's/^/  /'
+          echo "$found" | while IFS= read -r f; do echo "  $f"; done
           echo "Remove with: git rm --cached <path>   (the local file stays)"
           exit 1
         fi
