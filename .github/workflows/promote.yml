@@ -100,7 +100,7 @@ jobs:
       tray:     ${{ steps.decide.outputs.tray }}
       platform: ${{ steps.decide.outputs.platform }}
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
     # Path detection — only runs on push events. dorny/paths-filter
     # on push compares against the parent commit, which is what we
     # want (incremental detection per commit).
@@ -220,7 +220,7 @@ jobs:
         fi
 
     - name: Checkout next
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         ref: next
         fetch-depth: 0
@@ -230,7 +230,7 @@ jobs:
     - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
@@ -296,7 +296,7 @@ jobs:
         fi
 
     - name: Checkout next
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         ref: next
         fetch-depth: 0
@@ -306,7 +306,7 @@ jobs:
     - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
@@ -356,7 +356,7 @@ jobs:
     environment: production-release
     steps:
     - name: Checkout
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
@@ -365,7 +365,7 @@ jobs:
     - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
@@ -423,7 +423,7 @@ jobs:
     environment: production-release
     steps:
     - name: Checkout
-      uses: actions/checkout@v7
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       with:
         fetch-depth: 0
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
@@ -432,7 +432,7 @@ jobs:
     - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
       with:
         node-version: 24
     - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
