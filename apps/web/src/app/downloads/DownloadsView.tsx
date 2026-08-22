@@ -8,6 +8,10 @@ import {
   type PlatformAsset,
   type TrayRelease,
 } from '@/lib/github-releases';
+import {
+  CODE_SIGNING_PUBLISHER,
+  CODE_SIGNING_SUBJECT_DN,
+} from '@/lib/signing';
 
 const OS_META: Record<AssetOs, { name: string; glyph: string }> = {
   windows: { name: 'Windows', glyph: '⊞' },
@@ -208,7 +212,7 @@ export function DownloadsView({
 
       <details className="ss-card" style={{ padding: '14px 18px' }}>
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>
-          Windows will say “Unknown publisher” — here’s why, and how to check
+          How to check the installer really came from us
         </summary>
         <div
           style={{
@@ -219,19 +223,11 @@ export function DownloadsView({
           }}
         >
           <p style={{ margin: '0 0 10px' }}>
-            The installer <em>is</em> signed, but with our own certificate rather
-            than one bought from a certificate authority. Windows shows “Unknown
-            publisher” for any signature it can’t trace back to a root it already
-            trusts, so SmartScreen will warn you: choose <strong>More info</strong>{' '}
-            → <strong>Run anyway</strong>. A CA-issued certificate is on the list;
-            it costs money and takes weeks to validate, and we’d rather ship the
-            beta first.
-          </p>
-          <p style={{ margin: '0 0 10px' }}>
-            You don’t have to take our word for it. Right-click the download →{' '}
+            The Windows installers are signed with a certificate issued to us
+            by a certificate authority, so Windows names the publisher instead
+            of calling it unknown. Right-click the download →{' '}
             <strong>Properties</strong> → <strong>Digital Signatures</strong> →{' '}
-            <strong>Details</strong>. It should name{' '}
-            <code>CN=StarStats, O=TheCodeSaiyan, C=GB</code> and this thumbprint:
+            <strong>Details</strong>. It should read:
           </p>
           <p
             style={{
@@ -241,10 +237,26 @@ export function DownloadsView({
               wordBreak: 'break-all',
             }}
           >
-            10B7 4595 1DB5 0B9F F046 C39D 5A79 1F65 2EDF E85C
+            {CODE_SIGNING_SUBJECT_DN}
+          </p>
+          <p style={{ margin: '0 0 10px' }}>
+            Anything other than <strong>{CODE_SIGNING_PUBLISHER}</strong> and the
+            file did not come from us — don’t run it.
+          </p>
+          <p style={{ margin: '0 0 10px' }}>
+            We deliberately don’t print a certificate thumbprint to compare.
+            Our certificates are short-lived and rotate constantly, so a
+            thumbprint published here would be out of date within days — and a
+            perfectly genuine download would then look like a forgery. The
+            publisher name above stays the same across every rotation, so
+            that’s the thing worth checking.
           </p>
           <p style={{ margin: 0 }}>
-            Anything else and the file did not come from us — don’t run it.
+            Windows may still show a SmartScreen prompt for a while. That’s a
+            separate reputation system that trusts an installer more as more
+            people run it, and a newly-issued signing identity starts with
+            none. Choose <strong>More info</strong> →{' '}
+            <strong>Run anyway</strong> once you’ve confirmed the publisher.
           </p>
         </div>
       </details>

@@ -1,5 +1,6 @@
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
+import { CODE_SIGNING_PUBLISHER } from '@/lib/signing';
 
 export const metadata: Metadata = {
   title: 'Docs',
@@ -68,12 +69,15 @@ export default function DocsPage() {
           <code>.deb</code>.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
-          Windows will warn you that the publisher is unknown. It is signed,
-          but with our own certificate rather than a bought one, and Windows
-          treats those the same as unsigned. Choose <strong>More info</strong>{' '}
-          → <strong>Run anyway</strong>, or verify the signature first —{' '}
-          <Link href="/downloads">the downloads page</Link> lists the
-          thumbprint to check it against.
+          The Windows installers are signed with a CA-issued certificate, so
+          the signature names <strong>{CODE_SIGNING_PUBLISHER}</strong> rather
+          than an unknown publisher. SmartScreen may still prompt for a while
+          — that&apos;s a separate reputation system, and a newly-issued
+          signing identity starts with none. Choose{' '}
+          <strong>More info</strong> → <strong>Run anyway</strong>, or check
+          the signature first —{' '}
+          <Link href="/downloads">the downloads page</Link> shows exactly what
+          it should say.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
           The desktop app is the thing that reads your log. Everything
