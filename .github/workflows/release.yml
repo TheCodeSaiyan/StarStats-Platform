@@ -174,6 +174,67 @@ jobs:
     # config, so an empty/missing secret cannot trigger a signtool
     # call with `identity ""`. Signing only activates when the
     # secret is populated.
+    # --- Signing path B: self-signed certificate (fallback) ---
+    - name: Import Windows code-signing cert
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT == ''
+      shell: pwsh
+      env:
+        WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+        WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      run: |
+        if (-not $env:WINDOWS_CERTIFICATE) {
+          Write-Host "::warning::WINDOWS_CERTIFICATE secret not set; building unsigned"
+          exit 0
+        }
+        $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+        $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
+        [IO.File]::WriteAllBytes($pfxPath, $bytes)
+        if ($env:WINDOWS_CERTIFICATE_PASSWORD) {
+          $securePass = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePass
+        } else {
+          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My
+        }
+        Remove-Item $pfxPath -Force
+        $thumbprint = $cert.Thumbprint
+        Write-Host "Imported cert; thumbprint=$thumbprint"
+        # Inject a fresh bundle.windows block. The committed config
+        # has no windows section — adding it here ensures signtool
+        # is only ever invoked when we actually have a thumbprint.
+        $confPath = "crates/starstats-client/tauri.conf.json"
+        $conf = Get-Content $confPath -Raw | ConvertFrom-Json
+        $windowsBlock = [ordered]@{
+          digestAlgorithm = "sha256"
+          timestampUrl = "http://timestamp.digicert.com"
+          certificateThumbprint = $thumbprint
+        }
+        $conf.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]$windowsBlock) -Force
+        ($conf | ConvertTo-Json -Depth 20) | Set-Content -Path $confPath -Encoding utf8 -NoNewline
+        # Fail loudly if the rewrite didn't take — better than a
+        # downstream `signtool ... with identity ""` mystery.
+        $verify = Get-Content $confPath -Raw | ConvertFrom-Json
+        if ($verify.bundle.windows.certificateThumbprint -ne $thumbprint) {
+          throw "thumbprint injection failed: expected '$thumbprint', got '$($verify.bundle.windows.certificateThumbprint)'"
+        }
+        Write-Host "Verified: bundle.windows.certificateThumbprint = $($verify.bundle.windows.certificateThumbprint)"
+
+    # Compile BEFORE authenticating. GitHub's OIDC assertion is valid for
+    # five minutes and azure/login cannot renew it, so a login placed ahead
+    # of an 8-minute Rust build is already dead by the time signtool asks
+    # for a token: AADSTS700024, "Client assertion is not within its valid
+    # time range" (tray-v0.1.3-alpha.14). Doing the expensive part first
+    # means the login below lands roughly a minute before signing.
+    #
+    # The second `tauri build` re-uses this compilation — cargo sees the
+    # binary is current — so it goes almost straight to bundling.
+    - name: Compile client (before auth, so the token stays fresh)
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      timeout-minutes: 45
+      shell: bash
+      run: |
+        cd crates/starstats-client
+        pnpm exec tauri build --no-bundle --no-sign
+
     # --- Signing path A: Azure Artifact Signing (CA-issued, public trust) ---
     # Runs only once ARTIFACT_SIGNING_ACCOUNT is set, which cannot happen
     # until org identity validation completes. Auth is OIDC — no long-lived
@@ -281,50 +342,6 @@ jobs:
         $verify = Get-Content $confPath -Raw | ConvertFrom-Json
         if (-not $verify.bundle.windows.signCommand) { throw 'signCommand injection failed' }
         Write-Host "Artifact Signing configured; profile=$env:ARTIFACT_SIGNING_PROFILE"
-
-    # --- Signing path B: self-signed certificate (fallback) ---
-    - name: Import Windows code-signing cert
-      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT == ''
-      shell: pwsh
-      env:
-        WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-        WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-      run: |
-        if (-not $env:WINDOWS_CERTIFICATE) {
-          Write-Host "::warning::WINDOWS_CERTIFICATE secret not set; building unsigned"
-          exit 0
-        }
-        $bytes = [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
-        $pfxPath = Join-Path $env:RUNNER_TEMP "codesign.pfx"
-        [IO.File]::WriteAllBytes($pfxPath, $bytes)
-        if ($env:WINDOWS_CERTIFICATE_PASSWORD) {
-          $securePass = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
-          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePass
-        } else {
-          $cert = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My
-        }
-        Remove-Item $pfxPath -Force
-        $thumbprint = $cert.Thumbprint
-        Write-Host "Imported cert; thumbprint=$thumbprint"
-        # Inject a fresh bundle.windows block. The committed config
-        # has no windows section — adding it here ensures signtool
-        # is only ever invoked when we actually have a thumbprint.
-        $confPath = "crates/starstats-client/tauri.conf.json"
-        $conf = Get-Content $confPath -Raw | ConvertFrom-Json
-        $windowsBlock = [ordered]@{
-          digestAlgorithm = "sha256"
-          timestampUrl = "http://timestamp.digicert.com"
-          certificateThumbprint = $thumbprint
-        }
-        $conf.bundle | Add-Member -NotePropertyName windows -NotePropertyValue ([pscustomobject]$windowsBlock) -Force
-        ($conf | ConvertTo-Json -Depth 20) | Set-Content -Path $confPath -Encoding utf8 -NoNewline
-        # Fail loudly if the rewrite didn't take — better than a
-        # downstream `signtool ... with identity ""` mystery.
-        $verify = Get-Content $confPath -Raw | ConvertFrom-Json
-        if ($verify.bundle.windows.certificateThumbprint -ne $thumbprint) {
-          throw "thumbprint injection failed: expected '$thumbprint', got '$($verify.bundle.windows.certificateThumbprint)'"
-        }
-        Write-Host "Verified: bundle.windows.certificateThumbprint = $($verify.bundle.windows.certificateThumbprint)"
 
     - name: Build Tauri bundles
       # Bounded because the signer can HANG rather than fail. Pointed at a
