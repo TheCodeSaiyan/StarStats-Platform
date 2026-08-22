@@ -1,0 +1,71 @@
+name: CodeQL
+
+# Static analysis for a PUBLIC repo that holds release automation with a
+# write-scoped PAT, code-signing configuration, and a web app that handles
+# RSI session cookies. Findings land in the Security tab rather than as PR
+# noise.
+#
+# Two languages are analysed:
+#   javascript-typescript — apps/web + apps/tray-ui + release scripts
+#   actions               — the workflows themselves. Worth having: these
+#                           files run with RELEASE_PROMOTE_PAT, the Azure
+#                           signing identity and registry credentials, so a
+#                           bad pattern there is worth more to an attacker
+#                           than a bug in the app.
+#
+# Rust is deliberately absent. It is the larger share of the codebase, but
+# CodeQL's Rust support has moved through preview and needs verifying
+# against a real run before it becomes a required signal; adding it blind
+# would either fail the workflow or produce results nobody trusts. Add it as
+# a follow-up once checked.
+#
+# Actions are pinned to commit SHAs for the same reason as everywhere else
+# in this repo — a mutable tag is a supply-chain hole in a workflow that can
+# read the Security tab.
+
+on:
+  push:
+    branches: [main, next]
+  pull_request:
+    branches: [main, next]
+  schedule:
+    # Weekly, so a newly published CodeQL query finds existing code even
+    # when nobody has pushed. Sunday 03:17 UTC — off the hour to avoid the
+    # scheduling stampede.
+    - cron: '17 3 * * 0'
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    permissions:
+      # Least privilege: only what CodeQL needs to publish results.
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+      with:
+        language: ${{ matrix.language }}
+        # security-and-quality is noisier than the default; stick to the
+        # security queries so the Security tab stays actionable.
+        queries: security-extended
+
+    # No build step: both languages analysed here are interpreted /
+    # declarative, so CodeQL's autobuild is unnecessary. If Rust is added
+    # later it WILL need an explicit build.
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+      with:
+        category: /language:${{ matrix.language }}

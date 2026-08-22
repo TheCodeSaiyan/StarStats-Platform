@@ -131,9 +131,9 @@ jobs:
       ARTIFACT_SIGNING_ACCOUNT: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
     # mold cuts link time dramatically; Linux-only (no Windows build).
-    - uses: rui314/setup-mold@v1
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
     # `continue-on-error: true` so a transient Actions cache-service
     # flake in the Post-Run save step (which has bitten the Windows
@@ -145,7 +145,7 @@ jobs:
     # pushes or workflow_dispatch, so in practice it always restores
     # from the shared next/main-written cache and never writes its own
     # (release builds aren't the branch that should own cache writes).
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: tauri-release-${{ matrix.os }}
@@ -155,7 +155,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -243,7 +243,7 @@ jobs:
     # never exists on the runner.
     - name: Azure login (Artifact Signing)
       if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
-      uses: azure/login@v2
+      uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -557,7 +557,7 @@ jobs:
     - name: Create GitHub Release (draft + asset upload)
       id: release
       if: steps.existing.outputs.skip != 'true'
-      uses: softprops/action-gh-release@v3
+      uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3
       with:
         tag_name: ${{ github.ref_name }}
         name: ${{ github.ref_name }}
