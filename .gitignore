@@ -92,9 +92,36 @@ src-tauri/target/
 # the committed copy too. Keep this directory tracked.
 
 # --- Local agent/tool working state ---
-# Local tool state is never committed.
+# Local tool state is never committed. This repo is PUBLIC: agent
+# configuration routinely names internal paths, hosts, workflows and
+# review habits, none of which belong in a public history, and none of
+# which the app or CI needs to build. The patterns below were lost at
+# some point (the comments survived, the rules did not), which left
+# every one of these paths merely untracked rather than ignored — one
+# `git add -A` away from being published. Guarded in CI by the
+# "No agent files" job in ci.yml.
+.claude/
+.agents/
+.codex/
+.serena/
+.superpowers/
+.cursor/
+.windsurf/
+.aider*
+.mcp.json
+AGENTS.md
+CLAUDE.md
+CLAUDE.local.md
+.github/copilot-instructions.md
+docs/superpowers/
 
-# by the agent's brainstorming workflow stays local per developer.
+# Codex credential-provisioning notes. Describes a local machine layout
+# (%USERPROFILE%\.codex\*.env) and how to scope a disposable test
+# account — operator runbook for agent tooling, not product docs.
+SECURITY_SETUP.md
+
+# Notes produced by the agent's brainstorming workflow stay local per
+# developer.
 
 # Top-level design-bundle landing dir (separate from the
 # fetches here when working on an audit).
@@ -109,4 +136,7 @@ docs/*.standalone.html
 # AI-assisted planning artifacts (specs/plans/runbooks). Internal dev
 # process output, not product or contributor docs — keep out of the
 # public repo. Local copies are fine; they just never get tracked.
-the release design notes
+# (This entry previously read "the release design notes", a prose
+# fragment that matched nothing.)
+docs/specs/
+docs/plans/
