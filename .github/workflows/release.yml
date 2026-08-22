@@ -229,9 +229,19 @@ jobs:
           throw "signing dir '$tools' contains a space; the signCommand wrapper needs a space-free path"
         }
         $wrapper = Join-Path $tools 'sign.cmd'
+        $signLog = Join-Path $tools 'sign.log'
+        # Tauri captures the sign command's stdout/stderr and prints NONE of
+        # it — a non-zero exit surfaces only as `failed to run cmd`, with
+        # signtool's actual diagnosis (403, unknown profile, timestamp
+        # failure) discarded. Tee everything to a log the `Signing log` step
+        # below dumps, so one failed run is enough to diagnose rather than
+        # one failed run per guess at 8 minutes of compile each.
         @(
           '@echo off',
-          ('"{0}" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib "{1}" /dmdf "{2}" %*' -f $signtool, $dlib, $meta)
+          ('"{0}" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib "{1}" /dmdf "{2}" %* >> "{3}" 2>&1' -f $signtool, $dlib, $meta, $signLog),
+          'set RC=%ERRORLEVEL%',
+          ('echo [wrapper] signtool exit=%RC% >> "{0}"' -f $signLog),
+          'exit /b %RC%'
         ) | Set-Content -Path $wrapper -Encoding ascii
         # Bare %1 (not "%1") matches Tauri's own documented example; it is the
         # file Tauri asks us to sign, forwarded into signtool by %* above.
@@ -314,6 +324,30 @@ jobs:
           echo "::warning::TAURI_SIGNING_PRIVATE_KEY not set; skipping updater artifacts"
           pnpm exec tauri build
         fi
+
+    # Runs even when the bundle failed — that is precisely when the signer's
+    # output is needed. Never fails the job itself: this is diagnostics, and
+    # a missing log must not mask the real error above.
+    - name: Signing log
+      if: always() && matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      shell: pwsh
+      continue-on-error: true
+      run: |
+        $dir = Join-Path $env:RUNNER_TEMP 'signing'
+        $log = Join-Path $dir 'sign.log'
+        $wrapper = Join-Path $dir 'sign.cmd'
+        if (Test-Path $wrapper) {
+          Write-Host '--- sign.cmd ---'
+          Get-Content $wrapper
+        } else {
+          Write-Host "no sign.cmd at $wrapper (Configure Artifact Signing did not run?)"
+        }
+        if (Test-Path $log) {
+          Write-Host '--- signtool output ---'
+          Get-Content $log
+        } else {
+          Write-Host "no sign.log at $log — the wrapper was never invoked"
+        }
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
