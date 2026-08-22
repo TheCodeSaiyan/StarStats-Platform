@@ -573,6 +573,26 @@ impl Storage {
         Ok(())
     }
 
+    /// Count rows still waiting in the drain queue (`sent_at IS NULL`).
+    /// Quarantined rows carry a `__quarantined_*` sentinel rather than
+    /// NULL, so they are excluded here and counted separately by
+    /// [`Storage::count_quarantined`].
+    ///
+    /// Served by the partial index `idx_events_unsent` (see
+    /// `migrate_events_sent_at`), so this stays an index-only scan even
+    /// on a six-figure backlog. Read by the tray's backlog readout and
+    /// by the catch-up ETA; NOT called on the drain hot path, which
+    /// infers "more pending" from a full page instead.
+    pub fn count_unsent(&self) -> Result<i64> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let n: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM events WHERE sent_at IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(n)
+    }
+
     /// Count rows the poison-pill path has shelved. Read by the tray
     /// UI / status surface so the user can see N rows were dropped
     /// even though no error was visible at drain time. Matches on the
@@ -1877,6 +1897,36 @@ mod tests {
             3,
             "MAX() upsert must not let a lower commit rewind the counter"
         );
+    }
+
+    #[test]
+    fn count_unsent_tracks_the_drain_queue_and_excludes_quarantined_rows() {
+        let (storage, _tmp) = fresh_storage();
+        assert_eq!(storage.count_unsent().unwrap(), 0, "fresh DB has no queue");
+
+        let id_a = insert_with_type(&storage, "location_changed", 1);
+        let id_b = insert_with_type(&storage, "shop_buy_request", 2);
+        let id_c = insert_with_type(&storage, "player_death", 3);
+        assert_eq!(storage.count_unsent().unwrap(), 3);
+
+        // A shipped row leaves the queue.
+        storage.mark_sent(&[id_a]).expect("mark sent");
+        assert_eq!(storage.count_unsent().unwrap(), 2);
+
+        // A quarantined row also leaves the queue — it carries a
+        // `__quarantined_*` sentinel, not NULL — and is counted by
+        // count_quarantined instead. The two must not double-count.
+        storage.mark_quarantined(&[id_b]).expect("quarantine");
+        assert_eq!(storage.count_unsent().unwrap(), 1);
+        assert_eq!(storage.count_quarantined().unwrap(), 1);
+
+        // Releasing it puts it back in the queue.
+        storage.release_quarantined().expect("release");
+        assert_eq!(storage.count_unsent().unwrap(), 2);
+        assert_eq!(storage.count_quarantined().unwrap(), 0);
+
+        storage.mark_sent(&[id_b, id_c]).expect("drain the rest");
+        assert_eq!(storage.count_unsent().unwrap(), 0);
     }
 
     #[test]

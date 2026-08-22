@@ -2057,6 +2057,166 @@ pub fn retry_sync_now(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Snapshot of the upload queue, for the tray's backlog readout.
+///
+/// Distinct from [`SyncStats`], which is lifetime-of-process counters
+/// from the worker's point of view. This is the DB's point of view:
+/// how much is still on this machine and how long clearing it will
+/// plausibly take.
+#[derive(Debug, Clone, Serialize)]
+pub struct SyncBacklog {
+    /// Rows still waiting to upload (`sent_at IS NULL`).
+    pub pending: i64,
+    /// Rows the poison-pill path shelved. Not included in `pending` —
+    /// they only re-enter the queue via `release_quarantined`.
+    pub quarantined: i64,
+    /// Whether Star Citizen is currently running. The drain runs either
+    /// way; this only explains why a large backlog is draining at the
+    /// paced rate rather than the burst rate.
+    pub game_running: bool,
+    /// True when the queue is deep enough that the worker will be using
+    /// its catch-up page size and cadence.
+    pub catching_up: bool,
+    /// Page size the next drain will actually use.
+    pub effective_batch_size: usize,
+    /// Rough seconds to clear `pending` at the current cadence. `None`
+    /// when the queue is empty or remote sync is off.
+    pub eta_secs: Option<u64>,
+}
+
+/// Assumed wall-clock cost of one `/v1/ingest` round-trip (request
+/// build + upload + server insert + response), used only for the
+/// user-facing ETA. Deliberately pessimistic so the estimate reads as
+/// "no worse than" rather than as a promise.
+const ASSUMED_BATCH_ROUND_TRIP: Duration = Duration::from_millis(1500);
+
+/// Rough seconds to drain `pending` events at `page` events per cycle,
+/// where each cycle costs one round-trip plus `delay`.
+///
+/// Pure so the arithmetic is testable without a worker, a DB, or a
+/// network. Returns `None` for an empty queue (nothing to estimate) or
+/// a zero page size (would divide by zero).
+fn estimate_drain_secs(pending: i64, page: usize, delay: Duration) -> Option<u64> {
+    if pending <= 0 || page == 0 {
+        return None;
+    }
+    let cycles = (pending as u128).div_ceil(page as u128);
+    let per_cycle = ASSUMED_BATCH_ROUND_TRIP.saturating_add(delay).as_millis();
+    Some(
+        cycles
+            .saturating_mul(per_cycle)
+            .div_ceil(1000)
+            .min(u64::MAX as u128) as u64,
+    )
+}
+
+/// Read the upload queue depth plus the cadence it will drain at.
+///
+/// Polled by the tray's sync card. Two `COUNT(*)`s against the partial
+/// `sent_at` indexes — cheap enough for the existing status tick even
+/// on a six-figure backlog, but NOT called from the drain hot path
+/// (which infers backlog from a full page instead).
+///
+/// Sizing decisions come from [`sync::DrainTuning`], the same type the
+/// worker uses, so the readout can never drift from the behaviour it
+/// describes.
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_sync_backlog(state: State<'_, AppState>) -> Result<SyncBacklog, String> {
+    let pending = state.storage.count_unsent().map_err(|e| e.to_string())?;
+    let quarantined = state
+        .storage
+        .count_quarantined()
+        .map_err(|e| e.to_string())?;
+
+    // Read the live config rather than a captured copy: the user may
+    // have changed the cadence since the worker spawned (a respawn is
+    // already queued in that case).
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let tuning = sync::DrainTuning::from_config(&cfg.remote_sync);
+
+    // "Catching up" is defined the way the worker defines it: the next
+    // page would come back full.
+    let catching_up = pending > tuning.steady_page() as i64;
+    let game_running = if catching_up {
+        crate::process_guard::is_starcitizen_running()
+    } else {
+        false
+    };
+
+    let effective_batch_size = tuning.page_size(catching_up, game_running);
+    let delay = tuning.delay(
+        catching_up,
+        game_running,
+        Duration::from_secs(cfg.remote_sync.interval_secs.max(5)),
+        0,
+    );
+
+    let eta_secs = if cfg.remote_sync.enabled {
+        estimate_drain_secs(pending, effective_batch_size, delay)
+    } else {
+        None
+    };
+
+    Ok(SyncBacklog {
+        pending,
+        quarantined,
+        game_running,
+        catching_up,
+        effective_batch_size,
+        eta_secs,
+    })
+}
+
+#[cfg(test)]
+mod sync_backlog_tests {
+    use super::*;
+
+    #[test]
+    fn an_empty_queue_has_no_eta() {
+        assert_eq!(estimate_drain_secs(0, 200, Duration::from_secs(60)), None);
+        assert_eq!(estimate_drain_secs(-1, 200, Duration::from_secs(60)), None);
+    }
+
+    #[test]
+    fn a_zero_page_size_does_not_divide_by_zero() {
+        assert_eq!(estimate_drain_secs(1000, 0, Duration::from_secs(60)), None);
+    }
+
+    #[test]
+    fn the_old_cadence_is_what_made_a_backlog_hopeless() {
+        // 300k events, 200 per batch, one batch per 60 s: 1500 cycles at
+        // ~61.5 s each — over 25 hours. This is the number the user hit.
+        let old = estimate_drain_secs(300_000, 200, Duration::from_secs(60)).unwrap();
+        assert!(
+            old > 24 * 3600,
+            "old cadence should be a day-plus, got {old}s"
+        );
+    }
+
+    #[test]
+    fn catch_up_cadence_clears_the_same_backlog_in_minutes() {
+        // Same 300k events at the catch-up page + delay: 150 cycles at
+        // ~1.75 s each.
+        let new = estimate_drain_secs(300_000, 2000, Duration::from_millis(250)).unwrap();
+        assert!(
+            new < 15 * 60,
+            "catch-up should clear 300k in under 15 min, got {new}s"
+        );
+    }
+
+    #[test]
+    fn a_partial_final_batch_still_counts_as_a_cycle() {
+        // Anything from 1..=200 events fits one cycle...
+        let zero_delay = Duration::from_secs(0);
+        let single = estimate_drain_secs(1, 200, zero_delay).unwrap();
+        assert_eq!(estimate_drain_secs(200, 200, zero_delay).unwrap(), single);
+        // ...and 201 spills into a second one, so the estimate must rise.
+        // (Asserting the ratio would be wrong: the seconds rounding is
+        // applied once to the total, not per cycle.)
+        assert!(estimate_drain_secs(201, 200, zero_delay).unwrap() > single);
+    }
+}
+
 /// Count rows the sync worker has quarantined (rows whose `sent_at`
 /// starts with `__quarantined_`). Read by the SettingsPane Recovery
 /// affordance to decide whether to surface the "Release N" button.

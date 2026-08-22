@@ -6,10 +6,11 @@ import type {
   Config,
   OrgBearerStatus,
   StatusResponse,
+  SyncBacklog,
   SyncStats,
 } from '../api';
 import { FieldFocusProvider } from '../hooks/useFieldFocus';
-import { SettingsPane } from './SettingsPane';
+import { formatEta, SettingsPane } from './SettingsPane';
 import type { ReactNode } from 'react';
 
 vi.mock('@tauri-apps/api/event', () => ({
@@ -44,6 +45,9 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
       interval_secs: 60,
       batch_size: 200,
       priority_event_types: [],
+      catch_up_enabled: true,
+      catch_up_batch_size: 2000,
+      max_batch_bytes: 3 * 1024 * 1024,
     },
     org_connector: {
       enabled: false,
@@ -60,13 +64,28 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
 // these tests. `bearer` sets what the on-mount `get_org_bearer_status`
 // probe resolves to (default: not configured).
 function stubInvoke(
-  opts: { bearer?: OrgBearerStatus } = {},
+  opts: { bearer?: OrgBearerStatus; backlog?: SyncBacklog } = {},
 ) {
   const bearer: OrgBearerStatus = opts.bearer ?? {
     configured: false,
     preview: null,
   };
   mockedInvoke.mockImplementation((cmd: string) => {
+    if (cmd === 'get_sync_backlog') {
+      // Default: an empty queue, so the pane's mount-time poll resolves
+      // in every pre-existing test without them opting in.
+      return Promise.resolve(
+        opts.backlog ?? {
+          pending: 0,
+          quarantined: 0,
+          game_running: false,
+          catching_up: false,
+          effective_batch_size: 200,
+          eta_secs: null,
+        },
+      );
+    }
+    if (cmd === 'retry_sync_now') return Promise.resolve(undefined);
     if (cmd === 'get_rsi_cookie_status') return Promise.resolve({ configured: false, preview: null });
     if (cmd === 'get_org_bearer_status') return Promise.resolve(bearer);
     if (cmd === 'set_org_bearer') return Promise.resolve({ configured: true, preview: '…3456' });
@@ -795,5 +814,181 @@ describe('SettingsPane org platform connector card', () => {
     expect(
       screen.queryByText(/a bearer token is required/i),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('SettingsPane upload queue', () => {
+  /** A backlog reading with sensible defaults; override per test. */
+  function makeBacklog(over: Partial<SyncBacklog> = {}): SyncBacklog {
+    return {
+      pending: 0,
+      quarantined: 0,
+      game_running: false,
+      catching_up: false,
+      effective_batch_size: 200,
+      eta_secs: null,
+      ...over,
+    };
+  }
+
+  /** A paired + sync-enabled config — the queue card lives in that card. */
+  function pairedConfig(): Config {
+    return makeConfig({
+      remote_sync: {
+        enabled: true,
+        api_url: 'https://api.example.test',
+        access_token: 'tok',
+        claimed_handle: 'Tester',
+        priority_interval_secs: 5,
+        interval_secs: 60,
+        batch_size: 200,
+        priority_event_types: [],
+        catch_up_enabled: true,
+        catch_up_batch_size: 2000,
+        max_batch_bytes: 3 * 1024 * 1024,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    (listen as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      Promise.resolve(() => undefined),
+    );
+  });
+
+  it('surfaces the queue depth so a six-figure backlog is not invisible', async () => {
+    stubInvoke({ backlog: makeBacklog({ pending: 312481, eta_secs: 480 }) });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+
+    // The count itself, thousands-separated.
+    expect(await screen.findByText('312,481')).toBeTruthy();
+    // And an ETA, so "would this take forever?" is answerable.
+    expect(await screen.findByText(/about 8 min/i)).toBeTruthy();
+  });
+
+  it('explains a paced drain by naming the game as the reason', async () => {
+    stubInvoke({
+      backlog: makeBacklog({
+        pending: 50000,
+        catching_up: true,
+        game_running: true,
+        effective_batch_size: 200,
+        eta_secs: 900,
+      }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+
+    // Scoped to the queue card on purpose: the settings blurb below the
+    // catch-up checkbox contains the same phrase, so an unscoped match
+    // passes even when the readout is missing entirely (observed while
+    // revert-checking this test).
+    const card = await screen.findByTestId('upload-queue');
+    // The reason must be stated, not implied — this is the exact
+    // question ("why is sync slow?") the readout exists to answer.
+    expect(
+      within(card).getByText(/while Star Citizen is running/i),
+    ).toBeTruthy();
+  });
+
+  it('reports the burst batch size when the game is down', async () => {
+    stubInvoke({
+      backlog: makeBacklog({
+        pending: 50000,
+        catching_up: true,
+        game_running: false,
+        effective_batch_size: 2000,
+        eta_secs: 60,
+      }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+
+    expect(await screen.findByText(/Catching up/i)).toBeTruthy();
+    expect(await screen.findByText(/2,000 events per batch/i)).toBeTruthy();
+  });
+
+  it('hides the Upload now button when the queue is already empty', async () => {
+    stubInvoke({ backlog: makeBacklog({ pending: 0 }) });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+
+    expect(await screen.findByText(/Queue empty/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Upload now/i })).toBeNull();
+  });
+
+  it('Upload now kicks the sync worker rather than opening a second upload path', async () => {
+    stubInvoke({ backlog: makeBacklog({ pending: 1000, eta_secs: 30 }) });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+
+    const btn = await screen.findByRole('button', { name: /Upload now/i });
+    await act(async () => {
+      fireEvent.click(btn);
+    });
+    expect(
+      mockedInvoke.mock.calls.some(([cmd]) => cmd === 'retry_sync_now'),
+    ).toBe(true);
+  });
+
+  it('renders nothing rather than claiming an empty queue when the poll fails', async () => {
+    // A transient DB lock must not render "Queue empty" — that would
+    // tell the user the exact opposite of the truth about a backlog we
+    // could not read.
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'get_rsi_cookie_status')
+        return Promise.resolve({ configured: false, preview: null });
+      if (cmd === 'get_org_bearer_status')
+        return Promise.resolve({ configured: false, preview: null });
+      if (cmd === 'get_app_version') return Promise.resolve('0.0.0-test');
+      if (cmd === 'get_build_release_channel') return Promise.resolve('live');
+      if (cmd === 'get_autostart_enabled') return Promise.resolve(false);
+      if (cmd === 'get_sync_backlog')
+        return Promise.reject(new Error('database is locked'));
+      return Promise.reject(new Error(`unexpected invoke: ${cmd}`));
+    });
+
+    const failing = wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    // Let the mount-time poll settle.
+    await act(async () => {});
+    expect(screen.queryByTestId('upload-queue')).toBeNull();
+    failing.unmount();
+
+    // Positive control: the same pane WITH a readable queue does render
+    // the card, so the assertion above is about the failure, not about
+    // the card never existing.
+    stubInvoke({ backlog: makeBacklog({ pending: 7 }) });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    expect(await screen.findByTestId('upload-queue')).toBeTruthy();
+  });
+
+  it('exposes the catch-up controls so the behaviour is not a hidden default', async () => {
+    stubInvoke({ backlog: makeBacklog() });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+
+    const toggle = await screen.findByLabelText(/Catch up on backlogs/i);
+    expect((toggle as HTMLInputElement).checked).toBe(true);
+    // The larger page size is editable, not baked in.
+    expect(await screen.findByDisplayValue('2000')).toBeTruthy();
+  });
+});
+
+describe('formatEta', () => {
+  // Coarse on purpose: the ETA is a pessimistic estimate, so rendering
+  // it to the second would imply precision it does not have.
+  it('collapses anything under a minute', () => {
+    expect(formatEta(0)).toBe('under a minute');
+    expect(formatEta(59)).toBe('under a minute');
+  });
+
+  it('reads in minutes up to an hour', () => {
+    expect(formatEta(60)).toBe('about 1 min');
+    expect(formatEta(480)).toBe('about 8 min');
+    expect(formatEta(3540)).toBe('about 59 min');
+  });
+
+  it('switches to hours, then days, for the pathological cases', () => {
+    expect(formatEta(3600)).toBe('about 1 h');
+    // 25 h is the old one-batch-per-minute cadence on a 300k backlog —
+    // the number that prompted this whole change.
+    expect(formatEta(25 * 3600)).toBe('about 1 day');
+    expect(formatEta(72 * 3600)).toBe('about 3 days');
   });
 });

@@ -6,6 +6,7 @@ import type {
   ReleaseChannel,
   RsiCookieStatus,
   StatusResponse,
+  SyncBacklog,
   SyncPreset,
   SyncStats,
   Theme,
@@ -245,6 +246,11 @@ export function SettingsPane({ config, onSave, status }: Props) {
   // Unsaved-draft guard: tracks the remote config that arrived while
   // the user had uncommitted edits, and the last-saved baseline used
   // to detect whether the draft diverges from what was persisted.
+  // Upload-queue depth. Polled rather than pushed: the drain has no
+  // event of its own, and a 5 s COUNT(*) against a partial index is
+  // cheaper than plumbing a new emit through both sync lanes.
+  const [backlog, setBacklog] = useState<SyncBacklog | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [pendingRemote, setPendingRemote] = useState<Config | null>(null);
   const [savedBaseline, setSavedBaseline] = useState<Config>(config);
 
@@ -350,6 +356,30 @@ export function SettingsPane({ config, onSave, status }: Props) {
     };
   }, []);
 
+  // Poll the upload queue while the Settings pane is mounted. 5 s is
+  // fast enough that a draining backlog visibly ticks down (the whole
+  // point of the readout) and slow enough to be free next to the
+  // pane's other work. A failure leaves the last-known value rather
+  // than blanking the card — a transient DB lock must not read as
+  // "queue empty".
+  useEffect(() => {
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const next = await api.getSyncBacklog();
+        if (!cancelled) setBacklog(next);
+      } catch {
+        // Keep the previous reading; the next tick retries.
+      }
+    };
+    void poll();
+    const timer = setInterval(() => void poll(), 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
+
   // The App owns the canonical Config and subscribes to the bulk-lane
   // `config-changed` event there (so it fires regardless of which tab
   // the user is on). When the parent replaces the config — whether
@@ -368,6 +398,26 @@ export function SettingsPane({ config, onSave, status }: Props) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config]);
+
+  // Kick both sync lanes so the queue starts draining immediately
+  // instead of waiting out the current interval. The button is a
+  // nudge, not a separate upload path — the same worker does the work,
+  // which is why there is no progress bar here (the queue count IS the
+  // progress bar).
+  const handleUploadNow = async () => {
+    setUploading(true);
+    try {
+      await api.retrySyncNow();
+      // Give the woken lane a moment to ship its first page so the
+      // count visibly moves before the button re-enables.
+      await new Promise((r) => setTimeout(r, 1200));
+      setBacklog(await api.getSyncBacklog());
+    } catch {
+      // Non-fatal: the worker drains on its own schedule regardless.
+    } finally {
+      setUploading(false);
+    }
+  };
 
   // Manual "Check for updates" handler. Bypasses the auto-check
   // preference — pressing the button always checks, regardless of the
@@ -1532,7 +1582,7 @@ export function SettingsPane({ config, onSave, status }: Props) {
               <TextInput
                 type="number"
                 min={1}
-                max={5000}
+                max={20000}
                 value={draft.remote_sync.batch_size}
                 onChange={(e) =>
                   updateRemote({
@@ -1541,6 +1591,70 @@ export function SettingsPane({ config, onSave, status }: Props) {
                 }
               />
             </Field>
+          </div>
+
+          <label
+            style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 8,
+              marginTop: 10,
+              fontSize: 12,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={draft.remote_sync.catch_up_enabled}
+              onChange={(e) =>
+                updateRemote({ catch_up_enabled: e.target.checked })
+              }
+              style={{ accentColor: 'var(--accent)', marginTop: 2 }}
+              aria-label="Catch up on backlogs"
+            />
+            <span>
+              Catch up on backlogs
+              <small
+                style={{
+                  display: 'block',
+                  color: 'var(--fg-dim)',
+                  lineHeight: 1.4,
+                }}
+              >
+                Upload back-to-back until the queue is empty instead of one
+                batch per interval, using the larger catch-up batch size
+                below. Paced down automatically while Star Citizen is
+                running.
+              </small>
+            </span>
+          </label>
+
+          {draft.remote_sync.catch_up_enabled && (
+            <div style={{ marginTop: 8, maxWidth: 200 }}>
+              <Field label="Catch-up batch size">
+                <TextInput
+                  type="number"
+                  min={1}
+                  max={20000}
+                  value={draft.remote_sync.catch_up_batch_size}
+                  onChange={(e) =>
+                    updateRemote({
+                      catch_up_batch_size: Math.max(
+                        1,
+                        Number(e.target.value) || 2000,
+                      ),
+                    })
+                  }
+                />
+              </Field>
+            </div>
+          )}
+
+          <div style={{ marginTop: 10 }}>
+            <UploadQueueSection
+              backlog={backlog}
+              onUploadNow={handleUploadNow}
+              uploading={uploading}
+            />
           </div>
         </fieldset>
       </TrayCard>
@@ -1991,6 +2105,132 @@ function UpdateStatusLine({
         </p>
       );
   }
+}
+
+/**
+ * Human-readable duration for the upload-queue ETA. Deliberately
+ * coarse — the estimate is a rough "no worse than", so rendering it to
+ * the second would imply precision it does not have.
+ *
+ * Exported for unit test; not used anywhere else.
+ */
+export function formatEta(secs: number): string {
+  if (secs < 60) return 'under a minute';
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `about ${mins} min`;
+  const hours = secs / 3600;
+  if (hours < 24) return `about ${Math.round(hours)} h`;
+  const days = Math.round(hours / 24);
+  return `about ${days} day${days === 1 ? '' : 's'}`;
+}
+
+/** Thousands-separated count, so a six-figure backlog reads at a glance. */
+function formatCount(n: number): string {
+  return n.toLocaleString();
+}
+
+interface UploadQueueSectionProps {
+  backlog: SyncBacklog | null;
+  onUploadNow: () => void;
+  uploading: boolean;
+}
+
+/**
+ * Upload-queue readout: how many events are still on this machine, the
+ * page size the next drain will use, and roughly how long clearing it
+ * will take.
+ *
+ * Exists because the failure it describes is invisible otherwise: a
+ * backlog drains silently in the background, and with the old
+ * one-page-per-interval cadence a six-figure queue could sit for days
+ * with every status indicator green. The mode line ("catching up" /
+ * "paced — game running") is the part that answers "why is this slow?".
+ */
+function UploadQueueSection({
+  backlog,
+  onUploadNow,
+  uploading,
+}: UploadQueueSectionProps) {
+  if (!backlog) return null;
+
+  const { pending, catching_up, game_running, effective_batch_size, eta_secs } =
+    backlog;
+  const idle = pending === 0;
+
+  let mode: string;
+  if (idle) {
+    mode = 'Queue empty — everything on this machine is uploaded.';
+  } else if (catching_up && game_running) {
+    mode =
+      `Catching up at a reduced rate while Star Citizen is running, ` +
+      `so the uplink does not compete with your session. ` +
+      `${formatCount(effective_batch_size)} events per batch.`;
+  } else if (catching_up) {
+    mode =
+      `Catching up — uploading back-to-back at ` +
+      `${formatCount(effective_batch_size)} events per batch.`;
+  } else {
+    mode = `Uploading on the normal schedule, ${formatCount(
+      effective_batch_size,
+    )} events per batch.`;
+  }
+
+  return (
+    <div
+      data-testid="upload-queue"
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '8px 10px',
+        margin: '0 0 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+            color: 'var(--fg-dim)',
+          }}
+        >
+          Upload queue
+        </span>
+        <span
+          style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: 14,
+            fontWeight: 600,
+            color: idle ? 'var(--ok)' : 'var(--fg)',
+          }}
+        >
+          {formatCount(pending)}
+        </span>
+      </div>
+      <small style={{ fontSize: 11, color: 'var(--fg-dim)', lineHeight: 1.4 }}>
+        {mode}
+        {!idle && eta_secs !== null && ` Estimated ${formatEta(eta_secs)}.`}
+      </small>
+      {!idle && (
+        <div>
+          <GhostButton type="button" onClick={onUploadNow} disabled={uploading}>
+            {uploading ? 'Uploading…' : 'Upload now'}
+          </GhostButton>
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface SyncSpeedSectionProps {

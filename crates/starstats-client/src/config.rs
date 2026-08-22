@@ -1148,6 +1148,31 @@ pub struct RemoteSyncConfig {
     /// `event_type` keys (see `DEFAULT_URGENT_TYPES`).
     #[serde(default = "default_priority_event_types")]
     pub priority_event_types: Vec<String>,
+    /// Master switch for burst catch-up drains. When true (default) a
+    /// lane that just shipped a FULL page keeps draining back-to-back
+    /// instead of sleeping `interval_secs`, until the queue is empty.
+    /// Turning it off restores the strict one-batch-per-interval
+    /// cadence.
+    #[serde(default = "default_true")]
+    pub catch_up_enabled: bool,
+    /// Events per batch while a lane is catching up on a backlog.
+    /// Deliberately much larger than `batch_size`: the steady-state
+    /// value is tuned for latency (ship the handful of events that
+    /// just happened), the catch-up value for throughput (drain a
+    /// six-figure queue in minutes, not days). Only ever used when
+    /// the previous page came back full, and only when Star Citizen
+    /// is NOT running — in-game catch-up stays on `batch_size` so the
+    /// uplink never competes with the session.
+    #[serde(default = "default_catch_up_batch_size")]
+    pub catch_up_batch_size: usize,
+    /// Ceiling on the ESTIMATED JSON size of a single `/v1/ingest`
+    /// body, in bytes. A page read from SQLite is split into
+    /// byte-bounded chunks before any send, so a large
+    /// `catch_up_batch_size` can never produce a body the server
+    /// rejects with 413. Kept comfortably under the server's
+    /// `DefaultBodyLimit` for `/v1/ingest`.
+    #[serde(default = "default_max_batch_bytes")]
+    pub max_batch_bytes: usize,
 }
 
 impl Default for RemoteSyncConfig {
@@ -1161,6 +1186,9 @@ impl Default for RemoteSyncConfig {
             batch_size: default_batch_size(),
             priority_interval_secs: default_priority_interval_secs(),
             priority_event_types: default_priority_event_types(),
+            catch_up_enabled: true,
+            catch_up_batch_size: default_catch_up_batch_size(),
+            max_batch_bytes: default_max_batch_bytes(),
         }
     }
 }
@@ -1171,6 +1199,21 @@ fn default_sync_interval_secs() -> u64 {
 
 fn default_batch_size() -> usize {
     200
+}
+
+/// Catch-up page size. 2000 envelopes at the observed ~600 B/envelope
+/// is roughly 1.2 MB — well inside [`default_max_batch_bytes`], and
+/// 10x the steady-state page, so a 300k-event backlog is ~150 requests
+/// rather than ~1500.
+fn default_catch_up_batch_size() -> usize {
+    2000
+}
+
+/// 3 MB. The server's `/v1/ingest` body limit is larger; the gap is
+/// deliberate headroom for the JSON scaffolding the byte estimator
+/// under-counts.
+fn default_max_batch_bytes() -> usize {
+    3 * 1024 * 1024
 }
 
 fn default_priority_interval_secs() -> u64 {

@@ -106,6 +106,50 @@ export interface RemoteSyncConfig {
    * end) — see Rust-side `DEFAULT_URGENT_TYPES`.
    */
   priority_event_types: string[];
+  /**
+   * When true (default), a lane that just shipped a FULL page keeps
+   * draining back-to-back instead of sleeping `interval_secs`, until
+   * the queue empties. This is what lets a six-figure backlog clear in
+   * minutes rather than days. Turning it off restores the strict
+   * one-batch-per-interval cadence.
+   */
+  catch_up_enabled: boolean;
+  /**
+   * Events per batch while catching up on a backlog. Only used when
+   * the previous page came back full AND Star Citizen is not running —
+   * an in-game backlog drain stays on `batch_size` so the uplink never
+   * competes with the session. Defaults to 2000.
+   */
+  catch_up_batch_size: number;
+  /**
+   * Ceiling on the estimated JSON body size of one upload, in bytes.
+   * Pages are split into byte-bounded chunks before any send, so a
+   * large `catch_up_batch_size` can never produce a body the server
+   * rejects. Defaults to 3 MiB.
+   */
+  max_batch_bytes: number;
+}
+
+/**
+ * Upload-queue snapshot from `get_sync_backlog`. Distinct from
+ * `SyncStats`, which is lifetime-of-process worker counters — this is
+ * the DB's view: what is still on this machine and roughly how long
+ * clearing it will take.
+ */
+export interface SyncBacklog {
+  /** Rows still waiting to upload. */
+  pending: number;
+  /** Rows the poison-pill path shelved; not counted in `pending`. */
+  quarantined: number;
+  /** Whether Star Citizen is running. Sync runs either way — this only
+   *  explains why a big backlog is draining at the paced rate. */
+  game_running: boolean;
+  /** True when the queue is deep enough to trigger catch-up sizing. */
+  catching_up: boolean;
+  /** Page size the next drain will actually use. */
+  effective_batch_size: number;
+  /** Rough seconds to clear `pending`; null when idle or sync is off. */
+  eta_secs: number | null;
 }
 
 /**
@@ -723,6 +767,12 @@ export const api = {
     invoke<void>('mark_event_as_noise', { event_name: eventName }),
   refreshAccountInfo: () => invoke<AccountStatus>('refresh_account_info'),
   retrySyncNow: () => invoke<void>('retry_sync_now'),
+  /**
+   * Upload-queue depth plus the cadence it will drain at. Two indexed
+   * COUNT(*)s — cheap enough for the status poll even on a six-figure
+   * backlog.
+   */
+  getSyncBacklog: () => invoke<SyncBacklog>('get_sync_backlog'),
   /**
    * Persistent count of rows the sync worker has quarantined (rows
    * whose `sent_at` starts with `__quarantined_`). Distinct from

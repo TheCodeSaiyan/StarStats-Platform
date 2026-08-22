@@ -250,7 +250,7 @@ pub fn start(
 
     let bulk_interval = Duration::from_secs(cfg.interval_secs.max(5));
     let priority_interval = Duration::from_secs(cfg.priority_interval_secs.max(1));
-    let batch_size = cfg.batch_size.max(1);
+    let tuning = DrainTuning::from_config(&cfg);
 
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
@@ -275,7 +275,7 @@ pub fn start(
         account_status.clone(),
         kick.clone(),
         priority_types.clone(),
-        batch_size,
+        tuning,
         sync_with_cloud,
         app_handle.clone(),
         location_catalog.clone(),
@@ -294,7 +294,7 @@ pub fn start(
             account_status,
             kick,
             priority_types,
-            batch_size,
+            tuning,
             false, // priority lane never piggybacks preferences
             app_handle,
             location_catalog,
@@ -341,6 +341,315 @@ impl SyncHandles {
 /// Ceiling on the failure backoff — a down server is re-probed at most once
 /// every 5 minutes rather than every lane interval.
 const MAX_BACKOFF: Duration = Duration::from_secs(300);
+
+/// Gap between back-to-back catch-up drains while Star Citizen is NOT
+/// running. Effectively "immediately, but yield the runtime" — a
+/// six-figure backlog is then bounded by server round-trip time rather
+/// than by a local timer.
+const CATCH_UP_DELAY_IDLE: Duration = Duration::from_millis(250);
+
+/// Gap between back-to-back catch-up drains while the game IS running.
+/// Still ~30x faster than the default 60 s bulk interval, but paced so
+/// the uplink never contends with the session for CPU or bandwidth.
+/// Pairs with the `batch_size` (not `catch_up_batch_size`) page cap
+/// applied in-game.
+const CATCH_UP_DELAY_IN_GAME: Duration = Duration::from_secs(2);
+
+/// How long a [`GameProbe`] answer is reused before re-scanning the
+/// process table. `process_guard::is_starcitizen_running` builds and
+/// refreshes a whole `System` snapshot (tens of milliseconds) — fine
+/// once a minute, far too expensive once per 250 ms catch-up tick.
+const PROCESS_PROBE_TTL: Duration = Duration::from_secs(15);
+
+/// Per-lane drain sizing, resolved once at spawn from the persisted
+/// [`config::RemoteSyncConfig`]. `Copy` so it threads through
+/// `spawn_lane` without cloning.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct DrainTuning {
+    /// Steady-state page size — tuned for latency.
+    batch_size: usize,
+    /// Backlog page size — tuned for throughput. Always >= `batch_size`.
+    catch_up_batch_size: usize,
+    /// Ceiling on the estimated JSON body size of one `/v1/ingest` POST.
+    max_batch_bytes: usize,
+    /// Master switch for burst catch-up. False restores the strict
+    /// one-page-per-interval cadence.
+    catch_up_enabled: bool,
+}
+
+impl DrainTuning {
+    pub(crate) fn from_config(cfg: &config::RemoteSyncConfig) -> Self {
+        let batch_size = cfg.batch_size.max(1);
+        Self {
+            batch_size,
+            // A catch-up page smaller than the steady-state page would
+            // make backlogs drain SLOWER than normal traffic; clamp up.
+            catch_up_batch_size: cfg.catch_up_batch_size.max(batch_size),
+            // 64 KiB floor: a byte cap below one envelope would chunk
+            // every batch down to a single event and crawl.
+            max_batch_bytes: cfg.max_batch_bytes.max(64 * 1024),
+            catch_up_enabled: cfg.catch_up_enabled,
+        }
+    }
+
+    /// The page size to read for this tick. Catch-up only escalates
+    /// while the game is DOWN — an in-game backlog drain stays on the
+    /// steady-state page so the uplink never competes with the session.
+    /// The steady-state page size, after clamping. The backlog
+    /// readout compares queue depth against this to decide whether the
+    /// worker is (or is about to be) in catch-up.
+    pub(crate) fn steady_page(&self) -> usize {
+        self.batch_size
+    }
+
+    pub(crate) fn page_size(&self, catching_up: bool, game_running: bool) -> usize {
+        if catching_up && self.catch_up_enabled && !game_running {
+            self.catch_up_batch_size
+        } else {
+            self.batch_size
+        }
+    }
+
+    /// How long to wait before the next drain. A lane that just shipped
+    /// a full page (`catching_up`) with no failures loops almost
+    /// immediately instead of sleeping the configured interval — that
+    /// single change is what turns a 300k-event backlog from days into
+    /// minutes.
+    pub(crate) fn delay(
+        &self,
+        catching_up: bool,
+        game_running: bool,
+        interval: Duration,
+        consecutive_failures: u32,
+    ) -> Duration {
+        if catching_up && self.catch_up_enabled && consecutive_failures == 0 {
+            return if game_running {
+                CATCH_UP_DELAY_IN_GAME
+            } else {
+                CATCH_UP_DELAY_IDLE
+            };
+        }
+        backoff_delay(interval, consecutive_failures)
+    }
+}
+
+#[cfg(test)]
+mod drain_tuning_tests {
+    use super::*;
+
+    fn cfg(batch: usize, catch_up: usize, bytes: usize, enabled: bool) -> config::RemoteSyncConfig {
+        config::RemoteSyncConfig {
+            batch_size: batch,
+            catch_up_batch_size: catch_up,
+            max_batch_bytes: bytes,
+            catch_up_enabled: enabled,
+            ..config::RemoteSyncConfig::default()
+        }
+    }
+
+    #[test]
+    fn catch_up_page_is_never_smaller_than_the_steady_state_page() {
+        // A user who typed a big steady-state batch_size must not get a
+        // SLOWER drain while backlogged.
+        let t = DrainTuning::from_config(&cfg(1000, 200, 3 << 20, true));
+        assert_eq!(t.catch_up_batch_size, 1000);
+        assert_eq!(t.page_size(true, false), 1000);
+    }
+
+    #[test]
+    fn byte_cap_has_a_floor_so_a_zero_never_stalls_the_drain() {
+        let t = DrainTuning::from_config(&cfg(200, 2000, 0, true));
+        assert_eq!(t.max_batch_bytes, 64 * 1024);
+    }
+
+    #[test]
+    fn page_escalates_only_while_backlogged_and_out_of_game() {
+        let t = DrainTuning::from_config(&cfg(200, 2000, 3 << 20, true));
+        assert_eq!(t.page_size(false, false), 200, "idle queue → steady page");
+        assert_eq!(t.page_size(true, true), 200, "in-game → steady page");
+        assert_eq!(
+            t.page_size(true, false),
+            2000,
+            "backlog + game down → burst page"
+        );
+    }
+
+    #[test]
+    fn disabling_catch_up_restores_one_page_per_interval() {
+        let t = DrainTuning::from_config(&cfg(200, 2000, 3 << 20, false));
+        assert_eq!(t.page_size(true, false), 200);
+        assert_eq!(
+            t.delay(true, false, Duration::from_secs(60), 0),
+            Duration::from_secs(60)
+        );
+    }
+
+    #[test]
+    fn catch_up_delay_collapses_the_interval_but_yields_to_the_game() {
+        let t = DrainTuning::from_config(&cfg(200, 2000, 3 << 20, true));
+        let interval = Duration::from_secs(60);
+        assert_eq!(
+            t.delay(false, false, interval, 0),
+            interval,
+            "empty queue → configured interval"
+        );
+        assert_eq!(t.delay(true, false, interval, 0), CATCH_UP_DELAY_IDLE);
+        assert_eq!(t.delay(true, true, interval, 0), CATCH_UP_DELAY_IN_GAME);
+        // Failures always win over catch-up: a 4xx/5xx storm must back
+        // off, not hot-loop at 250 ms.
+        assert_eq!(
+            t.delay(true, false, interval, 3),
+            backoff_delay(interval, 3)
+        );
+    }
+}
+
+/// TTL-cached "is Star Citizen running?" probe.
+///
+/// Sync is NOT gated on the game — the drain runs whether or not Star
+/// Citizen is up, and always has. The probe only decides how AGGRESSIVE
+/// a backlog drain may be: full burst when the game is down, paced when
+/// it is up. A stale answer is harmless — worst case is one catch-up
+/// tick at the wrong cadence.
+struct GameProbe {
+    cached: Option<(Instant, bool)>,
+}
+
+impl GameProbe {
+    fn new() -> Self {
+        Self { cached: None }
+    }
+
+    fn is_running(&mut self) -> bool {
+        let now = Instant::now();
+        if let Some((at, answer)) = self.cached {
+            if now.duration_since(at) < PROCESS_PROBE_TTL {
+                return answer;
+            }
+        }
+        let answer = crate::process_guard::is_starcitizen_running();
+        self.cached = Some((now, answer));
+        answer
+    }
+}
+
+/// What one `drain_lane` pass learned about the queue behind it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct DrainOutcome {
+    /// The page came back FULL, so there is almost certainly more
+    /// behind it. Drives catch-up: the lane loops again immediately
+    /// instead of sleeping its interval. Inferred from the page rather
+    /// than a `COUNT(*)` so the hot path stays a single query.
+    page_was_full: bool,
+}
+
+/// Rough serialized size of one envelope, used to keep a POST body
+/// under [`DrainTuning::max_batch_bytes`].
+///
+/// Deliberately an OVER-estimate: `raw_line` and `payload_json` ship
+/// verbatim, and the constant covers the envelope scaffolding plus the
+/// `resolved_location` block that `build_batch` stamps on afterwards
+/// (not visible from the stored row). Under-counting costs a 413 and a
+/// wasted multi-megabyte upload; over-counting costs one extra request.
+fn estimated_envelope_bytes(e: &UnsentEvent) -> usize {
+    const ENVELOPE_OVERHEAD: usize = 384;
+    e.idempotency_key.len()
+        + e.raw_line.len()
+        + e.payload_json.len()
+        + e.log_source.len()
+        + ENVELOPE_OVERHEAD
+}
+
+/// Split a page into chunks whose estimated body size stays under
+/// `max_bytes`, preserving ascending-id order both within and across
+/// chunks.
+///
+/// This is what makes a large `catch_up_batch_size` safe: the page size
+/// controls how much SQLite work one tick does, and this controls how
+/// much of it fits in one HTTP request. Without it a 2000-event page of
+/// long raw lines would 413 and force the poison-pill path to bisect
+/// its way down — correct, but it re-uploads megabytes on each split.
+///
+/// An event that alone exceeds `max_bytes` still gets its own chunk:
+/// dropping it locally would lose data, so it ships and the server
+/// decides.
+fn chunk_by_bytes(events: Vec<UnsentEvent>, max_bytes: usize) -> Vec<Vec<UnsentEvent>> {
+    let mut chunks: Vec<Vec<UnsentEvent>> = Vec::new();
+    let mut current: Vec<UnsentEvent> = Vec::new();
+    let mut current_bytes = 0usize;
+    for e in events {
+        let size = estimated_envelope_bytes(&e);
+        if !current.is_empty() && current_bytes + size > max_bytes {
+            chunks.push(std::mem::take(&mut current));
+            current_bytes = 0;
+        }
+        current_bytes += size;
+        current.push(e);
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
+#[cfg(test)]
+mod chunking_tests {
+    use super::*;
+
+    fn ev(id: i64, raw_len: usize) -> UnsentEvent {
+        UnsentEvent {
+            id,
+            idempotency_key: format!("key-{id}"),
+            payload_json: "{}".to_string(),
+            raw_line: "x".repeat(raw_len),
+            log_source: "live".to_string(),
+            source_offset: id as u64,
+        }
+    }
+
+    #[test]
+    fn a_small_page_stays_one_chunk() {
+        let chunks = chunk_by_bytes((1..=50).map(|i| ev(i, 200)).collect(), 3 << 20);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), 50);
+    }
+
+    #[test]
+    fn a_large_page_splits_and_every_chunk_fits_the_cap() {
+        let cap = 64 * 1024;
+        // 2000 envelopes at ~1 KB each is ~2 MB, well over a 64 KiB cap.
+        let chunks = chunk_by_bytes((1..=2000).map(|i| ev(i, 640)).collect(), cap);
+        assert!(chunks.len() > 1, "must split");
+        for c in &chunks {
+            let bytes: usize = c.iter().map(estimated_envelope_bytes).sum();
+            assert!(bytes <= cap, "chunk of {} events is {bytes} B", c.len());
+        }
+    }
+
+    #[test]
+    fn chunking_preserves_every_event_in_ascending_id_order() {
+        let chunks = chunk_by_bytes((1..=500).map(|i| ev(i, 900)).collect(), 100 * 1024);
+        let ids: Vec<i64> = chunks.iter().flatten().map(|e| e.id).collect();
+        assert_eq!(ids, (1..=500).collect::<Vec<i64>>());
+    }
+
+    #[test]
+    fn an_event_bigger_than_the_cap_is_sent_alone_not_dropped() {
+        // Losing local data to a byte cap would be far worse than a
+        // server-side rejection, so the oversized row still ships.
+        let events = vec![ev(1, 10), ev(2, 200_000), ev(3, 10)];
+        let chunks = chunk_by_bytes(events, 1024);
+        let ids: Vec<i64> = chunks.iter().flatten().map(|e| e.id).collect();
+        assert_eq!(ids, vec![1, 2, 3]);
+        let oversized = chunks.iter().find(|c| c.iter().any(|e| e.id == 2)).unwrap();
+        assert_eq!(oversized.len(), 1, "oversized row must not drag neighbours");
+    }
+
+    #[test]
+    fn an_empty_page_produces_no_chunks() {
+        assert!(chunk_by_bytes(Vec::new(), 3 << 20).is_empty());
+    }
+}
 
 /// Floor between bulk-lane idle heartbeats (`GET /v1/auth/me`). Independent of
 /// the lane interval so a low `interval_secs` (5s floor) doesn't heartbeat on
@@ -538,7 +847,7 @@ fn spawn_lane(
     account_status: Arc<parking_lot::Mutex<AccountStatus>>,
     kick: Arc<SyncKick>,
     priority_types: Vec<String>,
-    batch_size: usize,
+    tuning: DrainTuning,
     sync_with_cloud: bool,
     app_handle: tauri::AppHandle,
     location_catalog: Arc<parking_lot::RwLock<Arc<LocationCatalog>>>,
@@ -551,6 +860,15 @@ fn spawn_lane(
         let mut last_heartbeat: Option<Instant> = None;
         // When the bulk lane last pushed the opt-in unknown-tag report.
         let mut last_tag_report: Option<Instant> = None;
+        // True while the previous drain came back with a FULL page, i.e.
+        // there is a backlog behind it. Drives both the page size and the
+        // inter-cycle delay — see DrainTuning. Starts false so a freshly
+        // spawned lane makes one normal-sized probe drain before deciding
+        // it is backlogged.
+        let mut catching_up = false;
+        // Whether Star Citizen is up. Only consulted while catching up, so
+        // a lane with an empty queue never pays for a process scan.
+        let mut game_probe = GameProbe::new();
         loop {
             // If a previous iteration tripped `auth_lost`, EXIT the
             // worker entirely. Previously this loop kept spinning,
@@ -602,6 +920,15 @@ fn spawn_lane(
             }
             // Auth gate passed — proceed with the regular drain/heartbeat cycle.
             {
+                // Only probe the process table while backlogged: an idle
+                // lane must not scan every tick, and the answer is
+                // irrelevant unless it would change the page size.
+                let game_running = if catching_up && tuning.catch_up_enabled {
+                    game_probe.is_running()
+                } else {
+                    false
+                };
+                let page_size = tuning.page_size(catching_up, game_running);
                 let types_ref: Vec<&str> = priority_types.iter().map(|s| s.as_str()).collect();
                 match drain_lane(
                     lane,
@@ -611,7 +938,8 @@ fn spawn_lane(
                     &claimed_handle,
                     &storage,
                     &types_ref,
-                    batch_size,
+                    page_size,
+                    tuning.max_batch_bytes,
                     &sync_stats,
                     &account_status,
                     &location_catalog,
@@ -620,14 +948,31 @@ fn spawn_lane(
                 )
                 .await
                 {
-                    Ok(()) => {
+                    Ok(outcome) => {
                         // Reachable server (even an empty drain) clears the
                         // backoff so the lane returns to its normal cadence.
                         consecutive_failures = 0;
+                        // A full page means more rows are waiting: loop again
+                        // almost immediately instead of sleeping the interval.
+                        // A short page means the queue is drained — fall back
+                        // to the configured cadence.
+                        catching_up = outcome.page_was_full;
+                        if catching_up {
+                            tracing::debug!(
+                                lane = lane.label(),
+                                page_size,
+                                game_running,
+                                "drain: page came back full — staying in catch-up"
+                            );
+                        }
                     }
                     Err(e) => {
                         tracing::warn!(lane = lane.label(), error = %e, "sync drain failed");
                         consecutive_failures = consecutive_failures.saturating_add(1);
+                        // Leave catch-up on a failure: backoff_delay owns the
+                        // cadence from here, and hot-looping a failing server
+                        // at 250 ms is exactly what the backoff exists to stop.
+                        catching_up = false;
                         let mut s = sync_stats.lock();
                         s.last_error = Some(format!("{}: {e}", lane.label()));
                     }
@@ -637,7 +982,11 @@ fn spawn_lane(
                 // same tick as the event drain — free roundtrip. The
                 // priority lane ticks far more frequently (default 5s)
                 // and never piggybacks.
-                if lane == Lane::Bulk && sync_with_cloud {
+                // `!catching_up`: a backlog drain ticks every 250 ms, and
+                // piggybacking a preferences GET onto each of those would
+                // turn a "free roundtrip" into thousands of requests. The
+                // pull resumes on the first tick after the queue empties.
+                if lane == Lane::Bulk && sync_with_cloud && !catching_up {
                     // Load the on-disk config and overlay the worker's
                     // captured api_url/access_token. We MUST start from
                     // disk, not from a synthetic Default::default()
@@ -719,7 +1068,20 @@ fn spawn_lane(
             // wins; the next iteration runs immediately. On failures the
             // sleep backs off exponentially so a down server isn't hammered,
             // but a manual "Sync now" still cuts through the backoff.
-            let delay = backoff_delay(interval, consecutive_failures);
+            // Re-read the (TTL-cached) probe: `catching_up` may have just
+            // flipped true on a lane that skipped the probe above, and the
+            // in-game pacing must apply from the very first catch-up tick.
+            let game_running_now = if catching_up && tuning.catch_up_enabled {
+                game_probe.is_running()
+            } else {
+                false
+            };
+            let delay = tuning.delay(
+                catching_up,
+                game_running_now,
+                interval,
+                consecutive_failures,
+            );
             tokio::select! {
                 _ = tokio::time::sleep(delay) => {}
                 _ = kick.for_lane(lane).notified() => {}
@@ -737,25 +1099,31 @@ async fn drain_lane(
     claimed_handle: &str,
     storage: &Storage,
     priority_types: &[&str],
-    batch_size: usize,
+    page_size: usize,
+    max_batch_bytes: usize,
     sync_stats: &parking_lot::Mutex<SyncStats>,
     account_status: &parking_lot::Mutex<AccountStatus>,
     location_catalog: &parking_lot::RwLock<Arc<LocationCatalog>>,
     last_heartbeat: &mut Option<Instant>,
     last_tag_report: &mut Option<Instant>,
-) -> Result<()> {
+) -> Result<DrainOutcome> {
     let pending = match lane {
         Lane::Priority => {
             // Fast lane: rows whose type IS IN the priority list.
-            storage.read_unsent_filtered(priority_types, true, batch_size)?
+            storage.read_unsent_filtered(priority_types, true, page_size)?
         }
         Lane::Bulk => {
             // Bulk lane: everything ELSE. When priority_types is
             // empty (fast lane disabled), this collapses to "all
             // unsent rows" — the legacy single-lane behaviour.
-            storage.read_unsent_filtered(priority_types, false, batch_size)?
+            storage.read_unsent_filtered(priority_types, false, page_size)?
         }
     };
+
+    // A full page is the cheap "there is more behind this" signal the
+    // caller uses to stay in catch-up. Captured BEFORE `pending` is
+    // consumed by the chunker below.
+    let page_was_full = pending.len() >= page_size;
 
     if pending.is_empty() {
         // Bulk lane owns the idle heartbeat, rate-limited to at most once per
@@ -833,12 +1201,15 @@ async fn drain_lane(
             let mut s = sync_stats.lock();
             s.last_attempt_at = Some(now_rfc3339());
         }
-        return Ok(());
+        return Ok(DrainOutcome {
+            page_was_full: false,
+        });
     }
 
     tracing::info!(
         lane = lane.label(),
         pending = pending.len(),
+        page_size,
         "drain: starting"
     );
 
@@ -875,7 +1246,12 @@ async fn drain_lane(
             None
         });
 
-    let mut stack: Vec<Vec<UnsentEvent>> = vec![pending];
+    // Split the page into byte-bounded sub-batches BEFORE the first
+    // send, so a large `page_size` never produces a body the server
+    // rejects. Reversed because the loop below pops from the end: this
+    // keeps sends in ascending-id order.
+    let mut stack: Vec<Vec<UnsentEvent>> = chunk_by_bytes(pending, max_batch_bytes);
+    stack.reverse();
     let mut total_sent = 0usize;
     let mut total_accepted = 0u32;
     let mut total_duplicate = 0u32;
@@ -1046,10 +1422,11 @@ async fn drain_lane(
         duplicate = total_duplicate,
         rejected = total_rejected,
         quarantined = total_quarantined,
+        page_was_full,
         "drain: batch shipped"
     );
 
-    Ok(())
+    Ok(DrainOutcome { page_was_full })
 }
 
 /// Outcome of one POST /v1/ingest attempt, classified so the caller
