@@ -114,6 +114,11 @@ Two things this settles:
 2. **The tag segment is the literal tag**, not a pattern. It changes on every
    release, which is the whole difficulty.
 
+Why this repo emits the immutable format at all: GitHub applies it
+automatically to repositories that are created, **renamed**, or transferred
+from 2026-07-15 onward. This repo was renamed `StarStats` →
+`StarStats-Platform`, so it was opted in without anyone choosing it.
+
 ### Why it failed
 
 The credential was created through the portal's "Based on Selection" flow with
@@ -134,24 +139,133 @@ redaction in every signing log; it is cosmetic.)
 The error message is the diagnostic: it quotes the subject it received. Match
 the credential to that string and the problem is over.
 
-### The fix
+### The exact credential to create
 
-Wildcards require a **flexible** federated credential — the one that takes a
-`claimsMatchingExpression` rather than a fixed subject:
+Verified against Microsoft Learn on 2026-08-22 (docs revised 2026-08-14), not
+from memory. Sources are listed at the end of this section.
+
+Identifiers for this repo, read out of the OIDC token in the alpha.8 failure:
+
+| | |
+|---|---|
+| `repository_owner_id` | `287788021` |
+| `repository_id` | `1339014359` |
+| Issuer | `https://token.actions.githubusercontent.com` |
+| Audience | `api://AzureADTokenExchange` |
+
+**GitHub flexible credentials have a mandatory-claims rule.** The expression
+must match `sub` **and** one or both of `repository_id` /
+`repository_owner_id`. This is not optional and applies regardless of whether
+`sub` is name-based or immutable. Omitting them produces:
 
 ```
-claims['sub'] matches 'repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:ref:refs/tags/tray-v*'
+Failed to add federated credential. Error detail: The
+FederatedIdentityCredential.ClaimsMatchingExpression.Value is invalid.
+Rule exception: Expression configured for issuer
+'https://token.actions.githubusercontent.com' either lacks all required
+claims or contains unallowed claims.
 ```
 
-A classic credential cannot be edited into this; create a flexible one.
+That is a rule change that arrived with GitHub's immutable subjects on
+2026-07-15 and was missing from the portal's own help text for a while — it is
+not a service outage, and retrying or switching app registrations will not
+help. Credentials created *before* the change are grandfathered, which is why
+an existing one elsewhere can keep working while a new one refuses to save.
 
-**This does not cover `workflow_dispatch`.** A manual run from a branch
-presents `...:ref:refs/heads/next`, which no tag expression matches, so manual
-release runs will still fail to sign. If those are needed, either add a second
-credential for the branch ref, or scope to an environment instead —
-`repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:environment:release`
-— which needs an `environment: release` key on the `client-binaries` job in
-`release.yml` and then covers tags and dispatch with one static subject.
+The credential:
+
+```json
+{
+  "name": "starstats-tray-release-tags",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "audiences": ["api://AzureADTokenExchange"],
+  "claimsMatchingExpression": {
+    "value": "claims['sub'] matches 'repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:ref:refs/tags/tray-v*' and claims['repository_id'] eq '1339014359' and claims['repository_owner_id'] eq '287788021'",
+    "languageVersion": 1
+  }
+}
+```
+
+`languageVersion` is always `1`. `subject` must be absent/null —
+`claimsMatchingExpression` and `subject` are mutually exclusive.
+
+### Creating it in the Azure portal
+
+**Pick "Other issuer", not the GitHub scenario.** The GitHub Actions scenario
+is the "Based on Selection" wizard that produced the broken credential in the
+first place: it writes a fixed `subject` and has no expression field, so the
+`*` becomes a literal.
+
+1. **Microsoft Entra ID** → **App registrations** → the app whose client ID is
+   in `AZURE_CLIENT_ID`.
+2. **Certificates & secrets** → **Federated credentials** tab →
+   **+ Add credential**.
+3. **Federated credential scenario** → **Other issuer**.
+4. **Issuer**: `https://token.actions.githubusercontent.com`
+5. **Value**: the `claimsMatchingExpression` string above (the expression only,
+   not the whole JSON).
+6. **Add**.
+
+### Creating it via Graph
+
+Portal and Microsoft Graph are the **only** two supported paths. `az ad app
+federated-credential`, `Az` PowerShell, and the Terraform provider have no
+flexible-credential support — they error on create *and* on read, so a
+credential created in the portal will look broken or invisible to them. `az
+rest` works because it is a raw Graph call:
+
+```bash
+# objectId is the app registration's OBJECT id, not the client id:
+#   az ad app show --id <AZURE_CLIENT_ID> --query id -o tsv
+az rest --method post \
+  --url https://graph.microsoft.com/beta/applications/<objectId>/federatedIdentityCredentials \
+  --body @fic.json
+```
+
+Or Graph Explorer: `POST https://graph.microsoft.com/beta/applications/{objectId}/federatedIdentityCredentials`
+with the JSON above as the body.
+
+### Then delete the broken one
+
+The classic credential with the literal `refs/tags/tray-v*` subject cannot be
+converted — a classic credential has a `subject`, a flexible one has an
+expression, and they are mutually exclusive. Leave it in place until the new
+one is proven, then remove it so a dead trust isn't sitting on the app (the
+per-app limit is 20 credentials).
+
+### What this expression does and does not cover
+
+Covers every `tray-v*` tag push, which is the only trigger that runs
+`release.yml`'s signing path in practice.
+
+**Does not cover `workflow_dispatch`.** A manual run from a branch presents
+`...:ref:refs/heads/next`, which no tag expression matches. The language has
+`matches`, `eq` and `and` — there is **no `or`** — so one expression cannot
+span both. If manual release runs need to sign, either:
+
+- add a **second** flexible credential for `...:ref:refs/heads/*`, or
+- scope to an environment — add `environment: release` to the
+  `client-binaries` job in `release.yml` and match
+  `...:environment:release`, which then covers tags and dispatch under one
+  subject.
+
+Broadening the tag wildcard to `...@1339014359:*` (the shape Microsoft's own
+example uses) would cover everything from this repo, including every branch
+push. For an identity that can *sign code*, that is a deliberately larger
+blast radius than it looks — prefer the tag-scoped expression.
+
+### Status caveats
+
+Flexible federated identity credentials are in **preview**. They work on
+**application objects only** — not user-assigned managed identities. This
+setup uses an app registration, so that limitation does not bite.
+
+### Sources
+
+- [Flexible federated identity credentials (preview)](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-flexible-federated-identity-credentials)
+- [Set up a flexible federated identity credential (preview)](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-set-up-flexible-federated-identity-credential)
+- [Migrate GitHub Actions federated credentials to immutable subjects](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects)
+- [Immutable subject claims for GitHub Actions OIDC tokens](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/)
 
 ### The other prerequisite, still unverified
 
