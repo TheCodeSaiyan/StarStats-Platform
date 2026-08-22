@@ -71,6 +71,38 @@ jobs:
   # one — ~15-20 min per OS).
   #
   # Pull-request events always run; only push events are skippable.
+  agent-files:
+    name: No agent files
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v7
+    # .gitignore is the first line of defence, but it only helps if it
+    # is intact — this repo's agent-ignore rules were silently stripped
+    # once already, leaving the comments behind and every agent path
+    # merely untracked. On a PUBLIC repo that is one `git add -A` from
+    # publishing internal tooling notes. This asserts on what is
+    # actually TRACKED, so it catches both a broken .gitignore and a
+    # deliberate `git add -f`.
+    - name: Assert no agent tooling is tracked
+      shell: bash
+      run: |
+        set -euo pipefail
+        patterns=(
+          '.claude/*' '.agents/*' '.codex/*' '.serena/*' '.superpowers/*'
+          '.cursor/*' '.windsurf/*' '.aider*' '.mcp.json'
+          'AGENTS.md' 'CLAUDE.md' 'CLAUDE.local.md'
+          '.github/copilot-instructions.md'
+          'docs/superpowers/*' 'SECURITY_SETUP.md'
+        )
+        found=$(git ls-files -- "${patterns[@]}")
+        if [ -n "$found" ]; then
+          echo "::error::Agent/tooling files are tracked in a public repo:"
+          echo "$found" | sed 's/^/  /'
+          echo "Remove with: git rm --cached <path>   (the local file stays)"
+          exit 1
+        fi
+        echo "No agent tooling tracked."
+
   should-run:
     name: Should run
     runs-on: ubuntu-latest
