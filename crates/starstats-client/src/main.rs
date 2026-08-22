@@ -610,6 +610,7 @@ fn main() {
             commands::pair_device,
             commands::refresh_account_info,
             commands::retry_sync_now,
+            commands::get_sync_backlog,
             commands::count_quarantined,
             commands::release_quarantined,
             commands::refresh_hangar_now,

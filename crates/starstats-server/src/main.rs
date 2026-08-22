@@ -744,14 +744,21 @@ async fn main() -> anyhow::Result<()> {
             "/.well-known/openid-configuration",
             get(well_known::openid_configuration),
         )
-        // Cap ingest payloads at 4 MB. The Tauri client batches by
-        // count, not size, but a malicious or misconfigured client
-        // could otherwise POST hundreds of MB before the server rejects.
-        // axum's default is 2 MB; we go slightly higher to account for
-        // dense JSON-encoded event arrays from a long offline session.
+        // Cap ingest payloads at 8 MB. A malicious or misconfigured
+        // client could otherwise POST hundreds of MB before the server
+        // rejects; axum's default is 2 MB.
+        //
+        // The tray now batches by BYTES as well as by count
+        // (`RemoteSyncConfig::max_batch_bytes`, default 3 MB), so this
+        // ceiling should never bind for a well-behaved client — the gap
+        // is deliberate headroom for a backlog drain whose raw lines run
+        // longer than the tray's per-envelope estimate. A 413 is not
+        // fatal (the client bisects and retries) but it re-uploads
+        // megabytes per split, so keeping the ceiling clear of the
+        // client's target is worth the memory.
         .route(
             "/v1/ingest",
-            post(ingest::handle::<PostgresStore>).layer(DefaultBodyLimit::max(4 * 1024 * 1024)),
+            post(ingest::handle::<PostgresStore>).layer(DefaultBodyLimit::max(8 * 1024 * 1024)),
         )
         .route("/v1/me/events", get(query::list_events::<PostgresStore>))
         .route(
