@@ -7,6 +7,130 @@ self-signed certificate.
 
 ---
 
+## Confirmed working — 2026-08-22, `tray-v0.1.3-alpha.15`
+
+The first successfully signed build. Signature verified by hand on the
+downloaded installer, not just by a green pipeline.
+
+Getting there took five separate defects. They are recorded individually
+because each one fails differently, and three of them fail in ways that look
+like something else.
+
+### 1. `signCommand` cannot contain spaces in the program path
+
+Symptom: `failed to bundle project: The filename, directory name, or volume
+label syntax is incorrect. (os error 123)`, raised **after** a full release
+compile.
+
+`os error 123` is `ERROR_INVALID_NAME`, thrown at process creation — Tauri
+never launched the signer. signtool lives under
+`C:\Program Files (x86)\Windows Kits\...`, and Tauri does not tolerate spaces
+in the program portion of `signCommand`.
+
+Fix: write the real command into a batch file whose own path has no spaces
+and invoke `cmd /c <wrapper> %1`. `cmd /c` is required because
+`CreateProcess` cannot execute a `.cmd` directly. Do not reach for signtool's
+8.3 short path — 8.3 generation can be disabled per volume, and when it is,
+`ShortPath` silently returns the long path and the build fails identically
+with no clue why.
+
+### 2. Tauri discards the signer's output
+
+Symptom: `failed to bundle project: failed to run cmd` — four words, no
+diagnosis. A non-zero exit, not a launch failure.
+
+Tauri captures the sign command's stdout and stderr and prints none of it.
+Everything below was invisible until the wrapper started tee-ing signtool's
+output to a log that an `always()` step dumps.
+
+**This is the single most valuable thing in the signing setup.** Every
+diagnosis after it came from that log. Do not remove it to tidy the workflow.
+
+### 3. `ExcludeCredentials: []` makes the signer HANG, not fail
+
+Symptom: `Submitting digest for signing...` and then nothing. Forty-eight
+minutes on the first occurrence, still going when cancelled by hand.
+
+The dlib authenticates with `DefaultAzureCredential`, which tries each method
+in order. With nothing excluded it begins with methods that cannot work on a
+GitHub runner, and `ManagedIdentityCredential` probes the IMDS address
+`169.254.169.254`, which on a non-Azure host does not refuse the connection —
+it stalls. So the signer waits rather than erroring.
+
+Fix: exclude the eight methods that cannot apply, leaving `Environment` and
+`AzureCli`. That list mirrors what Microsoft's own `artifact-signing-action`
+ships as defaults, which is the corroborating evidence — an odd default set
+unless the full chain misbehaves in CI.
+
+A wrong account name produces this same hang rather than a 404, because the
+client retries internally. Do not read a hang as "wrong credentials".
+
+### 4. The OIDC assertion expires during the compile
+
+Symptom:
+
+```
+AADSTS700024: Client assertion is not within its valid time range.
+Current time: 21:41:51, assertion valid from 21:31:21, expiry 21:36:21
+```
+
+GitHub's OIDC assertion lives **five minutes** and `azure/login` cannot renew
+it (Azure/login#180, by design for OIDC v1). Logging in and then compiling
+Rust for eight minutes means the assertion is dead before signtool asks for a
+token.
+
+Fix, and the constraint most likely to be broken by accident: **compile
+before authenticating.** `tauri build --no-bundle --no-sign` does the
+expensive part; `azure/login` and `Configure Artifact Signing` follow; the
+second `tauri build` reuses the compilation (cargo sees the binary is
+current) and goes almost straight to bundling, roughly a minute after login.
+
+If someone moves the login step back above the compile "for readability",
+signing breaks again with this error. The ordering is load-bearing.
+
+### 5. `ARTIFACT_SIGNING_ACCOUNT` is the ACCOUNT, not the service principal
+
+The value was `starstats-github-signing`, which is the **app registration /
+service principal** name. The Artifact Signing **account resource** is
+`StarStatsApp` (resource group `code-signing`, North Europe).
+
+They are different objects and both sound plausible. Read the account name
+off **Artifact Signing accounts → Name** in the portal, never off the IAM
+blade — the IAM blade shows the *principal* the role is assigned to, which is
+exactly the wrong string.
+
+### What a healthy run looks like
+
+```
+Compile client (before auth)      ~10 min
+Azure login                       succeeds
+Configure Artifact Signing        "Artifact Signing configured; profile=..."
+Build Tauri bundles               ~3 min, signs 11 artefacts
+```
+
+Every artefact is signed, including `starstats-client.exe` **twice** — once
+per installer packaging pass. That inner-binary signature is why the
+`signCommand` approach is kept rather than signing artefacts afterwards with
+`azure/artifact-signing-action`: post-hoc signing would leave the installed
+executable unsigned and, worse, invalidate every updater `.sig`, since Tauri
+computes those over bundle bytes during the build and authenticode signing
+changes those bytes. Auto-update would reject the download for every existing
+user.
+
+Expect one `[wrapper] signtool exit=1` with no output, immediately retried
+and succeeding. All eleven artefacts still sign; it is a transient, not an
+unsigned file. Worth knowing so it is not mistaken for a real failure.
+
+### Guards now in place
+
+- `timeout-minutes: 45` on the bundling step. A hung signer previously would
+  have run to the six-hour job limit.
+- The tee'd sign log, dumped by an `always()` step.
+- Both were added while debugging and neither fixed signing. They are what
+  made it diagnosable, and are worth more than they look.
+
+---
+
 ## The important thing first: nothing here is a stored credential
 
 There is no signing key, PFX, or client secret anywhere in CI. Authentication
@@ -267,13 +391,17 @@ setup uses an app registration, so that limitation does not bite.
 - [Migrate GitHub Actions federated credentials to immutable subjects](https://learn.microsoft.com/en-us/entra/workload-id/workload-identities-github-immutable-subjects)
 - [Immutable subject claims for GitHub Actions OIDC tokens](https://github.blog/changelog/2026-04-23-immutable-subject-claims-for-github-actions-oidc-tokens/)
 
-### The other prerequisite, still unverified
+### The RBAC role — verified 2026-08-22
 
 The service principal needs the **Trusted Signing Certificate Profile Signer**
-role on the signing account or profile. Nothing has exercised this yet, because
-no build has got past `azure/login`. When the credential is fixed, a 403 from
-`signtool` — *after* a successful login — means this role is missing. Do not
-re-debug the credential when that happens.
+role on the signing account or profile. This is assigned and confirmed working
+— `starstats-github-signing` holds it, alongside **Artifact Signing Identity
+Verifier**, scoped to the `StarStatsApp` resource.
+
+It was the prime suspect for a long time and was never the problem. If a 403
+appears from `signtool` *after* a successful login, check it again; but a
+**hang** at `Submitting digest for signing...` is the credential chain
+(§3 above), not RBAC.
 
 ### Blast radius while it is broken
 
