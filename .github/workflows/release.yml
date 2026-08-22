@@ -206,10 +206,32 @@ jobs:
         $dlib = (Get-ChildItem $tools -Recurse -Filter 'Azure.CodeSigning.Dlib.dll' | Select-Object -First 1).FullName
         if (-not $dlib) { throw 'Azure.CodeSigning.Dlib.dll not found after nuget install' }
         $meta = Join-Path $tools 'metadata.json'
+        # ExcludeCredentials is why the signer used to hang. The dlib
+        # authenticates with DefaultAzureCredential, which tries each method
+        # in order; with an empty exclude list it starts with ones that
+        # cannot work on a GitHub runner. ManagedIdentityCredential probes
+        # the IMDS address 169.254.169.254, which on a non-Azure host does
+        # not refuse — it stalls. Result: "Submitting digest for signing..."
+        # and then nothing, for 48 minutes, with no error (alpha.11/.12).
+        #
+        # This list mirrors what Microsoft's own artifact-signing-action
+        # excludes by default, leaving Environment + AzureCli. We
+        # authenticate via azure/login above, so AzureCliCredential is the
+        # one that must survive.
         @{
           Endpoint               = $env:ARTIFACT_SIGNING_ENDPOINT
           CodeSigningAccountName = $env:ARTIFACT_SIGNING_ACCOUNT
           CertificateProfileName = $env:ARTIFACT_SIGNING_PROFILE
+          ExcludeCredentials     = @(
+            'ManagedIdentityCredential',
+            'WorkloadIdentityCredential',
+            'SharedTokenCacheCredential',
+            'VisualStudioCredential',
+            'VisualStudioCodeCredential',
+            'AzurePowerShellCredential',
+            'AzureDeveloperCliCredential',
+            'InteractiveBrowserCredential'
+          )
         } | ConvertTo-Json | Set-Content -Path $meta -Encoding utf8
         $signtool = (Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin' -Recurse -Filter 'signtool.exe' |
                      Where-Object { $_.FullName -like '*x64*' } | Select-Object -Last 1).FullName
@@ -238,7 +260,7 @@ jobs:
         # one failed run per guess at 8 minutes of compile each.
         @(
           '@echo off',
-          ('"{0}" sign /v /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib "{1}" /dmdf "{2}" %* >> "{3}" 2>&1' -f $signtool, $dlib, $meta, $signLog),
+          ('"{0}" sign /v /debug /fd SHA256 /tr http://timestamp.acs.microsoft.com /td SHA256 /dlib "{1}" /dmdf "{2}" %* >> "{3}" 2>&1' -f $signtool, $dlib, $meta, $signLog),
           'set RC=%ERRORLEVEL%',
           ('echo [wrapper] signtool exit=%RC% >> "{0}"' -f $signLog),
           'exit /b %RC%'
