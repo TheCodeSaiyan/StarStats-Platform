@@ -104,7 +104,7 @@ jobs:
     # Path detection — only runs on push events. dorny/paths-filter
     # on push compares against the parent commit, which is what we
     # want (incremental detection per commit).
-    - uses: dorny/paths-filter@v4
+    - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
       id: f
       if: github.event_name == 'push'
       with:
@@ -227,16 +227,16 @@ jobs:
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
         persist-credentials: true
 
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
       with:
         node-version: 24
-    - uses: dtolnay/rust-toolchain@1.88.0
-    - uses: rui314/setup-mold@v1
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: promote-prerelease-tray
@@ -303,16 +303,16 @@ jobs:
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
         persist-credentials: true
 
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
       with:
         node-version: 24
-    - uses: dtolnay/rust-toolchain@1.88.0
-    - uses: rui314/setup-mold@v1
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: promote-prerelease-platform
@@ -362,16 +362,16 @@ jobs:
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
         persist-credentials: true
 
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
       with:
         node-version: 24
-    - uses: dtolnay/rust-toolchain@1.88.0
-    - uses: rui314/setup-mold@v1
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: promote-live-tray
@@ -429,16 +429,16 @@ jobs:
         token: ${{ secrets.RELEASE_PROMOTE_PAT }}
         persist-credentials: true
 
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
       with:
         node-version: 24
-    - uses: dtolnay/rust-toolchain@1.88.0
-    - uses: rui314/setup-mold@v1
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: promote-live-platform

@@ -126,7 +126,7 @@ jobs:
       scripts: ${{ steps.f.outputs.scripts }}
     steps:
     - uses: actions/checkout@v7
-    - uses: dorny/paths-filter@v4
+    - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
       id: f
       with:
         filters: |
@@ -179,11 +179,11 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
       with:
         components: clippy, rustfmt
     # mold cuts link time dramatically; Linux-only (no Windows build).
-    - uses: rui314/setup-mold@v1
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
     # `continue-on-error: true` so a transient Actions cache-service
     # flake in the Post-Run save step doesn't fail the whole CI job.
@@ -191,7 +191,7 @@ jobs:
     # compile. See release.yml for the production-side justification.
     # `save-if` restricts cache WRITES to next/main so PR runs restore
     # from the shared cache but never pollute it with throwaway state.
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: ${{ matrix.os }}
@@ -210,7 +210,7 @@ jobs:
     # "frontendDist path doesn't exist". The release workflow runs
     # `pnpm --filter tray-ui build` for the same reason; this job
     # needs the same prep before clippy/test touch starstats-client.
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -239,7 +239,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -263,15 +263,15 @@ jobs:
     # against the committed `schema.ts` — non-zero diff fails the job.
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
-    - uses: rui314/setup-mold@v1
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: openapi-ubuntu-latest
         save-if: ${{ github.ref == 'refs/heads/next' || github.ref == 'refs/heads/main' }}
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -304,7 +304,7 @@ jobs:
     if: needs.should-run.outputs.run == 'true' && needs.changed.outputs.web == 'true'
     steps:
     - uses: actions/checkout@v7
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -338,7 +338,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v7
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
@@ -391,10 +391,10 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     steps:
     - uses: actions/checkout@v7
-    - uses: dtolnay/rust-toolchain@1.88.0
-    - uses: rui314/setup-mold@v1
+    - uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+    - uses: rui314/setup-mold@7e4f20ad28a2e8ca6fd0892ccf72e2abb706b9c3 # v1
       if: runner.os == 'Linux'
-    - uses: Swatinem/rust-cache@v2
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
       continue-on-error: true
       with:
         shared-key: tauri-${{ matrix.os }}
@@ -404,7 +404,7 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev pkg-config
-    - uses: pnpm/action-setup@v6
+    - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       with:
         version: 9.15.0
     - uses: actions/setup-node@v7
