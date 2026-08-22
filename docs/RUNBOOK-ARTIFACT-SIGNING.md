@@ -94,61 +94,87 @@ building unsigned.
 
 ---
 
-## ⚠ Unverified: does the federated credential subject actually match?
+## The federated credential subject — settled 2026-08-22
 
-**This has never completed a real release. Verify it on the first alpha.**
+`tray-v0.1.3-alpha.8` was the first release to run this path. It **failed**,
+and the failure is now understood. Read this before touching the credential.
 
-The credential was created with the portal's "Based on Selection" flow and
-renders as:
+### What the token actually presents
 
 ```
-repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:ref:refs/tags/tray-v*
+repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:ref:refs/tags/tray-v0.1.3-alpha.8
 ```
 
-Two things about that string are worth being nervous about:
+Two things this settles:
 
-1. **The `@<id>` suffixes.** That is GitHub's *immutable subject* format,
-   which embeds the owner ID and repo ID so the subject survives a rename.
-   GitHub only emits it if the repository is opted into that format. The
-   default `sub` is plain `repo:TheCodeSaiyan/StarStats-Platform:ref:...`. If
-   the repo is not opted in, Entra will be matching a string the token never
-   contains.
-2. **The trailing `*`.** Classic federated credentials match `sub` *exactly*
-   and do not support wildcards; only flexible credentials
-   (`claimsMatchingExpression`) do. A literal `*` in a classic subject never
-   matches anything.
+1. **The `@<id>` immutable format is correct.** This repo does emit owner-id /
+   repo-id subjects, so `TheCodeSaiyan@287788021/StarStats-Platform@1339014359`
+   is right and survives the rename from `TheCodeSaiyan/StarStats`. No action
+   needed on that half.
+2. **The tag segment is the literal tag**, not a pattern. It changes on every
+   release, which is the whole difficulty.
 
-Both are plausible-and-correct if the portal created a flexible credential
-against the immutable format — but neither is verifiable from this repo, and
-the failure is invisible until a tag is pushed.
+### Why it failed
 
-The rename matters here: this repo used to be `TheCodeSaiyan/StarStats` and is
-now `TheCodeSaiyan/StarStats-Platform`. `.claude/rules/release-ci.md` and the
-`pr-roadmap-link` skill still reference the old name.
+The credential was created through the portal's "Based on Selection" flow with
+`...:ref:refs/tags/tray-v*`. That flow produces a **classic** federated
+credential, and a classic credential compares `sub` **byte-for-byte**. The `*`
+is matched as a literal asterisk, so it matches nothing, ever.
 
-### How it fails
+```
+AADSTS700213: No matching federated identity record found for presented
+assertion subject 'repo:TheCodeSaiyan@287788021/***@1339014359:ref:refs/tags/tray-v0.1.3-alpha.8'
+```
 
-`Azure login (Artifact Signing)` fails with `AADSTS70021: No matching
-federated identity record found for presented assertion subject`, and the
-error message quotes the subject it *did* receive. That quoted string is the
-answer — put it in the credential.
+(The repo name shows as `***` because GitHub redacts any string equal to a
+secret value, and `ARTIFACT_SIGNING_PROFILE` is `StarStats-Platform` — that is
+the real certificate profile name, confirmed, not a paste error. Expect this
+redaction in every signing log; it is cosmetic.)
 
-### Also check `workflow_dispatch`
+The error message is the diagnostic: it quotes the subject it received. Match
+the credential to that string and the problem is over.
 
-A manual run from a branch emits `...:ref:refs/heads/next`, which will not
-match a tag-scoped credential no matter how it is written. Dispatch runs will
-fail to sign even when tag pushes work. If manual release runs are needed, add
-a second credential for the branch ref, or scope the job to an environment
-(`repo:<org>/<repo>:environment:release` — needs an `environment:` key on the
-`client-binaries` job) so one subject covers both.
+### The fix
 
-### The other Azure-side prerequisite
+Wildcards require a **flexible** federated credential — the one that takes a
+`claimsMatchingExpression` rather than a fixed subject:
+
+```
+claims['sub'] matches 'repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:ref:refs/tags/tray-v*'
+```
+
+A classic credential cannot be edited into this; create a flexible one.
+
+**This does not cover `workflow_dispatch`.** A manual run from a branch
+presents `...:ref:refs/heads/next`, which no tag expression matches, so manual
+release runs will still fail to sign. If those are needed, either add a second
+credential for the branch ref, or scope to an environment instead —
+`repo:TheCodeSaiyan@287788021/StarStats-Platform@1339014359:environment:release`
+— which needs an `environment: release` key on the `client-binaries` job in
+`release.yml` and then covers tags and dispatch with one static subject.
+
+### The other prerequisite, still unverified
 
 The service principal needs the **Trusted Signing Certificate Profile Signer**
-role on the signing account (or on the specific profile). Without it,
-`azure/login` succeeds and `signtool` then fails with a 403 from the data
-plane — a confusingly late failure. Check role assignments before blaming the
-credential.
+role on the signing account or profile. Nothing has exercised this yet, because
+no build has got past `azure/login`. When the credential is fixed, a 403 from
+`signtool` — *after* a successful login — means this role is missing. Do not
+re-debug the credential when that happens.
+
+### Blast radius while it is broken
+
+A failing `Azure login` fails `Tauri client windows-latest`, which skips
+`Publish GitHub Release`, so **no tray release is published at all** — the
+Linux build succeeds but ships nowhere. The platform track (`v*` tags,
+container images) is unaffected; only `tray-v*` runs `release.yml`.
+
+Deleting `ARTIFACT_SIGNING_ACCOUNT` restores publishing immediately via the
+self-signed fallback, and re-adding it re-enables Trusted Signing. One command
+each way, no code change:
+
+```bash
+gh secret delete ARTIFACT_SIGNING_ACCOUNT --repo TheCodeSaiyan/StarStats-Platform
+```
 
 ---
 
@@ -202,7 +228,8 @@ page that asks people to trust the app with an RSI session cookie.
 2. Push an **alpha** tag to `next` first — never validate signing on a live
    promote.
 3. Watch the `Azure login (Artifact Signing)` step. If it fails, read the
-   subject out of the `AADSTS70021` message and fix the credential.
+   subject out of the `AADSTS700213` message and fix the credential — the
+   message quotes exactly what the token presented.
 4. Watch `Configure Artifact Signing` — it prints
    `Artifact Signing configured; profile=…` and throws if `signCommand`
    injection failed.
