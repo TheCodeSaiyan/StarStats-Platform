@@ -15,7 +15,7 @@ use anyhow::{Context, Result};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use opentelemetry::{global, trace::TracerProvider as _, KeyValue};
 use opentelemetry_otlp::WithExportConfig;
-use opentelemetry_sdk::{trace as sdktrace, Resource};
+use opentelemetry_sdk::{trace as sdktrace, trace::SdkTracerProvider, Resource};
 use std::sync::Arc;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -32,11 +32,15 @@ pub struct TelemetryHandles {
 /// Marker held for the duration of the program. On `Drop` it
 /// instructs the global tracer provider to flush queued spans
 /// synchronously so late requests still reach Tempo.
-pub struct OtelGuard;
+pub struct OtelGuard(SdkTracerProvider);
 
 impl Drop for OtelGuard {
     fn drop(&mut self) {
-        global::shutdown_tracer_provider();
+        // 0.28 replaced the global shutdown fn with a method on the
+        // provider, so the guard has to own it rather than be a marker.
+        if let Err(e) = self.0.shutdown() {
+            eprintln!("OTel tracer shutdown failed: {e}");
+        }
     }
 }
 
@@ -52,9 +56,9 @@ pub fn init_telemetry() -> Result<TelemetryHandles> {
     // Build the trace pipeline conditionally. Local dev (no collector)
     // skips this and the rest of telemetry still works.
     let (otel_layer, otel_guard) = match build_otel_pipeline() {
-        Ok(Some(tracer)) => (
+        Ok(Some((tracer, provider))) => (
             Some(tracing_opentelemetry::layer().with_tracer(tracer)),
-            Some(OtelGuard),
+            Some(OtelGuard(provider)),
         ),
         Ok(None) => (None, None),
         Err(e) => {
@@ -85,7 +89,7 @@ pub fn init_telemetry() -> Result<TelemetryHandles> {
 
 /// Build the OTLP tracer pipeline if `OTEL_EXPORTER_OTLP_ENDPOINT` is
 /// set. Returns `Ok(None)` when no endpoint is configured.
-fn build_otel_pipeline() -> Result<Option<sdktrace::Tracer>> {
+fn build_otel_pipeline() -> Result<Option<(sdktrace::Tracer, SdkTracerProvider)>> {
     let endpoint = match std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT") {
         Ok(v) if !v.is_empty() => v,
         _ => return Ok(None),
@@ -97,21 +101,24 @@ fn build_otel_pipeline() -> Result<Option<sdktrace::Tracer>> {
     // `install_batch` returns the configured `TracerProvider` and also
     // installs it as the global one, which is what `shutdown_tracer_provider`
     // (in `OtelGuard::drop`) ends up flushing.
-    let provider = opentelemetry_otlp::new_pipeline()
-        .tracing()
-        .with_exporter(
-            opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(&endpoint),
-        )
-        .with_trace_config(
-            sdktrace::Config::default().with_resource(Resource::new(vec![KeyValue::new(
-                "service.name",
-                service_name,
-            )])),
-        )
-        .install_batch(opentelemetry_sdk::runtime::Tokio)
-        .context("install OTLP tracing pipeline")?;
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(&endpoint)
+        .build()
+        .context("build OTLP span exporter")?;
 
-    Ok(Some(provider.tracer("starstats-api")))
+    let resource = Resource::builder()
+        .with_attribute(KeyValue::new("service.name", service_name))
+        .build();
+
+    // 0.28 dropped the pipeline builder and the explicit runtime
+    // argument: the batch processor now owns its own dispatch thread.
+    let provider = SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_resource(resource)
+        .build();
+
+    global::set_tracer_provider(provider.clone());
+    let tracer = provider.tracer("starstats-api");
+    Ok(Some((tracer, provider)))
 }
