@@ -135,7 +135,7 @@ function ChainNode({
         alignItems: 'flex-start',
         gap: 2,
         padding: '8px 12px',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         border: '1px solid var(--border)',
         background: latest ? 'var(--accent-soft, var(--bg-elev))' : 'var(--bg-elev)',
         borderColor: latest ? 'var(--accent)' : 'var(--border)',

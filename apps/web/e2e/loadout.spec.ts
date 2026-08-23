@@ -117,10 +117,12 @@ test('loadout_page_renders_body_outline_and_gear_group', async ({
   // Body outline renders (has slot placeholders / filled slots)
   // The BodyOutline has class="body-outline"; at minimum Head slot
   // resolves to "Light Helmet" (filled) or a placeholder
-  await expect(page.locator('.body-outline')).toBeVisible();
+  // `.hp-paperdoll` since the projection port — same paperdoll, beam markup.
+  await expect(page.locator('.hp-paperdoll')).toBeVisible();
 
   // At least one gear group is rendered — Weapons group from BEHR_P4AR
-  await expect(page.locator('.gear-group').first()).toBeVisible();
+  // Gear groups are flat Planes now, each captioned with its group name.
+  await expect(page.locator('.hp-geargrid').first()).toBeVisible();
 
   // The Weapons group heading is present
   await expect(page.getByRole('heading', { name: /weapons/i })).toBeVisible();
@@ -143,7 +145,7 @@ test('loadout_page_shows_empty_state_when_no_burst', async ({
   await expect(page.getByText(/no loadout snapshot/i)).toBeVisible();
 });
 
-test('me_loadout_widget_shows_view_loadout_link', async ({
+test('profile_loadout_widget_shows_view_loadout_link', async ({
   page,
   request,
 }) => {
@@ -161,10 +163,19 @@ test('me_loadout_widget_shows_view_loadout_link', async ({
         status: 200,
         body: { layout: [{ id: 'loadout', enabled: true, size: 'compact' }] },
       },
+      // `/u/[handle]` as the OWNER: page.tsx short-circuits to the self
+      // path before hitting the public endpoints, so these are
+      // belt-and-suspenders stubs that keep the scenario deterministic.
+      'GET /v1/public/TestPilot/summary': { status: 404, body: {} },
+      'GET /v1/public/TestPilot/rsi-profile': { status: 404, body: {} },
+      'GET /v1/public/TestPilot/rsi-orgs': { status: 200, body: { orgs: [] } },
     }),
   );
 
-  await page.goto('/me');
+  // `/u/[handle]`, not `/me`: the projection replaced the widget grid on /me,
+  // and the loadout WIDGET (as opposed to the `/me/loadout` page, covered
+  // above) now only renders on the profile surface.
+  await page.goto('/u/TestPilot');
 
   // The loadout widget renders the "View loadout →" link
   await expect(

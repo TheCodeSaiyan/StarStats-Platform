@@ -10,7 +10,7 @@
 
 export default function Loading() {
   return (
-    <main aria-busy="true" aria-label="Loading category">
+    <div aria-busy="true" aria-label="Loading category">
       <div className="skeleton" style={{ height: 13, width: 140, marginBottom: 14 }} />
       <div className="skeleton" style={{ height: 32, width: 220 }} />
       <div className="skeleton" style={{ height: 13, width: 120, marginTop: 10 }} />
@@ -24,7 +24,7 @@ export default function Loading() {
       {/* Facet chip row */}
       <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="skeleton" style={{ height: 22, width: 70 + (i % 3) * 24, borderRadius: 999 }} />
+          <div key={i} className="skeleton" style={{ height: 22, width: 70 + (i % 3) * 24, borderRadius: 0 }} />
         ))}
       </div>
 
@@ -46,6 +46,6 @@ export default function Loading() {
           </div>
         ))}
       </div>
-    </main>
+    </div>
   );
 }

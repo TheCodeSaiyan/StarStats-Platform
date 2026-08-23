@@ -1,5 +1,5 @@
 /**
- * /uploads has been folded into /devices as a per-device "Activity"
+ * /uploads has been folded into /downloads (the Emitter) as a per-device "Activity"
  * tab. See StarStats Audit v2 §03 + §07: pairing identity and the
  * batch stream are two views of the same pipeline and belong together.
  *
@@ -10,5 +10,5 @@ import { redirect } from 'next/navigation';
 export const metadata = { title: "Uploads" };
 
 export default async function UploadsPage() {
-  redirect('/devices');
+  redirect('/downloads');
 }

@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -24,7 +26,18 @@ export const metadata: Metadata = {
  * mate's will otherwise conclude data is missing. */
 export default function DashboardGuidePage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="guides"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Guides', href: '/guides' },
+        { label: 'Dashboard' },
+      ]}
+      title="Dashboard"
+      ctx="Guides · reading your projection"
+    >
+      <DocsIndex active="/guides/dashboard" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Guides
       </div>
@@ -178,6 +191,7 @@ export default function DashboardGuidePage() {
           one isn&apos;t a fault, it&apos;s a missing answer.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

@@ -1,50 +1,55 @@
 import React from 'react';
-import { TONE_COLOR, type StatRow } from '@/lib/kb-viz';
+import type { StatRow } from '@/lib/kb-viz';
 
 /**
- * One peer-relative stat: label + value, a min→max track with the
- * value dot + class-median tick, and a quantile band label. When the
- * row has no `fillPct` (stats missing) it degrades to label + value.
+ * One peer-relative stat: the figure, a min→max track carrying the value and
+ * the class median, and the quantile band that says what the position means.
+ *
+ * REDRAWN. The flat version was a rounded pill with a hardcoded amber gradient
+ * (`#E8A23C`), a 4px radius and a round value dot — three things the system
+ * does not have. Worse, the colour was literal rather than tokenised, so it
+ * stayed amber when the reader recalibrated to Pyro or Nyx: the one element on
+ * the page whose whole job is comparison did not belong to the beam.
+ *
+ * It is a hairline track now. Height and brightness carry the value; hue never
+ * does. The median is a tick, not a second colour. The band keeps its tone
+ * through the system's own classes rather than `TONE_COLOR`.
+ *
+ * Degrades to label + figure when the row has no `fillPct` — a stat with no
+ * peer distribution has no position to show, and an empty track would imply
+ * one.
  */
 export function StatBar({ row }: { row: StatRow }) {
   const hasTrack = row.fillPct !== undefined;
   return (
-    <div style={{ marginBottom: 14 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
-        <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{row.label}</span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--fg)' }}>{row.valueText}</span>
+    <div className="hp-statbar">
+      <div className="hp-statbar__head">
+        <span className="hp-statbar__label">{row.label}</span>
+        <b className="hp-statbar__value">{row.valueText}</b>
       </div>
-      {hasTrack && (
-        <div style={{ position: 'relative', height: 7, background: 'var(--surface-2, #221d2b)', borderRadius: 4 }}>
-          <div
-            style={{
-              position: 'absolute', left: 0, top: 0, bottom: 0,
-              width: `${row.fillPct}%`,
-              background: 'linear-gradient(90deg, rgba(232,162,60,.35), var(--accent, #E8A23C))',
-              borderRadius: 4,
-            }}
-          />
-          {row.medianPct !== undefined && (
-            <div
+      {hasTrack ? (
+        <div
+          className="hp-statbar__track"
+          role="img"
+          aria-label={`${row.label}: ${row.valueText}${
+            row.band ? `, ${row.band.text}` : ''
+          }`}
+        >
+          <i className="fill" style={{ width: `${row.fillPct}%` }} />
+          {row.medianPct !== undefined ? (
+            <i
+              className="median"
+              style={{ left: `${row.medianPct}%` }}
               title="class median"
-              style={{ position: 'absolute', top: -2, bottom: -2, left: `${row.medianPct}%`, width: 2, background: 'rgba(255,255,255,.5)', transform: 'translateX(-50%)' }}
             />
-          )}
-          <div
-            style={{
-              position: 'absolute', top: '50%', left: `${row.fillPct}%`,
-              width: 11, height: 11, borderRadius: '50%',
-              background: 'var(--accent, #E8A23C)', border: '2px solid var(--bg, #0F0E12)',
-              transform: 'translate(-50%, -50%)',
-            }}
-          />
+          ) : null}
         </div>
-      )}
-      {row.band && (
-        <div style={{ marginTop: 5, fontSize: 10.5, fontWeight: 600, color: TONE_COLOR[row.band.tone] }}>
+      ) : null}
+      {row.band ? (
+        <span className={`hp-statbar__band ${row.band.tone}`}>
           {row.band.text}
-        </div>
-      )}
+        </span>
+      ) : null}
     </div>
   );
 }

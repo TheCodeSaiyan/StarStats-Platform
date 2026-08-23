@@ -107,7 +107,7 @@ export function EntityHoverCard({ category, entry, id }: EntityHoverCardProps) {
         padding: '10px 12px',
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         boxShadow: '0 6px 24px rgba(0,0,0,0.25)',
         zIndex: 50,
         fontSize: 12,

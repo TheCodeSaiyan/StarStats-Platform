@@ -41,7 +41,7 @@ export function InferredBadge({ confidence }: Props) {
         alignItems: 'center',
         gap: 6,
         padding: '2px 8px',
-        borderRadius: 'var(--r-pill)',
+        borderRadius: 0,
         background: 'var(--surface-2)',
         border: '1px solid var(--border)',
         color: 'var(--fg-muted)',

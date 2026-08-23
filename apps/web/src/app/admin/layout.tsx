@@ -1,6 +1,10 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { AdminNav } from './_components/AdminNav';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import type { Calibration } from 'holo';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import { ConsoleShell } from './_projection/ConsoleShell';
 
 // Segment-level title (M-W12): every /admin/** page inherits this
 // unless it exports its own metadata, so the whole admin surface shows
@@ -8,7 +12,7 @@ import { AdminNav } from './_components/AdminNav';
 export const metadata = { title: 'Admin' };
 
 /**
- * Server-component gate for the /admin surface.
+ * Server-component gate for the /admin surface, and its Console frame.
  *
  * Runs before any /admin/** page renders. Uses the `staffRoles` field
  * mirrored into the session cookie at sign-in time, so role checks
@@ -19,6 +23,17 @@ export const metadata = { title: 'Admin' };
  * `StaffRoleSet::has`, so a tampered cookie can't escalate.
  *
  * Admin implies moderator on the server side, so we accept either.
+ *
+ * PROJECTION PORT. The frame moved into `ConsoleShell`. The `role="main"`
+ * landmark that used to live on this file's wrapper div now sits on
+ * `Projection`'s `#hp-content`, which wraps the page body and excludes the
+ * chrome; M-W9 still applies in that it is a DIV, since globals.css clamps a
+ * bare `<main>` into a 720px column that would crush every admin table. Twenty pages inherit the Console chrome from
+ * here without any of them changing; their own content renders through the
+ * flat-primitive bridge until each is redrawn. `AdminNav` stays where it was
+ * and is passed to the shell's lens slot — it used to be imported and rendered
+ * by all 21 pages, each passing its own `current`, and that consolidation is
+ * not being undone.
  */
 export default async function AdminLayout({
   children,
@@ -35,24 +50,28 @@ export default async function AdminLayout({
   if (!isStaff) {
     redirect('/me');
   }
-  // Single main landmark for the whole /admin surface (M-W9). Uses
-  // role="main" over a <main> element so the global `main {}` 720px
-  // legacy column (globals.css) doesn't clamp full-width admin tables;
-  // the one page that shipped its own <main> (parser-submissions/[id])
-  // was de-nested to a plain <div> to keep exactly one landmark.
-  // The nav lives here rather than in each page (it used to be imported
-  // and rendered by all 21 of them, each passing its own `current`).
-  // The screen-enter wrapper moves up with it so every admin page keeps
-  // the same entrance animation and column spacing it had before.
+
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
   return (
-    <div role="main">
-      <div
-        className="ss-screen-enter"
-        style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
-      >
-        <AdminNav />
-        {children}
-      </div>
-    </div>
+    <ConsoleShell
+      handle={session.claimedHandle}
+      calibration={calibration}
+      nav={navSections(
+        { signedIn: true, staffRoles: session.staffRoles },
+        'admin',
+      )}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    >
+      {children}
+    </ConsoleShell>
   );
 }

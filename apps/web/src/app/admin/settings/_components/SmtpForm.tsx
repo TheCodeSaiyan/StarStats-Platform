@@ -316,7 +316,7 @@ export function SmtpForm({
             flex: '1 1 220px',
             minWidth: 200,
             padding: '6px 10px',
-            borderRadius: 'var(--r-sm)',
+            borderRadius: 0,
             border: '1px solid var(--border)',
             background: 'var(--surface)',
             color: 'var(--fg)',

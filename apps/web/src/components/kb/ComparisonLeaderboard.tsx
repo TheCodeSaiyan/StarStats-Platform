@@ -1,18 +1,25 @@
 import React from 'react';
+import { SubStats } from 'holo';
 import type { LeaderCard } from '@/lib/kb-compare-types';
 
-/** Superlative cards (fastest / toughest / …) for the compared set. */
+/**
+ * Superlatives across the compared set — fastest, toughest, and so on.
+ *
+ * REDRAWN. These were rounded filled cards on a hardcoded `#16131d` with the
+ * winner's name in a literal amber. `SubStats` is the system's row of figures:
+ * the value glows, the label is dim and tracked, and the winner rides along as
+ * the derivation line — which is what it is. Who holds a superlative is the
+ * fact; the number alone does not say it.
+ */
 export function ComparisonLeaderboard({ cards }: { cards: LeaderCard[] }) {
   if (cards.length === 0) return null;
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(cards.length, 4)}, 1fr)`, gap: 10 }}>
-      {cards.map((c) => (
-        <div key={c.key} style={{ background: 'var(--surface, #16131d)', border: '1px solid var(--border, rgba(255,255,255,.07))', borderRadius: 10, padding: '11px 13px' }}>
-          <div style={{ fontSize: 10, textTransform: 'uppercase', letterSpacing: '.07em', color: 'var(--fg-muted)' }}>{c.label}</div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginTop: 3 }}>{c.valueText}</div>
-          <div style={{ fontSize: 11, color: 'var(--accent, #E8A23C)', marginTop: 2 }}>{c.winnerName}</div>
-        </div>
-      ))}
-    </div>
+    <SubStats
+      items={cards.slice(0, 4).map((c) => ({
+        k: c.label,
+        v: c.valueText,
+        sub: c.winnerName,
+      }))}
+    />
   );
 }

@@ -36,18 +36,29 @@
 
 import 'server-only';
 import React from 'react';
-import Link from 'next/link';
-import type { Route } from 'next';
 import { redirect } from 'next/navigation';
+import { RecordsIndex } from '@/components/projection/RecordsIndex';
 import { getSession } from '@/lib/session';
 import { getContracts, statusOf, type ContractsResponse } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { parseRange, rangeToHours, rangeLabel } from '@/lib/range';
-import { RangeBar } from '@/components/journey/RangeBar';
-import { NoSignal } from '@/components/hud/NoSignal';
-import { ReadoutGroup, type Readout } from '@/app/_components/widgets/kit/archetypes';
 import { fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
-import { RunCard } from './_components/RunCard';
+import {
+  Plane,
+  MeterRow,
+  SubStats,
+  Flatline,
+  BeamAlert,
+  type Calibration,
+} from 'holo';
+import { navSections } from '@/lib/nav';
+import { getTheme } from '@/lib/theme';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import {
+  ContractsProjection,
+  type ContractsSection,
+} from './_projection/ContractsProjection';
+import { RunPlane } from './_projection/RunPlane';
 import {
   resolveContractNames,
   contractNameHref,
@@ -72,6 +83,15 @@ export default async function ContractsPage(props: PageProps) {
   const sp = props.searchParams ? await props.searchParams : {};
   const range = parseRange(sp.range);
   const hours = rangeToHours(range);
+
+  // The beam for this render; falls back to the system default rather than
+  // failing the page.
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
 
   // Single-endpoint render. `include_steps=true` is the whole point of
   // this page (see module doc) — every other caller of `getContracts`
@@ -99,105 +119,141 @@ export default async function ContractsPage(props: PageProps) {
   // also counts in-progress/withdrawn/unknown runs that haven't resolved
   // either way) — see the widget's doc for the bug this avoids repeating.
   const resolved = res ? res.completed + res.failed + res.abandoned : 0;
-  const summaryReadouts: Readout[] = res
+
+  // ---------------------------------------------------------------------
+  // Sections. Two groups: the window's outcome counts, and the runs.
+  // ---------------------------------------------------------------------
+  const sections: ContractsSection[] = res
     ? [
-        { label: 'done', value: `${fmtNum(res.completed)}/${fmtNum(resolved)}` },
         {
-          label: 'rate',
-          value: res.completion_pct == null ? '—' : fmtPct(res.completion_pct, true),
+          id: 'overview',
+          title: 'Outcomes',
+          ctx: rangeLabel(range),
+          group: 'outcomes',
+          node: (
+            <>
+              {/* `Records.jsx` puts a pilot's own records behind one category
+                  strip so they read as a family; the product had four unrelated
+                  routes, each a dead end. */}
+              <RecordsIndex active="/me/contracts" />
+            <>
+              {/* The denominator is `completed + failed + abandoned` — the
+                  RESOLVED runs — and NOT the API's `total`, which also counts
+                  in-progress, withdrawn and unknown runs that have not landed
+                  either way. Using `total` would report a completion rate that
+                  falls every time a contract is accepted. */}
+              <SubStats
+                items={[
+                  {
+                    k: 'Done',
+                    v: `${fmtNum(res.completed)}/${fmtNum(resolved)}`,
+                  },
+                  {
+                    k: 'Rate',
+                    v:
+                      res.completion_pct == null
+                        ? '—'
+                        : fmtPct(res.completion_pct, true),
+                  },
+                  { k: 'In progress', v: fmtNum(res.in_progress) },
+                  { k: 'Abandoned', v: fmtNum(res.abandoned) },
+                ]}
+              />
+              <Plane
+                tilt="flat"
+                cap="Every outcome"
+                hint={rangeLabel(range)}
+                style={{ marginTop: 20 }}
+              >
+                {(
+                  [
+                    ['Completed', res.completed],
+                    ['Failed', res.failed],
+                    ['Abandoned', res.abandoned],
+                    ['In progress', res.in_progress],
+                    ['Withdrawn', res.withdrawn],
+                    ['Unknown', res.unknown],
+                  ] as const
+                ).map(([label, n], i) => (
+                  <MeterRow
+                    key={label}
+                    rank={i + 1}
+                    name={label}
+                    value={fmtNum(n)}
+                    valueText
+                  />
+                ))}
+              </Plane>
+              <p className="hp-prose">
+                {/* State the limit: "abandoned" is INFERRED from a stream that
+                    went dead, not an observed outcome. */}
+                Abandoned and unknown runs were closed by inference — the game
+                showed no banner for them, so they are read from a stream that
+                stopped rather than from an outcome it reported.
+              </p>
+            </>
+            </>
+          ),
         },
-        { label: 'in progress', value: fmtNum(res.in_progress), secondary: true },
-        { label: 'abandoned', value: fmtNum(res.abandoned), secondary: true },
-        { label: 'failed', value: fmtNum(res.failed), secondary: true },
-        { label: 'withdrawn', value: fmtNum(res.withdrawn), secondary: true },
-        { label: 'unknown', value: fmtNum(res.unknown), secondary: true },
+        {
+          id: 'runs',
+          title: 'Contract history',
+          ctx: `${shown.length.toLocaleString()} shown · ${rangeLabel(range)}`,
+          group: 'runs',
+          node:
+            shown.length === 0 ? (
+              <Flatline reason="no-data" />
+            ) : (
+              <>
+                {droppedCount > 0 ? (
+                  // A silently truncated list would read as "that's all of
+                  // them", so the cap announces itself.
+                  <p className="hp-prose">
+                    Showing the {RENDER_CAP.toLocaleString()} most recent runs
+                    of {sorted.length.toLocaleString()} in this window —{' '}
+                    {droppedCount.toLocaleString()} older runs aren&apos;t
+                    shown.
+                  </p>
+                ) : null}
+                {shown.map((run, i) => (
+                  <RunPlane
+                    key={`${run.mission_id}:${i}`}
+                    run={run}
+                    href={contractNameHref(
+                      run.name,
+                      nameLinks.get(normalizeContractName(run.name)),
+                    )}
+                  />
+                ))}
+              </>
+            ),
+        },
       ]
     : [];
 
   return (
-    // `role="main"` on a DIV, not a <main> element — see /me/travel's
-    // identical comment: keeps the global `main {}` 720px column from
-    // clamping this full-width detail page.
-    <div
-      role="main"
-      className="ss-screen-enter"
-      style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
-    >
-      <header style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-        <div>
-          <div className="ss-eyebrow">Contracts</div>
-          <h1
-            style={{ margin: '3px 0 0', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}
-          >
-            Contract history
-          </h1>
-        </div>
-        <div className="hud-controls" style={{ marginLeft: 'auto', marginBottom: 0 }}>
-          <Link href={'/me' as Route} className="hud-chip">
-            ← Dashboard
-          </Link>
-          <RangeBar active={range} buildHref={(id) => `/me/contracts?range=${id}` as Route} />
-        </div>
-      </header>
-
-      {res === null ? (
-        <section className="hud-tile">
-          <div className="hud-tile__body">
-            <NoSignal
-              title="Couldn't load contract history"
-              hint="The contracts service didn't respond — try reloading."
-            />
-          </div>
-        </section>
-      ) : shown.length === 0 ? (
-        <section className="hud-tile">
-          <div className="hud-tile__body">
-            <NoSignal reason="no-data" />
-          </div>
-        </section>
-      ) : (
-        <>
-          <section className="hud-tile">
-            <div className="hud-tile__hd">
-              <span className="hud-tile__eyebrow">Outcomes</span>
-              <span className="hud-tile__title">Overview</span>
-              <span className="hud-tile__sub">{rangeLabel(range)}</span>
-            </div>
-            <div className="hud-tile__body" style={{ marginTop: 4 }}>
-              <ReadoutGroup readouts={summaryReadouts} />
-            </div>
-          </section>
-
-          <section className="hud-tile">
-            <div className="hud-tile__hd">
-              <span className="hud-tile__eyebrow">Runs</span>
-              <span className="hud-tile__title">Contract history</span>
-              <span className="hud-tile__sub">
-                {shown.length.toLocaleString()} shown · {rangeLabel(range)}
-              </span>
-            </div>
-            <div
-              className="hud-tile__body"
-              style={{ marginTop: 4, display: 'flex', flexDirection: 'column', gap: 10 }}
-            >
-              {droppedCount > 0 && (
-                <p className="hud-note">
-                  Showing the {RENDER_CAP.toLocaleString()} most recent runs of{' '}
-                  {sorted.length.toLocaleString()} in this window — {droppedCount.toLocaleString()}{' '}
-                  older runs aren&apos;t shown.
-                </p>
-              )}
-              {shown.map((run, i) => (
-                <RunCard
-                  key={`${run.mission_id}:${i}`}
-                  run={run}
-                  href={contractNameHref(run.name, nameLinks.get(normalizeContractName(run.name)))}
-                />
-              ))}
-            </div>
-          </section>
-        </>
+    <ContractsProjection
+      handle={session.claimedHandle}
+      calibration={calibration}
+      range={range}
+      nav={navSections(
+        { signedIn: true, staffRoles: session.staffRoles },
+        'contracts',
       )}
-    </div>
+      sections={sections}
+      notice={null}
+      banner={
+        res === null ? (
+          <BeamAlert tone="bad">
+            Couldn&apos;t load contract history — the contracts service
+            didn&apos;t respond. Try reloading.
+          </BeamAlert>
+        ) : null
+      }
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }

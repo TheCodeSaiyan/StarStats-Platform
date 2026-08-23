@@ -97,7 +97,7 @@ export default async function AdminOrgsPage(props: {
             padding: '8px 12px',
             background: 'var(--bg-elev)',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--r-sm)',
+            borderRadius: 0,
             color: 'var(--fg)',
           }}
         />

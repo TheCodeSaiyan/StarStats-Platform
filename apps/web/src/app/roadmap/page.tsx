@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata } from 'next';
 import { listRoadmap } from '@/lib/roadmap';
 import { RoadmapCard } from '@/components/roadmap/RoadmapCard';
@@ -11,7 +13,16 @@ export default async function RoadmapPage() {
   const { items } = await listRoadmap();
 
   return (
-    <main
+    <MarketingSurface
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Roadmap' },
+      ]}
+      title="Roadmap"
+      ctx="What is being built next"
+    >
+      <DocsIndex active="/roadmap" />
+    <div
       style={{
         maxWidth: 880,
         margin: '0 auto',
@@ -55,6 +66,7 @@ export default async function RoadmapPage() {
       ) : (
         items.map((item) => <RoadmapCard key={item.id} item={item} />)
       )}
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

@@ -9,7 +9,7 @@
 
 export default function Loading() {
   return (
-    <main
+    <div
       aria-busy="true"
       aria-label="Loading entry"
       style={{ maxWidth: 920, display: 'flex', flexDirection: 'column', gap: 'var(--s5, 24px)' }}
@@ -46,6 +46,6 @@ export default function Loading() {
           </div>
         </div>
       ))}
-    </main>
+    </div>
   );
 }

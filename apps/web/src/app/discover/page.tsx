@@ -1,72 +1,75 @@
 /**
- * Discover — public-profile listing surface.
+ * Directory — the public-profile listing, in the projection.
  *
- * Piece 3 of the public-profile UX work. Server-rendered grid of every
- * StarStats handle whose owner has flipped the SpiceDB public toggle
- * AND not opted out of the listing via Piece 4's `listing_opt_out`
- * column. The endpoint is unauthenticated by design — the same data
- * is reachable per-handle at `/v1/public/{handle}/*`, so consolidating
- * it into an index changes nothing about the trust posture.
+ * Server-rendered grid of every StarStats handle whose owner has flipped the
+ * SpiceDB public toggle AND not opted out of the listing via `listing_opt_out`.
+ * The endpoint is unauthenticated by design — the same data is reachable
+ * per-handle at `/v1/public/{handle}/*`, so consolidating it into an index
+ * changes nothing about the trust posture.
  *
  * Backend contract:
  *  - GET /v1/discover/profiles?limit=50&after={handle} -> {profiles, next_after}
  *
- * "Load more" pagination is a client component (handles the second-
- * page fetch + concat) so the initial server render stays fast and
- * the cursor walk doesn't require a hydration-cycle redirect.
+ * "Load more" pagination stays a client component owning the cursor walk, so
+ * the initial server render stays fast and paging needs no hydration-cycle
+ * redirect. It portals appended cards into the SSR `<ul>` so both paths share
+ * one grid and one card implementation.
+ *
+ * COVERAGE marks the kit's `Directory.jsx` as inferred, so nothing here is
+ * grounded in it — this is a port of the route. The e2e contract is preserved
+ * exactly: `discover-page`, `discover-grid`, `discover-profile-card`,
+ * `data-handle`, `discover-empty-state`, `discover-load-more`, and the
+ * `/u/{handle}?source=discover` href.
+ *
+ * The session is read for the CHROME only (account menu vs. Sign in). The
+ * listing itself never required one and still does not.
  */
 
 import React from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
+import { Flatline, Plane, type Calibration } from 'holo';
 import {
   ApiCallError,
   getDiscoverProfiles,
   type DiscoverProfilesResponse,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
+import { getSession } from '@/lib/session';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
 import { DiscoverLoadMore } from './_components/DiscoverLoadMore';
 import { DiscoverProfileCard } from './_components/DiscoverProfileCard';
+import {
+  DiscoverProjection,
+  type DiscoverSection,
+} from './_projection/DiscoverProjection';
+import { DIRECTORY_GROUP } from './_projection/groups';
 
-export const metadata = { title: "Discover" };
+export const metadata = { title: 'Directory' };
 
-// Default request size on the initial render. Mirrors the server-
-// side `DEFAULT_LIMIT` const so the page sizes align between client
-// and server. If the server's default ever changes, this stays
-// truthful (it's just our explicit ask) — no contract dependency.
+// Default request size on the initial render. Mirrors the server-side
+// `DEFAULT_LIMIT` so the page sizes align between client and server. If the
+// server's default ever changes, this stays truthful (it's just our explicit
+// ask) — no contract dependency.
 const INITIAL_LIMIT = 50;
 
-const pageStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-  maxWidth: 1100,
-  margin: '0 auto',
-  padding: '8px 0 60px',
-};
-
-const gridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-  gap: 16,
-};
-
-const emptyStateStyle: React.CSSProperties = {
-  padding: '60px 24px',
-  textAlign: 'center',
-  border: '1px dashed var(--border)',
-  borderRadius: 'var(--r-md)',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-};
-
 export default async function DiscoverPage() {
-  // Initial fetch happens server-side so the first paint includes the
-  // grid. Soft-fail to an empty payload so a transient backend hiccup
-  // surfaces as the empty state rather than a hard 5xx page —
-  // /discover is a casual browse surface, not a load-bearing app
-  // route.
+  const session = await getSession();
+
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
+  // Initial fetch happens server-side so the first paint includes the grid.
+  // Soft-fail to an empty payload so a transient backend hiccup surfaces as the
+  // empty state rather than a hard 5xx — the directory is a casual browse
+  // surface, not a load-bearing app route, and the reader cannot act on the
+  // failure either way.
   let initial: DiscoverProfilesResponse = { profiles: [], next_after: null };
   try {
     initial = await getDiscoverProfiles({ limit: INITIAL_LIMIT });
@@ -76,69 +79,76 @@ export default async function DiscoverPage() {
       { err: e, call: 'getDiscoverProfiles', status },
       'discover initial fetch rejected',
     );
-    // initial stays as the empty default — the empty-state copy below
-    // tells the user how to get listed; a hard server error gets the
-    // same UX as "no public profiles yet" because the user has no
-    // way to act on the failure.
   }
 
   const hasProfiles = initial.profiles.length > 0;
 
-  return (
-    <main style={pageStyle} data-testid="discover-page">
-      <InstrumentStrip
-        title={
-          <h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>
-            Discover
-          </h1>
-        }
-        context="Players who've opened up their profile"
-        readouts={
-          hasProfiles ? [{ k: 'shown', v: initial.profiles.length }] : []
-        }
-      />
-
-      {hasProfiles ? (
-        <>
-          <ul
-            data-testid="discover-grid"
-            style={{
-              ...gridStyle,
-              listStyle: 'none',
-              margin: 0,
-              padding: 0,
-            }}
-          >
-            {initial.profiles.map((p) => (
-              <li key={p.handle}>
-                <DiscoverProfileCard profile={p} />
-              </li>
-            ))}
-          </ul>
+  const sections: DiscoverSection[] = [
+    {
+      id: 'directory',
+      title: 'Directory',
+      ctx: hasProfiles
+        ? `${initial.profiles.length} shown · players who've opened up their profile`
+        : "Players who've opened up their profile",
+      group: DIRECTORY_GROUP.key,
+      node: hasProfiles ? (
+        <div data-testid="discover-page">
+          {/* A ranked LIST inside a Plane, per `Directory.jsx` — pilots go
+              through `CatalogueLayout`'s list state, not the entity grid the
+              catalogue uses for ships. The `discover-grid` testid is kept: it
+              is how three specs find this element, and renaming it would be
+              rewriting tests to match markup rather than the other way round. */}
+          <Plane tilt="flat" cap="Public projections" style={{ marginTop: 18 }}>
+            <ul data-testid="discover-grid" className="hp-dirlist">
+              {initial.profiles.map((p, i) => (
+                <li key={p.handle}>
+                  <DiscoverProfileCard profile={p} rank={i + 1} />
+                </li>
+              ))}
+            </ul>
+          </Plane>
           {initial.next_after ? (
             <DiscoverLoadMore
               initialAfter={initial.next_after}
               limit={INITIAL_LIMIT}
+              initialCount={initial.profiles.length}
             />
           ) : null}
-        </>
-      ) : (
-        <div style={emptyStateStyle} data-testid="discover-empty-state">
-          <p style={{ margin: 0, fontWeight: 600, color: 'var(--fg)' }}>
-            No public profiles to show yet.
-          </p>
-          <p style={{ margin: '8px 0 0' }}>
-            Make yours public in{' '}
-            <Link
-              href={'/sharing' as Route}
-              style={{ color: 'var(--accent)' }}
-            >
-              Settings &rarr; Sharing
-            </Link>
-            .
-          </p>
         </div>
+      ) : (
+        <div data-testid="discover-page">
+          <div data-testid="discover-empty-state">
+            <Flatline
+              title="No public profiles to show yet."
+              reason="no-data"
+              hint={
+                <>
+                  Make yours public in{' '}
+                  <Link href={'/sharing' as Route}>Settings &rarr; Sharing</Link>
+                  .
+                </>
+              }
+            />
+          </div>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <DiscoverProjection
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections(
+        { signedIn: Boolean(session), staffRoles: session?.staffRoles },
+        'discover',
       )}
-    </main>
+      sections={sections}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }

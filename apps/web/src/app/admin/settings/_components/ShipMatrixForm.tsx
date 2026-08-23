@@ -72,7 +72,7 @@ export function ShipMatrixForm({
           cursor: 'pointer',
           padding: 16,
           border: '1px solid var(--border)',
-          borderRadius: 'var(--r-card, 12px)',
+          borderRadius: 0,
           background: 'var(--bg-elev)',
         }}
       >
@@ -118,7 +118,7 @@ export function ShipMatrixForm({
           style={{
             fontSize: 13,
             padding: '8px 12px',
-            borderRadius: 'var(--r-pill)',
+            borderRadius: 0,
             border: '1px solid',
             borderColor:
               banner.kind === 'ok' ? 'var(--border)' : 'var(--danger, #c33)',

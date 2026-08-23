@@ -12,8 +12,19 @@ import { loginAs, scenarioFor, setScenario } from './helpers/api-mock';
  * jsdom, which has no layout. This spec asserts the property that
  * actually matters: no ancestor of the popover clips it, and it lands
  * inside the viewport.
+ *
+ * Hosted on `/u/[handle]` rather than `/me`: `/me` is the projection now and
+ * has no widget tiles. The tile + InfoTip this guards still ship on the public
+ * profile surface, which kept the flat `WidgetCanvas`, so the regression this
+ * spec exists to catch is still covered.
  */
 const TRAVEL_FIXTURES = {
+      // `/u/[handle]` as the OWNER: page.tsx short-circuits to the self
+      // path before hitting the public endpoints, so these are
+      // belt-and-suspenders stubs that keep the scenario deterministic.
+      'GET /v1/public/TestPilot/summary': { status: 404, body: {} },
+      'GET /v1/public/TestPilot/rsi-profile': { status: 404, body: {} },
+      'GET /v1/public/TestPilot/rsi-orgs': { status: 200, body: { orgs: [] } },
   'GET /v1/users/me/profile-layout': {
     status: 200,
     body: { layout: [{ id: 'travel', enabled: true, size: 'compact' }] },
@@ -38,7 +49,7 @@ const TRAVEL_FIXTURES = {
 test('infotip popover is not clipped by its widget tile', async ({ page, request }) => {
   await loginAs(page, { handle: 'TestPilot' });
   await setScenario(request, scenarioFor('infotip_unclipped', TRAVEL_FIXTURES));
-  await page.goto('/me');
+  await page.goto('/u/TestPilot');
 
   const btn = page.locator('.infotip__btn').first();
   await expect(btn).toBeVisible();
@@ -102,7 +113,7 @@ test('infotip renders when attached to a list note (fleet)', async ({ page, requ
       },
     }),
   );
-  await page.goto('/me');
+  await page.goto('/u/TestPilot');
 
   const btn = page.locator('.hud-note .infotip__btn').first();
   await expect(btn).toBeVisible();
@@ -117,7 +128,7 @@ test('infotip renders when attached to a list note (fleet)', async ({ page, requ
 test('infotip explanation is readable and dismissable', async ({ page, request }) => {
   await loginAs(page, { handle: 'TestPilot' });
   await setScenario(request, scenarioFor('infotip_readable', TRAVEL_FIXTURES));
-  await page.goto('/me');
+  await page.goto('/u/TestPilot');
 
   const btn = page.locator('.infotip__btn').first();
   await expect(btn).toBeVisible();

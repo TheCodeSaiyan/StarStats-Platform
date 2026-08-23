@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -19,7 +21,18 @@ export const metadata: Metadata = {
  * doesn't share at all. Both failure modes come from the same gap. */
 export default function SharingGuidePage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="guides"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Guides', href: '/guides' },
+        { label: 'Sharing' },
+      ]}
+      title="Sharing"
+      ctx="Guides · who can see what"
+    >
+      <DocsIndex active="/guides/sharing" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Guides
       </div>
@@ -111,7 +124,7 @@ export default function SharingGuidePage() {
         </p>
         <p>
           Machines are separate from people:{' '}
-          <Link href={'/devices' as Route}>connected uplinks</Link> lists
+          <Link href={'/downloads' as Route}>connected uplinks</Link> lists
           the desktop apps paired to your account, and revoking one there
           stops that machine sending. That is a different action from
           un-sharing your profile, and you may want both.
@@ -128,6 +141,7 @@ export default function SharingGuidePage() {
           including the part people expect to be untrue.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { Plane, BeamChip, seriesColor, SERIES_SLOTS } from 'holo';
 import React, { useEffect, useMemo, useState } from 'react';
 import type { ReferenceCategory, CohortRef } from '@/lib/reference-types';
 import { type StatsGroups } from '@/lib/kb-stats-types';
@@ -21,7 +22,13 @@ import {
   type CompareEntry, type SortSpec,
 } from '@/lib/kb-compare-types';
 
-const SERIES_COLORS = ['#5BC8C0', '#9B8CF0', '#7Fd17F', '#E58FB0', '#E8C45B', '#6FA8E0', '#D98C6A', '#A0D060', '#C76FD0'];
+// The sanctioned series palette, not a hardcoded ramp. The nine hex values
+// this replaces ignored the calibration entirely: a comparison chart stayed
+// teal-and-violet on Pyro, which is the one place in the product where colour
+// is load-bearing and it was the one place that did not follow the beam.
+const SERIES_COLORS = Array.from({ length: SERIES_SLOTS }, (_, i) =>
+  seriesColor(i),
+);
 
 const RADAR_KEYS: Record<string, string[]> = {
   vehicle: ['speed.scm', 'agility.roll', 'agility.yaw', 'weaponry.fixed_weapons.dps_total', 'health', 'shield_hp'],
@@ -160,22 +167,42 @@ export function KbDetailView(props: KbDetailViewProps) {
 
           {comparing && (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button type="button" aria-pressed={showComparison} onClick={() => setShowComparison(true)} style={pillStyle(showComparison)}>Comparison</button>
-              <button type="button" aria-pressed={!showComparison} onClick={() => setShowComparison(false)} style={pillStyle(!showComparison)}>Single</button>
+              <button
+                type="button"
+                aria-pressed={showComparison}
+                className="hp-toggle"
+                data-active={showComparison ? 'true' : undefined}
+                onClick={() => setShowComparison(true)}
+              >
+                Comparison
+              </button>
+              <button
+                type="button"
+                aria-pressed={!showComparison}
+                className="hp-toggle"
+                data-active={!showComparison ? 'true' : undefined}
+                onClick={() => setShowComparison(false)}
+              >
+                Single
+              </button>
             </div>
           )}
 
           {comparing && showComparison ? (
             vectors.length === 0 ? (
-              <section className="ss-card" style={{ padding: '18px 20px' }}>
-                <p style={{ color: 'var(--fg-muted)', fontSize: 13 }}>Loading comparison…</p>
-              </section>
+              <Plane tilt="flat" cap="Comparison" style={{ marginTop: 16 }}>
+                <p className="hp-prose">Loading comparison…</p>
+              </Plane>
             ) : (
               (() => {
                 const anchor = vectors.find((v) => v.slug === props.anchorSlug);
                 const others = vectors.filter((v) => v.slug !== props.anchorSlug);
                 if (!anchor) return null;
-                const colorBySlug = new Map<string, string>([[anchor.slug, 'var(--accent, #E8A23C)']]);
+                // The anchor is `--hot`, deliberately outside the palette: the entity whose
+                // page this is should outshine everything it is measured against.
+                const colorBySlug = new Map<string, string>([
+                  [anchor.slug, seriesColor(0, true)],
+                ]);
                 selectedChips.forEach((c) => colorBySlug.set(c.slug, c.color));
                 const matrix = buildComparisonMatrix(props.category, anchor, others, prefs.units, sort);
                 const leaderboard = buildLeaderboard(props.category, vectors, prefs.units);
@@ -186,14 +213,17 @@ export function KbDetailView(props: KbDetailViewProps) {
                   <>
                     <ComparisonLeaderboard cards={leaderboard} />
                     {radarModel.axes.length >= 3 && (
-                      <section className="ss-card" style={{ padding: '18px 20px' }}>
+                      <Plane tilt="flat" cap="Handling" style={{ marginTop: 16 }}>
                         <ComparisonRadar
                           axisLabels={radarModel.axes.map((k) => RADAR_LABELS[k] ?? k)}
-                          series={radarModel.series.map((s) => ({ ...s, color: colorBySlug.get(s.slug) ?? '#888888' }))}
+                          series={radarModel.series.map((s, i) => ({
+                            ...s,
+                            color: colorBySlug.get(s.slug) ?? seriesColor(i),
+                          }))}
                         />
-                      </section>
+                      </Plane>
                     )}
-                    <section className="ss-card" style={{ padding: '18px 20px' }}>
+                    <Plane tilt="flat" cap="Side by side" style={{ marginTop: 16 }}>
                       <ComparisonMatrix
                         model={matrix}
                         sort={sort}
@@ -201,7 +231,7 @@ export function KbDetailView(props: KbDetailViewProps) {
                           setSort((prev) => ({ key, dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc' }))
                         }
                       />
-                    </section>
+                    </Plane>
                   </>
                 );
               })()
@@ -215,11 +245,7 @@ export function KbDetailView(props: KbDetailViewProps) {
                     aria-label="Compared to"
                     value={compareKey}
                     onChange={(e) => setCompareKey(e.target.value)}
-                    style={{
-                      fontSize: 12, padding: '5px 10px', borderRadius: 6,
-                      background: 'var(--surface, #16131d)', color: 'var(--fg)',
-                      border: '1px solid var(--border, rgba(255,255,255,.12))',
-                    }}
+                    className="hp-input hp-select"
                   >
                     {props.cohorts.map((c) => (
                       <option key={c.key} value={c.key}>
@@ -231,26 +257,45 @@ export function KbDetailView(props: KbDetailViewProps) {
                 </label>
               )}
               {props.description && (
-                <p style={{ fontSize: 15, lineHeight: 1.6, color: 'var(--fg-muted)' }}>{props.description}</p>
+                <p className="hp-prose">{props.description}</p>
               )}
               {props.roleTags && props.roleTags.length > 0 && (
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   {props.roleTags.map((t) => (
-                    <span key={t} style={{ background: 'var(--surface, #16131d)', border: '1px solid var(--border, rgba(255,255,255,.07))', borderRadius: 999, padding: '7px 14px', fontSize: 12, color: 'var(--fg-muted)' }}>{t}</span>
+                    <BeamChip key={t}>{t}</BeamChip>
                   ))}
                 </div>
               )}
-              {visual.headline.length > 0 && <section className="ss-card" style={{ padding: '18px 20px' }}><HeadlineCallouts rows={visual.headline} /></section>}
+              {visual.headline.length > 0 && (
+                // UNCAPTIONED, deliberately. The flat version had no heading
+                // here, and the page already has an "At a glance" pane above —
+                // captioning this one the same put two identical headings on
+                // one sheet. `Plane` supports an uncaptioned sheet for exactly
+                // this: the figures are self-describing.
+                <Plane tilt="flat" style={{ marginTop: 16 }}>
+                  <HeadlineCallouts rows={visual.headline} />
+                </Plane>
+              )}
               {visual.radarAxes.length >= 3 && (
-                <section className="ss-card" style={{ padding: '18px 20px', display: 'flex', justifyContent: 'center' }}>
-                  <HandlingRadar axes={visual.radarAxes} />
-                </section>
+                <Plane tilt="flat" cap="Handling" style={{ marginTop: 16 }}>
+                  <div className="hp-center">
+                    <HandlingRadar axes={visual.radarAxes} />
+                  </div>
+                </Plane>
               )}
               {visual.groups.map((g) => (
-                <section key={g.title} className="ss-card" style={{ padding: '18px 20px' }}>
-                  <h2 style={{ margin: '0 0 14px', fontSize: 14, fontWeight: 600 }}>{g.title}</h2>
-                  {g.rows.map((r) => <StatBar key={r.label} row={r} />)}
-                </section>
+                <Plane
+                  key={g.title}
+                  tilt="flat"
+                  // A real heading, not a bare string: `Plane`'s cap is a span,
+                  // and the visual view's groups are the sheet's structure.
+                  cap={<h3>{g.title}</h3>}
+                  style={{ marginTop: 16 }}
+                >
+                  {g.rows.map((r) => (
+                    <StatBar key={r.label} row={r} />
+                  ))}
+                </Plane>
               ))}
             </>
           )}
@@ -262,32 +307,68 @@ export function KbDetailView(props: KbDetailViewProps) {
   );
 }
 
-function pillStyle(active: boolean): React.CSSProperties {
-  return {
-    fontSize: 12, padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
-    border: '1px solid var(--border, rgba(255,255,255,.12))',
-    background: active ? 'var(--accent-soft, rgba(232,162,60,0.14))' : 'transparent',
-    color: active ? 'var(--accent, #E8A23C)' : 'var(--fg-muted)',
-  };
-}
-
-function ViewToggle({ view, units, onChange }: { view: 'visual' | 'compact'; units: 'metric' | 'imperial'; onChange: (p: Partial<KbPrefs>) => void }) {
-  const btn = (active: boolean): React.CSSProperties => ({
-    fontSize: 12, padding: '5px 12px', borderRadius: 6, cursor: 'pointer',
-    border: '1px solid var(--border, rgba(255,255,255,.1))',
-    background: active ? 'var(--accent-soft, rgba(232,162,60,0.14))' : 'transparent',
-    color: active ? 'var(--accent, #E8A23C)' : 'var(--fg-muted)',
-  });
+/**
+ * The view / units / comparison toggles.
+ *
+ * REDRAWN. These were rounded 6px pills filled with `--accent-soft` when
+ * active — a filled, rounded control, which the system does not have, in a
+ * literal amber that ignored the calibration. They are lit hairline boxes now,
+ * the same idiom as the Console's section tabs.
+ *
+ * `aria-pressed` is unchanged: these are toggle buttons, not links, because the
+ * choice is persisted per reader rather than being addressable as a URL.
+ */
+function ViewToggle({
+  view,
+  units,
+  onChange,
+}: {
+  view: 'visual' | 'compact';
+  units: 'metric' | 'imperial';
+  onChange: (p: Partial<KbPrefs>) => void;
+}) {
   return (
-    <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'flex-end' }}>
-      <div role="group" aria-label="View mode" style={{ display: 'flex', gap: 8 }}>
-        <button type="button" aria-pressed={view === 'visual'} style={btn(view === 'visual')} onClick={() => onChange({ view: 'visual' })}>Visual</button>
-        <button type="button" aria-pressed={view === 'compact'} style={btn(view === 'compact')} onClick={() => onChange({ view: 'compact' })}>Compact</button>
+    <div className="hp-kbtoggles">
+      <div role="group" aria-label="View mode" className="hp-toggleset">
+        <button
+          type="button"
+          aria-pressed={view === 'visual'}
+          className="hp-toggle"
+          data-active={view === 'visual' ? 'true' : undefined}
+          onClick={() => onChange({ view: 'visual' })}
+        >
+          Visual
+        </button>
+        <button
+          type="button"
+          aria-pressed={view === 'compact'}
+          className="hp-toggle"
+          data-active={view === 'compact' ? 'true' : undefined}
+          onClick={() => onChange({ view: 'compact' })}
+        >
+          Compact
+        </button>
       </div>
-      <span style={{ width: 1, height: 18, background: 'var(--border, rgba(255,255,255,.1))', margin: '0 4px' }} />
-      <div role="group" aria-label="Units" style={{ display: 'flex', gap: 8 }}>
-        <button type="button" aria-pressed={units === 'metric'} style={btn(units === 'metric')} onClick={() => onChange({ units: 'metric' })}>Metric</button>
-        <button type="button" aria-pressed={units === 'imperial'} style={btn(units === 'imperial')} onClick={() => onChange({ units: 'imperial' })}>Imperial</button>
+      <span className="hp-togglediv" aria-hidden="true" />
+      <div role="group" aria-label="Units" className="hp-toggleset">
+        <button
+          type="button"
+          aria-pressed={units === 'metric'}
+          className="hp-toggle"
+          data-active={units === 'metric' ? 'true' : undefined}
+          onClick={() => onChange({ units: 'metric' })}
+        >
+          Metric
+        </button>
+        <button
+          type="button"
+          aria-pressed={units === 'imperial'}
+          className="hp-toggle"
+          data-active={units === 'imperial' ? 'true' : undefined}
+          onClick={() => onChange({ units: 'imperial' })}
+        >
+          Imperial
+        </button>
       </div>
     </div>
   );

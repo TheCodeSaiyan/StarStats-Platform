@@ -11,34 +11,9 @@ interface SearchParams {
   token?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
 
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 460,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
 
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
 /**
  * Magic-link landing page.
@@ -59,11 +34,11 @@ export default async function MagicLinkRedeemPage(props: {
 
   if (!token) {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Sign-in link</span>
-          <h1 style={titleStyle}>Missing sign-in token.</h1>
-          <p style={subtitleStyle}>
+          <h1>Missing sign-in token.</h1>
+          <p className="hp-authsub">
             The link is incomplete. Open the email we sent you and click the
             link from there.
           </p>
@@ -71,7 +46,7 @@ export default async function MagicLinkRedeemPage(props: {
             Request a new link
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -87,11 +62,11 @@ export default async function MagicLinkRedeemPage(props: {
       logger.error({ err: e }, 'magic link redeem failed unexpectedly');
     }
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Sign-in link</span>
-          <h1 style={titleStyle}>Sign-in link invalid or expired.</h1>
-          <p style={subtitleStyle}>
+          <h1>Sign-in link invalid or expired.</h1>
+          <p className="hp-authsub">
             This link can&apos;t be used. It may have expired (links are good
             for 15 minutes), already been clicked, or never have been issued.
             Request a new one to try again.
@@ -104,7 +79,7 @@ export default async function MagicLinkRedeemPage(props: {
             Request a new link
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 

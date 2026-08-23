@@ -57,7 +57,7 @@ export function ChannelChipStrip({
             alignItems: 'center',
             gap: 6,
             padding: '4px 10px',
-            borderRadius: 8,
+            borderRadius: 0,
             background: 'var(--bg-elev)',
             border: '1px solid var(--border)',
             fontSize: 12,

@@ -1,0 +1,142 @@
+'use client';
+
+import React from 'react';
+
+/**
+ * A leader-lined readout pinned in the volume. Callouts are the overview's
+ * verbosity: six of them ring the core, each with a label, figure and a line
+ * of supporting arithmetic. While editing the layout each carries a remove
+ * control.
+ *
+ * CAPACITY (measured, not assumed — `preview-stress.html`): six is the drawn
+ * maximum, three a side. A run at nine put five of them over the ring. The
+ * whole field is hidden below 1180px, where the ring and pane leave no clear
+ * air either side — so NEVER put a metric only in a callout. Every figure
+ * here must also be reachable from a lens pane.
+ */
+export interface CalloutPosition {
+  left?: number;
+  right?: number;
+  top?: number;
+}
+
+export interface CalloutProps {
+  label: React.ReactNode;
+  value: React.ReactNode;
+  unit?: React.ReactNode;
+  /** The supporting arithmetic line beneath the figure. */
+  sub?: React.ReactNode;
+  side?: 'l' | 'r';
+  /** Tone applies to the FIGURE only; the label stays dim. */
+  tone?: 'warn' | 'good' | 'bad';
+  /** Absolute position in the stage. Use `slotFor()` rather than hand-placing. */
+  at?: CalloutPosition;
+  /** Passed only while the layout editor is open — this is what keeps the × out
+   *  of the reading view. */
+  onRemove?: () => void;
+  children?: React.ReactNode;
+}
+
+export function Callout({
+  label,
+  value,
+  unit,
+  sub,
+  side = 'l',
+  tone,
+  at,
+  onRemove,
+  children,
+}: CalloutProps) {
+  const cls = ['hp-co', tone].filter(Boolean).join(' ');
+  const style: React.CSSProperties = {
+    ...(at || {}),
+    ...(side === 'r' ? { textAlign: 'left' as const } : null),
+  };
+  return (
+    <div className={cls} data-side={side} style={style}>
+      <span className="ln" />
+      {onRemove ? (
+        <button
+          type="button"
+          className="rm"
+          aria-label={`Remove ${typeof label === 'string' ? label : 'callout'}`}
+          onClick={onRemove}
+        >
+          ×
+        </button>
+      ) : null}
+      <div className="lb">{label}</div>
+      <div className="vl">
+        {value}
+        {unit ? <small>{unit}</small> : null}
+      </div>
+      {sub ? <div className="sub">{sub}</div> : null}
+      {children}
+    </div>
+  );
+}
+
+/**
+ * The six fixed callout slots (gap B5).
+ *
+ * Upstream, every callout id was pinned to a literal `{left:76, top:212}` in a
+ * hand-authored map — fine for a kit with a fixed cast, wrong for a product
+ * where the reader chooses which of ~8 single-figure metrics to project. So
+ * positions become SLOTS and the reader's enabled callouts fill them in layout
+ * order; removing one frees its slot and the rest shuffle up, which is exactly
+ * what the component's own notes describe ("slots free up in order").
+ *
+ * Coordinates are lifted from the kit's primary six so the composition is the
+ * one that was actually drawn and stress-tested. Left column fills first.
+ */
+export const CALLOUT_SLOTS: readonly { side: 'l' | 'r'; at: CalloutPosition }[] =
+  [
+    { side: 'l', at: { left: 76, top: 212 } },
+    { side: 'l', at: { left: 54, top: 366 } },
+    { side: 'l', at: { left: 96, top: 520 } },
+    { side: 'r', at: { right: 74, top: 204 } },
+    { side: 'r', at: { right: 92, top: 358 } },
+    { side: 'r', at: { right: 66, top: 512 } },
+  ];
+
+/** Slot for the Nth projected callout, or `null` past capacity (CalloutField
+ *  reports the overflow rather than drawing it). */
+export function slotFor(
+  index: number,
+): { side: 'l' | 'r'; at: CalloutPosition } | null {
+  return CALLOUT_SLOTS[index] ?? null;
+}
+
+/**
+ * Wrapper for the callout set. Caps at `max` (6 — the drawn capacity, three
+ * slots a side) because past that they overlap the ring and each other, and
+ * reports the remainder rather than silently dropping it. Extra metrics stay
+ * reachable in the pane and the layout editor.
+ *
+ * The whole field is hidden below 1180px, where the ring and pane leave no
+ * clear air either side.
+ */
+export function CalloutField({
+  children,
+  max = 6,
+  onOverflowClick,
+}: {
+  children?: React.ReactNode;
+  max?: number;
+  onOverflowClick?: () => void;
+}) {
+  const all = React.Children.toArray(children);
+  const shown = max > 0 ? all.slice(0, max) : all;
+  const hidden = all.length - shown.length;
+  return (
+    <div className="hp-cos">
+      {shown}
+      {hidden > 0 ? (
+        <button type="button" className="hp-cos-more" onClick={onOverflowClick}>
+          +{hidden} more in layout
+        </button>
+      ) : null}
+    </div>
+  );
+}

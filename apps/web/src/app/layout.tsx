@@ -1,32 +1,23 @@
-import type { Metadata, Route } from 'next';
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
-import { IBM_Plex_Sans, IBM_Plex_Mono, Michroma } from 'next/font/google';
+import {
+  IBM_Plex_Sans,
+  IBM_Plex_Mono,
+  Michroma,
+  Chakra_Petch,
+} from 'next/font/google';
 import {
   getAppearanceConfig,
-  getCurrentLocation,
   getPreferences,
-  getSupporterStatus,
-  getSummary,
-  getLocationsVisited,
   listSharedWithMe,
-  statusOf,
-  type ResolvedLocation,
-  type SupporterStatusDto,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { getCategoryBundle } from '@/lib/reference';
-import { EMPTY_CATEGORY_BUNDLE, type ReferenceCatalog } from '@/lib/reference-types';
 import { getSession } from '@/lib/session';
 import { isBetaGateOn } from '@/lib/beta-gate';
 import { isNoindexDeployment } from '@/lib/deployment';
 import { getTheme } from '@/lib/theme';
-import { QuantumWarpBackground } from '@/components/shell/QuantumWarpBackground';
-import { TopBar } from '@/components/shell/TopBar';
-import { LeftRail } from '@/components/shell/LeftRail';
-import { TelemetryTicker } from '@/components/shell/TelemetryTicker';
-import { DrawerScrim } from '@/components/shell/DrawerScrim';
-import { MarketingNav } from '@/components/shell/MarketingNav';
+import { ShellDataProvider } from '@/components/projection/ShellData';
 import { BetaGate } from '@/app/_components/BetaGate';
 import './globals.css';
 
@@ -53,6 +44,21 @@ const michroma = Michroma({
   subsets: ['latin'],
   weight: '400',
   variable: '--font-michroma',
+  display: 'swap',
+});
+
+// The projection's ONE face. The design system loads it from the Google CDN via
+// an `@import`; here it goes through next/font/google like the other three, so
+// it is self-hosted at build time — no render-blocking third-party request and
+// no extra font origin to allow in the CSP. `tokens-typography.css` names the
+// family directly, and this variable is what backs it.
+//
+// The three flat families stay until the port completes. They go the day the
+// last flat page does.
+const chakra = Chakra_Petch({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-chakra-petch',
   display: 'swap',
 });
 
@@ -171,129 +177,38 @@ export default async function RootLayout({
     }
   }
 
-  // Per-render shell data: current location for the TopBar chip
-  // (carries its own entered_at anchor — see ResolvedLocation on the
-  // server) and inbound-share count for the Sharing nav badge. Both
-  // fail-soft to a "neutral" value (null / 0) so the shell never
-  // crashes on a single API hiccup. Fetched in parallel to keep one
-  // round trip. The trace fetch the chip *used* to need was dropped
-  // when the server started returning entered_at directly — the old
-  // trace-derived dwell silently capped at the trace window (24h),
-  // making a >24h stay render as a frozen "here 23h 57m".
-  let location: ResolvedLocation | null = null;
+  /**
+   * The one piece of shell data still fetched here.
+   *
+   * This block used to pull FIVE things for the flat chrome: the current
+   * location and its catalog for the TopBar chip, the caller's supporter
+   * status, and lifetime event/location totals for the telemetry rail. That
+   * chrome is gone — every surface is a projection with its own `ChromeBar`,
+   * and `/me` fetches its own readouts — so those four fetches were work done
+   * on every signed-in page for markup nobody could see.
+   *
+   * The inbound-share count stays, because the badge it feeds is genuinely
+   * global: it is the one notification the product has, and it belongs on every
+   * page rather than only where someone remembered to fetch it.
+   *
+   * `allSettled` for one call is overkill, so this is a plain guarded fetch —
+   * but the fail-soft is the same: a hiccup here must never take a page down.
+   */
   let inboundShareCount = 0;
-  // Caller's own supporter status — drives the TopBar chip so the
-  // user sees their recognition on every page, not just /u/<handle>.
-  // Fail-soft to null so a hiccup on /v1/me/supporter doesn't blank
-  // the chrome.
-  let supporter: SupporterStatusDto | null = null;
-  // Pulled at the layout level so the TopBar's LocationChip can link
-  // its location text to /kb/location/{slug}. The endpoint caches
-  // server-side for 1h and is fetched (cached) by every signed-in
-  // page anyway — pulling it here saves the per-page fetch in
-  // aggregate. Failures degrade to plain-text chip rendering.
-  let locationCatalog: ReferenceCatalog = EMPTY_CATEGORY_BUNDLE.catalog;
-  // Headline lifetime figures streamed as bracketed frames in the
-  // telemetry rail (bridge). Fetched here with the other shell data so
-  // the rail is populated on every signed-in page; fail-soft to null.
-  let eventsTotal: number | null = null;
-  let locationsCount: number | null = null;
   if (session) {
-    const [
-      locResult,
-      sharedResult,
-      catalogResult,
-      supporterResult,
-      summaryResult,
-      locationsResult,
-    ] = await Promise.allSettled([
-      getCurrentLocation(session.token),
-      listSharedWithMe(session.token),
-      getCategoryBundle('location'),
-      getSupporterStatus(session.token),
-      getSummary(session.token),
-      getLocationsVisited(session.token),
-    ]);
-    if (locResult.status === 'fulfilled') {
-      location = locResult.value;
-    } else {
-      logger.warn(
-        {
-          err: locResult.reason,
-          call: 'topbar.location',
-          status: statusOf(locResult.reason),
-        },
-        'topbar location fetch failed',
-      );
-    }
-    if (sharedResult.status === 'fulfilled') {
-      // Count active shares only — expired entries still appear in
-      // the inbound list (recipients should know who used to share)
-      // but the nav badge should reflect "things to look at now". An
-      // expired badge would be noise and would never clear.
+    try {
+      const shared = await listSharedWithMe(session.token);
+      // EXPIRY, not revocation: an expired share stays in the inbound list
+      // (recipients should know who used to share) but the badge should reflect
+      // things to look at NOW. An expired badge would be noise and would never
+      // clear.
       const now = Date.now();
-      inboundShareCount = sharedResult.value.shared_with_me.filter(
+      inboundShareCount = shared.shared_with_me.filter(
         (entry) =>
-          !entry.expires_at ||
-          new Date(entry.expires_at).getTime() > now,
+          !entry.expires_at || new Date(entry.expires_at).getTime() > now,
       ).length;
-    } else {
-      logger.warn(
-        {
-          err: sharedResult.reason,
-          call: 'topbar.shared',
-          status: statusOf(sharedResult.reason),
-        },
-        'inbound share count fetch failed',
-      );
-    }
-    if (catalogResult.status === 'fulfilled') {
-      locationCatalog = catalogResult.value.catalog;
-    } else {
-      logger.warn(
-        {
-          err: catalogResult.reason,
-          call: 'topbar.catalog',
-          status: statusOf(catalogResult.reason),
-        },
-        'topbar location catalog fetch failed',
-      );
-    }
-    if (supporterResult.status === 'fulfilled') {
-      supporter = supporterResult.value;
-    } else {
-      logger.warn(
-        {
-          err: supporterResult.reason,
-          call: 'topbar.supporter',
-          status: statusOf(supporterResult.reason),
-        },
-        'topbar supporter status fetch failed',
-      );
-    }
-    if (summaryResult.status === 'fulfilled') {
-      eventsTotal = summaryResult.value.total;
-    } else {
-      logger.warn(
-        {
-          err: summaryResult.reason,
-          call: 'rail.summary',
-          status: statusOf(summaryResult.reason),
-        },
-        'rail summary fetch failed',
-      );
-    }
-    if (locationsResult.status === 'fulfilled') {
-      locationsCount = locationsResult.value.unique_locations;
-    } else {
-      logger.warn(
-        {
-          err: locationsResult.reason,
-          call: 'rail.locations',
-          status: statusOf(locationsResult.reason),
-        },
-        'rail locations fetch failed',
-      );
+    } catch (e) {
+      logger.warn({ err: e, call: 'shell.sharedWithMe' }, 'inbound share count fetch failed');
     }
   }
 
@@ -302,53 +217,27 @@ export default async function RootLayout({
       lang="en"
       data-theme={theme}
       data-wave-speed={waveSpeed}
-      className={`${plexSans.variable} ${plexMono.variable} ${michroma.variable}`}
+      className={`${plexSans.variable} ${plexMono.variable} ${michroma.variable} ${chakra.variable}`}
     >
       <body>
         {/*
-          Skip-to-content link (M-W9): first focusable element in the
-          DOM so keyboard/AT users can jump past the TopBar + LeftRail
-          (or MarketingNav) straight to the page's `#main` wrapper.
-          Visually hidden until focused — see `.ss-skip-link`.
+          NO SKIP LINK HERE ANY MORE.
+
+          This used to be the first focusable element, jumping past the flat
+          `TopBar` and `LeftRail` to `#main`. Both are gone, and `Projection`
+          renders its own skip link targeting `#hp-content` — which is the
+          landmark now. Keeping this one meant TWO "Skip to content" links on
+          every page, the first of them pointing at a wrapper that no longer
+          contains the chrome it was there to skip.
         */}
-        <a href="#main" className="ss-skip-link">
-          Skip to content
-        </a>
-        <QuantumWarpBackground />
+        {/* Chrome-level facts every projection surface needs. The layout is
+            the one place that still wraps every route and already had the
+            inbound-share count, so the badge is fed from here rather than
+            threaded through a dozen shells. */}
+        <ShellDataProvider inboundShares={inboundShareCount}>
         {hasSession ? (
-          <div
-            className="ss-app"
-            style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}
-          >
-            <TopBar
-              handle={session.claimedHandle}
-              location={location}
-              dwellStart={location?.entered_at ?? null}
-              dwellIsLowerBound={
-                location?.entered_at_is_lower_bound ?? false
-              }
-              locationCatalog={locationCatalog}
-              supporter={supporter}
-              staffRoles={session.staffRoles}
-              inboundShareCount={inboundShareCount}
-            />
-            <LeftRail
-              handle={session.claimedHandle}
-              staffRoles={session.staffRoles}
-              inboundShareCount={inboundShareCount}
-              location={location}
-              supporter={supporter}
-              eventsTotal={eventsTotal}
-              locationsCount={locationsCount}
-            />
-            <DrawerScrim />
+          <div className="ss-app" style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
             <div className="ss-main" id="main" tabIndex={-1}>
-              <TelemetryTicker
-                location={location}
-                supporter={supporter}
-                eventsTotal={eventsTotal}
-                locationsCount={locationsCount}
-              />
               {!session.emailVerified && (
                 <div className="unverified-banner" role="status">
                   <span>Email unverified — claim it before someone else can.</span>{' '}
@@ -357,258 +246,16 @@ export default async function RootLayout({
               )}
               {children}
             </div>
-            {/*
-              Audit v2 §07 polish: Lore moved out of the left rail into
-              a calm footer — users hit it once after signup, so the
-              rail entry was noise. Fine-print + privacy live here too.
-              Brand book §11 compliance: About + Fankit + Fandom-FAQ
-              outbound links plus the attribution chip are reachable
-              from every signed-in surface.
-            */}
-            <footer
-              style={{
-                // `.ss-app` is a 2-col grid (220px rail | 1fr main). Without an
-                // explicit grid-column, auto-flow drops the footer into row 3
-                // column 1 (the 220px rail column) and it looks squished to
-                // the left. Mirror `.ss-topbar { grid-column: 1 / -1 }` so
-                // the footer spans the full width below rail + main.
-                gridColumn: '1 / -1',
-                textAlign: 'center',
-                fontSize: 'var(--fs-xs)',
-                color: 'var(--fg-dim)',
-                padding: 'var(--s4) var(--s5)',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 'var(--s3)',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <Link href={'/about' as Route} style={{ color: 'inherit' }}>
-                  About
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <Link href={'/lore' as Route} style={{ color: 'inherit' }}>
-                  Lore
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <Link href={'/changelog' as Route} style={{ color: 'inherit' }}>
-                  Changelog
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <Link href={'/roadmap' as Route} style={{ color: 'inherit' }}>
-                  Roadmap
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <a
-                  // portal.starstats.app is the SSO front end to StarPlatform
-                  // and the door a visitor should walk through.
-                  // platform.starstats.app is the app behind it — linking
-                  // there sends people past the sign-in they need.
-                  href="https://portal.starstats.app"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'inherit' }}
-                  title="StarPlatform — the self-hosted companion for orgs, guilds, clans, teams and clubs"
-                >
-                  StarPlatform
-                </a>
-                <span aria-hidden="true"> · </span>
-                <Link href={'/trust' as Route} style={{ color: 'inherit' }}>
-                  Trust
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <Link href="/privacy" style={{ color: 'inherit' }}>
-                  Privacy
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <Link href={'/terms' as Route} style={{ color: 'inherit' }}>
-                  Terms
-                </Link>
-                <span aria-hidden="true"> · </span>
-                <a
-                  href="https://support.robertsspaceindustries.com/hc/en-us/articles/360006895793"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'inherit' }}
-                >
-                  Fandom FAQ
-                </a>
-                <span aria-hidden="true"> · </span>
-                <a
-                  href="https://robertsspaceindustries.com/en/fankit"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'inherit' }}
-                >
-                  RSI Fankit
-                </a>
-                <span aria-hidden="true"> · </span>
-                <a
-                  href="mailto:dojo@thecodesaiyan.io"
-                  style={{ color: 'inherit' }}
-                >
-                  Contact
-                </a>
-              </div>
-              <span className="ss-footer-attribution">
-                Fan-made · Not affiliated with Cloud Imperium Games · RSI ·
-                Star Citizen™ &amp; Squadron 42™ are trademarks of CIG ·
-                Ship, vehicle, weapon &amp; item names and specifications ©
-                Cloud Imperium Rights LLC / Cloud Imperium Rights Ltd —
-                unofficial fan reference; facts only, see{' '}
-                <Link
-                  href="/about#community-data-sources"
-                  style={{ color: 'inherit', textDecoration: 'underline' }}
-                >
-                  /about
-                </Link>
-                .
-              </span>
-              {/*
-                Sub-footer line. Tiny, low-contrast version chip so
-                operators can tell at a glance which platform build is
-                serving the page without opening DevTools or
-                /healthz. Per the release-tracks split spec, this is
-                the *platform* version (server + web ship together);
-                the tray has its own independent version stream.
-                Build-time inlined via next.config.mjs's `env:` block
-                from workspace Cargo.toml.
-              */}
-              <span
-                style={{
-                  marginTop: 4,
-                  fontSize: 'var(--fs-2xs, 11px)',
-                  opacity: 0.55,
-                  letterSpacing: '0.02em',
-                }}
-              >
-                platform v{process.env.NEXT_PUBLIC_PLATFORM_VERSION}
-              </span>
-            </footer>
           </div>
         ) : (
-          <div
-            style={{
-              position: 'relative',
-              zIndex: 1,
-              minHeight: '100vh',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            <MarketingNav />
-            <div id="main" tabIndex={-1} style={{ flex: 1 }}>
+          <div style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
+            <div id="main" tabIndex={-1}>
               {children}
             </div>
-            {/*
-              Marketing footer. Brand book §11 requires the verbatim
-              fan-fiction disclaimer + outbound link block on every
-              signed-out surface; the inner container caps at 1080px
-              to match the marketing content column while the outer
-              <footer> stays full-bleed so border-top spans the
-              viewport.
-            */}
-            <footer
-              className="site-footer"
-              style={{
-                padding: 'var(--s5) var(--s4)',
-                fontSize: 'var(--fs-xs)',
-                color: 'var(--fg-dim)',
-                borderTop: '1px solid var(--border)',
-              }}
-            >
-              <div
-                className="site-footer-inner"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 'var(--s3)',
-                  alignItems: 'center',
-                  maxWidth: 1080,
-                  margin: '0 auto',
-                }}
-              >
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 14,
-                  flexWrap: 'wrap',
-                  justifyContent: 'center',
-                }}
-              >
-                <Link href={'/about' as Route}>About</Link>
-                <span aria-hidden="true">·</span>
-                <Link href="/features">Features</Link>
-                <span aria-hidden="true">·</span>
-                <Link href={'/star-platform' as Route}>StarPlatform</Link>
-                <span aria-hidden="true">·</span>
-                <Link href={'/lore' as Route}>Lore</Link>
-                <span aria-hidden="true">·</span>
-                <Link href={'/changelog' as Route}>Changelog</Link>
-                <span aria-hidden="true">·</span>
-                <Link href={'/roadmap' as Route}>Roadmap</Link>
-                <span aria-hidden="true">·</span>
-                <Link href={'/donate' as Route}>Donate</Link>
-                <span aria-hidden="true">·</span>
-                <Link href="/privacy">Privacy</Link>
-                <span aria-hidden="true">·</span>
-                <a
-                  href="https://support.robertsspaceindustries.com/hc/en-us/articles/360006895793"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Fandom FAQ
-                </a>
-                <span aria-hidden="true">·</span>
-                <a
-                  href="https://robertsspaceindustries.com/en/fankit"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  RSI Fankit
-                </a>
-                <span aria-hidden="true">·</span>
-                <a href="mailto:dojo@thecodesaiyan.io">Contact</a>
-              </div>
-              <span
-                className="ss-footer-attribution"
-                style={{ textAlign: 'center', maxWidth: 640 }}
-              >
-                Fan-made · Not affiliated with Cloud Imperium Games · RSI ·
-                Star Citizen™ &amp; Squadron 42™ are trademarks of CIG ·
-                Ship, vehicle, weapon &amp; item names and specifications ©
-                Cloud Imperium Rights LLC / Cloud Imperium Rights Ltd —
-                unofficial fan reference; facts only, see{' '}
-                <Link
-                  href="/about#community-data-sources"
-                  style={{ color: 'inherit', textDecoration: 'underline' }}
-                >
-                  /about
-                </Link>
-                .
-              </span>
-              {/*
-                Sub-footer line, mirroring the signed-in footer above.
-                See that block for rationale (platform version, build-
-                time inlined, release-tracks split spec reference).
-              */}
-              <span
-                style={{
-                  marginTop: 4,
-                  fontSize: 'var(--fs-2xs, 11px)',
-                  opacity: 0.55,
-                  letterSpacing: '0.02em',
-                  textAlign: 'center',
-                }}
-              >
-                platform v{process.env.NEXT_PUBLIC_PLATFORM_VERSION}
-              </span>
-              </div>
-            </footer>
-            {showBetaGate && <BetaGate />}
           </div>
         )}
+        {showBetaGate && <BetaGate />}
+        </ShellDataProvider>
       </body>
     </html>
   );

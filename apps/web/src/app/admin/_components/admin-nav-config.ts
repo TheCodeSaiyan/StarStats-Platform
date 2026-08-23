@@ -4,7 +4,7 @@
  * `AdminNav` renders these; `admin-nav-config.test.ts` asserts every
  * href resolves to a real page.tsx on disk. That test is deliberately
  * filesystem-backed: deriving the expectation from this file (the way
- * settings-nav-config's count test does) would pass even when a nav
+ * a count test does) would pass even when a nav
  * entry points at a route that no longer exists.
  *
  * Grouping replaces the previous flat 16-pill row. `Settings` collapses

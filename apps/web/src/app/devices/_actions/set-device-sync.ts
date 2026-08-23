@@ -7,11 +7,12 @@ import { ApiCallError, setDeviceSync } from '@/lib/api';
 import { getSession } from '@/lib/session';
 import { logger } from '@/lib/logger';
 
-const LOGIN_NEXT = '/auth/login?next=/devices';
+const LOGIN_NEXT = '/auth/login?next=/downloads';
 
 /**
  * Server action that flips a single device's sync gate. Called from
- * the toggle <form> on the Connected Uplinks page. Returns no value
+ * the toggle <form> in the Uplinks group of `/downloads` (the Emitter);
+ * it lived on `/devices` until that surface was folded in. Returns no value
  * — revalidatePath refreshes the list with the new state.
  *
  * Auth failures redirect to login (matching the sibling `revokeAction`
@@ -23,7 +24,7 @@ export async function setUplinkSyncAction(formData: FormData): Promise<void> {
   const deviceId = String(formData.get('device_id') ?? '');
   const enabled = formData.get('enabled') === 'on';
   if (!deviceId) {
-    redirect('/devices?error=missing_id');
+    redirect('/downloads?error=missing_id');
   }
 
   const session = await getSession();
@@ -40,5 +41,5 @@ export async function setUplinkSyncAction(formData: FormData): Promise<void> {
     logger.warn({ err: e, deviceId, enabled }, 'setDeviceSync action failed');
     throw e;
   }
-  revalidatePath('/devices');
+  revalidatePath('/downloads');
 }

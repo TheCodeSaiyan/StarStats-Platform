@@ -1,0 +1,26 @@
+/* Motion. One easing for everything that settles; a spring reserved for
+ * switch thumbs. Recalibration is the one orchestrated event (620ms, driven
+ * from tokens-holo.css).
+ *
+ * SCOPED TO [data-cal] rather than :root. The flat `design-tokens` system
+ * coexists with the projection until the port completes, and it carries its
+ * own `--ease-out` (byte-identical today) plus its own reduced-motion rules.
+ * A global `* { animation-duration: 0.001ms !important }` here would reach
+ * across and override those, so the kill switch is scoped to the projection
+ * subtree too. Restore the `:root` form once the flat system is deleted.
+ */
+[data-cal] {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* @kind other */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
+  --t-fast: 160ms; /* @kind other */
+  --t-base: 260ms; /* @kind other */
+  --t-slow: 420ms; /* @kind other */
+  --t-recal: 620ms; /* @kind other */
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-cal] { --t-fast: 0ms; /* @kind other */ --t-base: 0ms; /* @kind other */ --t-slow: 0ms; /* @kind other */ }
+  [data-cal], [data-cal] *, [data-cal] *::before, [data-cal] *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}

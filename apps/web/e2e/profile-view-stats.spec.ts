@@ -11,7 +11,7 @@
  * because `STARSTATS_API_URL` points at it.
  */
 
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   loginAs,
   resetScenario,
@@ -23,6 +23,18 @@ test.beforeEach(async ({ request, page }) => {
   await resetScenario(request);
   await loginAs(page);
 });
+
+/**
+ * Open the Views group.
+ *
+ * `/sharing` is a projection now: its five sections are grouped behind a lens
+ * rail and only one group is mounted at a time, so the views card is not on
+ * the page until its group is selected. The FIGURES are unchanged — this only
+ * navigates to them.
+ */
+async function openViews(page: Page): Promise<void> {
+  await page.locator('.hp-lens button', { hasText: 'Views' }).click();
+}
 
 test('profile_views_card_renders_count_and_breakdown_when_public', async ({
   page,
@@ -54,6 +66,7 @@ test('profile_views_card_renders_count_and_breakdown_when_public', async ({
   );
 
   await page.goto('/sharing');
+  await openViews(page);
 
   const card = page.getByTestId('profile-views-card');
   await expect(card).toBeVisible();
@@ -91,6 +104,7 @@ test('profile_views_card_shows_empty_state_when_no_views_yet', async ({
   );
 
   await page.goto('/sharing');
+  await openViews(page);
 
   const card = page.getByTestId('profile-views-card');
   await expect(card).toBeVisible();
@@ -124,6 +138,7 @@ test('profile_views_card_collapses_to_placeholder_when_private', async ({
   );
 
   await page.goto('/sharing');
+  await openViews(page);
 
   const card = page.getByTestId('profile-views-card');
   await expect(card).toBeVisible();

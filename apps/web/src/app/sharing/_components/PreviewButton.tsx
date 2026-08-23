@@ -96,7 +96,7 @@ export function PreviewButton() {
     <button
       type="button"
       onClick={onClick}
-      className="ss-btn ss-btn--ghost"
+      className="hp-btn hp-btn--ghost"
       title="Preview what the recipient would see with the current scope"
     >
       Preview

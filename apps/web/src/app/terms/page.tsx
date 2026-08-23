@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { LegalIndex } from '@/components/projection/LegalIndex';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
@@ -66,12 +68,22 @@ const codeStyle: React.CSSProperties = {
   fontSize: '0.92em',
   background: 'var(--bg-elev)',
   padding: '1px 6px',
-  borderRadius: 'var(--r-sm)',
+  borderRadius: 0,
 };
 
 export default function TermsPage() {
   return (
-    <main>
+    <MarketingSurface
+      navId="terms"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Terms' },
+      ]}
+      title="Terms"
+      ctx="Terms of service"
+    >
+      <LegalIndex active="/terms" />
+    <div>
       <div className="ss-placard" style={{ marginBottom: 'var(--s2)' }}>
         Legal · Terms
       </div>
@@ -300,6 +312,7 @@ export default function TermsPage() {
       <p style={{ marginTop: 'var(--s6)' }}>
         <Link href="/">← Back to StarStats</Link>
       </p>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

@@ -88,7 +88,7 @@ export function LocationFrequencyBars({ entries, topN = 8 }: Props) {
               <div
                 style={{
                   height: 6,
-                  borderRadius: 3,
+                  borderRadius: 0,
                   background: 'var(--bg-elev)',
                   overflow: 'hidden',
                 }}

@@ -1,0 +1,24 @@
+/* StarStats projection — CSS entry point. Import list only.
+ *
+ * Differences from the design system's own `styles.css`, all deliberate and
+ * all driven by the flat `design-tokens` system coexisting during the port:
+ *
+ *   - `tokens/fonts.css` is NOT imported. The app self-hosts Chakra Petch via
+ *     next/font/google in `app/layout.tsx`, so there is no render-blocking
+ *     CDN request and no third-party font origin to allow in the CSP.
+ *   - `patterns/base.css` is NOT imported. It restyles `body` and `a`
+ *     globally, which would repaint every un-ported flat page.
+ *   - The token layers are scoped to `[data-cal]` instead of `:root`, because
+ *     11 of their 12 custom-property names collide with the flat system
+ *     (--font-sans, --fs-*, --bg, --fg, --accent). Scoping means the
+ *     projection subtree gets the beam and everything outside it is
+ *     untouched. The design system explicitly supports this: "Set `data-cal`
+ *     on :root, or on any projection subtree."
+ *
+ * When the flat system is deleted, these can revert to the upstream form.
+ */
+@import url("./tokens-typography.css");
+@import url("./tokens-holo.css");
+@import url("./tokens-motion.css");
+@import url("./patterns-holo.css");
+@import url("./additions.css");

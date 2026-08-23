@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -22,7 +24,17 @@ export const metadata: Metadata = {
  * when checked). Each guide names the source it was read from. */
 export default function GuidesIndexPage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="guides"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Guides' },
+      ]}
+      title="Guides"
+      ctx="Walkthroughs for each surface"
+    >
+      <DocsIndex active="/guides" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Guides
       </div>
@@ -100,6 +112,7 @@ export default function GuidesIndexPage() {
           aren&apos;t bugs and never will be.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

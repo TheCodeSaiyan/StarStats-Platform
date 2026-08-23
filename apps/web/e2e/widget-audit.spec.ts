@@ -15,7 +15,7 @@
  * Out (scratchpad): widget-audit.png + widget-audit.json
  */
 import { test, expect } from '@playwright/test';
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
 
 const RUN = process.env.AUDIT === '1';
@@ -164,8 +164,18 @@ const FIXTURES: Record<string, { status: number; body: unknown }> = {
       behr_rifle_ballistic_01: { display_name: 'BEHR P8-AR', slug: 'behr-p8-ar', category: 'Weapon_FPS_Rifle', classification: 'FPS.Weapon.Rifle', classification_label: 'Rifle', has_image: false },
     },
   }),
+  // Owner viewing `/u/[handle]`: page.tsx short-circuits to the self path
+  // before the public endpoints, so these keep the scenario deterministic.
+  'GET /v1/public/TestPilot/summary': { status: 404, body: {} },
+  'GET /v1/public/TestPilot/rsi-profile': { status: 404, body: {} },
+  'GET /v1/public/TestPilot/rsi-orgs': { status: 200, body: { orgs: [] } },
 };
 
+/**
+ * Measures the flat widget grid. It runs against `/u/[handle]` rather than
+ * `/me`: the projection replaced `/me`, and this harness measures `.hud-tile`
+ * geometry — a surface that now exists only on the public profile.
+ */
 test.describe('widget dashboard audit', () => {
   test.skip(!RUN, 'set AUDIT=1 to run the measurement harness');
   test.use({ viewport: { width: 1440, height: 900 } });
@@ -177,7 +187,7 @@ test.describe('widget dashboard audit', () => {
     await resetScenario(request);
     await setScenario(request, scenarioFor('widget_audit', FIXTURES));
     await loginAs(page, { handle: 'TestPilot' });
-    await page.goto('/me');
+    await page.goto('/u/TestPilot');
     await page.waitForLoadState('networkidle');
     await page.locator('section.hud-tile[data-widget-id]').first().waitFor();
     // Let client-side content auto-fit + compaction settle before measuring.
@@ -219,6 +229,10 @@ test.describe('widget dashboard audit', () => {
       };
     });
 
+    // The report directory is not committed, so the harness creates it. It
+    // used to ENOENT on a clean checkout — before this the run got all the way
+    // through measuring and then threw on the write.
+    mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(`${OUT_DIR}/widget-audit.json`, JSON.stringify(report, null, 2));
     await page.screenshot({ path: `${OUT_DIR}/widget-audit.png`, fullPage: true });
 
@@ -240,7 +254,7 @@ test.describe('widget dashboard audit', () => {
     await resetScenario(request);
     await setScenario(request, scenarioFor('widget_audit_drill', FIXTURES));
     await loginAs(page, { handle: 'TestPilot' });
-    await page.goto('/me');
+    await page.goto('/u/TestPilot');
     await page.waitForLoadState('networkidle');
     await page.locator('section.hud-tile[data-widget-id]').first().waitFor();
     // Past the auto-fit freeze window — the grid is now stable, so a normal

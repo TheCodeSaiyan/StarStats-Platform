@@ -122,7 +122,12 @@ test('gated login keeps sign-in and provides a working waitlist form', async ({
 
   await page.goto('/auth/login');
 
-  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  // Scoped to the form. `/auth/**` is a projection now and its `ChromeBar`
+  // offers its own "Sign in" for a signed-out visitor, so an unscoped locator
+  // matches two buttons.
+  await expect(
+    page.locator('.hp-auth').getByRole('button', { name: 'Sign in' }),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: /join the waitlist/i }),
   ).toBeVisible();
@@ -164,7 +169,12 @@ test('auth waitlist surfaces disappear when the beta gate is off', async ({
   ).toHaveCount(0);
 
   await page.goto('/auth/login');
-  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  // Scoped to the form. `/auth/**` is a projection now and its `ChromeBar`
+  // offers its own "Sign in" for a signed-out visitor, so an unscoped locator
+  // matches two buttons.
+  await expect(
+    page.locator('.hp-auth').getByRole('button', { name: 'Sign in' }),
+  ).toBeVisible();
   await expect(
     page.getByRole('button', { name: /join the waitlist/i }),
   ).toHaveCount(0);

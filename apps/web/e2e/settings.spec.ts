@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   currentUser,
   loginAs,
@@ -13,6 +13,19 @@ test.beforeEach(async ({ request, page }) => {
   await loginAs(page);
 });
 
+/**
+ * Open a settings group.
+ *
+ * `/settings` is a projection now: its ten sections are grouped behind a lens
+ * rail and only one group is mounted at a time, so a field is not on the page
+ * until its group is selected. Landing straight on `#password` would work too
+ * (the rail is driven from the fragment), but clicking is what a reader does
+ * and it exercises the rail as well.
+ */
+async function openGroup(page: Page, name: string): Promise<void> {
+  await page.locator('.hp-lens button', { hasText: name }).click();
+}
+
 test('change_password_success_shows_status', async ({ page, request }) => {
   await setScenario(
     request,
@@ -23,6 +36,7 @@ test('change_password_success_shows_status', async ({ page, request }) => {
   );
 
   await page.goto('/settings');
+  await openGroup(page, 'Security');
   await page.getByLabel('Current password').fill('oldpassword!!');
   await page.getByLabel('New password').fill('newpassword12345');
   await page.getByRole('button', { name: 'Update password' }).click();
@@ -41,6 +55,7 @@ test('change_password_wrong_current_shows_error', async ({ page, request }) => {
   );
 
   await page.goto('/settings');
+  await openGroup(page, 'Security');
   await page.getByLabel('Current password').fill('wrongoldpw!!');
   await page.getByLabel('New password').fill('newpassword12345');
   await page.getByRole('button', { name: 'Update password' }).click();
@@ -59,6 +74,7 @@ test('delete_account_requires_handle_confirmation', async ({ page, request }) =>
   );
 
   await page.goto('/settings');
+  await openGroup(page, 'Danger');
 
   // The form requires the handle to match. The server-side action
   // returns 400 confirm_mismatch when the typed handle differs;
@@ -88,6 +104,9 @@ test('delete_account_requires_handle_confirmation', async ({ page, request }) =>
       'DELETE /v1/auth/me': { status: 200, body: { deleted: true } },
     }),
   );
+  // The mismatch redirect landed on `#danger`, which the rail reopens from the
+  // fragment — but re-select defensively so this does not depend on it.
+  await openGroup(page, 'Danger');
   await page.getByLabel('Type your handle to confirm').fill('TestPilot');
   await page.getByRole('button', { name: 'Delete my account' }).click();
 

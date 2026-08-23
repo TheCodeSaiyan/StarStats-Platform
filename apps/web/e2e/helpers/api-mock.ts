@@ -400,6 +400,19 @@ export const publicSummaryShared = {
   },
 };
 
+/** Stock public summary for `TestPilot`, the suite's default handle. */
+export const publicSummaryTestPilot = {
+  status: 200,
+  body: {
+    claimed_handle: 'TestPilot',
+    total: 42,
+    by_type: [
+      { event_type: 'login', count: 30 },
+      { event_type: 'death', count: 12 },
+    ],
+  },
+};
+
 export const notFound = {
   status: 404,
   body: { error: 'not_found' },
@@ -747,6 +760,24 @@ export function publishInferenceRuleResponse(ruleId: string, enabled: boolean) {
  * everywhere" defaults plus per-test overrides. Override keys take
  * precedence over the defaults.
  */
+/**
+ * Default dwell breakdown — `GET /v1/me/location/breakdown`. Deliberately
+ * UNEVEN, and deliberately disagreeing with visit order: Lorville is visited
+ * once but dwelt in longest, so a test that ranks by visits and one that ranks
+ * by dwell cannot both pass on the same ordering.
+ */
+export const defaultLocationBreakdown = {
+  status: 200,
+  body: {
+    hours: 168,
+    entries: [
+      { system: 'Stanton', planet: 'Crusader', city: 'Orison', dwell_seconds: 5400, visit_count: 2 },
+      { system: 'Stanton', planet: 'ArcCorp', city: 'Area18', dwell_seconds: 1800, visit_count: 1 },
+      { system: 'Stanton', planet: 'Hurston', city: 'Lorville', dwell_seconds: 9000, visit_count: 1 },
+    ],
+  },
+};
+
 /** Default current-location — `GET /v1/me/location/current`. The TopBar
  * (signed-in layout) fetches it on EVERY render (H4), so per the
  * fixture-default rule it needs a base entry or every scenario logs a
@@ -764,6 +795,92 @@ const noSharedWithMe = { status: 200, body: { shared_with_me: [] } };
  * nothing. Base 404 keeps scenarios that render `/me` from a 599 (H4). */
 const noHangarSnapshot = { status: 404, body: { error: 'not_found' } };
 
+/** No stored layout — the surface falls back to its curated default. */
+export const projectionLayoutDefault: MockResponse = {
+  status: 200,
+  body: { layout: null },
+};
+
+/** No location telemetry: the ring draws no map and says so. */
+export const locationTraceEmpty: MockResponse = {
+  status: 200,
+  body: { entries: [] },
+};
+
+
+/**
+ * Tray release feed — the GitHub Releases shape, served from the mock server
+ * because `playwright.config.ts` points `STARSTATS_RELEASES_API` at it.
+ *
+ * Bound into `scenarioFor`'s base map: `/downloads` (the Emitter) absorbed
+ * `/devices`, so the auth flow and the pairing captures all render this page.
+ * Per the fixture-default rule, a widely-rendered fetch without a base entry
+ * makes every scenario that touches the surface fail.
+ *
+ * Deliberately a `tray-v` tag with one Windows and one Linux asset and NO
+ * macOS build — that is the real state of the track, and it keeps the
+ * "No macOS build yet" branch on screen where it can be seen.
+ */
+export const trayReleases = {
+  status: 200,
+  body: [
+    {
+      tag_name: 'tray-v1.8.31',
+      name: 'Tray v1.8.31',
+      body: 'Loadout capture fixes.',
+      draft: false,
+      prerelease: false,
+      published_at: '2026-08-01T12:00:00Z',
+      html_url: 'https://github.com/TheCodeSaiyan/StarStats/releases/tag/tray-v1.8.31',
+      assets: [
+        {
+          name: 'StarStats_1.8.31_x64-setup.exe',
+          browser_download_url: 'https://example.invalid/StarStats_1.8.31_x64-setup.exe',
+          size: 8_912_896,
+        },
+        {
+          name: 'StarStats_1.8.31_amd64.AppImage',
+          browser_download_url: 'https://example.invalid/StarStats_1.8.31_amd64.AppImage',
+          size: 10_485_760,
+        },
+      ],
+    },
+    {
+      tag_name: 'tray-v1.9.0-beta.1',
+      name: 'Tray v1.9.0-beta.1',
+      body: 'Next line.',
+      draft: false,
+      prerelease: true,
+      published_at: '2026-08-14T12:00:00Z',
+      html_url: 'https://github.com/TheCodeSaiyan/StarStats/releases/tag/tray-v1.9.0-beta.1',
+      assets: [
+        {
+          name: 'StarStats_1.9.0-beta.1_x64-setup.exe',
+          browser_download_url: 'https://example.invalid/StarStats_1.9.0-beta.1_x64-setup.exe',
+          size: 8_950_000,
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * Default per-scope sharing — `GET /v1/users/me/share-scopes` and the public
+ * per-handle mirror. Three published, two withheld, so a test that renders a
+ * profile exercises BOTH halves of the published/withheld statement rather
+ * than only the branch that happens to be non-empty.
+ */
+export const defaultShareScopes = {
+  status: 200,
+  body: {
+    combat_mission: true,
+    economy: false,
+    travel: true,
+    records: false,
+    recent_activity: true,
+  },
+};
+
 export function scenarioFor(
   id: string,
   overrides: ScenarioRoutes = {},
@@ -774,6 +891,7 @@ export function scenarioFor(
     'GET /v1/me/events': eventsPageDescending,
     'GET /v1/me/timeline': timeline30Days,
     'GET /v1/auth/devices': deviceList,
+    'GET /gh/releases': trayReleases,
     'GET /v1/me/visibility': visibilityPrivate,
     'GET /v1/me/shares': noShares,
     'GET /v1/me/preferences': emptyPreferences,
@@ -786,6 +904,23 @@ export function scenarioFor(
     // the dormant default; beta-specific tests override it explicitly.
     'GET /v1/waitlist/status': { status: 200, body: { gate_enabled: false } },
     'GET /v1/orgs': noOrgs,
+    // Per-scope sharing. `/u/[handle]` reads these to state what a pilot
+    // publishes and what they withhold — the owner's via `/v1/users/me`, a
+    // visitor's via the unauthenticated public route. Without a default, the
+    // page cannot tell "publishes nothing" from "the endpoint did not answer"
+    // and correctly renders the latter, so every profile scenario would assert
+    // against the failure state.
+    //
+    // KEYED PER HANDLE because the mock's wildcards are PREFIX-only: a
+    // `GET /v1/public/*` entry would also swallow `/summary`, `/profile` and
+    // `/timeline` for every scenario that has no exact key of its own.
+    // `/u/TestPilot` is the stock profile every scenario reaches for. Without
+    // a summary it resolves to "not available" and a test asserting on the
+    // profile body waits out its timeout against the refused view.
+    'GET /v1/public/TestPilot/summary': publicSummaryTestPilot,
+    'GET /v1/users/me/share-scopes': defaultShareScopes,
+    'GET /v1/public/TestPilot/share-scopes': defaultShareScopes,
+    'GET /v1/public/JohnSomeone/share-scopes': defaultShareScopes,
     // KB v1: dashboard + journey now call `loadAllReferenceBundles()`
     // which fans out to all four categories. Default each to an
     // empty listing so scenarios that don't care about KB content
@@ -831,6 +966,10 @@ export function scenarioFor(
     // entries — without them every signed-in scenario emits a
     // `599 no_mock_fixture` for these two paths (H4).
     'GET /v1/me/location/current': noCurrentLocation,
+    // Per-place dwell. `/me/travel` ranks its taxonomy by this and falls back
+    // to visit counts when it is absent — without a default, every scenario
+    // would exercise only the fallback and the dwell path would ship untested.
+    'GET /v1/me/location/breakdown': defaultLocationBreakdown,
     'GET /v1/me/shared-with-me': noSharedWithMe,
     // The `/me` hangar widget fetches this on render; 404 = no snapshot
     // (server holds no RSI creds) → the widget shows nothing, no 599.
@@ -854,6 +993,13 @@ export function scenarioFor(
     // loadout widget would 599 without this base entry. Tests that
     // exercise resolved names override with richer values.
     'POST /v1/reference/resolve': emptyResolve,
+    // The `/me` projection reads the reader's saved element layout and the
+    // location trace that feeds the ring's map mode. Both degrade quietly on
+    // failure (default layout / empty ring), but per the fixture-default rule
+    // they get base entries so a scenario exercises the real render path
+    // rather than the degraded one.
+    'GET /v1/users/me/profile-layout': projectionLayoutDefault,
+    'GET /v1/me/location/trace': locationTraceEmpty,
   };
   return { __id: id, routes: { ...base, ...overrides } };
 }

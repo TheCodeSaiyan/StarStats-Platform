@@ -5,6 +5,9 @@ import React, { useState } from 'react';
 interface ItemImageProps {
   src: string;
   alt: string;
+  /** Override for the projection's tile. Defaults to the flat class, which
+   *  `ItemImage.test.tsx` asserts on. */
+  className?: string;
 }
 
 /**
@@ -17,14 +20,18 @@ interface ItemImageProps {
  * image on load error so the tile falls back to name-only, matching the
  * `has_image: false` case.
  */
-export function ItemImage({ src, alt }: ItemImageProps) {
+export function ItemImage({
+  src,
+  alt,
+  className = 'loadout-item-tile__img',
+}: ItemImageProps) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
   return (
     <img
       src={src}
       alt={alt}
-      className="loadout-item-tile__img"
+      className={className}
       onError={() => setFailed(true)}
     />
   );

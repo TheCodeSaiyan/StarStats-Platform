@@ -59,7 +59,7 @@ export function RangeBar({
             style={{
               padding: '4px 10px',
               fontSize: 12,
-              borderRadius: 4,
+              borderRadius: 0,
               textDecoration: 'none',
               color: isActive ? 'var(--bg)' : 'var(--fg-muted)',
               background: isActive ? 'var(--accent)' : 'transparent',

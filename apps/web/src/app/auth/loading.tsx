@@ -1,44 +1,23 @@
+import React from 'react';
+
 /**
- * Auth-section loading skeleton. Sized to match the centred auth card
- * layout (eyebrow + heading + two inputs + primary CTA). Server Component.
+ * Auth-section loading skeleton — eyebrow, heading, two fields, a CTA.
+ *
+ * NOT a `<main>`. The projection puts `role="main"` on `#hp-content`, so the
+ * element this used to be added a SECOND main landmark for as long as a page
+ * was loading, and picked up globals.css's legacy 720px `main` column while it
+ * was there. A div with the section's own classes has neither problem.
  */
-
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
-
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 420,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-};
-
 export default function AuthLoading() {
   return (
-    <main
-      className="auth"
-      style={mainStyle}
-      aria-busy="true"
-      aria-label="Loading"
-    >
-      <div style={cardStyle}>
-        <div
-          className="skeleton"
-          style={{ height: 14, width: 80, borderRadius: 4 }}
-        />
-        <div
-          className="skeleton"
-          style={{ height: 32, width: 220, marginBottom: 8 }}
-        />
+    <div className="hp-authpage" aria-busy="true" aria-label="Loading">
+      <div className="hp-authcard">
+        <div className="skeleton" style={{ height: 12, width: 80 }} />
+        <div className="skeleton" style={{ height: 30, width: 220 }} />
         <div className="skeleton" style={{ height: 44, width: '100%' }} />
         <div className="skeleton" style={{ height: 44, width: '100%' }} />
-        <div className="skeleton" style={{ height: 40, width: 120, marginTop: 8 }} />
+        <div className="skeleton" style={{ height: 40, width: 120 }} />
       </div>
-    </main>
+    </div>
   );
 }

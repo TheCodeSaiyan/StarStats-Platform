@@ -3,9 +3,10 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 // Mock next/navigation (redirect) and next/link
-vi.mock('next/navigation', () => ({
-  redirect: vi.fn(),
-}));
+vi.mock('next/navigation', async () => {
+  const m = await import('@/test-support/next-navigation');
+  return m.navigationMock();
+});
 
 vi.mock('next/link', () => ({
   default: ({

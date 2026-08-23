@@ -178,7 +178,7 @@ function RunBanner({
         border: '1px solid var(--border)',
         borderLeftWidth: 3,
         borderLeftColor: healthy ? 'var(--ok, #3fb950)' : 'var(--warn, #d29922)',
-        borderRadius: 6,
+        borderRadius: 0,
         padding: '10px 14px',
         display: 'flex',
         flexDirection: 'column',

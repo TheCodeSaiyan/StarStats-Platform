@@ -10,48 +10,11 @@ interface SearchParams {
   error?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
 
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 420,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
 
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  margin: 0,
-};
 
-const actionsStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  marginTop: 4,
-};
 
 /**
  * Password-reset start page.
@@ -82,11 +45,11 @@ export default async function ForgotPasswordPage(props: {
 
   if (sent === '1') {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Reset link sent</span>
-          <h1 style={titleStyle}>Check your email.</h1>
-          <p style={subtitleStyle}>
+          <h1>Check your email.</h1>
+          <p className="hp-authsub">
             If an account exists for that address, we&apos;ve sent a
             password-reset link. The link expires in 30 minutes.
           </p>
@@ -103,16 +66,16 @@ export default async function ForgotPasswordPage(props: {
             Back to sign in
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         <span className="ss-eyebrow">Reset password</span>
-        <h1 style={titleStyle}>Forgot your password?</h1>
-        <p style={subtitleStyle}>
+        <h1>Forgot your password?</h1>
+        <p className="hp-authsub">
           Enter the email on your account and we&apos;ll send a link to
           choose a new password.
         </p>
@@ -123,7 +86,7 @@ export default async function ForgotPasswordPage(props: {
           </div>
         )}
 
-        <form action={action} style={formStyle}>
+        <form action={action} className="hp-authform">
           <label className="ss-label">
             <span className="ss-label-text">Email</span>
             <input
@@ -136,7 +99,7 @@ export default async function ForgotPasswordPage(props: {
               placeholder="you@example.com"
             />
           </label>
-          <div style={actionsStyle}>
+          <div className="hp-authactions">
             <button type="submit" className="ss-btn ss-btn--primary">
               Send reset link
             </button>
@@ -146,6 +109,6 @@ export default async function ForgotPasswordPage(props: {
           </div>
         </form>
       </div>
-    </main>
+    </div>
   );
 }

@@ -19,49 +19,6 @@ interface SearchParams {
   invite?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
-
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 440,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
-
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
-
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
-
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  margin: 0,
-};
-
-const fineprintStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: 'var(--fg-dim)',
-  lineHeight: 1.5,
-  margin: 0,
-};
-
 export default async function SignupPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
@@ -125,16 +82,16 @@ export default async function SignupPage(props: {
       if (inviteToken) params.set('invite', inviteToken);
       redirect(`/auth/signup?${params.toString()}`);
     }
-    redirect('/devices');
+    redirect('/downloads');
   }
 
   if (gateOn && !inviteFromQuery) {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Private beta</span>
-          <h1 style={titleStyle}>Join the StarStats beta.</h1>
-          <p style={subtitleStyle}>
+          <h1>Join the StarStats beta.</h1>
+          <p className="hp-authsub">
             Account creation is invite-only for now. Join the waitlist and
             we&rsquo;ll email your signup link when a place opens.
           </p>
@@ -152,17 +109,17 @@ export default async function SignupPage(props: {
             email.
           </p>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         {gateOn && <BetaBanner mode="signup" />}
         <span className="ss-eyebrow">Create account</span>
-        <h1 style={titleStyle}>Create your account.</h1>
-        <p style={subtitleStyle}>
+        <h1>Create your account.</h1>
+        <p className="hp-authsub">
           Email plus a password gets you an account. You can verify your RSI
           handle later.
         </p>
@@ -173,7 +130,7 @@ export default async function SignupPage(props: {
           </div>
         )}
 
-        <form action={action} style={formStyle}>
+        <form action={action} className="hp-authform">
           <label className="ss-label">
             <span className="ss-label-text">Email</span>
             <input
@@ -252,7 +209,7 @@ export default async function SignupPage(props: {
           </button>
         </form>
 
-        <p style={fineprintStyle}>
+        <p className="hp-authfine">
           By creating an account you agree to our{' '}
           <Link href={'/terms' as Route} style={{ color: 'var(--fg-muted)' }}>
             Terms of Service
@@ -282,7 +239,7 @@ export default async function SignupPage(props: {
           .
         </p>
       </div>
-    </main>
+    </div>
   );
 }
 

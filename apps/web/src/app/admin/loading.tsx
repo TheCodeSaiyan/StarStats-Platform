@@ -37,7 +37,7 @@ export default function AdminLoading() {
           real page (which owns its own AdminNav) streams in. */}
       <div
         className="skeleton"
-        style={{ height: 36, width: '100%', borderRadius: 'var(--r-pill)' }}
+        style={{ height: 36, width: '100%', borderRadius: 0 }}
       />
       {/* Header block */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

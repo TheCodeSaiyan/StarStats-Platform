@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -21,7 +23,16 @@ const CONTACT_EMAIL = 'dojo@thecodesaiyan.io';
  * Discord — do not add one. */
 export default function SupportPage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Support' },
+      ]}
+      title="Support"
+      ctx="Getting help"
+    >
+      <DocsIndex active="/support" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Support
       </div>
@@ -93,6 +104,7 @@ export default function SupportPage() {
           optional, and never required for anything.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

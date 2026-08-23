@@ -82,7 +82,21 @@ export const HOME_DEFAULT_LAYOUT: LayoutEntry[] = [
   { id: 'recent_activity', enabled: false, size: 'compact' },
   { id: 'records', enabled: false, size: 'compact' },
   { id: 'orgs', enabled: false, size: 'compact' },
-  { id: 'hangar', enabled: false, size: 'compact' },
+  // `hangar` is ON on the owner's own page, and was not always.
+  //
+  // It used to be off with `loadout` on the grounds that both need tray data
+  // that may not exist yet. That reasoning held while "Hangar" was also a nav
+  // destination — a reader who wanted their fleet had somewhere to go. That
+  // entry pointed at the PAIRED-DEVICE page rather than the fleet, so it was
+  // removed and pairing moved into Emitter; without this the actual hangar had
+  // no default surface at all, only an Add-element palette entry and a pane
+  // inside `/settings`.
+  //
+  // Safe to default on: the element degrades to "no hangar snapshot yet", which
+  // also tells a reader without a paired tray where the data comes from. Left
+  // OFF on the public profile below — someone else's fleet is the owner's
+  // opt-in, not a default.
+  { id: 'hangar', enabled: true, size: 'compact' },
   { id: 'loadout', enabled: false, size: 'compact' },
   { id: 'entities', enabled: false, size: 'compact' },
   // Reparse-gated depth widgets — off by default, available from the

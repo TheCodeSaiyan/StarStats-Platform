@@ -475,7 +475,7 @@ function Field({
           padding: '8px 10px',
           background: 'var(--bg-elev)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--r-sm)',
+          borderRadius: 0,
           color: 'var(--fg)',
           fontSize: 13,
           textTransform: 'none',

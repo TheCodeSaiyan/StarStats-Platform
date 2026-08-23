@@ -226,7 +226,7 @@ export default async function AdminOrgDetailPage(props: PageProps) {
                 padding: '8px 12px',
                 background: 'var(--bg-elev)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-sm)',
+                borderRadius: 0,
                 color: 'var(--fg)',
               }}
             />
@@ -269,7 +269,7 @@ function SharingContext({ context }: { context: OrgSharingContext | null }) {
       style={{
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-card)',
+        borderRadius: 0,
         padding: 20,
         display: 'flex',
         flexDirection: 'column',

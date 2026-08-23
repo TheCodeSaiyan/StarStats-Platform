@@ -1,6 +1,7 @@
 import 'server-only';
 import React from 'react';
 import { redirect } from 'next/navigation';
+import { RecordsIndex } from '@/components/projection/RecordsIndex';
 import { getSession } from '@/lib/session';
 import {
   listEvents,
@@ -16,8 +17,16 @@ import {
   type BodySlot,
   type GearGroup as GearGroupKey,
 } from '@/lib/loadout';
-import { BodyOutline } from './_components/BodyOutline';
-import { GearGroup } from './_components/GearGroup';
+import { type Calibration } from 'holo';
+import { navSections } from '@/lib/nav';
+import { getTheme } from '@/lib/theme';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import {
+  LoadoutProjection,
+  type LoadoutSection,
+} from './_projection/LoadoutProjection';
+import { Paperdoll } from './_projection/Paperdoll';
+import { GearPlane } from './_projection/GearPlane';
 
 export const metadata = { title: "Loadout" };
 
@@ -59,6 +68,29 @@ export default async function LoadoutPage() {
 
   const token = session.token;
 
+  // The beam for this render; falls back to the system default rather than
+  // failing the page.
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
+  const nav = navSections(
+    { signedIn: true, staffRoles: session.staffRoles },
+    'loadout',
+  );
+  const shell = {
+    handle: session.claimedHandle,
+    calibration,
+    nav,
+    onCalibrate: async (id: string) => {
+      'use server';
+      await setCalibrationAction(id);
+    },
+  };
+
   // Fetch recent burst_summary events and pick the FULLEST loadout burst
   // (a partial re-equip emits a small burst; a full spawn emits a large
   // one — the latest is often partial, so we take the one with the most
@@ -72,10 +104,19 @@ export default async function LoadoutPage() {
 
   if (burstEvent == null || !isLoadoutBurstPayload(burstEvent.payload)) {
     return (
-      <main className="loadout-page">
-        <h1 className="loadout-page__title">Loadout</h1>
-        <p className="loadout-page__empty">No loadout snapshot yet.</p>
-      </main>
+      <LoadoutProjection
+        {...shell}
+        sections={[
+          {
+            id: 'kit',
+            title: 'Loadout',
+            group: 'kit',
+            // Shipped copy, verbatim — the e2e asserts on it.
+            node: <p className="hp-prose">No loadout snapshot yet.</p>,
+          },
+        ]}
+        notice={null}
+      />
     );
   }
 
@@ -118,26 +159,37 @@ export default async function LoadoutPage() {
     }
   }
 
-  return (
-    <main className="loadout-page">
-      <h1 className="loadout-page__title">Loadout</h1>
-
-      <section className="loadout-page__armor">
-        <BodyOutline slots={slots} />
-      </section>
-
-      <section className="loadout-page__gear">
-        {GEAR_GROUP_ORDER.map((group) => {
-          const items = gearBuckets[group] ?? [];
-          return (
-            <GearGroup
+  const sections: LoadoutSection[] = [
+    {
+      id: 'armour',
+      title: 'Armour',
+      ctx: 'Last restored kit',
+      group: 'kit',
+      node: <Paperdoll slots={slots} />,
+    },
+    {
+      id: 'carried',
+      title: 'Carried',
+      group: 'kit',
+      node: (
+        <>
+          {/* `Records.jsx` puts a pilot's own records behind one category
+              strip so they read as a family; the product had four unrelated
+              routes, each a dead end. */}
+          <RecordsIndex active="/me/loadout" />
+        <>
+          {GEAR_GROUP_ORDER.map((group) => (
+            <GearPlane
               key={group}
               title={GEAR_GROUP_TITLES[group]}
-              items={items}
+              items={gearBuckets[group] ?? []}
             />
-          );
-        })}
-      </section>
-    </main>
-  );
+          ))}
+        </>
+        </>
+      ),
+    },
+  ];
+
+  return <LoadoutProjection {...shell} sections={sections} notice={null} />;
 }

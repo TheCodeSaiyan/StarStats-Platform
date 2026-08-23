@@ -26,6 +26,12 @@ import {
   type ContractDetail,
 } from '@/lib/contracts';
 import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
+import { AppSurface } from '@/components/projection/AppSurface';
+import { getSession } from '@/lib/session';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import type { Calibration } from 'holo';
 
 interface PageProps {
   params: Promise<{ canonicalId: string }>;
@@ -40,6 +46,17 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
 }
 
 export default async function ContractDetailPage(props: PageProps) {
+  // PUBLIC ROUTE — the catalogue reads the same for a stranger. The session is
+  // read only so the chrome knows whether to offer an account menu or a Sign
+  // in; nothing below it is gated on one.
+  const session = await getSession();
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
   const { canonicalId } = await props.params;
   const outcome = await getContractDetail(canonicalId);
   if (outcome.kind === 'not_found') notFound();
@@ -78,7 +95,28 @@ export default async function ContractDetailPage(props: PageProps) {
   const contextParts = [c.contract_type, c.subcategory].filter(Boolean) as string[];
 
   return (
-    <main style={{ maxWidth: 920, display: 'flex', flexDirection: 'column', gap: 20 }}>
+    <AppSurface
+      // Public surface — it carries the CIG trademark plate. `AppSurface`
+      // serves both public and signed-in pages, so the caller decides.
+      legal
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections({
+        signedIn: Boolean(session),
+        staffRoles: session?.staffRoles,
+      })}
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Contract catalogue', href: '/contracts' },
+        { label: 'Contract' },
+      ]}
+      sections={[
+        {
+          id: 'page',
+          group: 'page',
+          title: 'Contract',
+          node: (
+    <div style={{ maxWidth: 920, display: 'flex', flexDirection: 'column', gap: 20 }}>
       <Link
         href={'/contracts' as Route}
         prefetch={false}
@@ -99,7 +137,7 @@ export default async function ContractDetailPage(props: PageProps) {
       />
 
       {/* Identity strip */}
-      <section className="ss-card ss-card-pad">
+      <section className="hp-plane flat">
         <dl style={identityGridStyle}>
           <Field label="Issuer" value={c.issuer} />
           <Field label="Faction" value={c.faction} />
@@ -249,7 +287,7 @@ export default async function ContractDetailPage(props: PageProps) {
               .map((step, i) => (
                 <li
                   key={i}
-                  className="hud-tile"
+                  className="hp-plane flat"
                   style={{ padding: '10px 12px', marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}
                 >
                   <span style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
@@ -303,7 +341,7 @@ export default async function ContractDetailPage(props: PageProps) {
                     </span>
                   )}
                   {step.failure_condition && (
-                    <span style={{ fontSize: 12, color: 'var(--danger, #e5484d)' }}>
+                    <span style={{ fontSize: 'var(--fs-micro)', color: 'var(--bad)' }}>
                       Fails if: {step.failure_condition}
                     </span>
                   )}
@@ -318,7 +356,16 @@ export default async function ContractDetailPage(props: PageProps) {
         </section>
       )}
 
-    </main>
+    </div>
+          ),
+        },
+      ]}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 
@@ -404,34 +451,26 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+/**
+ * A section heading, in the projection's tracked-caption idiom.
+ *
+ * Still a real `<h2>`: the guide's sections ARE its structure, and
+ * `ContractGuide.jsx` renders them as headings too. Only the drawing changed —
+ * from a 12px muted label to the system's micro tracking.
+ */
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2
-      style={{
-        fontSize: 12,
-        color: 'var(--fg-dim)',
-        letterSpacing: '0.06em',
-        textTransform: 'uppercase',
-        margin: '0 0 8px',
-      }}
-    >
-      {children}
-    </h2>
+    <h2 className="hp-guidehead">{children}</h2>
   );
 }
 
 function Chip({ children, tone }: { children: React.ReactNode; tone?: string }) {
   return (
+    // Hairline box, no pill — the system has no rounded control, and the
+    // tone comes from the beam's own semantic tokens rather than a literal.
     <span
-      style={{
-        fontSize: 10,
-        padding: '2px 6px',
-        borderRadius: 999,
-        border: `1px solid ${tone ?? 'var(--border)'}`,
-        color: tone ?? 'var(--fg-muted)',
-        letterSpacing: '0.03em',
-        textTransform: 'uppercase',
-      }}
+      className="hp-chip"
+      style={tone ? { color: tone, borderColor: tone } : undefined}
     >
       {children}
     </span>
@@ -440,9 +479,11 @@ function Chip({ children, tone }: { children: React.ReactNode; tone?: string }) 
 
 function riskTone(risk: string): string {
   const r = risk.toLowerCase();
-  if (r === 'high') return 'var(--danger, #e5484d)';
-  if (r === 'medium') return 'var(--warn, #f5a623)';
-  return 'var(--border)';
+  // The beam's semantic tones, not literal hex. The flat fallbacks were the
+  // dark theme's values and stayed those colours on every calibration.
+  if (r === 'high') return 'var(--bad)';
+  if (r === 'medium') return 'var(--warn)';
+  return 'var(--dim)';
 }
 
 /** True for DETAILS labels that name a place — used to decide whether
@@ -491,6 +532,7 @@ const listStyle: React.CSSProperties = {
 };
 
 const warnItemStyle: React.CSSProperties = {
-  fontSize: 13,
-  color: 'var(--danger, #e5484d)',
+  fontSize: 'var(--fs-base)',
+  lineHeight: 1.6,
+  color: 'var(--warn)',
 };

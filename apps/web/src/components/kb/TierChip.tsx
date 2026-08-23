@@ -74,7 +74,7 @@ export function TierChip({
         alignItems: 'center',
         gap: 4,
         padding: '1px 7px',
-        borderRadius: 'var(--r-pill)',
+        borderRadius: 0,
         border: `1px solid color-mix(in oklab, ${accent} 40%, transparent)`,
         background: `color-mix(in oklab, ${accent} 10%, transparent)`,
         color: accent,

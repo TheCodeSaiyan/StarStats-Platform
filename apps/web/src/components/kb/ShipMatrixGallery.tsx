@@ -69,7 +69,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
               position: 'relative',
               padding: 0,
               border: '1px solid var(--border, rgba(255,255,255,0.07))',
-              borderRadius: 6,
+              borderRadius: 0,
               overflow: 'hidden',
               cursor: 'zoom-in',
               background: 'var(--bg-elev, rgba(255,255,255,0.03))',
@@ -100,7 +100,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
                 height: 22,
                 display: 'grid',
                 placeItems: 'center',
-                borderRadius: 4,
+                borderRadius: 0,
                 fontSize: 12,
                 color: 'var(--fg)',
                 background: 'rgba(0,0,0,0.55)',
@@ -164,7 +164,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
                   maxWidth: '92vw',
                   maxHeight: '78vh',
                   objectFit: 'contain',
-                  borderRadius: 8,
+                  borderRadius: 0,
                   boxShadow: '0 12px 48px rgba(0,0,0,0.6)',
                 }}
               />
@@ -201,7 +201,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
 const lightboxBtn: React.CSSProperties = {
   fontSize: 13,
   padding: '6px 12px',
-  borderRadius: 6,
+  borderRadius: 0,
   cursor: 'pointer',
   color: 'var(--fg)',
   background: 'rgba(255,255,255,0.08)',

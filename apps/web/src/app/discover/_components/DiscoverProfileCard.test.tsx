@@ -4,7 +4,16 @@ import { render, screen } from '@testing-library/react';
 import { DiscoverProfileCard } from './DiscoverProfileCard';
 
 describe('DiscoverProfileCard', () => {
-  it('renders a dense hud-tile link with handle + testid + data-handle', () => {
+  // `hp-rw hp-rw--text` — the system's own METER-ROW shape. `Directory.jsx`
+  // draws pilots through `CatalogueLayout`'s ranked list state, not the entity
+  // grid the catalogue uses for ships; the first pass at this page invented a
+  // card because that kit screen was never opened. `--text` is the meterless
+  // variant, because the listing endpoint carries nothing countable to rank by
+  // and a share bar would be inventing the ranking it displays.
+  //
+  // The testid, the `data-handle` and the `?source=discover` href are UNCHANGED
+  // — three specs assert the listing through them.
+  it('renders a directory entry link with handle + testid + data-handle', () => {
     render(
       <DiscoverProfileCard
         profile={{
@@ -16,7 +25,8 @@ describe('DiscoverProfileCard', () => {
       />,
     );
     const card = screen.getByTestId('discover-profile-card');
-    expect(card.className).toContain('hud-tile');
+    expect(card.className).toContain('hp-rw');
+    expect(card.className).toContain('hp-rw--text');
     expect(card.getAttribute('data-handle')).toBe('Alice');
     expect(card.getAttribute('href')).toBe('/u/Alice?source=discover');
     expect(screen.getByText('Alice')).toBeInTheDocument();

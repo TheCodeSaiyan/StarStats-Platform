@@ -30,7 +30,7 @@ export function RoadmapCard({ item }: { item: RoadmapItemPublic }) {
       <article
         style={{
           padding: 20,
-          borderRadius: 12,
+          borderRadius: 0,
           border: '1px solid var(--border)',
           background: 'var(--bg-elev, var(--bg))',
           marginBottom: 12,

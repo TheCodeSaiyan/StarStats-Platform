@@ -278,7 +278,7 @@ function KindFilterBar({
         padding: 4,
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
       }}
     >
       {KIND_FILTERS.map((kind) => {
@@ -330,7 +330,7 @@ function EntityCard({
         padding: '16px 18px',
         background: 'var(--surface-1)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         textDecoration: 'none',
         color: 'var(--fg)',
         minHeight: 120,
@@ -418,7 +418,7 @@ function LoadMoreNotice({
         padding: '12px 18px',
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         color: 'var(--fg-muted)',
         fontSize: 12,
         display: 'flex',

@@ -12,6 +12,8 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
+import { BeamButton, BeamAlert } from 'holo';
+import { BoundaryShell } from '@/components/projection/BoundaryShell';
 
 interface ErrorBoundaryProps {
   error: Error & { digest?: string };
@@ -23,27 +25,24 @@ export default function GlobalError({ error, reset }: ErrorBoundaryProps) {
     console.error('StarStats render error:', error);
   }, [error]);
 
+  // The crumb carries the `<h1>`, so the heading is not repeated in the body —
+  // same rule every other projection surface follows. Copy is unchanged.
   return (
-    <main>
-      <h1>Something went wrong</h1>
-      <div className="ss-alert ss-alert--danger" role="alert">
+    <BoundaryShell crumb="Something went wrong">
+      <BeamAlert tone="bad">
         {error.message || 'An unexpected error occurred.'}
-      </div>
-      <p className="muted">
+      </BeamAlert>
+      <p className="hp-prose">
         The page failed to render. You can try again, or head back home.
       </p>
-      <p style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-        <button
-          type="button"
-          className="ss-btn ss-btn--primary"
-          onClick={() => reset()}
-        >
+      <div className="hp-formrow">
+        <BeamButton type="button" variant="primary" onClick={() => reset()}>
           Try again
-        </button>
-        <Link href="/" className="ss-btn ss-btn--ghost">
+        </BeamButton>
+        <Link href="/" className="hp-btn hp-btn--ghost">
           Back to home
         </Link>
-      </p>
-    </main>
+      </div>
+    </BoundaryShell>
   );
 }

@@ -16,7 +16,16 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import { loadAllReferenceBundles } from '@/lib/reference';
 import { listAllContracts } from '@/lib/contracts';
-import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
+import { Plane, MeterRow, type Calibration } from 'holo';
+import { getSession } from '@/lib/session';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import { KbProjection, type KbSection } from './_projection/KbProjection';
+import {
+  CatalogueHeader,
+  type CatalogueCategory,
+} from './_components/CatalogueHeader';
 
 export const metadata: Metadata = {
   title: 'Knowledge base',
@@ -69,114 +78,87 @@ export default async function KbLandingPage() {
     contractCount = 0;
   }
 
+  // Public surface: a visitor may have no session at all, and the chrome has
+  // to render for them — nav filtered, Sign in instead of the account menu.
+  const session = await getSession();
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
+  const total =
+    counts.vehicle + counts.weapon + counts.item + counts.location;
+
+  // The shell's own vocabulary, shared with every category view so the tabs
+  // read identically wherever you are standing.
+  const categories: CatalogueCategory[] = [
+    ...TILES.map((t) => ({
+      id: t.category,
+      label: t.label,
+      href: `/kb/${t.category}`,
+      count: counts[t.category],
+    })),
+    // Contracts are ingest-sourced rather than wiki-synced, so they browse
+    // from their own route — but they are a catalogue category to a reader,
+    // and leaving them out of the tab row is why `/contracts` was unreachable
+    // from here.
+    { id: 'contract', label: 'Contracts', href: '/contracts', count: contractCount },
+  ];
+
+  const sections: KbSection[] = [
+    {
+      id: 'catalogue',
+      // The kit's own title and qualifier for this pane. It said "Categories",
+      // which names the list rather than the thing.
+      title: 'Catalogue',
+      ctx: `${total.toLocaleString()} entries · wiki-synced, engine ids resolved`,
+      group: 'kb',
+      node: (
+        <>
+          <CatalogueHeader categories={categories} />
+          <p className="hp-prose">
+            The synced Star Citizen catalogue behind every name and hover stat
+            in the projection. Pick a category above, or read what each holds.
+          </p>
+          <Plane tilt="flat" cap="What each category holds" style={{ marginTop: 18 }}>
+            {TILES.map((t, i) => (
+              <MeterRow
+                key={t.category}
+                rank={i + 1}
+                name={
+                  <Link href={`/kb/${t.category}` as Route} prefetch={false}>
+                    {t.label}
+                  </Link>
+                }
+                // The blurb earns its place now that the counts live in the
+                // header: the list answers "what is in here", not "how many".
+                value={t.blurb}
+                valueText
+              />
+            ))}
+          </Plane>
+        </>
+      ),
+    },
+  ];
+
   return (
-    <main>
-      <InstrumentStrip
-        title={<h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>Knowledge base</h1>}
-        context="The synced Star Citizen catalogue powering names + hover stats"
-        readouts={[{ k: 'entries', v: (counts.vehicle + counts.weapon + counts.item + counts.location).toLocaleString() }]}
-      />
-
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 16,
-          marginTop: 24,
-        }}
-      >
-        {TILES.map((t) => (
-          <Link
-            key={t.category}
-            href={`/kb/${t.category}` as Route}
-            // No viewport prefetch: each tile's target list page fetches
-            // the full category bundle (≈4 MB for vehicles), so
-            // prefetching all four tiles on landing would burst ~10 MB +
-            // four list renders through the rate-limited reference API.
-            prefetch={false}
-            className="hud-tile"
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              padding: '14px 16px',
-              textDecoration: 'none',
-              color: 'var(--fg)',
-            }}
-          >
-            <span style={{ fontSize: 18, fontWeight: 600 }}>{t.label}</span>
-            <span style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
-              {t.blurb}
-            </span>
-            <span
-              style={{
-                fontSize: 11,
-                color: 'var(--accent)',
-                fontFamily: 'var(--font-mono)',
-                marginTop: 'auto',
-              }}
-            >
-              {counts[t.category].toLocaleString()} entries
-            </span>
-          </Link>
-        ))}
-
-        {/* Contracts — a separate surface (sp-ingest-sourced), not a
-            wiki reference category, so it's its own tile linking to the
-            dedicated browse. */}
-        <Link
-          href={'/contracts' as Route}
-          prefetch={false}
-          className="hud-tile"
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            padding: '14px 16px',
-            textDecoration: 'none',
-            color: 'var(--fg)',
-          }}
-        >
-          <span style={{ fontSize: 18, fontWeight: 600 }}>Contracts</span>
-          <span style={{ fontSize: 13, color: 'var(--fg-muted)' }}>
-            Bounties, deliveries, hauling, and mission contracts.
-          </span>
-          <span
-            style={{
-              fontSize: 11,
-              color: 'var(--accent)',
-              fontFamily: 'var(--font-mono)',
-              marginTop: 'auto',
-            }}
-          >
-            {contractCount.toLocaleString()} entries
-          </span>
-        </Link>
-      </div>
-
-      <p
-        style={{
-          marginTop: 28,
-          fontSize: 11,
-          color: 'var(--fg-muted)',
-          lineHeight: 1.6,
-          maxWidth: 640,
-        }}
-      >
-        Catalogue names, specifications, and taxonomy are © Cloud Imperium
-        Rights LLC / Cloud Imperium Rights Ltd. StarStats is an unofficial
-        fan site, not endorsed by or affiliated with Cloud Imperium Games
-        or Roberts Space Industries. Only factual data (names, specs,
-        classification) is redistributed here — no third-party
-        descriptive text; see{' '}
-        <Link
-          href={'/about#community-data-sources' as Route}
-          style={{ color: 'inherit', textDecoration: 'underline' }}
-        >
-          /about
-        </Link>{' '}
-        for details.
-      </p>
-    </main>
+    <KbProjection
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections(
+        { signedIn: Boolean(session), staffRoles: session?.staffRoles },
+        'kb',
+      )}
+      crumb={[{ label: 'Knowledge base' }]}
+      sections={sections}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }

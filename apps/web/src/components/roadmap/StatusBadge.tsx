@@ -48,7 +48,7 @@ export function StatusBadge({ status }: { status: string }) {
       style={{
         display: 'inline-block',
         padding: '2px 8px',
-        borderRadius: 999,
+        borderRadius: 0,
         fontSize: 11,
         fontWeight: 600,
         letterSpacing: 0.2,

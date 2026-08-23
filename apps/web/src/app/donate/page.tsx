@@ -186,7 +186,7 @@ function CurrentStatus({ status }: { status: SupporterStatusDto }) {
               fontSize: 13,
               color: 'var(--accent)',
               padding: '4px 10px',
-              borderRadius: 'var(--r-pill)',
+              borderRadius: 0,
               background: 'color-mix(in oklab, var(--accent) 12%, transparent)',
               border: '1px solid var(--accent)',
             }}
@@ -306,7 +306,7 @@ function TierCard({
         flexDirection: 'column',
         gap: 10,
         padding: 16,
-        borderRadius: 10,
+        borderRadius: 0,
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
       }}
@@ -364,7 +364,7 @@ function TierCard({
             padding: '6px 10px',
             background: 'var(--bg)',
             border: '1px solid var(--border)',
-            borderRadius: 6,
+            borderRadius: 0,
             color: 'var(--fg)',
             fontFamily: 'var(--font-mono)',
             fontSize: 13,

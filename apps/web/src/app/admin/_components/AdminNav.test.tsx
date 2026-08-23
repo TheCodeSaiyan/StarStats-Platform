@@ -52,7 +52,7 @@ vi.mock('next/link', () => ({
     href,
     prefetch,
     children,
-    // Remaining props (data-active, style, …) are spread onto the
+    // Remaining props (aria-current, …) are spread onto the
     // anchor so assertions about active state see what the real Link
     // would render. Without this the mock silently drops them and an
     // active-state test passes or fails for the wrong reason.
@@ -144,12 +144,10 @@ describe('AdminNav grouping', () => {
     nav.pathname = '/admin/users';
     const { getByRole } = render(<AdminNav />);
     expect(getByRole('link', { name: 'Users' })).toHaveAttribute(
-      'data-active',
-      'true',
+      'aria-current',
+      'page',
     );
-    expect(getByRole('link', { name: 'Orgs' })).not.toHaveAttribute(
-      'data-active',
-    );
+    expect(getByRole('link', { name: 'Orgs' })).not.toHaveAttribute('aria-current');
   });
 });
 
@@ -163,8 +161,8 @@ describe('AdminNav active state from pathname', () => {
     nav.pathname = '/admin/users/abc-123';
     const { getByRole } = render(<AdminNav />);
     expect(getByRole('link', { name: 'Users' })).toHaveAttribute(
-      'data-active',
-      'true',
+      'aria-current',
+      'page',
     );
   });
 
@@ -173,17 +171,15 @@ describe('AdminNav active state from pathname', () => {
   it('does not mark Dashboard active on a nested admin route', () => {
     nav.pathname = '/admin/users';
     const { getByRole } = render(<AdminNav />);
-    expect(getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute(
-      'data-active',
-    );
+    expect(getByRole('link', { name: 'Dashboard' })).not.toHaveAttribute('aria-current');
   });
 
   it('marks Dashboard active on /admin itself', () => {
     nav.pathname = '/admin';
     const { getByRole } = render(<AdminNav />);
     expect(getByRole('link', { name: 'Dashboard' })).toHaveAttribute(
-      'data-active',
-      'true',
+      'aria-current',
+      'page',
     );
   });
 
@@ -193,11 +189,9 @@ describe('AdminNav active state from pathname', () => {
     nav.pathname = '/admin/sharing/audit';
     const { getByRole } = render(<AdminNav />);
     expect(getByRole('link', { name: 'Sharing' })).toHaveAttribute(
-      'data-active',
-      'true',
+      'aria-current',
+      'page',
     );
-    expect(getByRole('link', { name: 'Audit log' })).not.toHaveAttribute(
-      'data-active',
-    );
+    expect(getByRole('link', { name: 'Audit log' })).not.toHaveAttribute('aria-current');
   });
 });

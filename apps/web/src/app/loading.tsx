@@ -6,7 +6,7 @@
 
 export default function Loading() {
   return (
-    <main aria-busy="true" aria-label="Loading">
+    <div aria-busy="true" aria-label="Loading">
       <div
         className="skeleton"
         style={{ height: 32, width: '60%', marginBottom: 24 }}
@@ -19,6 +19,6 @@ export default function Loading() {
         className="skeleton"
         style={{ height: 16, width: '75%' }}
       />
-    </main>
+    </div>
   );
 }

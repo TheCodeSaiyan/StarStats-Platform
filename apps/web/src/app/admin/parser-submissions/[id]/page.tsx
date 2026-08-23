@@ -318,7 +318,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                       padding: '10px 14px',
                       background: 'var(--bg-elev)',
                       border: '1px solid var(--border)',
-                      borderRadius: 'var(--r-md, 6px)',
+                      borderRadius: 0,
                       fontFamily:
                         'var(--font-mono, ui-monospace, SFMono-Regular, monospace)',
                       fontSize: 12,
@@ -376,7 +376,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                       key={i}
                       style={{
                         border: '1px solid var(--border)',
-                        borderRadius: 'var(--r-md, 6px)',
+                        borderRadius: 0,
                         overflow: 'hidden',
                       }}
                     >
@@ -422,7 +422,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-status-select"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -447,7 +447,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-notes-input"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -469,7 +469,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-rule-id-input"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -485,7 +485,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               className="ss-btn"
               style={{
                 padding: '8px 16px',
-                borderRadius: 'var(--r-md, 6px)',
+                borderRadius: 0,
                 border: '1px solid var(--border-strong)',
                 background: 'var(--bg-elev)',
                 color: 'var(--fg)',
@@ -526,7 +526,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-publish-rule-id-input"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -547,7 +547,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-publish-event-name-input"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -565,7 +565,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-publish-match-kind-select"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -587,7 +587,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-publish-body-regex-input"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -607,7 +607,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 data-testid="parser-submission-publish-fields-input"
                 style={{
                   padding: '8px 10px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   border: '1px solid var(--border)',
                   background: 'var(--bg-elev)',
                   color: 'var(--fg)',
@@ -624,7 +624,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               className="ss-btn ss-btn--primary"
               style={{
                 padding: '8px 16px',
-                borderRadius: 'var(--r-md, 6px)',
+                borderRadius: 0,
                 fontSize: 13,
               }}
             >
@@ -697,7 +697,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                   data-testid="parser-submission-community-label-input"
                   style={{
                     padding: '8px 10px',
-                    borderRadius: 'var(--r-md, 6px)',
+                    borderRadius: 0,
                     border: '1px solid var(--border)',
                     background: 'var(--bg-elev)',
                     color: 'var(--fg)',
@@ -720,7 +720,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                   data-testid="parser-submission-community-pattern-input"
                   style={{
                     padding: '8px 10px',
-                    borderRadius: 'var(--r-md, 6px)',
+                    borderRadius: 0,
                     border: '1px solid var(--border)',
                     background: 'var(--bg-elev)',
                     color: 'var(--fg)',
@@ -742,7 +742,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                   data-testid="parser-submission-community-description-input"
                   style={{
                     padding: '8px 10px',
-                    borderRadius: 'var(--r-md, 6px)',
+                    borderRadius: 0,
                     border: '1px solid var(--border)',
                     background: 'var(--bg-elev)',
                     color: 'var(--fg)',
@@ -781,7 +781,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 className="ss-btn ss-btn--primary"
                 style={{
                   padding: '8px 16px',
-                  borderRadius: 'var(--r-md, 6px)',
+                  borderRadius: 0,
                   fontSize: 13,
                 }}
               >

@@ -36,6 +36,16 @@ import {
 import { formatEventType } from '@/lib/event-types';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
+import { ProfileProjection } from './_projection/ProfileProjection';
+import {
+  PublicProjection,
+  type PublicCalloutVM,
+} from './_projection/PublicProjection';
+import { SHARE_SCOPES, splitShareScopes } from '@/lib/share-scopes';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import type { Calibration } from 'holo';
 import type { ViewerCtx } from '@/app/_components/widgets/types';
 import { DEFAULT_SHARE_SCOPES } from '@/app/_components/widgets/types';
 import { WidgetCanvas } from '@/app/_components/widgets/WidgetCanvas';
@@ -130,21 +140,29 @@ async function resolveProfile(handle: string): Promise<View> {
  * - Visitor: GET /v1/public/:handle/share-scopes (no token required).
  *
  * Falls back to all-false on any error — conservative, never over-shares.
+ *
+ * REPORTS WHETHER IT ACTUALLY READ THEM. The all-false fallback is the right
+ * default for GATING data (never over-share), and exactly the wrong thing to
+ * STATE: the page now says out loud what this pilot publishes and withholds,
+ * and rendering the fallback verbatim would tell every reader "publishes
+ * nothing" on the strength of a network error. Because the catch is here, a
+ * `Promise.allSettled` status at the call site is always `fulfilled` and can
+ * never see the difference — so `ok` carries it.
  */
 async function fetchShareScopes(
   handle: string,
   isOwner: boolean,
   token: string | null,
-): Promise<WidgetShareScopesApi> {
+): Promise<{ scopes: WidgetShareScopesApi; ok: boolean }> {
   try {
     if (isOwner && token) {
-      return await getMyShareScopes(token);
+      return { scopes: await getMyShareScopes(token), ok: true };
     }
-    return await getPublicShareScopes(handle);
+    return { scopes: await getPublicShareScopes(handle), ok: true };
   } catch {
     // 404 = profile not public (visitor path); any other error = degrade.
     // Either way default to all-false — safer than over-sharing.
-    return { ...DEFAULT_SHARE_SCOPES };
+    return { scopes: { ...DEFAULT_SHARE_SCOPES }, ok: false };
   }
 }
 
@@ -175,6 +193,13 @@ export default async function PublicProfilePage(props: PageProps) {
   const view = await resolveProfile(handle);
   const session = await getSession();
 
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
   const isOwner = Boolean(
     session && session.claimedHandle.toLowerCase() === handle.toLowerCase(),
   );
@@ -193,10 +218,11 @@ export default async function PublicProfilePage(props: PageProps) {
     fetchShareScopes(handle, isOwner, token),
     fetchRecipientScopes(handle, isOwner, token),
   ]);
-  const shareScopes =
+  const shareScopesRead =
     shareScopesResult.status === 'fulfilled'
       ? shareScopesResult.value
-      : { ...DEFAULT_SHARE_SCOPES };
+      : { scopes: { ...DEFAULT_SHARE_SCOPES }, ok: false };
+  const shareScopes = shareScopesRead.scopes;
   const recipientScopes =
     recipientScopesResult.status === 'fulfilled' ? recipientScopesResult.value : null;
 
@@ -211,32 +237,65 @@ export default async function PublicProfilePage(props: PageProps) {
   };
 
   if (view.kind === 'denied') {
+    // The refused view gets the SAME chrome as a visible one. It is the
+    // branch a stranger is most likely to land on, and leaving it in the
+    // flat shell would have made "this profile is private" look like a
+    // different site rather than a different answer.
     return (
-      // role="main" over <main> element — global 720px column avoidance (M-W9).
-      <div
-        role="main"
-        className="ss-screen-enter"
-        style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
-      >
-        <InstrumentStrip
-          title={
-            <h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>
-              Profile not available
-            </h1>
-          }
-          context="Public profile"
-        />
-        <p
-          style={{
-            margin: '6px 0 0',
-            color: 'var(--fg-muted)',
-            fontSize: 14,
-          }}
-        >
-          This profile either doesn&apos;t exist, isn&apos;t public, or
-          hasn&apos;t been shared with you.
-        </p>
-      </div>
+      <ProfileProjection
+        handle={session?.claimedHandle}
+        calibration={calibration}
+        nav={navSections({
+          signedIn: Boolean(session),
+          staffRoles: session?.staffRoles,
+        })}
+        crumb={[
+          ...(session
+            ? [{ label: 'Directory', href: '/discover' }]
+            : [{ label: 'Site', href: '/' }]),
+          { label: `@${handle}` },
+        ]}
+        sections={[
+          {
+            id: 'profile',
+            title: 'Public profile',
+            group: 'profile',
+            node: (
+          // No `role="main"`: `Projection` owns the single landmark. Still a DIV
+          // rather than a `<main>` element — globals.css clamps a bare `<main>` to
+          // a 720px column.
+          <div
+            className="ss-screen-enter"
+            style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
+          >
+            <InstrumentStrip
+              title={
+                <h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>
+                  Profile not available
+                </h1>
+              }
+              context="Public profile"
+            />
+            <p
+              style={{
+                margin: '6px 0 0',
+                color: 'var(--fg-muted)',
+                fontSize: 14,
+              }}
+            >
+              This profile either doesn&apos;t exist, isn&apos;t public, or
+              hasn&apos;t been shared with you.
+            </p>
+          </div>
+            ),
+          },
+        ]}
+        notice={null}
+        onCalibrate={async (id: string) => {
+          'use server';
+          await setCalibrationAction(id);
+        }}
+      />
     );
   }
 
@@ -288,206 +347,231 @@ export default async function PublicProfilePage(props: PageProps) {
     chipStatus = data.supporter ?? null;
   }
 
+  /*
+   * What this pilot publishes, and what they withhold.
+   *
+   * `Profile.jsx` states both — "Economy and Flight time are private", with the
+   * note that "a public profile must never imply data it is not allowed to
+   * show". The product said neither, so a reader had no way to tell a quiet
+   * pilot from a private one, and the owner had no way to check what a stranger
+   * actually sees without opening a private window.
+   *
+   * READ FROM THE SHARE SCOPES, FOR EVERYONE. This was owner-only, derived from
+   * `getProfileLayoutForRender`, with a comment explaining that a visitor is
+   * served the DEFAULT layout so telling them "Economy is private" would invent
+   * a claim about someone else's settings. That reasoning was right about the
+   * LAYOUT and wrong about the page: `shareScopes` above is the pilot's own
+   * per-scope switch set, fetched from `/v1/public/{handle}/share-scopes` with
+   * no token at all. It was already being fetched and handed to `WidgetCanvas`
+   * without ever being read. It is the pilot's actual decision, so it can be
+   * stated to anyone — which is the whole point of the screen.
+   *
+   * `scopesKnown` is load-bearing. A failed fetch falls back to
+   * `DEFAULT_SHARE_SCOPES` — all false — and rendering that would tell every
+   * reader this pilot publishes nothing, on the strength of a network error.
+   */
+  const scopesKnown = shareScopesRead.ok;
+  const { published, withheld } = splitShareScopes(shareScopes);
+
+  /*
+   * Ring segments — the pilot's real event-type mix.
+   *
+   * The kit draws one segment per published lens at `1 / n` each. That is fine
+   * in a mock and wrong here: equal segments draw a distribution that does not
+   * exist, and every other ring in this product is proportional, so a reader
+   * has every reason to read this one as proportional too. `by_type` is a real
+   * public distribution and carries the ring instead; the published SET is
+   * stated in the pane and in a callout, where a set belongs.
+   */
+  const segments = topTypes
+    .map((t) => ({
+      name: formatEventType(t.event_type).label,
+      share: data.total > 0 ? t.count / data.total : 0,
+    }))
+    .filter((s) => s.share > 0);
+
+  const enlistmentYear = profile?.enlistment_date
+    ? new Date(profile.enlistment_date).getUTCFullYear()
+    : null;
+
+  /*
+   * Callouts. SIX AT MOST — `CalloutField` draws three a side and reports the
+   * rest rather than dropping them silently.
+   *
+   * Every one is a figure this page actually holds. The kit also hangs
+   * "Locations seen", "Sessions shared", "Quantum transits" and "Kill / death"
+   * here; `PublicSummaryResponse` is `{ claimed_handle, total, by_type,
+   * supporter }` and carries none of them. The page a stranger reads is the
+   * worst place in the product to fill a slot with a guess.
+   */
+  const callouts: PublicCalloutVM[] = [
+    {
+      id: 'handle',
+      label: 'Handle',
+      value: `@${data.claimed_handle}`,
+      sub: enlistmentYear ? `Citizen since ${enlistmentYear}` : undefined,
+    },
+    {
+      id: 'events',
+      label: 'Events shared',
+      value: data.total.toLocaleString(),
+      sub: `${data.by_type.length} distinct types`,
+    },
+    ...(topTypes[0]
+      ? [
+          {
+            id: 'top',
+            label: 'Top signal',
+            value: formatEventType(topTypes[0].event_type).label,
+            sub: `${topTypes[0].count.toLocaleString()} logged`,
+          },
+        ]
+      : []),
+    ...(topTypes[1]
+      ? [
+          {
+            id: 'second',
+            label: 'Next signal',
+            value: formatEventType(topTypes[1].event_type).label,
+            sub: `${topTypes[1].count.toLocaleString()} logged`,
+          },
+        ]
+      : []),
+    ...(scopesKnown
+      ? [
+          {
+            id: 'published',
+            label: 'Published',
+            value: `${published.length} of ${SHARE_SCOPES.length}`,
+            sub: published.length > 0 ? published.join(' · ') : 'nothing shared',
+          },
+        ]
+      : []),
+    ...(scopesKnown && withheld.length > 0
+      ? [
+          {
+            id: 'private',
+            label: 'Private',
+            value: `${withheld.length} ${withheld.length === 1 ? 'scope' : 'scopes'}`,
+            sub: withheld.join(' · '),
+            tone: 'warn' as const,
+          },
+        ]
+      : []),
+  ];
+
+  const subStats = [
+    { k: 'Events', v: data.total.toLocaleString() },
+    { k: 'Types', v: String(data.by_type.length) },
+    {
+      k: 'Top signal',
+      v: topTypes[0]
+        ? formatEventType(topTypes[0].event_type).label
+        : '—',
+    },
+    ...(scopesKnown
+      ? [
+          {
+            k: 'Published',
+            v: `${published.length}/${SHARE_SCOPES.length}`,
+            ...(published.length === 0 ? { tone: 'warn' as const } : null),
+          },
+        ]
+      : []),
+  ];
+
   return (
-    // role="main" over <main> element — global 720px column avoidance (M-W9).
-    <div
-      role="main"
-      className="ss-screen-enter"
-      style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
-    >
-      <InstrumentStrip
-        size="hero"
-        title={
-          <h1 className="hud-tile__title" style={{ margin: 0, fontSize: 'inherit' }}>
-            <span className="mono">{data.claimed_handle}</span>
-          </h1>
-        }
-        context={
-          view.kind === 'self'
-            ? 'Your profile'
-            : view.kind === 'public'
-              ? 'Public profile'
-              : 'Shared with you'
-        }
-        trailing={
-          /* Sharing CTAs — context-sensitive deep links into /sharing.
-             Self view: jump to your own sharing management. Other
-             users: pre-populate the add-handle field so the user can
-             "share back" with a single confirm click. */
-          view.kind === 'self' ? (
-            <Link
-              href="/sharing"
-              className="ss-btn ss-btn--ghost"
-              style={{ textDecoration: 'none' }}
-            >
-              Manage sharing
-            </Link>
+    <PublicProjection
+      subject={data.claimed_handle}
+      handle={session?.claimedHandle ?? null}
+      kind={view.kind}
+      calibration={calibration}
+      nav={navSections({
+        signedIn: Boolean(session),
+        staffRoles: session?.staffRoles,
+      })}
+      crumb={[
+        ...(session
+          ? [{ label: 'Directory', href: '/discover' }]
+          : [{ label: 'Site', href: '/' }]),
+        { label: `@${handle}` },
+      ]}
+      total={data.total.toLocaleString()}
+      totalDetail={
+        scopesKnown
+          ? `${data.by_type.length} event types · ${published.length} of ${SHARE_SCOPES.length} scopes published`
+          : `${data.by_type.length} event types`
+      }
+      segments={segments}
+      callouts={callouts}
+      subStats={subStats}
+      published={published}
+      withheld={withheld}
+      scopesKnown={scopesKnown}
+      chips={
+        <div className="hp-chiprow">
+          {view.kind === 'self' ? (
+            <span className="hp-chip">You</span>
+          ) : view.kind === 'public' ? (
+            <span className="hp-chip">Public</span>
           ) : (
-            <Link
-              href={
-                (`/sharing?handle=${encodeURIComponent(data.claimed_handle)}`) as Route
-              }
-              className="ss-btn ss-btn--ghost"
-              style={{ textDecoration: 'none' }}
-            >
-              Share back
-            </Link>
-          )
-        }
-      />
-      <div
-        style={{
-          display: 'flex',
-          gap: 10,
-          flexWrap: 'wrap',
-        }}
-      >
-        {view.kind === 'self' ? (
-          <span className="ss-badge ss-badge--accent">
-            <span className="ss-badge-dot" />
-            You
-          </span>
-        ) : view.kind === 'public' ? (
-          <span className="ss-badge ss-badge--accent">
-            <span className="ss-badge-dot" />
-            Public profile
-          </span>
-        ) : (
-          <span className="ss-badge ss-badge--accent">
-            Shared with you
-          </span>
-        )}
-        {profile && (
-          <span className="ss-badge ss-badge--ok">RSI verified</span>
-        )}
-        <SupporterChip status={chipStatus} />
-      </div>
-
-      {/* Stat tiles. Public-safe: only the totals + top type, never
-          the timeline windowed counts. */}
-      <div
-        data-rsprow="nowrap"
-        style={{ display: 'flex', gap: 12, flexWrap: 'nowrap' }}
-      >
-        <PublicStatTile
-          eyebrow="Total events"
-          value={data.total.toLocaleString()}
-        />
-        <PublicStatTile
-          eyebrow="Event types"
-          value={String(data.by_type.length)}
-        />
-        <PublicStatTile
-          eyebrow="Top signal"
-          value={
-            topTypes[0] ? formatEventType(topTypes[0].event_type).label : '—'
-          }
-        />
-        <PublicStatTile
-          eyebrow="Top count"
-          value={
-            topTypes[0] ? topTypes[0].count.toLocaleString() : '—'
-          }
-        />
-      </div>
-
-      {profile && <ProfileCard profile={profile} />}
-
-      {isOwner && (
-        <RangeBar
-          active={range}
-          buildHref={(id) => `/u/${handle}?range=${id}` as Route}
-        />
-      )}
-      <EditModeProvider>
-        {isOwner && (
-          <ControlStrip>
-            <span style={{ flex: 1 }} />
-            <EditToggle />
-          </ControlStrip>
-        )}
-        <WidgetCanvas ctx={viewerCtx} surface="profile" />
-      </EditModeProvider>
-
-      {view.kind === 'public' && (
-        <div
-          style={{
-            padding: '14px 18px',
-            background: 'var(--bg-elev)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-sm)',
-            color: 'var(--fg-dim)',
-            fontSize: 12,
-            lineHeight: 1.5,
-          }}
-        >
-          This is the public view — summary, top types, and a coarse
-          activity heatmap only. The detailed timeline is only visible
-          to handles or orgs the owner has explicitly shared with.
+            <span className="hp-chip">Shared with you</span>
+          )}
+          {profile ? <span className="hp-chip">RSI verified</span> : null}
+          <SupporterChip status={chipStatus} />
         </div>
-      )}
-      {view.kind === 'shared' && (
-        <div
-          style={{
-            padding: '14px 18px',
-            background: 'var(--bg-elev)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-sm)',
-            color: 'var(--fg-dim)',
-            fontSize: 12,
-            lineHeight: 1.5,
-          }}
-        >
-          <span className="mono" style={{ color: 'var(--fg)' }}>
-            {data.claimed_handle}
-          </span>{' '}
-          has shared their manifest with you, so you see the full
-          summary + timeline that public viewers don&apos;t.{' '}
-          <Link
-            href={
-              (`/sharing?handle=${encodeURIComponent(data.claimed_handle)}`) as Route
-            }
-            style={{ color: 'var(--accent)' }}
-          >
-            Share back →
-          </Link>
+      }
+      body={
+        <div className="hp-recgroup" style={{ marginTop: 18 }}>
+          {profile ? <ProfileCard profile={profile} /> : null}
+
+          {/* The range control is the OWNER's, and only theirs: a visitor is
+              reading a fixed public summary, so a window picker would imply
+              the figures move with it. */}
+          {isOwner ? (
+            <RangeBar
+              active={range}
+              buildHref={(id) => `/u/${handle}?range=${id}` as Route}
+            />
+          ) : null}
+
+          <EditModeProvider>
+            {isOwner && (
+              <ControlStrip>
+                <span style={{ flex: 1 }} />
+                <EditToggle />
+              </ControlStrip>
+            )}
+            <WidgetCanvas ctx={viewerCtx} surface="profile" />
+          </EditModeProvider>
+
+          {view.kind === 'public' && (
+            <p className="hp-note">
+              This is the public view — summary, top types, and a coarse
+              activity heatmap only. The detailed timeline is only visible to
+              handles or orgs the owner has explicitly shared with.
+            </p>
+          )}
+          {view.kind === 'shared' && (
+            <p className="hp-note">
+              <span className="mono">{data.claimed_handle}</span> has shared
+              their manifest with you, so you see the full summary + timeline
+              that public viewers don&apos;t.{' '}
+              <Link
+                href={
+                  `/sharing?handle=${encodeURIComponent(data.claimed_handle)}` as Route
+                }
+              >
+                Share back &rarr;
+              </Link>
+            </p>
+          )}
         </div>
-      )}
-    </div>
+      }
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
-
-/** Lightweight stat tile — public profile variant has no delta hint. */
-function PublicStatTile({
-  eyebrow,
-  value,
-}: {
-  eyebrow: string;
-  value: string;
-}) {
-  return (
-    <div
-      className="ss-card"
-      style={{ flex: '1 1 200px', padding: '18px 20px', minWidth: 0 }}
-    >
-      <div className="ss-eyebrow">{eyebrow}</div>
-      <div
-        className="mono"
-        style={{
-          fontSize: 26,
-          fontWeight: 500,
-          letterSpacing: '-0.015em',
-          margin: '8px 0 0',
-          color: 'var(--fg)',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-

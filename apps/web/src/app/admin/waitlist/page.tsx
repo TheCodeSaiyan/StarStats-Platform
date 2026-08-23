@@ -46,7 +46,7 @@ export default async function AdminWaitlistPage() {
   const admittedCount = admitted.length;
 
   return (
-    <main>
+    <div>
 
       <h1
         style={{
@@ -80,6 +80,6 @@ export default async function AdminWaitlistPage() {
           config={configRes.value}
         />
       )}
-    </main>
+    </div>
   );
 }

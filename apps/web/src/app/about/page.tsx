@@ -1,3 +1,4 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 import { CompassStar } from '@/components/CompassStar';
@@ -42,7 +43,16 @@ const COMPLIANCE_LINKS: ReadonlyArray<{
 
 export default function AboutPage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="home"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'About' },
+      ]}
+      title="About"
+      ctx="What StarStats is, and who makes it"
+    >
+    <div className="ss-about">
       <div
         className="ss-about-lockup"
         aria-label="StarStats"
@@ -312,6 +322,7 @@ export default function AboutPage() {
           ← Back home
         </Link>
       </p>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

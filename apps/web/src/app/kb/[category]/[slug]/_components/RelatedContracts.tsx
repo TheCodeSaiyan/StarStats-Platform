@@ -28,35 +28,37 @@ function detailLine(c: ContractSummary): string {
     .join(' · ');
 }
 
-export function RelatedContracts({ contracts }: { contracts: ContractSummary[] }) {
+/**
+ * REDRAWN. Each row was a `.hud-tile` — a rounded, filled card — with four
+ * inline type declarations. They are lit hairline rows now, in the same idiom
+ * as the directory: the contract name is the figure, the detail line is dim.
+ */
+export function RelatedContracts({
+  contracts,
+  heading = true,
+}: {
+  contracts: ContractSummary[];
+  /**
+   * Render the component's own "Contracts" `<h2>`.
+   *
+   * The projection frames this in a `Pane` whose header is already an `<h2>`
+   * reading "Contracts", so nesting a second one repeats it to a screen
+   * reader. Defaults to true: the flat page and this component's tests keep
+   * their heading. The self-gating below still applies either way — the
+   * projection's section is conditioned on the same emptiness test, so a pane
+   * is never rendered around nothing.
+   */
+  heading?: boolean;
+}) {
   // Render nothing at all rather than an empty shell — most KB entries
   // are referenced by no contract, and a permanent empty heading would
   // be noise on every one of them.
   if (contracts.length === 0) return null;
 
   return (
-    <section style={{ marginTop: 20 }}>
-      <h2
-        style={{
-          fontSize: 14,
-          letterSpacing: '0.08em',
-          textTransform: 'uppercase',
-          color: 'var(--fg-dim)',
-          margin: '0 0 8px',
-        }}
-      >
-        Contracts
-      </h2>
-      <ul
-        style={{
-          listStyle: 'none',
-          padding: 0,
-          margin: 0,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 6,
-        }}
-      >
+    <div style={{ marginTop: 20 }}>
+      {heading ? <div className="hp-fieldlabel">Contracts</div> : null}
+      <ul className="hp-conlist">
         {contracts.map((c) => {
           const line = detailLine(c);
           return (
@@ -66,27 +68,15 @@ export function RelatedContracts({ contracts }: { contracts: ContractSummary[] }
               <Link
                 href={`/contracts/${c.canonical_id}` as Route}
                 prefetch={false}
-                className="hud-tile"
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 2,
-                  padding: '8px 10px',
-                  textDecoration: 'none',
-                  color: 'inherit',
-                }}
+                className="hp-conlist__row"
               >
-                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  {c.display_name ?? c.canonical_id}
-                </span>
-                {line && (
-                  <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>{line}</span>
-                )}
+                <span className="nm">{c.display_name ?? c.canonical_id}</span>
+                {line ? <span className="dt">{line}</span> : null}
               </Link>
             </li>
           );
         })}
       </ul>
-    </section>
+    </div>
   );
 }
