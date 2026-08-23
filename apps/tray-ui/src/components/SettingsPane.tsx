@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import type {
   Config,
+  UploadDrift,
   OrgBearerStatus,
   ReleaseChannel,
   RsiCookieStatus,
@@ -251,6 +252,11 @@ export function SettingsPane({ config, onSave, status }: Props) {
   // cheaper than plumbing a new emit through both sync lanes.
   const [backlog, setBacklog] = useState<SyncBacklog | null>(null);
   const [uploading, setUploading] = useState(false);
+  // Drift state. Manual only — never fetched on mount or on the status tick.
+  const [drift, setDrift] = useState<UploadDrift | null>(null);
+  const [checkingDrift, setCheckingDrift] = useState(false);
+  const [requeueing, setRequeueing] = useState(false);
+  const [driftError, setDriftError] = useState<string | null>(null);
   const [pendingRemote, setPendingRemote] = useState<Config | null>(null);
   const [savedBaseline, setSavedBaseline] = useState<Config>(config);
 
@@ -416,6 +422,38 @@ export function SettingsPane({ config, onSave, status }: Props) {
       // Non-fatal: the worker drains on its own schedule regardless.
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleCheckDrift = async () => {
+    setCheckingDrift(true);
+    setDriftError(null);
+    try {
+      setDrift(await api.checkUploadDrift());
+    } catch (e) {
+      setDriftError(inlineFriendly(e));
+      setDrift(null);
+    } finally {
+      setCheckingDrift(false);
+    }
+  };
+
+  const handleRequeueMissing = async () => {
+    if (!drift) return;
+    const types = drift.rows.filter((r) => r.missing > 0).map((r) => r.event_type);
+    if (types.length === 0) return;
+    setRequeueing(true);
+    setDriftError(null);
+    try {
+      await api.requeueMissingEvents(types);
+      // Re-check so the panel reflects reality rather than intent, and
+      // refresh the queue card which now has work to do.
+      setBacklog(await api.getSyncBacklog());
+      setDrift(await api.checkUploadDrift());
+    } catch (e) {
+      setDriftError(inlineFriendly(e));
+    } finally {
+      setRequeueing(false);
     }
   };
 
@@ -1655,6 +1693,14 @@ export function SettingsPane({ config, onSave, status }: Props) {
               onUploadNow={handleUploadNow}
               uploading={uploading}
             />
+            <DriftSection
+              drift={drift}
+              checking={checkingDrift}
+              requeueing={requeueing}
+              error={driftError}
+              onCheck={handleCheckDrift}
+              onRequeue={handleRequeueMissing}
+            />
           </div>
         </fieldset>
       </TrayCard>
@@ -2228,6 +2274,201 @@ function UploadQueueSection({
             {uploading ? 'Uploading…' : 'Upload now'}
           </GhostButton>
         </div>
+      )}
+    </div>
+  );
+}
+
+interface DriftSectionProps {
+  drift: UploadDrift | null;
+  checking: boolean;
+  requeueing: boolean;
+  error: string | null;
+  onCheck: () => void;
+  onRequeue: () => void;
+}
+
+/**
+ * On-demand local-vs-remote comparison, and the recovery it enables.
+ *
+ * This exists because the upload queue reading zero is not proof the server
+ * has your data. The tray marks a row delivered on a 2xx and never looks
+ * again, so if the server later loses events the queue stays empty and the
+ * events sit unreachable in local storage. Nothing else surfaces that.
+ *
+ * Deliberately manual: drift changes when a server incident happens, not
+ * continuously, so polling it would cost both sides constantly to answer a
+ * question that is almost always "none".
+ */
+function DriftSection({
+  drift,
+  checking,
+  requeueing,
+  error,
+  onCheck,
+  onRequeue,
+}: DriftSectionProps) {
+  const recoverable = drift?.rows.filter((r) => r.missing > 0) ?? [];
+  const surplus = drift?.rows.filter((r) => r.missing < 0) ?? [];
+
+  return (
+    <div
+      data-testid="upload-drift"
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '8px 10px',
+        margin: '0 0 10px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: 0.4,
+            textTransform: 'uppercase',
+            color: 'var(--fg-dim)',
+          }}
+        >
+          Compare with server
+        </span>
+        <GhostButton type="button" onClick={onCheck} disabled={checking}>
+          {checking ? 'Checking…' : 'Check now'}
+        </GhostButton>
+      </div>
+
+      <small style={{ fontSize: 11, color: 'var(--fg-dim)', lineHeight: 1.4 }}>
+        An empty upload queue means this app thinks everything was delivered —
+        not that the server still has it. This compares the two.
+      </small>
+
+      {error && (
+        <small style={{ fontSize: 11, color: 'var(--danger)' }}>{error}</small>
+      )}
+
+      {drift && (
+        <>
+          <div
+            style={{
+              display: 'flex',
+              gap: 16,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 12,
+            }}
+          >
+            <span>
+              <span style={{ color: 'var(--fg-dim)' }}>here </span>
+              {drift.local_sent_total.toLocaleString()}
+            </span>
+            <span>
+              <span style={{ color: 'var(--fg-dim)' }}>server </span>
+              {drift.remote_total.toLocaleString()}
+            </span>
+            {drift.pending > 0 && (
+              <span style={{ color: 'var(--fg-dim)' }}>
+                queued {drift.pending.toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          {recoverable.length === 0 ? (
+            <small style={{ fontSize: 11, color: 'var(--ok)' }}>
+              ✓ The server has everything this device uploaded.
+            </small>
+          ) : (
+            <>
+              <small
+                style={{
+                  fontSize: 12,
+                  color: 'var(--warn)',
+                  lineHeight: 1.4,
+                }}
+              >
+                {drift.missing_total.toLocaleString()} events are missing from
+                the server across {recoverable.length}{' '}
+                {recoverable.length === 1 ? 'type' : 'types'}. They are still
+                on this machine and can be sent again.
+              </small>
+
+              <div
+                style={{
+                  maxHeight: 180,
+                  overflowY: 'auto',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 11,
+                }}
+              >
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ color: 'var(--fg-dim)', textAlign: 'left' }}>
+                      <th style={{ fontWeight: 400, padding: '2px 0' }}>type</th>
+                      <th style={{ fontWeight: 400, textAlign: 'right' }}>here</th>
+                      <th style={{ fontWeight: 400, textAlign: 'right' }}>server</th>
+                      <th style={{ fontWeight: 400, textAlign: 'right' }}>missing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recoverable.map((r) => (
+                      <tr key={r.event_type}>
+                        <td style={{ padding: '2px 0' }}>{r.event_type}</td>
+                        <td style={{ textAlign: 'right' }}>
+                          {r.local_sent.toLocaleString()}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {r.remote.toLocaleString()}
+                        </td>
+                        <td
+                          style={{ textAlign: 'right', color: 'var(--warn)' }}
+                        >
+                          {r.missing.toLocaleString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div>
+                <PrimaryButton
+                  type="button"
+                  onClick={onRequeue}
+                  disabled={requeueing}
+                >
+                  {requeueing
+                    ? 'Queueing…'
+                    : `Send ${drift.missing_total.toLocaleString()} again`}
+                </PrimaryButton>
+              </div>
+              <small
+                style={{ fontSize: 11, color: 'var(--fg-dim)', lineHeight: 1.4 }}
+              >
+                Safe to run more than once — the server ignores anything it
+                already has, so nothing gets duplicated.
+              </small>
+            </>
+          )}
+
+          {surplus.length > 0 && (
+            <small
+              style={{ fontSize: 11, color: 'var(--fg-dim)', lineHeight: 1.4 }}
+            >
+              The server holds more than this device sent for{' '}
+              {surplus.length} {surplus.length === 1 ? 'type' : 'types'} —
+              normal if you also run StarStats elsewhere. Nothing to do here.
+            </small>
+          )}
+        </>
       )}
     </div>
   );

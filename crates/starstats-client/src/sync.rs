@@ -1580,6 +1580,62 @@ pub async fn push_unknown_tags(
     Ok(payload.len())
 }
 
+/// Per-type event counts as the SERVER sees them. Mirrors the server's
+/// `query::SummaryResponse`; duplicated rather than depending on the server
+/// crate, same as [`MeResponse`].
+#[derive(Debug, Clone, Deserialize)]
+pub struct SummaryCounts {
+    pub total: u64,
+    pub by_type: Vec<SummaryTypeCount>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SummaryTypeCount {
+    pub event_type: String,
+    pub count: u64,
+}
+
+/// Read the server's per-type event counts for the authenticated user.
+///
+/// Deliberately `GET /v1/me/summary` rather than a purpose-built endpoint:
+/// that handler is already "hard-cut to the stat_event_counts rollup", so it
+/// answers from a handful of indexed rows keyed by (claimed_handle,
+/// event_type) instead of scanning the events table. Drift detection
+/// therefore costs the server one small read it already serves for the web
+/// dashboard — no new route, no new query shape, no migration.
+///
+/// Everything else (the comparison, deciding what is missing) happens on the
+/// client, which already holds its own counts.
+///
+/// Returns `Ok(None)` on 401/403 so the caller can report auth loss rather
+/// than a confusing parse error.
+pub async fn fetch_summary(api_url: &str, access_token: &str) -> Result<Option<SummaryCounts>> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .build()
+        .context("build http client")?;
+
+    let url = format!("{}/v1/me/summary", api_url.trim_end_matches('/'));
+    let resp = client
+        .get(&url)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .context("GET /v1/me/summary")?;
+
+    let status = resp.status();
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        tracing::warn!(%status, "GET /v1/me/summary rejected device token");
+        return Ok(None);
+    }
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("GET /v1/me/summary failed: {status} {body}");
+    }
+    let counts: SummaryCounts = resp.json().await.context("parse SummaryResponse")?;
+    Ok(Some(counts))
+}
+
 pub async fn fetch_me(api_url: &str, access_token: &str) -> Result<Option<MeResponse>> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
