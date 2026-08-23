@@ -373,14 +373,14 @@ Inputs:
 | `sha`               | string   | no       | Target SHA on `next`. Defaults to `next` HEAD.                                              |
 | `n`                 | string   | no       | Explicit pre-release N. Must advance forward.                                               |
 | `dry_run`           | boolean  | no       | Prints actions without pushing (default: `false`).                                          |
-| `roadmap_item_slug` | string   | no       | Explicit slug for the tag annotation. Overrides auto-discovery from merged PR labels (§11). |
+| `roadmap_item_slug` | string   | no       | Explicit slug for the tag annotation. Overrides auto-discovery from merged PR labels (§12). |
 
 `channel=live` runs both a dry-run preview and the real promotion,
 gated by the `production-release` Environment between them.
 
 The `roadmap_item_slug` input is usually unnecessary because the
 release-promote script auto-discovers the slug from `roadmap/<slug>`
-labels on PRs merged since the previous track tag — see **§11 Roadmap
+labels on PRs merged since the previous track tag — see **§12 Roadmap
 tracking pipeline** for the full mechanism. Pass `roadmap_item_slug`
 when you want to override auto-discovery (e.g., bulk releases that
 ship multiple roadmap items, or releases where the labels weren't
@@ -714,7 +714,178 @@ need a track argument added.
 
 ---
 
-## 11. Roadmap tracking pipeline
+## 11. Beta staging site (`beta.starstats.app`)
+
+A **web-tier-only** staging deployment for reviewing UI work against
+real production data before it ships to `starstats.app`.
+
+```
+beta.starstats.app  →  web:beta    ─┐
+                                     ├─→  starstats-api  →  live Postgres
+starstats.app       →  web:latest  ─┘        (:latest)
+```
+
+Both web containers live in the same Compose project and reach the API
+over the internal network as `http://starstats-api:8080` — the same
+hostname production uses. "Beta hitting live data" is that one line.
+
+### What it is, and what it deliberately is not
+
+* **It is not a separate environment.** There is no `api:beta`, no beta
+  database, no beta SpiceDB. The beta web container talks to the same
+  `starstats-api` container every user talks to. Anything you do on
+  beta — creating a share, revoking a device, resolving a report —
+  happens to production data, for real, and lands in the production
+  audit chain. Treat it as production with a different skin.
+* **It never auto-builds.** `release-images.yml` is push-driven
+  (`main` → `:latest`, `next` → `:next`). Beta is not: it builds only
+  when an operator dispatches `Release web (beta)`. Staging changing
+  under someone who is mid-review is worse than staging being stale.
+* **It is public but not indexed.** Anyone with the link can load it.
+  `STARSTATS_NOINDEX=1` makes the container serve a blanket
+  `Disallow: /` from `/robots.txt` **and** emit
+  `<meta name="robots" content="noindex, nofollow">` on every page.
+  Both are needed: robots.txt stops well-behaved crawlers fetching,
+  the meta tag stops indexing of URLs found by other means. Without
+  it, beta is duplicate content competing with the real site.
+
+  **Cloudflare injects a managed `robots.txt` on this zone.** As of
+  2026-08-23 `https://starstats.app/robots.txt` returns 200 with a
+  "BEGIN Cloudflare Managed content" block (Content-Signal policy plus
+  `Disallow: /` for a list of AI crawlers) — the origin serves no
+  robots.txt at all today, so that file is entirely Cloudflare's. When
+  the origin *does* serve one, Cloudflare appends its managed block
+  rather than replacing it, which leaves beta with two `User-agent: *`
+  groups: our `Disallow: /` and Cloudflare's `Allow: /`. Crawlers merge
+  same-agent groups and resolve ties toward Allow, so **the robots.txt
+  half of the noindex may not survive the edge.**
+
+  This is why the meta tag is not redundant belt-and-braces — on this
+  zone it is the load-bearing half, and it is also the stronger signal:
+  robots.txt only prevents *crawling*, and a disallowed URL can still
+  be indexed from inbound links, whereas `noindex` actually deindexes.
+  Cloudflare does not rewrite HTML bodies, so the meta tag arrives
+  intact. **Verify after the first beta deploy** (see below); if the
+  managed block does win, disable the managed robots.txt for the
+  `beta.starstats.app` hostname in the Cloudflare dashboard rather than
+  weakening the app-side rule.
+
+### Shipping a build to beta
+
+```bash
+# Build the current redesign branch and point :beta at it.
+gh workflow run release-web-beta.yml -f ref=feat/redesign
+
+# Build a pinned image without moving :beta (rehearsal / rollback prep).
+gh workflow run release-web-beta.yml -f ref=feat/redesign   -f move_floating_tag=false
+```
+
+Each run publishes:
+
+| Tag | Moves? | Purpose |
+| --- | --- | --- |
+| `web:beta` | on every run unless `move_floating_tag=false` | what the container pulls |
+| `web:beta-<sha7>` | never | immutable; the rollback target |
+
+Then redeploy the `starstats-web-beta` service in Komodo so it re-pulls
+`:beta`.
+
+**Rollback** is a repoint, not a rebuild — every past build is still
+addressable:
+
+```bash
+docker buildx imagetools create   -t registry-direct.tatux.in/starstats/web:beta   registry-direct.tatux.in/starstats/web:beta-<sha7>
+```
+
+### Container definition
+
+The service is **`starstats-web-beta`** in
+`home-servers-build:compose/starstats/compose.yml` — that file is the
+source of truth, not this document. It is the production `starstats-web`
+service with one image tag and four env values changed:
+
+| Setting | `starstats-web` | `starstats-web-beta` |
+| --- | --- | --- |
+| `image` | `registry.tatux.in/starstats/web:latest` | `registry.tatux.in/starstats/web:beta` |
+| `ipv4_address` | `192.168.90.182` | `192.168.90.187` |
+| `STARSTATS_API_URL` | `http://starstats-api:8080` | `http://starstats-api:8080` (same — live) |
+| `STARSTATS_SITE_URL` | `https://starstats.app` | `https://beta.starstats.app` |
+| `STARSTATS_NOINDEX` | unset | `"1"` |
+| `OTEL_SERVICE_NAME` | `starstats-web` | `starstats-web-beta` |
+| Traefik rule | `starstats.app` \|\| `www.` \|\| `stats.$DOMAINNAME` | `beta.starstats.app` |
+
+`NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` is the same value as production and
+must be — the `:beta` image is built with the same build-arg secret, and
+build value and runtime value have to match or every form submit fails
+with `UnrecognizedActionError`. It only pins the content-addressing of
+server-action IDs; it shares no trust with the session cookie.
+
+**Registry hosts differ by direction, deliberately.** CI *pushes* to
+`registry-direct.tatux.in` (DNS-only, bypasses the Cloudflare proxy that
+throttled large layer transfers). The stack *pulls* from
+`registry.tatux.in`. Same Distribution backend, so `:beta` pushed by the
+workflow is the `:beta` the host pulls.
+
+**Ordering constraint — this bites once.** `registry.tatux.in/starstats/web:beta`
+must exist *before* the compose change reaches the host. `pull_policy: always`
+on a missing tag fails the pull, and a failed pull fails the whole stack
+deploy — which would block a production redeploy of `starstats-web` too.
+Dispatch the build first, confirm the tag, then commit the compose file.
+
+**Deploy cadence.** The `starstats` stack runs `poll_for_updates` +
+`auto_update`, with a Komodo Action polling every 5 minutes. So beta rolls
+automatically within ~5 min of a build — but only ever a build *you*
+dispatched, since no branch push produces a `:beta` image. To make the
+deploy manual as well, add `"starstats-web-beta"` to `ignore_services`
+on the starstats stack in `komodo/resources.toml` and run
+`docker compose up -d starstats-web-beta` by hand.
+
+`OTEL_SERVICE_NAME` and `deployment.environment=beta` are deliberately
+distinct so beta traces and errors are separable from production ones in
+Tempo/GlitchTip — without them, a redesign bug and a live bug look
+identical in the dashboards.
+
+**DNS + certificate.** `beta.starstats.app` needs a DNS record in
+Cloudflare pointing at the same origin as `starstats.app`. The
+certificate is automatic — the router uses the `dns-cloudflare`
+certresolver, same as every other host in the stack.
+
+### Verifying a beta deploy
+
+Per the deploy-verification rule, `healthz` proves nothing about the web
+tier — check the CSS content hash, which is content-addressed:
+
+```bash
+curl -s https://beta.starstats.app/ | grep -o '/_next/static/css/[^"]*'
+curl -s https://starstats.app/     | grep -o '/_next/static/css/[^"]*'
+# Different hashes ⇒ beta really is running different code.
+
+# Expect our `Disallow: /`. If the only User-agent group present is the
+# Cloudflare Managed one with `Allow: /`, the edge overrode the origin —
+# see the Cloudflare note above. Compare against the origin's own view.
+curl -s https://beta.starstats.app/robots.txt
+
+# The load-bearing check on this zone — Cloudflare does not touch HTML.
+curl -s https://beta.starstats.app/ | grep -o '<meta name="robots"[^>]*>'
+# expect: <meta name="robots" content="noindex, nofollow, nocache"/>
+```
+
+### The `:<sha>` trap
+
+`release-web-beta.yml` publishes `beta` and `beta-<sha7>` and
+**must never publish a bare `web:<full-sha>` tag.**
+
+`release-images.yml` preflights `web:<full-sha>`; when it finds one it
+*retags that manifest* instead of rebuilding (the one-build-per-SHA
+optimisation). If the beta workflow published `:<full-sha>` for a
+redesign commit, a later live promote of that same commit would find
+it, retag the staging build as `:latest`, and ship it to production
+without building anything. The `tags:` list in that workflow carries a
+comment saying so; leave it there.
+
+---
+
+## 12. Roadmap tracking pipeline
 
 Shipped 2026-05-27 → 2026-05-29 (PRs #112, #113, #125, #126, #128,
 #129, #130, #133). Closes the loop between "this PR ships feature X"
@@ -830,5 +1001,5 @@ proceeds with no annotation. Network issues never block a release.
 | Release shipped, no changelog drafted | Tag annotation missing `Roadmap-Item:`? Check `git tag -l --format='%(contents)' <tag>`. |
 | Release shipped, draft created, not published | Auto-publish job log. `ROADMAP_ITEM_SLUG: ` empty → slug not in tag annotation. `[auto-publish] no-op: STARSTATS_API_URL not set` → secret missing. |
 | Auto-discovery picked wrong slug | Multiple labeled PRs in range. Pass `--roadmap-item-slug X` explicitly. |
-| Auto-discovery picked NO slug | Check `gh pr list --base next --search "merged:>{date}" --json labels` against the prev-tag's date. If labels are missing on PRs, the `pr-roadmap-link` skill didn't fire (or skipped per §11.2). |
+| Auto-discovery picked NO slug | Check `gh pr list --base next --search "merged:>{date}" --json labels` against the prev-tag's date. If labels are missing on PRs, the `pr-roadmap-link` skill didn't fire (or skipped per §12.2). |
 | Label exists on PR but discovery still misses | Verify `gh` CLI is on PATH for the release-promote script. Auto-discovery skips silently on `gh` errors. |

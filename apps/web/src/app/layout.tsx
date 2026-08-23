@@ -19,6 +19,7 @@ import { getCategoryBundle } from '@/lib/reference';
 import { EMPTY_CATEGORY_BUNDLE, type ReferenceCatalog } from '@/lib/reference-types';
 import { getSession } from '@/lib/session';
 import { isBetaGateOn } from '@/lib/beta-gate';
+import { isNoindexDeployment } from '@/lib/deployment';
 import { getTheme } from '@/lib/theme';
 import { QuantumWarpBackground } from '@/components/shell/QuantumWarpBackground';
 import { TopBar } from '@/components/shell/TopBar';
@@ -79,6 +80,17 @@ const siteUrl = process.env.STARSTATS_SITE_URL ?? 'https://starstats.app';
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
+  // Staging (beta.starstats.app, STARSTATS_NOINDEX=1) must not be
+  // indexed: it serves the same routes as production against the same
+  // live data, so an indexed copy is duplicate content pointing at an
+  // unfinished UI. Read at module load, which under `output:
+  // 'standalone'` is server start — i.e. runtime, not build time, so
+  // one image serves both environments. `/robots.txt` carries the
+  // matching Disallow (see `app/robots.ts`); this tag covers URLs a
+  // crawler reaches without asking robots.txt first.
+  ...(isNoindexDeployment()
+    ? { robots: { index: false, follow: false, nocache: true } }
+    : {}),
   title: {
     default: 'StarStats',
     template: '%s — StarStats',
