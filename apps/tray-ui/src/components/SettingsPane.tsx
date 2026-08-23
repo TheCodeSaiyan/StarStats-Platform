@@ -2308,8 +2308,13 @@ function DriftSection({
   onCheck,
   onRequeue,
 }: DriftSectionProps) {
-  const recoverable = drift?.rows.filter((r) => r.missing > 0) ?? [];
-  const surplus = drift?.rows.filter((r) => r.missing < 0) ?? [];
+  // The verdict is the TOTAL shortfall, never the summed per-type gaps.
+  // Local reparse renames types in place while the server keeps the name
+  // from upload time, so per-type differences appear on a perfectly healthy
+  // pair and resending cannot close them.
+  const short = drift ? drift.shortfall_total > 0 : false;
+  const reclassified = drift?.rows.filter((r) => r.missing > 0) ?? [];
+  const recoverable = short ? reclassified : [];
 
   return (
     <div
@@ -2382,10 +2387,26 @@ function DriftSection({
             )}
           </div>
 
-          {recoverable.length === 0 ? (
-            <small style={{ fontSize: 11, color: 'var(--ok)' }}>
-              ✓ The server has everything this device uploaded.
-            </small>
+          {!short ? (
+            <>
+              <small style={{ fontSize: 11, color: 'var(--ok)' }}>
+                ✓ The server has everything this device uploaded
+                {drift.surplus_total > 0 &&
+                  `, plus ${drift.surplus_total.toLocaleString()} more`}
+                .
+              </small>
+              {reclassified.length > 0 && (
+                <small
+                  style={{ fontSize: 11, color: 'var(--fg-dim)', lineHeight: 1.4 }}
+                >
+                  {reclassified.length}{' '}
+                  {reclassified.length === 1 ? 'type differs' : 'types differ'} by
+                  name only. The parser renamed them on this device after they
+                  were uploaded, so the server still lists them under the older
+                  name. Nothing is missing and re-sending would change nothing.
+                </small>
+              )}
+            </>
           ) : (
             <>
               <small
@@ -2395,10 +2416,9 @@ function DriftSection({
                   lineHeight: 1.4,
                 }}
               >
-                {drift.missing_total.toLocaleString()} events are missing from
-                the server across {recoverable.length}{' '}
-                {recoverable.length === 1 ? 'type' : 'types'}. They are still
-                on this machine and can be sent again.
+                The server is short {drift.shortfall_total.toLocaleString()}{' '}
+                events. The types below are the likeliest candidates; they are
+                still on this machine and can be sent again.
               </small>
 
               <div
@@ -2447,7 +2467,7 @@ function DriftSection({
                 >
                   {requeueing
                     ? 'Queueing…'
-                    : `Send ${drift.missing_total.toLocaleString()} again`}
+                    : `Send ${drift.shortfall_total.toLocaleString()} again`}
                 </PrimaryButton>
               </div>
               <small
@@ -2459,15 +2479,7 @@ function DriftSection({
             </>
           )}
 
-          {surplus.length > 0 && (
-            <small
-              style={{ fontSize: 11, color: 'var(--fg-dim)', lineHeight: 1.4 }}
-            >
-              The server holds more than this device sent for{' '}
-              {surplus.length} {surplus.length === 1 ? 'type' : 'types'} —
-              normal if you also run StarStats elsewhere. Nothing to do here.
-            </small>
-          )}
+
         </>
       )}
     </div>

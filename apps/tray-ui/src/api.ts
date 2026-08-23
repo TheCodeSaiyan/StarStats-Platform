@@ -137,9 +137,10 @@ export interface DriftRow {
   local_sent: number;
   /** Rows the server reports holding, from its rollup. */
   remote: number;
-  /** local_sent - remote. Positive = server is missing events we sent
-   *  (recoverable). Negative = server holds more, normal with a second
-   *  device and not actionable from here. */
+  /** local_sent - remote. DIAGNOSTIC ONLY — never sum these to decide if
+   *  anything is missing. A positive value usually means the local
+   *  classifier renamed this type after upload, not that the server lost
+   *  events; the matching negative shows under the old name. */
   missing: number;
 }
 
@@ -155,10 +156,13 @@ export interface UploadDrift {
   checked_at: string;
   local_sent_total: number;
   remote_total: number;
-  /** Sum of the POSITIVE per-type gaps — what re-uploading would restore.
-   *  Not local-minus-remote, which a type where the server holds more
-   *  would silently offset. */
-  missing_total: number;
+  /** How many events the server is short overall, from TOTALS. Zero when
+   *  the server holds at least as much as this device sent. This is the
+   *  only honest basis for offering a re-upload. */
+  shortfall_total: number;
+  /** How many MORE the server holds than this device ever sent. Normal:
+   *  other devices, or history predating this local database. */
+  surplus_total: number;
   /** Queue depth, so a drain in progress isn't mistaken for drift. */
   pending: number;
   /** Only types where the two sides disagree, biggest gap first. */
