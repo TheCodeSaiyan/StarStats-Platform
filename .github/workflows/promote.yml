@@ -401,6 +401,7 @@ jobs:
         set -euo pipefail
         ARGS=(live tray)
         if [[ -n "${INPUT_SHA:-}" ]]; then ARGS+=(--sha "$INPUT_SHA"); fi
+        if [[ -n "${INPUT_ROADMAP_SLUG:-}" ]]; then ARGS+=(--roadmap-item-slug "$INPUT_ROADMAP_SLUG"); fi
         if [[ "${DRY_RUN:-false}" == "true" ]]; then ARGS+=(--dry-run); fi
         echo "Running: node scripts/release-promote.mjs ${ARGS[*]}"
         node scripts/release-promote.mjs "${ARGS[@]}"
@@ -462,6 +463,7 @@ jobs:
     - name: Promote
       env:
         INPUT_SHA: ${{ inputs.sha }}
+        INPUT_ROADMAP_SLUG: ${{ inputs.roadmap_item_slug }}
         DRY_RUN: ${{ inputs.dry_run }}
       run: |
         set -euo pipefail
