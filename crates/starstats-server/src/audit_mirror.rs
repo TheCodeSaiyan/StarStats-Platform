@@ -1,5 +1,21 @@
 //! MinIO/S3 audit-log mirror.
 //!
+//! Observability: this module publishes two metrics, because writes here
+//! are best-effort and a mirror that has silently stopped accepting objects
+//! is otherwise indistinguishable from one that is working.
+//!
+//!   starstats_audit_mirror_writes_total{outcome="ok"|"error"}
+//!       Incremented per PutObject. This is the LIVE signal — it moves with
+//!       real audit traffic, so a stalled mirror shows as a rising error
+//!       count.
+//!
+//!   starstats_audit_mirror_reachable  (1 healthy / 0 unhealthy)
+//!       Set by `ping`. NOTE this is only refreshed when something calls
+//!       `ping` — at boot, and on each `/readyz` hit. If nothing probes
+//!       `/readyz` the value is as old as the last probe, so treat it as a
+//!       last-known-state rather than a live check, and prefer the counter
+//!       above for alerting.
+//!
 //! The Postgres `audit_log` table is the system of record. This module
 //! supplements it with a write-side mirror to an S3-compatible bucket
 //! (`starstats-audit` in production, with Object Lock in Compliance
@@ -42,6 +58,7 @@ use aws_sdk_s3::{
     Client,
 };
 use chrono::{DateTime, Datelike, Utc};
+use metrics::{counter, gauge};
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
@@ -118,18 +135,28 @@ impl MinioMirror {
     /// issuing `HeadBucket`. Used by `/readyz` — a configured-but-
     /// unhealthy mirror returns 503; missing config is "skipped".
     pub async fn ping(&self) -> Result<()> {
-        self.inner
+        let result = self
+            .inner
             .client
             .head_bucket()
             .bucket(&self.inner.bucket)
             .send()
-            .await
-            .with_context(|| {
-                format!(
-                    "MinIO HeadBucket failed for `{}` (bucket missing or credentials invalid)",
-                    self.inner.bucket
-                )
-            })?;
+            .await;
+
+        // Publish the probe result so the mirror's health is visible on
+        // /metrics rather than only to whoever can read container logs.
+        // /readyz already logs the cause server-side, but it withholds it
+        // from the response on purpose (it carries bucket names) and is not
+        // always reachable from outside — which left "is the mirror
+        // working?" unanswerable without log access.
+        gauge!("starstats_audit_mirror_reachable").set(if result.is_ok() { 1.0 } else { 0.0 });
+
+        result.with_context(|| {
+            format!(
+                "MinIO HeadBucket failed for `{}` (bucket missing or credentials invalid)",
+                self.inner.bucket
+            )
+        })?;
         Ok(())
     }
 
@@ -145,7 +172,8 @@ impl MinioMirror {
         let mut body = line;
         body.push(b'\n');
 
-        self.inner
+        let result = self
+            .inner
             .client
             .put_object()
             .bucket(&self.inner.bucket)
@@ -153,8 +181,23 @@ impl MinioMirror {
             .body(ByteStream::from(body))
             .content_type("application/x-ndjson")
             .send()
-            .await
-            .with_context(|| format!("PutObject {} to bucket {}", key, self.inner.bucket))?;
+            .await;
+
+        // Writes are best-effort — the caller logs and continues, and
+        // Postgres remains the system of record — so a mirror that has
+        // silently stopped accepting objects looks exactly like one that is
+        // working. Count both outcomes so a stalled mirror is visible as a
+        // rising failure count instead of an absence of evidence.
+        match &result {
+            Ok(_) => {
+                counter!("starstats_audit_mirror_writes_total", "outcome" => "ok").increment(1)
+            }
+            Err(_) => {
+                counter!("starstats_audit_mirror_writes_total", "outcome" => "error").increment(1)
+            }
+        }
+
+        result.with_context(|| format!("PutObject {} to bucket {}", key, self.inner.bucket))?;
 
         Ok(())
     }
