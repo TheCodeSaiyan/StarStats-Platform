@@ -2225,10 +2225,11 @@ pub struct DriftRow {
     pub local_sent: u64,
     /// Rows the server reports holding, from its rollup.
     pub remote: u64,
-    /// `local_sent - remote`. Positive means the server is missing events we
-    /// think we sent — the recoverable case. Negative means the server has
-    /// MORE than we sent, which is normal with a second device and is not
-    /// something this machine can or should act on.
+    /// `local_sent - remote`. DIAGNOSTIC ONLY — do not sum these to decide
+    /// whether anything is missing. A positive value usually means the local
+    /// classifier renamed this type after the events were uploaded, not that
+    /// the server lost them; the matching negative appears under the old
+    /// name. See the note in `check_upload_drift`.
     pub missing: i64,
 }
 
@@ -2238,10 +2239,13 @@ pub struct UploadDrift {
     pub checked_at: String,
     pub local_sent_total: u64,
     pub remote_total: u64,
-    /// Sum of the POSITIVE per-type gaps — how many events re-uploading
-    /// would actually restore. Not `local_sent_total - remote_total`, which
-    /// a type where the server holds more would silently offset.
-    pub missing_total: u64,
+    /// How many events the server is short overall, from TOTALS. Zero
+    /// whenever the server holds at least as much as this device sent —
+    /// which is the only honest basis for offering a re-upload.
+    pub shortfall_total: u64,
+    /// How many MORE the server holds than this device ever sent. Normal:
+    /// other devices, or history predating this local database.
+    pub surplus_total: u64,
     /// Rows still queued. Shown for context so a queue mid-drain is not
     /// mistaken for drift.
     pub pending: i64,
@@ -2304,14 +2308,10 @@ pub async fn check_upload_drift(state: State<'_, AppState>) -> Result<UploadDrif
     let local_sent_total: u64 = local.iter().map(|(_, n)| *n).sum();
 
     let mut rows: Vec<DriftRow> = Vec::new();
-    let mut missing_total: u64 = 0;
     for (event_type, local_sent) in local {
         let remote_count = remote_by_type.get(&event_type).copied().unwrap_or(0);
         let missing = local_sent as i64 - remote_count as i64;
         if missing != 0 {
-            if missing > 0 {
-                missing_total += missing as u64;
-            }
             rows.push(DriftRow {
                 event_type,
                 local_sent,
@@ -2322,11 +2322,36 @@ pub async fn check_upload_drift(state: State<'_, AppState>) -> Result<UploadDrif
     }
     rows.sort_by(|a, b| b.missing.cmp(&a.missing));
 
+    // The VERDICT comes from totals, never from summed per-type gaps.
+    //
+    // Per-type counts disagree for a reason that has nothing to do with loss:
+    // `reparse_events` rewrites the local `type` column in place, while the
+    // server keeps whatever name was current when the event was uploaded. The
+    // idempotency key is derived from (log_source, file_sig, offset, line) and
+    // does NOT include the type, so a re-upload hits ON CONFLICT DO NOTHING
+    // and the server's name never changes. Renamed types therefore show as a
+    // local surplus on the new name and a server surplus on the old one, for
+    // ever, and resending provably cannot close the gap.
+    //
+    // Summing the positive gaps counted exactly that mismatch as "missing".
+    // On a real machine that read as 273k events needing re-upload while the
+    // server actually held 5,239 MORE than the client had ever sent. Offering
+    // a resend button there is worse than useless: it is a false claim
+    // attached to an action that cannot help.
+    //
+    // Totals cannot produce that false positive. They can in principle hide a
+    // genuine loss that is exactly offset by extra server-side rows, which is
+    // both rarer and far less harmful than telling someone to re-upload a
+    // third of a million events for nothing.
+    let shortfall_total = local_sent_total.saturating_sub(remote.total);
+    let surplus_total = remote.total.saturating_sub(local_sent_total);
+
     Ok(UploadDrift {
         checked_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
         local_sent_total,
         remote_total: remote.total,
-        missing_total,
+        shortfall_total,
+        surplus_total,
         pending,
         rows,
     })

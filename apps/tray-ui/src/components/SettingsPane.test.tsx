@@ -1010,7 +1010,8 @@ describe('SettingsPane upload drift', () => {
       checked_at: '2026-08-23T00:00:00Z',
       local_sent_total: 0,
       remote_total: 0,
-      missing_total: 0,
+      shortfall_total: 0,
+      surplus_total: 0,
       pending: 0,
       rows: [],
       ...over,
@@ -1072,7 +1073,7 @@ describe('SettingsPane upload drift', () => {
       drift: makeDrift({
         local_sent_total: 313314,
         remote_total: 40000,
-        missing_total: 273314,
+        shortfall_total: 273314,
         rows: [
           {
             event_type: 'location_changed',
@@ -1094,7 +1095,7 @@ describe('SettingsPane upload drift', () => {
       fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
     });
     const card = await screen.findByTestId('upload-drift');
-    expect(within(card).getByText(/273,314 events are missing/i)).toBeTruthy();
+    expect(within(card).getByText(/server is short 273,314/i)).toBeTruthy();
     expect(within(card).getByText('location_changed')).toBeTruthy();
     expect(within(card).getByText('player_death')).toBeTruthy();
     expect(
@@ -1109,7 +1110,7 @@ describe('SettingsPane upload drift', () => {
       drift: makeDrift({
         local_sent_total: 300,
         remote_total: 250,
-        missing_total: 100,
+        shortfall_total: 100,
         rows: [
           {
             event_type: 'player_death',
@@ -1163,8 +1164,39 @@ describe('SettingsPane upload drift', () => {
       fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
     });
     const card = await screen.findByTestId('upload-drift');
-    expect(within(card).getByText(/server holds more/i)).toBeTruthy();
+    expect(within(card).getByText(/server has everything/i)).toBeTruthy();
     expect(within(card).queryByRole('button', { name: /again/i })).toBeNull();
+  });
+
+  it('does not claim events are missing when the server holds more overall', async () => {
+    // The case seen in production: local 313,314 delivered, server 318,553 —
+    // nothing lost — yet 14 types show a positive per-type gap because a
+    // local reparse renamed them after upload. Summing those gaps used to
+    // produce a large "missing" figure and a resend button that provably
+    // cannot change anything, since the idempotency key excludes the type.
+    stubInvoke({
+      drift: makeDrift({
+        local_sent_total: 313314,
+        remote_total: 318553,
+        shortfall_total: 0,
+        surplus_total: 5239,
+        rows: [
+          { event_type: 'renamed_new', local_sent: 180000, remote: 0, missing: 180000 },
+          { event_type: 'partly_renamed', local_sent: 90000, remote: 40000, missing: 50000 },
+        ],
+      }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
+    });
+    const card = await screen.findByTestId('upload-drift');
+    expect(within(card).getByText(/server has everything/i)).toBeTruthy();
+    expect(within(card).getByText(/plus 5,239 more/i)).toBeTruthy();
+    expect(within(card).getByText(/differ by\s+name only/i)).toBeTruthy();
+    // The critical assertion: no resend offered, and no "missing" claim.
+    expect(within(card).queryByRole('button', { name: /again/i })).toBeNull();
+    expect(within(card).queryByText(/is short/i)).toBeNull();
   });
 
   it('shows the failure rather than a misleading clean result', async () => {
