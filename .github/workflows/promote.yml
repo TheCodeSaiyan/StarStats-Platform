@@ -460,6 +460,31 @@ jobs:
         echo "Dry-run preview (no side effects):"
         node scripts/release-promote.mjs "${ARGS[@]}"
 
+    # A `both` live promote ships tray first, and that job pushes its
+    # version bump straight to main. main then holds a commit that is not
+    # yet on next, so this job's `git merge --ff-only <next HEAD>` is
+    # correctly refused:
+    #
+    #   error: origin/main is not an ancestor of <sha>; fast-forward not
+    #   possible
+    #
+    # The guard is right — promoting next HEAD there would silently drop
+    # the tray bump. What was missing is anyone restoring the invariant
+    # between the two jobs. The back-merge does happen eventually, but it
+    # is driven by release.yml after the tray RELEASE finishes, which is
+    # long after this job runs.
+    #
+    # So do it here, using the same command the runbook prescribes for a
+    # hotfix. Skipped when tray did not promote, since main cannot have
+    # moved. Observed on v0.1.6: tray shipped, platform did not, and the
+    # release was half-applied. v0.1.4 and v0.1.5 surviving this was
+    # timing, not correctness.
+    - name: Restore the main-is-ancestor-of-next invariant
+      if: needs.live-tray.result == 'success' && inputs.dry_run != true
+      run: |
+        set -euo pipefail
+        node scripts/release-promote.mjs hotfix-finish
+
     - name: Promote
       env:
         INPUT_SHA: ${{ inputs.sha }}
