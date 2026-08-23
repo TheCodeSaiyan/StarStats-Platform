@@ -140,3 +140,13 @@ docs/*.standalone.html
 # fragment that matched nothing.)
 docs/specs/
 docs/plans/
+
+# Opt-in widget-audit measurement output (AUDIT=1), not a build artefact.
+apps/web/reports/
+
+# Review images left over from the projection port. Nothing regenerates
+# these any more -- the screenshot-only capture cases that wrote them were
+# removed once the port was judged -- but the files are still on disk and
+# are 8 MB of local scratch. Ignored so they stay out of `git status`;
+# delete the directory when it has served its purpose.
+apps/web/.playwright-captures/

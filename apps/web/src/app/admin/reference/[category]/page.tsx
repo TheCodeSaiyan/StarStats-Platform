@@ -117,7 +117,7 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
             padding: '8px 12px',
             background: 'var(--bg-elev)',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--r-sm)',
+            borderRadius: 0,
             color: 'var(--fg)',
           }}
         />
@@ -287,7 +287,7 @@ function EntryRow({ entry }: { entry: AdminReferenceEntryDto }) {
                 padding: '8px 10px',
                 background: 'var(--bg-elev)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-sm)',
+                borderRadius: 0,
                 fontSize: 11,
                 color: 'var(--fg-muted)',
                 whiteSpace: 'pre-wrap',

@@ -1,6 +1,11 @@
 @import 'design-tokens/starstats-tokens.css';
 @import 'design-tokens/hud.css';
 @import 'design-tokens/theme-transition.css';
+/* The projection layer. Its tokens are scoped to `[data-cal]` (see
+ * packages/holo/styles/index.css) so they cannot reach the flat pages while
+ * both systems coexist; its patterns are all `.hp-*` prefixed. */
+@import 'holo/styles.css';
+@import '../styles/projection-shell.css';
 
 :root {
   /* Defensive fallbacks for the theme tokens. tokens.css scopes its

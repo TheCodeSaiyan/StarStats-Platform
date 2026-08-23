@@ -1,0 +1,115 @@
+/* Holographic projection — the beam vocabulary.
+ *
+ * Every glow in the system is built from these four channels plus their RGB
+ * component numbers (needed for rgba() alpha math). They are registered with
+ * @property so a calibration change INTERPOLATES instead of cutting — one
+ * transition recolours the whole projection.
+ *
+ * Four calibrations: Terra (cyan, default), Stanton (amber), Pyro (coral),
+ * Nyx (violet). Set `data-cal` on :root, or on any projection subtree.
+ */
+@property --beam{syntax:'<color>';inherits:true;initial-value:#7FE4FF}
+@property --hot{syntax:'<color>';inherits:true;initial-value:#E8FBFF}
+@property --dim{syntax:'<color>';inherits:true;initial-value:#3E7F96}
+@property --fringe{syntax:'<color>';inherits:true;initial-value:#FF5FA2}
+@property --bR{syntax:'<number>';inherits:true;initial-value:127}
+@property --bG{syntax:'<number>';inherits:true;initial-value:228}
+@property --bB{syntax:'<number>';inherits:true;initial-value:255}
+@property --hR{syntax:'<number>';inherits:true;initial-value:232}
+@property --hG{syntax:'<number>';inherits:true;initial-value:251}
+@property --hB{syntax:'<number>';inherits:true;initial-value:255}
+@property --fR{syntax:'<number>';inherits:true;initial-value:255}
+@property --fG{syntax:'<number>';inherits:true;initial-value:95}
+@property --fB{syntax:'<number>';inherits:true;initial-value:162}
+
+[data-cal] {
+  --void: #03060B;        /* @kind color */
+  --warn: #FFC24D;        /* @kind color */
+  --good: #7CFFB2;        /* @kind color */
+  --bad: #FF6B6B;         /* @kind color */
+
+  /* Terra calibration — the default beam. */
+  --beam: #7FE4FF; --hot: #E8FBFF; --dim: #3E7F96; --fringe: #FF5FA2;
+  --bR: 127; /* @kind other */ --bG: 228; /* @kind other */ --bB: 255; /* @kind other */
+  --hR: 232; /* @kind other */ --hG: 251; /* @kind other */ --hB: 255; /* @kind other */
+  --fR: 255; /* @kind other */ --fG: 95; /* @kind other */  --fB: 162; /* @kind other */
+
+  /* Recalibration interpolates every channel at once. */
+  transition: --beam 620ms ease, --hot 620ms ease, --dim 620ms ease, --fringe 620ms ease,
+    --bR 620ms ease, --bG 620ms ease, --bB 620ms ease,
+    --hR 620ms ease, --hG 620ms ease, --hB 620ms ease,
+    --fR 620ms ease, --fG 620ms ease, --fB 620ms ease;
+
+  /* Supporter tiers — the two non-beam hues in the system, because the
+   * tiers are named colours in the product, not theme-derived. */
+  --supporter-coffee-fg: #b87333;   /* @kind color */
+  --supporter-generous-fg: #d4af37; /* @kind color */
+
+  /* ── Semantic aliases ────────────────────────────────────────────
+   * Generic names mapped onto the beam, so component code written
+   * against --bg / --fg / --accent lands in the projection without
+   * knowing the beam vocabulary. Prefer the beam names in new work. */
+  --bg: var(--void);
+  --bg-elev: rgba(var(--bR), var(--bG), var(--bB), .045);
+  --surface: rgba(var(--bR), var(--bG), var(--bB), .06);
+  --surface-2: rgba(var(--bR), var(--bG), var(--bB), .10);
+  --surface-3: rgba(var(--bR), var(--bG), var(--bB), .15);
+  --fg: var(--hot);
+  --fg-muted: var(--beam);
+  --fg-dim: var(--dim);
+  --border: rgba(var(--bR), var(--bG), var(--bB), .16);
+  --border-strong: rgba(var(--bR), var(--bG), var(--bB), .30);
+  --accent: var(--beam);
+  --accent-soft: rgba(var(--bR), var(--bG), var(--bB), .12);
+  --accent-glow: rgba(var(--bR), var(--bG), var(--bB), .55);
+  --accent-fg: var(--void);
+  --ok: var(--good);
+  --danger: var(--bad);
+  --info: var(--beam);
+  --grid-empty: rgba(var(--bR), var(--bG), var(--bB), .07);
+  --grid-1: rgba(var(--bR), var(--bG), var(--bB), .22);
+  --grid-2: rgba(var(--bR), var(--bG), var(--bB), .42);
+  --grid-3: rgba(var(--bR), var(--bG), var(--bB), .66);
+  --grid-4: rgba(var(--hR), var(--hG), var(--hB), .92);
+
+  /* Projection geometry */
+  --hp-perspective: 1500px;  /* @kind spacing */
+  --hp-ring: 560px;          /* @kind spacing */
+  /* Brand surfaces open the ring up so a wordmark fits inside it. */
+  --hp-ring-brand: min(760px, 72vw); /* @kind spacing */
+  --hp-ring-tablet: 360px;   /* @kind spacing */
+  --hp-ring-phone: 240px;    /* @kind spacing */
+  --hp-scanline: 3px;        /* @kind spacing */
+  --hp-glow-near: 12px;      /* @kind spacing */
+  --hp-glow-far: 62px;       /* @kind spacing */
+}
+
+/* Bare attribute selectors so a calibration can be set on :root OR on a
+ * single embedded projection. */
+[data-cal="terra"] {
+  --beam: #7FE4FF; --hot: #E8FBFF; --dim: #3E7F96; --fringe: #FF5FA2;
+  --bR: 127; /* @kind other */ --bG: 228; /* @kind other */ --bB: 255; /* @kind other */ --hR: 232; /* @kind other */ --hG: 251; /* @kind other */ --hB: 255; /* @kind other */ --fR: 255; /* @kind other */ --fG: 95; /* @kind other */ --fB: 162; /* @kind other */
+}
+[data-cal="stanton"] {
+  --beam: #FFAE3B; --hot: #FFF3DE; --dim: #97662E; --fringe: #FF5F8A;
+  --bR: 255; /* @kind other */ --bG: 174; /* @kind other */ --bB: 59; /* @kind other */ --hR: 255; /* @kind other */ --hG: 243; /* @kind other */ --hB: 222; /* @kind other */ --fR: 255; /* @kind other */ --fG: 95; /* @kind other */ --fB: 138; /* @kind other */
+}
+[data-cal="pyro"] {
+  --beam: #FF6B4A; --hot: #FFE8E0; --dim: #9A4632; --fringe: #FFC24D;
+  --bR: 255; /* @kind other */ --bG: 107; /* @kind other */ --bB: 74; /* @kind other */ --hR: 255; /* @kind other */ --hG: 232; /* @kind other */ --hB: 224; /* @kind other */ --fR: 255; /* @kind other */ --fG: 194; /* @kind other */ --fB: 77; /* @kind other */
+}
+[data-cal="nyx"] {
+  --beam: #B78BFF; --hot: #F2E9FF; --dim: #6B4E9E; --fringe: #5FFFD0;
+  --bR: 183; /* @kind other */ --bG: 139; /* @kind other */ --bB: 255; /* @kind other */ --hR: 242; /* @kind other */ --hG: 233; /* @kind other */ --hB: 255; /* @kind other */ --fR: 95; /* @kind other */ --fG: 255; /* @kind other */ --fB: 208; /* @kind other */
+}
+
+/* Surface scope: a signed-out brand page needs a larger ring than a
+ * dashboard. Declared as a [data-*] scope so it registers as a token. */
+[data-surface="brand"] { --hp-ring: var(--hp-ring-brand); }
+/* Console: operator tooling someone stares at all day. Same beam, ambience
+ * off — no parallax, no scanlines, no floor, tighter rows. Answers the
+ * question admin raised: the volume is for reading your own data, not for
+ * working a queue. */
+[data-surface="console"] { --hp-ring: 0px; --hp-row-pad: 4px; }
+@media (max-width: 1180px) { [data-surface="brand"] { --hp-ring: var(--hp-ring-tablet); } }
+@media (max-width: 700px)  { [data-surface="brand"] { --hp-ring: var(--hp-ring-phone); } }

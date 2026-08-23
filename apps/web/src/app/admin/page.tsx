@@ -192,7 +192,7 @@ function QueueCard({
           style={{
             width: 8,
             height: 8,
-            borderRadius: 999,
+            borderRadius: 0,
             background: nonEmpty ? 'var(--accent)' : 'var(--border-strong)',
           }}
         />

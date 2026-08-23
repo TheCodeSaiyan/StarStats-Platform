@@ -12,6 +12,7 @@ import {
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
+import { BeamButton, BeamChip, BeamInput, Plane } from 'holo';
 
 // ---------------------------------------------------------------------------
 // Cookie scaffolding — lifted verbatim from the legacy /settings/2fa page.
@@ -41,51 +42,11 @@ interface SetupCookiePayload {
 // used by settings/page.tsx (cardHeaderStyle/cardBodyStyle equivalents).
 // ---------------------------------------------------------------------------
 
-const headerStyle: React.CSSProperties = { padding: '20px 24px 0' };
 
-const bodyStyle: React.CSSProperties = {
-  padding: '16px 24px 22px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-};
 
-const eyebrowStyle: React.CSSProperties = { marginBottom: 6 };
 
-const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 17,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-  color: 'var(--fg)',
-};
 
-const subTitleStyle: React.CSSProperties = {
-  margin: '0 0 6px',
-  fontSize: 15,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-  color: 'var(--fg)',
-};
 
-const mutedStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 13,
-  lineHeight: 1.55,
-};
-
-const dimStyle: React.CSSProperties = {
-  color: 'var(--fg-dim)',
-  fontSize: 12,
-};
-
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  margin: 0,
-};
 
 // ---------------------------------------------------------------------------
 // Component
@@ -302,393 +263,243 @@ export async function SecuritySection({ me }: { me: MeResponse }) {
   }
 
   // -------------------------------------------------------------------------
-  // Render. The four-step flow lives inside a single Security card so the
-  // user never leaves /settings. We keep the legacy state machine — it is
-  // already well-tested and a UI rewrite isn't in scope.
+  // Render. The four-step flow lives inside one Security pane so the user never
+  // leaves /settings. The state machine above is UNCHANGED by the projection
+  // port — every cookie, action and branch is the code that shipped, because a
+  // 2FA flow is the last place to want incidental breakage. Only the drawing
+  // below moved into the beam, and the outer <section> is gone: the settings
+  // surface supplies the Pane and the load-bearing `#security` anchor.
   // -------------------------------------------------------------------------
 
   return (
-    <section className="ss-card" id="security">
-      <header style={headerStyle}>
-        <div className="ss-eyebrow" style={eyebrowStyle}>
-          Security
-        </div>
-        <h2 style={titleStyle}>Two-factor authentication</h2>
-      </header>
-      <div style={bodyStyle}>
-        {/* Step 3 — Recovery codes shown right after enable or regenerate. */}
-        {recoveryCodes ? (
-          <>
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
-            >
-              <span className="ss-badge ss-badge--ok">
-                <span className="ss-badge-dot" />
-                On
-              </span>
-              <span
-                style={{
-                  color: 'var(--fg-muted)',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              >
-                Save these recovery codes somewhere safe — we can&apos;t
-                show them again. Each one works once if you lose your
-                authenticator app.
-              </span>
+    <>
+      {/* Step 3 — Recovery codes shown right after enable or regenerate. */}
+      {recoveryCodes ? (
+        <>
+          <div className="hp-statusline">
+            <BeamChip tone="good" dot>
+              On
+            </BeamChip>
+            <span>
+              Save these recovery codes somewhere safe — we can&apos;t show them
+              again. Each one works once if you lose your authenticator app.
+            </span>
+          </div>
+          <Plane
+            tilt="flat"
+            cap="Recovery codes"
+            hint="shown once"
+            style={{ marginTop: 16 }}
+          >
+            <div className="hp-codes">
+              {recoveryCodes.map((code, i) => (
+                <span key={code}>
+                  <i>{String(i + 1).padStart(2, '0')}</i>
+                  {code}
+                </span>
+              ))}
             </div>
-            <div
-              className="ss-secret"
-              style={{
-                padding: 16,
-                alignItems: 'flex-start',
-                flexDirection: 'column',
-                gap: 6,
-              }}
-            >
-              <div
-                className="mono"
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                  gap: '6px 24px',
-                  width: '100%',
-                  fontSize: 13,
-                  lineHeight: 1.7,
-                  letterSpacing: '0.04em',
-                  color: 'var(--fg)',
-                }}
-              >
-                {recoveryCodes.map((code, i) => (
-                  <span key={code}>
-                    <span style={{ color: 'var(--fg-dim)', marginRight: 8 }}>
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    {code}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <form action={acknowledgeRecoveryAction} style={formStyle}>
-              <button
-                type="submit"
-                className="ss-btn ss-btn--primary"
-                style={{ alignSelf: 'flex-start' }}
-              >
-                I&apos;ve saved them
-              </button>
-            </form>
-          </>
-        ) : me.totp_enabled ? (
-          // Step 4 — Manage view: 2FA already on.
-          <>
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
-            >
-              <span className="ss-badge ss-badge--ok">
-                <span className="ss-badge-dot" />
-                On
-              </span>
-              <span
-                style={{
-                  color: 'var(--fg-muted)',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              >
-                Every sign-in asks for an authentication code from your
-                authenticator app, or a one-shot recovery code if
-                you&apos;ve lost the app.
-              </span>
-            </div>
+          </Plane>
+          <form action={acknowledgeRecoveryAction} className="hp-formcol">
+            <BeamButton type="submit" variant="primary">
+              I&apos;ve saved them
+            </BeamButton>
+          </form>
+        </>
+      ) : me.totp_enabled ? (
+        // Step 4 — Manage view: 2FA already on.
+        <>
+          <div className="hp-statusline">
+            <BeamChip tone="good" dot>
+              On
+            </BeamChip>
+            <span>
+              Every sign-in asks for an authentication code from your
+              authenticator app, or a one-shot recovery code if you&apos;ve lost
+              the app.
+            </span>
+          </div>
 
-            <hr className="ss-rule" />
-
-            <div>
-              <h3 style={subTitleStyle}>Regenerate recovery codes</h3>
-              <p style={mutedStyle}>
-                Burn the old set and mint 10 fresh codes. Useful if you
-                think the old set leaked, or you&apos;ve used most of
-                them. Re-enter your password to confirm.
-              </p>
-            </div>
-            <form action={regenerateAction} style={formStyle}>
-              <label className="ss-label">
-                <span className="ss-label-text">Current password</span>
-                <input
-                  className="ss-input"
-                  type="password"
-                  name="password"
-                  required
-                  autoComplete="current-password"
-                />
-              </label>
-              <button
+          <Plane
+            tilt="flat"
+            cap="Regenerate recovery codes"
+            style={{ marginTop: 20 }}
+          >
+            <p className="hp-prose">
+              Burn the old set and mint 10 fresh codes. Useful if you think the
+              old set leaked, or you&apos;ve used most of them. Re-enter your
+              password to confirm.
+            </p>
+            <form action={regenerateAction} className="hp-formcol">
+              <BeamInput
+                id="totp-regen-password"
+                label="Current password"
+                type="password"
+                name="password"
+                required
+                autoComplete="current-password"
+              />
+              <BeamButton
                 type="submit"
-                className="ss-btn ss-btn--ghost"
+                variant="ghost"
                 style={{ alignSelf: 'flex-start' }}
               >
                 Generate new codes
-              </button>
+              </BeamButton>
             </form>
+          </Plane>
 
-            <hr className="ss-rule" />
-
-            <div>
-              <div
-                className="ss-eyebrow"
-                style={{ marginBottom: 6, color: 'var(--danger)' }}
-              >
-                Danger zone
-              </div>
-              <h3 style={subTitleStyle}>Disable two-factor</h3>
-              <p style={mutedStyle}>
-                Removes your authenticator secret and burns all recovery
-                codes. Your account drops back to password-only sign-in.
-                Re-enter your password to confirm.
-              </p>
-            </div>
-            <form action={disableAction} style={formStyle}>
-              <label className="ss-label">
-                <span className="ss-label-text">Current password</span>
-                <input
-                  className="ss-input"
-                  type="password"
-                  name="password"
-                  required
-                  autoComplete="current-password"
-                />
-              </label>
-              <button
+          <Plane
+            tilt="flat"
+            cap="Disable two-factor"
+            hint="no undo"
+            style={{ marginTop: 20 }}
+          >
+            <p className="hp-prose">
+              Removes your authenticator secret and burns all recovery codes.
+              Your account drops back to password-only sign-in. Re-enter your
+              password to confirm.
+            </p>
+            <form action={disableAction} className="hp-formcol">
+              <BeamInput
+                id="totp-disable-password"
+                label="Current password"
+                type="password"
+                name="password"
+                required
+                autoComplete="current-password"
+              />
+              <BeamButton
                 type="submit"
-                className="ss-btn ss-btn--danger"
+                variant="danger"
                 style={{ alignSelf: 'flex-start' }}
               >
                 Turn off 2FA
-              </button>
+              </BeamButton>
             </form>
-          </>
-        ) : setup ? (
-          // Step 2 — Setup in flight: QR + manual secret + verify code.
-          <>
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
-            >
-              <span className="ss-badge ss-badge--warn">
-                <span className="ss-badge-dot" />
-                Pairing
-              </span>
-              <span
-                style={{
-                  color: 'var(--fg-muted)',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              >
-                Scan into your authenticator app, or enter the secret
-                manually. The label{' '}
-                <span className="mono">{setup.account_label}</span> is
-                what appears in the app.
-              </span>
+          </Plane>
+        </>
+      ) : setup ? (
+        // Step 2 — Setup in flight: QR + manual secret + verify code.
+        <>
+          <div className="hp-statusline">
+            <BeamChip tone="warn" dot>
+              Pairing
+            </BeamChip>
+            <span>
+              Scan into your authenticator app, or enter the secret manually.
+              The label <span className="val">{setup.account_label}</span> is
+              what appears in the app.
+            </span>
+          </div>
+
+          <div className="hp-2fa">
+            {/* QR generated by OUR server and delivered as a data: URI. It must
+                never be produced by handing `provisioning_uri` to a remote
+                image service: that URI contains the TOTP shared secret, and
+                disclosing it lets the holder mint valid codes forever. This
+                previously called api.qrserver.com. */}
+            <div className="hp-qr">
+              {setupQr ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={setupQr}
+                  alt="Authenticator QR code"
+                  width={176}
+                  height={176}
+                />
+              ) : (
+                <p
+                  className="hp-prose"
+                  style={{ margin: 0, textAlign: 'center' }}
+                >
+                  QR unavailable — enter the setup key below manually.
+                </p>
+              )}
             </div>
-
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(0, 200px) 1fr',
-                gap: 18,
-                alignItems: 'start',
-                marginTop: 4,
-              }}
-            >
-              {/* QR generated by OUR server and delivered as a data: URI.
-                  It must never be produced by handing `provisioning_uri`
-                  to a remote image service: that URI contains the TOTP
-                  shared secret, and disclosing it lets the holder mint
-                  valid codes forever. This previously called
-                  api.qrserver.com. */}
-              <div
-                style={{
-                  background: 'var(--bg-elev)',
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-sm)',
-                  padding: 12,
-                  display: 'grid',
-                  placeItems: 'center',
-                }}
-              >
-                {setupQr ? (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={setupQr}
-                    alt="Authenticator QR code"
-                    width={176}
-                    height={176}
-                    style={{
-                      display: 'block',
-                      /* White, not a theme token: a themed backdrop can
-                         invert or wash out the code and scanners reject
-                         it. The SVG carries its own quiet zone. */
-                      background: '#ffffff',
-                      borderRadius: 4,
-                    }}
-                  />
-                ) : (
-                  <p
-                    style={{
-                      fontSize: 12,
-                      color: 'var(--fg-muted)',
-                      maxWidth: 176,
-                      textAlign: 'center',
-                      margin: 0,
-                    }}
-                  >
-                    QR unavailable — enter the setup key below manually.
-                  </p>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 12,
-                }}
-              >
-                <div>
-                  <span className="ss-label-text">Manual secret</span>
-                  <div className="ss-secret" style={{ marginTop: 6 }}>
-                    <span className="ss-secret-code mono">
-                      {setup.secret_base32}
-                    </span>
-                  </div>
-                  <small
-                    style={{ ...dimStyle, display: 'block', marginTop: 6 }}
-                  >
-                    SHA-1 · 6 digits · 30s period
-                  </small>
-                </div>
-
-                <div>
-                  <span className="ss-label-text">Provisioning URI</span>
-                  <div className="ss-secret" style={{ marginTop: 6 }}>
-                    <span
-                      className="ss-secret-code mono"
-                      style={{ fontSize: 12, letterSpacing: 0 }}
-                    >
-                      {setup.provisioning_uri}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <hr className="ss-rule" />
 
             <div>
-              <h3 style={subTitleStyle}>Enter the authentication code</h3>
-              <p style={mutedStyle}>
-                Type the 6-digit code your app currently displays. It
-                refreshes every 30 seconds.
+              <div className="hp-fieldlabel">Manual secret</div>
+              <div className="hp-secret">{setup.secret_base32}</div>
+              <p className="hp-prose" style={{ marginTop: 8 }}>
+                SHA-1 · 6 digits · 30s period
               </p>
+
+              <div className="hp-fieldlabel" style={{ marginTop: 18 }}>
+                Provisioning URI
+              </div>
+              <div className="hp-secret hp-secret--uri">
+                {setup.provisioning_uri}
+              </div>
             </div>
-            <form action={confirmAction} style={formStyle}>
-              <label className="ss-label">
-                <span className="ss-label-text">Authentication code</span>
-                <input
-                  className="ss-input mono"
-                  type="text"
-                  name="code"
-                  required
-                  inputMode="numeric"
-                  autoComplete="one-time-code"
-                  pattern="[0-9]{6}"
-                  maxLength={6}
-                  placeholder="123456"
-                  spellCheck={false}
-                  style={{
-                    letterSpacing: '0.4em',
-                    fontSize: 18,
-                    textAlign: 'center',
-                    maxWidth: 220,
-                  }}
-                />
-              </label>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: 10,
-                  flexWrap: 'wrap',
-                }}
-              >
-                <button type="submit" className="ss-btn ss-btn--primary">
+          </div>
+
+          <Plane
+            tilt="flat"
+            cap="Enter the authentication code"
+            style={{ marginTop: 20 }}
+          >
+            <p className="hp-prose">
+              Type the 6-digit code your app currently displays. It refreshes
+              every 30 seconds.
+            </p>
+            <form action={confirmAction} className="hp-formcol">
+              <BeamInput
+                id="totp-code"
+                label="Authentication code"
+                className="hp-otp"
+                type="text"
+                name="code"
+                required
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                placeholder="123456"
+                spellCheck={false}
+              />
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <BeamButton type="submit" variant="primary">
                   Verify and enable
-                </button>
+                </BeamButton>
               </div>
             </form>
+          </Plane>
 
-            <hr className="ss-rule" />
-            <form action={cancelSetupAction} style={formStyle}>
-              <button
-                type="submit"
-                className="ss-btn ss-btn--ghost"
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Cancel setup
-              </button>
-            </form>
-          </>
-        ) : (
-          // Step 1 — Explainer / 2FA off, no setup in flight.
-          <>
-            <div
-              style={{
-                display: 'flex',
-                gap: 10,
-                alignItems: 'flex-start',
-              }}
+          <form action={cancelSetupAction} className="hp-formcol">
+            <BeamButton
+              type="submit"
+              variant="ghost"
+              style={{ alignSelf: 'flex-start' }}
             >
-              <span className="ss-badge ss-badge--warn">
-                <span className="ss-badge-dot" />
-                Off
-              </span>
-              <span
-                style={{
-                  color: 'var(--fg-muted)',
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                }}
-              >
-                Your account is protected only by your password. Adding a
-                second factor — a 6-digit code from an authenticator app
-                — stops anyone with a stolen password from signing in.
-              </span>
-            </div>
-            <form action={setupAction} style={formStyle}>
-              <button
-                type="submit"
-                className="ss-btn ss-btn--primary"
-                style={{ alignSelf: 'flex-start' }}
-              >
-                Enable 2FA
-              </button>
-            </form>
-          </>
-        )}
-      </div>
-    </section>
+              Cancel setup
+            </BeamButton>
+          </form>
+        </>
+      ) : (
+        // Step 1 — Explainer / 2FA off, no setup in flight.
+        <>
+          <div className="hp-statusline">
+            <BeamChip tone="warn" dot>
+              Off
+            </BeamChip>
+            <span>
+              Your account is protected only by your password. Adding a second
+              factor — a 6-digit code from an authenticator app — stops anyone
+              with a stolen password from signing in.
+            </span>
+          </div>
+          <form action={setupAction} className="hp-formcol">
+            <BeamButton
+              type="submit"
+              variant="primary"
+              style={{ alignSelf: 'flex-start' }}
+            >
+              Enable 2FA
+            </BeamButton>
+          </form>
+        </>
+      )}
+    </>
   );
 }

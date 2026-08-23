@@ -9,6 +9,11 @@ import {
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
+import { AppSurface } from '@/components/projection/AppSurface';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import type { Calibration } from 'holo';
 import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
 import { ControlStrip } from '@/components/hud/ControlStrip';
 
@@ -120,6 +125,13 @@ export default async function OrgsPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
   const session = await getSession();
+
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
   if (!session) redirect('/auth/login?next=/orgs');
 
   const { status, error, sort: sortRaw } = await props.searchParams;
@@ -142,7 +154,25 @@ export default async function OrgsPage(props: {
   }
 
   return (
-    <main className="ss-screen-enter" style={mainStyle}>
+    <AppSurface
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections({
+        signedIn: Boolean(session),
+        staffRoles: session?.staffRoles,
+      })}
+      crumb={[
+        { label: 'Projection', href: '/me' },
+        { label: 'Orgs' },
+      ]}
+      sections={[
+        {
+          id: 'page',
+          group: 'page',
+          title: 'Orgs',
+          ctx: 'RSI orgs you belong to',
+          node: (
+    <div className="ss-screen-enter" style={mainStyle}>
       <InstrumentStrip
         title={<h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>Your orgs</h1>}
         context="Organizations you own"
@@ -200,7 +230,7 @@ export default async function OrgsPage(props: {
                           : 'transparent',
                         color: active ? 'var(--fg)' : 'var(--fg-muted)',
                         padding: '6px 12px',
-                        borderRadius: 'var(--r-pill)',
+                        borderRadius: 0,
                         fontSize: 12,
                         textDecoration: 'none',
                       }}
@@ -240,7 +270,16 @@ export default async function OrgsPage(props: {
           </div>
         </>
       )}
-    </main>
+    </div>
+          ),
+        },
+      ]}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 

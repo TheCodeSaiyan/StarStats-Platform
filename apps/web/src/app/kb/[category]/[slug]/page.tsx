@@ -1,38 +1,53 @@
 /**
- * Entity detail page. Fetches the full `ReferenceEntry` (with the
- * metadata blob the listing endpoint strips) via the per-slug
- * detail endpoint, then renders, top to bottom:
+ * Entity detail sheet, in the projection.
  *
- *   - A hero header: category eyebrow, large display name, raw
- *     class_name (mono chip), wiki link, decorative reticle ring.
- *   - "At a glance" — the curated summary fields (manufacturer /
- *     role / etc.) as a prominent stat strip.
- *   - Ship Matrix section (vehicles only) — specs + description +
- *     image gallery, when the enrichment blob is present. Rendered
- *     above the view so its RSI images show in both view modes.
- *   - `<KbDetailView>` — the client view that switches between the
- *     Visual presentation (peer-relative bars + handling radar +
- *     percentile callouts, sourced from the per-category `/stats`
- *     buckets) and the Compact grouped table, persisting the choice.
+ * COVERAGE BOUNDARY. The kit read `/kb/[category]/page.tsx` for the BROWSE and
+ * never read this route, so nothing here is grounded in a kit screen — it is
+ * ported from the flat page itself. Order, copy and field selection are
+ * unchanged; only the frame is.
  *
- * M10 legal posture: this page renders FACTS + CIG data only. The
- * former wiki DESCRIPTION prose, the "View on Star Citizen Wiki" deep
- * link, and the verbatim "All raw fields" metadata dump were removed —
- * the only long-form copy left is the CIG-owned Ship Matrix description
- * (vehicles), shown under the CIG disclaimer. So nothing on this page
- * redistributes wiki-copyrightable prose.
+ * Top to bottom:
  *
- * The per-slug detail fetch (`getEntityDetail`) is retained — it is NOT
- * the catalog listing that the M10 static cutover replaced; it supplies
- * the numeric spec metadata (facts) the bars/radar/comparison render.
+ *   - Pane 1, titled with the entry's display name: the raw `class_name`
+ *     verbatim, then "At a glance" — the curated summary fields — and, for a
+ *     vehicle whose enrichment blob parsed, the Ship Matrix specs + CIG
+ *     description + image gallery.
+ *   - Pane 2, "Statistics": `<KbDetailView>`, the client view that switches
+ *     between the Visual presentation (peer-relative bars + handling radar +
+ *     percentile callouts, from the per-category `/stats` buckets) and the
+ *     Compact grouped table, plus units and the cohort comparison tray.
+ *   - Pane 3, "Contracts": rendered only when contracts reference this entity.
+ *
+ * `KbDetailView`, `ShipMatrixSection` and `RelatedContracts` are NOT rewritten.
+ * They are written against the flat semantic tokens (`--fg`, `--border`,
+ * `--accent`, `--ok`), and the projection's token layer ALIASES those onto the
+ * beam, so their colours land correctly; the flat-primitive bridge in the
+ * pattern layer squares off their `.ss-card` frames. What that leaves is the
+ * comparison system — a large amount of tested behaviour whose reimplementation
+ * would risk far more than a redrawn border gains. It is the one place in this
+ * port where flat components render inside a projection surface, and it is a
+ * deliberate staging point, not an end state.
+ *
+ * M10 legal posture: this page renders FACTS + CIG data only. The former wiki
+ * DESCRIPTION prose, the "View on Star Citizen Wiki" deep link, and the
+ * verbatim "All raw fields" metadata dump were removed — the only long-form
+ * copy left is the CIG-owned Ship Matrix description (vehicles), shown under
+ * the CIG disclaimer. So nothing on this page redistributes wiki-copyrightable
+ * prose.
+ *
+ * The per-slug detail fetch (`getEntityDetail`) is retained — it is NOT the
+ * catalog listing that the M10 static cutover replaced; it supplies the numeric
+ * spec metadata (facts) the bars/radar/comparison render.
  *
  * 404s for unknown category, missing slug, or any backend failure.
  */
 
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import type { Route } from 'next';
-import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
+import { Plane, HoloKV, type Calibration } from 'holo';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import { KbProjection, type KbSection } from '../../_projection/KbProjection';
 import { notFound } from 'next/navigation';
 import { listContractsByEntity } from '@/lib/contracts';
 import { RelatedContracts } from './_components/RelatedContracts';
@@ -156,173 +171,130 @@ export default async function KbDetailPage(props: PageProps) {
   // must not break a KB page, matching how /kb guards its contract count.
   const relatedContracts = await listContractsByEntity(category, slug);
 
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
+  const sections: KbSection[] = [
+    {
+      id: 'entry',
+      title: entry.display_name,
+      ctx: CATEGORY_LABELS[category],
+      group: 'kb',
+      node: (
+        <>
+          {/* The raw engine identifier, verbatim. It is what the log says and
+              what a reader searches by, so it is never prettified. */}
+          <div className="hp-secret hp-secret--uri">{entry.class_name}</div>
+
+          {summaryFields.length > 0 ? (
+            <Plane tilt="flat" cap="At a glance" style={{ marginTop: 20 }}>
+              <HoloKV
+                items={summaryFields.map(([k, v]) => ({
+                  k: humanLabel(k),
+                  v,
+                }))}
+              />
+            </Plane>
+          ) : null}
+        </>
+      ),
+    },
+
+    ...(shipMatrix
+      ? [
+          {
+            id: 'ship-matrix',
+            title: 'Ship Matrix',
+            ctx: "Official specifications from RSI's Ship Matrix.",
+            group: 'kb',
+            node: (
+              <ShipMatrixSection
+                shipMatrix={shipMatrix}
+                mediaUrls={shipMatrixMedia}
+                heading={false}
+              />
+            ),
+          } satisfies KbSection,
+        ]
+      : []),
+
+    {
+      id: 'stats',
+      title: 'Statistics',
+      ctx: 'Compared against peers',
+      group: 'kb',
+      // `KbDetailView` is a client component with its own view/units toggle,
+      // comparison tray and cohort picker. Its inner charts are written against
+      // the flat semantic tokens, which the projection ALIASES onto the beam —
+      // so they land correctly coloured; the bridge in the pattern layer squares
+      // off their card wrappers. Not rewritten: the comparison system is a lot
+      // of tested behaviour, and re-implementing it to change its frame would
+      // risk far more than it gains.
+      node: (
+        <KbDetailView
+          category={category}
+          metadata={entry.metadata as Record<string, unknown>}
+          groups={stats.groups}
+          cohorts={entry.cohorts ?? []}
+          anchorSlug={entry.slug ?? ''}
+          displayName={entry.display_name}
+          catalog={catalog}
+          serverPrefs={serverPrefs}
+          signedIn={!!session?.token}
+          description={description}
+          roleTags={roleTags}
+        />
+      ),
+    },
+
+    // Gated on the SAME emptiness test the component applies internally.
+    // `RelatedContracts` returns null for an unreferenced entry — most of them
+    // are — and without this gate the projection would wrap that nothing in a
+    // permanent empty pane, which is precisely the noise the component's own
+    // comment exists to avoid.
+    ...(relatedContracts.length > 0
+      ? [
+          {
+            id: 'contracts',
+            // The component's own wording, verbatim; it is suppressed inside
+            // the pane so the words appear once, in the pane header.
+            title: 'Contracts',
+            group: 'kb',
+            node: (
+              <RelatedContracts contracts={relatedContracts} heading={false} />
+            ),
+          } satisfies KbSection,
+        ]
+      : []),
+  ];
+
   return (
-    <main
-      style={{
-        maxWidth: 920,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 'var(--s5, 24px)',
+    <KbProjection
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections(
+        { signedIn: Boolean(session), staffRoles: session?.staffRoles },
+        'kb',
+      )}
+      crumb={[
+        { label: 'Knowledge base', href: '/kb' },
+        { label: CATEGORY_LABELS[category], href: `/kb/${category}` },
+        { label: entry.display_name },
+      ]}
+      sections={sections}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
       }}
-    >
-      <Link
-        href={`/kb/${category}` as Route}
-        // No prefetch: the target list page fetches the full category
-        // bundle (≈4 MB), and every detail view would otherwise prefetch
-        // it through the rate-limited reference API.
-        prefetch={false}
-        style={{
-          fontSize: 13,
-          color: 'var(--fg-muted)',
-          textDecoration: 'none',
-          width: 'fit-content',
-        }}
-      >
-        ← Knowledge base · {CATEGORY_LABELS[category]}
-      </Link>
-
-      {/* Hero. Decorative reticle ring (original primitive, brand-safe)
-          sits behind the title as atmosphere — not an RSI asset. */}
-      <div
-        className="ss-card"
-        style={{
-          position: 'relative',
-          overflow: 'hidden',
-          padding: '24px 24px 22px',
-          background:
-            'linear-gradient(180deg, var(--surface-2, #221F2A), var(--bg-elev, #15131A))',
-          borderColor: 'var(--border-strong, rgba(255,255,255,0.14))',
-        }}
-      >
-        <div
-          aria-hidden
-          style={{
-            position: 'absolute',
-            top: -70,
-            right: -70,
-            width: 220,
-            height: 220,
-            borderRadius: '50%',
-            border: '1px solid var(--accent-soft, rgba(232,162,60,0.14))',
-            boxShadow: 'inset 0 0 0 24px var(--accent-soft, rgba(232,162,60,0.06))',
-            opacity: 0.6,
-            pointerEvents: 'none',
-          }}
-        />
-        <InstrumentStrip
-          size="hero"
-          title={
-            <h1 className="hud-tile__title" style={{ margin: 0, fontSize: 'inherit' }}>
-              {entry.display_name}
-            </h1>
-          }
-          context={CATEGORY_LABELS[category]}
-        />
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: 10,
-            marginTop: 12,
-          }}
-        >
-          <code
-            className="mono"
-            style={{
-              fontSize: 12,
-              color: 'var(--fg-muted)',
-              background: 'var(--surface, #1A1820)',
-              border: '1px solid var(--border, rgba(255,255,255,0.07))',
-              borderRadius: 'var(--r-sm, 6px)',
-              padding: '3px 8px',
-              wordBreak: 'break-all',
-            }}
-          >
-            {entry.class_name}
-          </code>
-        </div>
-      </div>
-
-      {summaryFields.length > 0 && (
-        <section
-          className="ss-card"
-          style={{ padding: '18px 20px' }}
-        >
-          <h2
-            style={{
-              margin: '0 0 14px',
-              fontSize: 14,
-              fontWeight: 600,
-              color: 'var(--fg)',
-            }}
-          >
-            At a glance
-          </h2>
-          <dl
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-              gap: 18,
-              margin: 0,
-            }}
-          >
-            {summaryFields.map(([k, v]) => (
-              <div key={k}>
-                <dt
-                  className="mono"
-                  style={{
-                    color: 'var(--fg-muted)',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                  }}
-                >
-                  {humanLabel(k)}
-                </dt>
-                <dd
-                  style={{
-                    margin: '5px 0 0',
-                    fontSize: 16,
-                    color: 'var(--fg)',
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {v}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
-      )}
-
-      {shipMatrix && (
-        <ShipMatrixSection
-          shipMatrix={shipMatrix}
-          mediaUrls={shipMatrixMedia}
-        />
-      )}
-
-      <KbDetailView
-        category={category}
-        displayName={entry.display_name}
-        metadata={entry.metadata as Record<string, unknown>}
-        groups={stats.groups}
-        cohorts={entry.cohorts ?? []}
-        description={description}
-        roleTags={roleTags}
-        serverPrefs={serverPrefs}
-        signedIn={!!session?.token}
-        anchorSlug={entry.slug ?? ''}
-        catalog={catalog}
-      />
-
-      <RelatedContracts contracts={relatedContracts} />
-    </main>
+    />
   );
 }
 
-/** Convert `manufacturer` → `Manufacturer`, `hull_size` → `Hull size`. */
 function humanLabel(key: string): string {
   return key
     .replace(/_/g, ' ')

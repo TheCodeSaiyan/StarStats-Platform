@@ -86,7 +86,7 @@ function PlatformCard({
               fontSize: 11,
               color: 'var(--accent)',
               border: '1px solid var(--accent)',
-              borderRadius: 999,
+              borderRadius: 0,
               padding: '1px 8px',
             }}
           >
@@ -182,7 +182,7 @@ export function DownloadsView({
             fontWeight: 600,
             color: 'var(--accent)',
             border: '1px solid var(--accent)',
-            borderRadius: 999,
+            borderRadius: 0,
             padding: '2px 10px',
           }}
         >

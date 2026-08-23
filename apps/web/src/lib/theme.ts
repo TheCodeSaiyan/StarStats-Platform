@@ -7,7 +7,11 @@ import { logger } from '@/lib/logger';
 export type Theme = 'stanton' | 'pyro' | 'terra' | 'nyx';
 
 export const THEMES: readonly Theme[] = ['stanton', 'pyro', 'terra', 'nyx'];
-export const DEFAULT_THEME: Theme = 'stanton';
+// Gap C: the projection is drawn in terra (cyan) — every guideline card, UI kit
+// screen and screenshot in the design system uses it, and it is the calibration
+// the volume was composed against. Readers who picked a calibration keep it;
+// only those who never chose see the change.
+export const DEFAULT_THEME: Theme = 'terra';
 export const THEME_COOKIE = 'ss-theme';
 
 const VALID = new Set<Theme>(THEMES);

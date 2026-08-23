@@ -1,3 +1,4 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
@@ -58,8 +59,17 @@ export default async function StarPlatformPage() {
   if (session) redirect('/me');
 
   return (
+    <MarketingSurface
+      navId="star-platform"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'StarPlatform' },
+      ]}
+      title="StarPlatform"
+      ctx="The self-hosted companion for a whole group"
+    >
     <div className="ss-landing" style={{ minHeight: '100%', position: 'relative' }}>
-      <main
+      <div
         style={{
           position: 'relative',
           zIndex: 1,
@@ -132,7 +142,7 @@ export default async function StarPlatformPage() {
               key={g}
               style={{
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 padding: 'var(--s1) var(--s3)',
                 fontSize: 'var(--fs-sm)',
                 color: 'var(--fg-muted)',
@@ -184,7 +194,8 @@ export default async function StarPlatformPage() {
           connector in their tray (Settings → StarPlatform connector) and link
           on the platform. Either side can turn it off at any time.
         </p>
-      </main>
+      </div>
     </div>
+    </MarketingSurface>
   );
 }

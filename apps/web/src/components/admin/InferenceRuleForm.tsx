@@ -25,7 +25,7 @@ import { assembleRule, type FormState, type KV, type PatternState } from './infe
 
 const inputStyle: React.CSSProperties = {
   padding: '8px 10px',
-  borderRadius: 'var(--r-md, 6px)',
+  borderRadius: 0,
   border: '1px solid var(--border)',
   background: 'var(--bg-elev)',
   color: 'var(--fg)',
@@ -112,7 +112,7 @@ function KvRows({
             data-testid={`${testIdPrefix}-remove-${i}`}
             style={{
               padding: '6px 10px',
-              borderRadius: 'var(--r-md, 6px)',
+              borderRadius: 0,
               border: '1px solid var(--border-strong)',
               background: 'var(--bg-elev)',
               color: 'var(--fg)',
@@ -132,7 +132,7 @@ function KvRows({
         style={{
           alignSelf: 'flex-start',
           padding: '6px 10px',
-          borderRadius: 'var(--r-md, 6px)',
+          borderRadius: 0,
           border: '1px solid var(--border-strong)',
           background: 'var(--bg-elev)',
           color: 'var(--fg)',
@@ -197,7 +197,7 @@ function PatternEditor({
         gap: 8,
         padding: 10,
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-md, 6px)',
+        borderRadius: 0,
       }}
     >
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>
@@ -319,7 +319,7 @@ export function InferenceRuleForm({
               style={{
                 alignSelf: 'flex-start',
                 padding: '6px 10px',
-                borderRadius: 'var(--r-md, 6px)',
+                borderRadius: 0,
                 border: '1px solid var(--border-strong)',
                 background: 'var(--bg-elev)',
                 color: 'var(--fg)',
@@ -344,7 +344,7 @@ export function InferenceRuleForm({
           style={{
             alignSelf: 'flex-start',
             padding: '6px 10px',
-            borderRadius: 'var(--r-md, 6px)',
+            borderRadius: 0,
             border: '1px solid var(--border-strong)',
             background: 'var(--bg-elev)',
             color: 'var(--fg)',
@@ -366,7 +366,7 @@ export function InferenceRuleForm({
           gap: 8,
           padding: 10,
           border: '1px solid var(--border)',
-          borderRadius: 'var(--r-md, 6px)',
+          borderRadius: 0,
         }}
       >
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>
@@ -407,7 +407,7 @@ export function InferenceRuleForm({
         style={{
           alignSelf: 'flex-start',
           padding: '8px 16px',
-          borderRadius: 'var(--r-md, 6px)',
+          borderRadius: 0,
           fontSize: 13,
         }}
       >

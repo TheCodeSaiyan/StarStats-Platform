@@ -25,6 +25,13 @@ import {
 } from '@/lib/contracts';
 import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
 import { ControlStrip } from '@/components/hud/ControlStrip';
+import { AppSurface } from '@/components/projection/AppSurface';
+import { RecordsIndex } from '@/components/projection/RecordsIndex';
+import { getSession } from '@/lib/session';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import type { Calibration } from 'holo';
 
 export const metadata: Metadata = {
   title: 'Contracts',
@@ -53,6 +60,17 @@ interface PageProps {
 }
 
 export default async function ContractsPage(props: PageProps) {
+  // PUBLIC ROUTE — the catalogue reads the same for a stranger. The session is
+  // read only so the chrome knows whether to offer an account menu or a Sign
+  // in; nothing below it is gated on one.
+  const session = await getSession();
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
+
   const sp = await props.searchParams;
   const q = (sp.q ?? '').trim();
   const type = (sp.type ?? '').trim();
@@ -108,7 +126,33 @@ export default async function ContractsPage(props: PageProps) {
   const context = `${filtered.length.toLocaleString()} of ${all.length.toLocaleString()}${q ? ` matching "${q}"` : ''}`;
 
   return (
-    <main>
+    <AppSurface
+      // Public surface — it carries the CIG trademark plate. `AppSurface`
+      // serves both public and signed-in pages, so the caller decides.
+      legal
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections({
+        signedIn: Boolean(session),
+        staffRoles: session?.staffRoles,
+      })}
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Contract catalogue' },
+      ]}
+      sections={[
+        {
+          id: 'page',
+          group: 'page',
+          title: 'Contract catalogue',
+          ctx: 'Every contract the parser has published',
+          node: (
+            <>
+              {/* `Records.jsx` puts a pilot's own records behind one category
+                  strip so they read as a family; the product had four unrelated
+                  routes, each a dead end. */}
+              <RecordsIndex active="/contracts" />
+    <div>
       <InstrumentStrip
         title={
           <h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>
@@ -131,15 +175,10 @@ export default async function ContractsPage(props: PageProps) {
             defaultValue={q}
             placeholder="Search name, issuer, location, objectives…"
             autoComplete="off"
-            style={{
-              flex: '1 1 280px',
-              padding: '8px 12px',
-              background: 'var(--bg-elev)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r-sm)',
-              color: 'var(--fg)',
-              fontSize: 13,
-            }}
+            // Lit underline, never a boxed field — the primitive redraw
+            // handles the rest via `.hp-stage input`.
+            className="hp-input"
+            style={{ flex: '1 1 280px' }}
           />
           {/* Preserve facets + sort across a search submit (the form only
               posts its own field, so they'd otherwise reset). */}
@@ -239,7 +278,17 @@ export default async function ContractsPage(props: PageProps) {
           </div>
         </nav>
       )}
-    </main>
+    </div>
+            </>
+          ),
+        },
+      ]}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 
@@ -283,16 +332,9 @@ function ChipLink({ href, active, label }: { href: Route; active: boolean; label
       href={href}
       prefetch={false}
       data-active={active ? 'true' : undefined}
-      style={{
-        fontSize: 11,
-        padding: '4px 10px',
-        borderRadius: 999,
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-        background: active ? 'var(--accent)' : 'transparent',
-        color: active ? 'var(--bg)' : 'var(--fg-muted)',
-        textDecoration: 'none',
-        letterSpacing: '0.02em',
-      }}
+      // The catalogue's chip — one chip style across the product, and never
+      // a FILLED one for the active state.
+      className="hp-catchip"
     >
       {label}
     </Link>
@@ -344,9 +386,8 @@ function ContractCard({ contract }: { contract: ContractSummary }) {
       style={{ textDecoration: 'none', color: 'inherit' }}
     >
       <article
-        className="hud-tile"
+        className="hp-plane flat"
         style={{
-          padding: '10px 12px',
           display: 'flex',
           flexDirection: 'column',
           gap: 4,
@@ -400,7 +441,9 @@ function joinNoteParts(parts: Array<string | null | undefined>): string | null {
 
 function legalColor(status: string): string {
   const s = status.toLowerCase();
-  if (s === 'illegal') return 'var(--danger, #e5484d)';
+  // The beam's own tone. The flat fallback was the dark theme's literal and
+  // stayed that colour on every calibration.
+  if (s === 'illegal') return 'var(--bad)';
   if (s === 'legal') return 'var(--fg-muted)';
   return 'var(--fg-dim)';
 }

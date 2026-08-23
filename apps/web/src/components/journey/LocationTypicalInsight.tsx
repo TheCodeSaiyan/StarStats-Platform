@@ -48,7 +48,7 @@ export function LocationTypicalInsight({
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
         borderLeft: '3px solid var(--accent)',
-        borderRadius: 6,
+        borderRadius: 0,
         fontSize: 13,
         color: 'var(--fg)',
         lineHeight: 1.55,

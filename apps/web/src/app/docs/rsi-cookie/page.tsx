@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -25,7 +27,18 @@ export const metadata: Metadata = {
  *    not revoke is the worst sentence this page could contain. */
 export default function RsiCookiePage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="docs"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Docs', href: '/docs' },
+        { label: 'RSI cookie' },
+      ]}
+      title="RSI cookie"
+      ctx="Docs · pairing your RSI session"
+    >
+      <DocsIndex active="/docs/rsi-cookie" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Docs
       </div>
@@ -153,6 +166,7 @@ export default function RsiCookiePage() {
           <Link href={'/docs' as Route}>the quickstart</Link>.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

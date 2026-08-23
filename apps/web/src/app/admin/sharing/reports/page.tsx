@@ -167,7 +167,7 @@ export default async function AdminSharingReportsPage({
               data-active={active ? 'true' : undefined}
               style={{
                 padding: '6px 12px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 fontSize: 12,
                 textDecoration: 'none',
                 border: '1px solid',
@@ -258,7 +258,7 @@ function ReportRow({ row }: { row: ShareReportRowDto }) {
             margin: 0,
             padding: 10,
             background: 'var(--bg-sunken)',
-            borderRadius: 'var(--r-card)',
+            borderRadius: 0,
             fontSize: 13,
             whiteSpace: 'pre-wrap',
           }}
@@ -328,7 +328,7 @@ function ReportRow({ row }: { row: ShareReportRowDto }) {
                 background: 'var(--bg-elev)',
                 color: 'var(--fg)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-input)',
+                borderRadius: 0,
               }}
             />
           </label>

@@ -121,4 +121,18 @@ export interface WidgetDef {
    *  eyebrow — that's WidgetFrame's job). May return null to indicate
    *  "no data yet" (WidgetFrame renders the empty placeholder). */
   render(ctx: ViewerCtx, size: WidgetSize): Promise<ReactElement | null>;
+  /**
+   * The widget's fetch + normalise step, WITHOUT its flat presentation.
+   *
+   * Present on every widget built with `defineWidget` (all but `journey`).
+   * The projection surface (`/me`) reuses these loaders and draws the result
+   * in the holographic language instead — so the endpoints, empty checks,
+   * trend maths and provenance caveats stay in exactly one place while the
+   * two surfaces render them differently.
+   *
+   * Returns `null` for "no data / error", same contract as inside `render`.
+   * Typed as `unknown` because each widget's shape is its own; the projection
+   * element that consumes it narrows to the shape it knows.
+   */
+  load?(ctx: ViewerCtx): Promise<unknown | null>;
 }

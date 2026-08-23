@@ -10,6 +10,11 @@ describe('HOME_DEFAULT_LAYOUT', () => {
     // mission-objectives and contract-run depth widgets (discoverable out
     // of the box), plus Player Facts (#368) — observations about how you
     // fly, distinct from `records`' superlatives.
+    //
+    // `hangar` joined when the "Hangar" NAV entry was removed. That entry
+    // pointed at the paired-device page, not the fleet, and pairing moved into
+    // Emitter — which left the actual RSI hangar with no default surface. It
+    // is the owner's own page only; the public profile still ships it off.
     expect(enabled).toEqual([
       'heatmap',
       'lives',
@@ -22,6 +27,7 @@ describe('HOME_DEFAULT_LAYOUT', () => {
       'combat_mission',
       'economy',
       'sessions',
+      'hangar',
       'objectives',
       'contracts',
     ]);

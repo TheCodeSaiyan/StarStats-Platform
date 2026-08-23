@@ -496,7 +496,7 @@ function ScopeBucket({
     <div
       style={{
         border: '1px solid var(--border)',
-        borderRadius: 8,
+        borderRadius: 0,
         padding: '14px 16px',
         display: 'flex',
         flexDirection: 'column',

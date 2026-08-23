@@ -1,0 +1,85 @@
+/* What is LEFT of the flat app shell.
+ *
+ * This file existed to hide the flat chrome — `TopBar`, `LeftRail`, the two
+ * footers, the marketing nav, the skip link — from any page that rendered a
+ * projection, because a nested layout cannot remove a parent layout in the App
+ * Router.
+ *
+ * All of that chrome is now DELETED rather than hidden: every route, every
+ * error boundary and the 404 are projections, so nothing renders it and a rule
+ * hiding it would be a rule with no target — which is worse than no rule,
+ * because it reads as protection that is no longer there. What survived the
+ * cull is here, and each rule below still has something to act on.
+ *
+ * Delete this file when nothing does.
+ */
+
+/* `.unverified-banner` IS NOT IN THAT LIST, and used to be.
+ *
+ * It was hidden with the rest of the flat chrome, and it is not chrome: it
+ * reads "Email unverified — claim it before someone else can", which is a
+ * security nudge with a real deadline behind it. Every signed-in page rendered
+ * it and no page showed it, for the whole port. Nothing failed.
+ *
+ * It is kept visible and restyled to the beam instead — a fixed strip at the
+ * foot of the volume, above the stage, because the top belongs to the
+ * `ChromeBar`. A proper slot in the chrome would be better and is a follow-up;
+ * being visible is what matters. */
+body:has(.ss-projection-root) .unverified-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border: 0;
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.32);
+  background: rgba(8, 10, 14, 0.92);
+  color: var(--beam);
+  font-size: var(--fs-base);
+  letter-spacing: 0.04em;
+}
+
+body:has(.ss-projection-root) .unverified-banner a {
+  color: var(--hot);
+}
+
+/* The `.ss-marketing-nav` rule that lived here is GONE, with the component.
+ * `MarketingNav` was the flat signed-out chrome; once every signed-out route
+ * became a projection it had no render site left, so it and its specs were
+ * deleted rather than left as a hidden element nothing could reach.
+ *
+ * Its lesson outlives it and is recorded in the project notes: the rule needed
+ * `!important` not for specificity but because the component set `display:
+ * flex` INLINE, and an inline declaration beats any selector. */
+
+/* The warp canvas is the flat system's ambient background. The projection has
+ * its own emitter, floor and scanlines — two ambiences at once is noise. */
+/* Collapse the 2-column grid and the padded column so the volume gets the
+ * whole viewport. */
+body:has(.ss-projection-root) .ss-app {
+  display: block;
+}
+body:has(.ss-projection-root) .ss-main {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* The stage is `height: 100%`, so every ancestor between it and the viewport
+ * has to have a height for that to resolve to anything. */
+html:has(.ss-projection-root),
+body:has(.ss-projection-root) {
+  height: 100%;
+  overflow: hidden;
+}
+.ss-projection-root {
+  height: 100vh;
+  /* Small viewport unit where supported: on mobile browsers the URL bar makes
+   * 100vh taller than the visible area, which would push the lens rail under
+   * the chrome. */
+  height: 100svh;
+}

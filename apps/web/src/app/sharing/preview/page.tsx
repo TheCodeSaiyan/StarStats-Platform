@@ -140,7 +140,7 @@ export default async function SharingPreviewPage(props: {
           padding: '10px 14px',
           background: 'color-mix(in oklab, var(--accent) 14%, var(--bg-elev))',
           border: '1px solid color-mix(in oklab, var(--accent) 40%, transparent)',
-          borderRadius: 'var(--r-card)',
+          borderRadius: 0,
           fontSize: 13,
           display: 'flex',
           justifyContent: 'space-between',

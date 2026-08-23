@@ -15,55 +15,12 @@ interface SearchParams {
   error?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
 
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 420,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
 
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  margin: 0,
-};
 
-const actionsStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  marginTop: 6,
-};
 
-const linksStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  fontSize: 13,
-};
 
 export default async function LoginPage(props: {
   searchParams: Promise<SearchParams>;
@@ -133,12 +90,12 @@ export default async function LoginPage(props: {
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         {gateOn && <BetaBanner mode="login" />}
         <span className="ss-eyebrow">Sign in</span>
-        <h1 style={titleStyle}>Sign in.</h1>
-        <p style={subtitleStyle}>
+        <h1>Sign in.</h1>
+        <p className="hp-authsub">
           Welcome back. Use your email and password.
         </p>
 
@@ -158,7 +115,7 @@ export default async function LoginPage(props: {
           </div>
         )}
 
-        <form action={action} style={formStyle}>
+        <form action={action} className="hp-authform">
           <label className="ss-label">
             <span className="ss-label-text">Email</span>
             <input
@@ -183,7 +140,7 @@ export default async function LoginPage(props: {
             />
           </label>
 
-          <div style={actionsStyle}>
+          <div className="hp-authactions">
             <button type="submit" className="ss-btn ss-btn--primary">
               Sign in
             </button>
@@ -195,7 +152,7 @@ export default async function LoginPage(props: {
 
         <hr className="ss-rule" />
 
-        <div style={linksStyle}>
+        <div className="hp-authlinks">
           <Link href="/auth/forgot-password" style={{ color: 'var(--fg-muted)' }}>
             Forgot your password?
           </Link>
@@ -230,7 +187,7 @@ export default async function LoginPage(props: {
               >
                 Need an invite?
               </h2>
-              <p style={{ ...subtitleStyle, marginTop: 8 }}>
+              <p className="hp-authsub" style={{ marginTop: 8 }}>
                 Join the beta waitlist and we&rsquo;ll email your signup link
                 when a place opens.
               </p>
@@ -239,6 +196,6 @@ export default async function LoginPage(props: {
           </>
         ) : null}
       </div>
-    </main>
+    </div>
   );
 }

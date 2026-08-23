@@ -33,71 +33,64 @@ interface Props {
 }
 
 /**
- * Dense HUD-tile card for a single discover profile.
+ * One directory entry — a ranked-list ROW, not a card.
  *
- * Server-component-safe (no `'use client'` directive) — usable from
- * both the server-rendered `page.tsx` and the client `DiscoverLoadMore`
- * component. Preserves the e2e contract:
+ * `Directory.jsx` draws pilots through `CatalogueLayout`'s list state: numbered
+ * rows with a name, a meta line and a trailing value, NOT the entity grid the
+ * catalogue uses for ships and weapons. The system makes that distinction
+ * deliberately — a person is not a spec sheet — and the first pass at this page
+ * missed it because the kit screen was never opened.
+ *
+ * METERLESS, and that is the honest reading of the spec rather than a
+ * shortcut. `CatalogueLayout` documents `meterless: true` for types whose
+ * "list rows carry words, not shares", and the kit's own pilot rows are ranked
+ * by an event count. The product's listing endpoint returns handle,
+ * display_name, last_active_at and supporter — and NOTHING countable. Drawing a
+ * share bar would mean inventing the ranking it displays, which is the exact
+ * trap the screen's own Unverified banner warns about.
+ *
+ * Server-component-safe (no `'use client'` directive) — usable from both the
+ * server-rendered `page.tsx` and the client `DiscoverLoadMore` component.
+ * Preserves the e2e contract exactly:
  *   - `data-testid="discover-profile-card"`
  *   - `data-handle={handle}`
  *   - href `/u/{encodeURIComponent(handle)}?source=discover`
+ *
+ * The row's shape follows `MeterRow`'s — rank, name, meta, trailing value —
+ * without using the component itself, because `MeterRow` renders a `<div>` and
+ * these rows must be real links: a directory entry is somewhere you go, and
+ * middle-click and open-in-new-tab matter on a list of people.
  */
-export function DiscoverProfileCard({ profile: p }: Props) {
+export function DiscoverProfileCard({
+  profile: p,
+  rank,
+}: Props & { rank?: number }) {
   const relative = formatRelative(p.last_active_at);
-
+  // The meta line carries what the endpoint actually knows: the display name
+  // and the supporter standing. Order matches the kit's — recognition first,
+  // then the descriptive detail.
   return (
     <Link
-      href={
-        `/u/${encodeURIComponent(p.handle)}?source=discover` as Route
-      }
+      href={`/u/${encodeURIComponent(p.handle)}?source=discover` as Route}
       data-testid="discover-profile-card"
       data-handle={p.handle}
-      className="hud-tile"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        padding: '12px 14px',
-        textDecoration: 'none',
-        color: 'var(--fg)',
-      }}
+      className="hp-rw hp-rw--text hp-dirrow"
     >
-      <div
-        className="mono"
-        style={{
-          fontSize: 15,
-          fontWeight: 600,
-          letterSpacing: '-0.01em',
-        }}
-      >
-        {p.handle}
-      </div>
-      {p.display_name ? (
-        <div
-          style={{
-            color: 'var(--fg-muted)',
-            fontSize: 12,
-          }}
-        >
-          {p.display_name}
-        </div>
-      ) : null}
-      {p.supporter ? (
-        <div style={{ marginTop: 2 }}>
+      <span className="rk">
+        {typeof rank === 'number' ? String(rank).padStart(2, '0') : ''}
+      </span>
+      <span className="nm">
+        <span className="hp-dirrow__handle">{p.handle}</span>
+        {p.supporter ? (
           <SupporterChip status={p.supporter} size="sm" />
-        </div>
-      ) : null}
-      {relative ? (
-        <div
-          style={{
-            color: 'var(--fg-muted)',
-            fontSize: 11,
-            marginTop: 'auto',
-          }}
-        >
-          Active {relative}
-        </div>
-      ) : null}
+        ) : null}
+        {p.display_name ? (
+          <span className="hp-dirrow__name">{p.display_name}</span>
+        ) : null}
+      </span>
+      {/* The trailing column is the only figure this endpoint carries. Absent
+          rather than "unknown" when the profile has never been active. */}
+      <span className="vv">{relative ? `Active ${relative}` : '—'}</span>
     </Link>
   );
 }

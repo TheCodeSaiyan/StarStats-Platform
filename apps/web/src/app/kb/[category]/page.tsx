@@ -17,14 +17,29 @@ import type { Route } from 'next';
 import { notFound } from 'next/navigation';
 import {
   getCategoryBundle,
+  loadAllReferenceBundles,
   type ReferenceCategory,
   type Summary,
   placementLabel,
 } from '@/lib/reference';
 import { parseSortDir, sortKbEntries, type SortDir } from '@/lib/kb-sort';
+import { BrowseCompare } from './_components/BrowseCompare';
+import {
+  CatalogueHeader,
+  type CatalogueCategory,
+} from '../_components/CatalogueHeader';
 import { TierChip } from '@/components/kb/TierChip';
-import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
-import { ControlStrip } from '@/components/hud/ControlStrip';
+import {
+  BeamInput,
+  BeamButton,
+  Flatline,
+  type Calibration,
+} from 'holo';
+import { getSession } from '@/lib/session';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import { KbProjection, type KbSection } from '../_projection/KbProjection';
 
 const PAGE_SIZE = 60;
 
@@ -84,6 +99,10 @@ export default async function KbCategoryPage(props: PageProps) {
   // each entry under both class_name AND display_name keys to support
   // friendly-name lookups in `<EntityLink>`, so iterating
   // `catalog.values()` would duplicate the listing.
+  // The shell's counts. `loadAllReferenceBundles` is the same build-time
+  // snapshot `getCategoryBundle` reads, so this is not a second fetch — see
+  // `lib/reference.ts`, which is explicit that the listing is static since M10.
+  const { counts } = await loadAllReferenceBundles();
   const { list } = await getCategoryBundle(category);
   const all = [...list];
 
@@ -152,308 +171,259 @@ export default async function KbCategoryPage(props: PageProps) {
     return (s ? `/kb/${category}?${s}` : `/kb/${category}`) as Route;
   };
 
-  return (
-    <main>
-      <Link
-        href={'/kb' as Route}
-        style={{
-          fontSize: 13,
-          color: 'var(--accent)',
-          textDecoration: 'none',
-        }}
-      >
-        ← Knowledge base
-      </Link>
+  // Public surface — a visitor may have no session, and the chrome renders
+  // for them with the nav filtered and a Sign in action.
+  const session = await getSession();
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
 
-      <InstrumentStrip
-        title={<h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>{CATEGORY_LABELS[category]}</h1>}
-        context={`${filtered.length.toLocaleString()} entries${q ? ` matching "${q}"` : ''}${facet ? ` · ${facet}` : ''}`}
-      />
+  const categories: CatalogueCategory[] = (
+    ['vehicle', 'weapon', 'item', 'location'] as const
+  ).map((c) => ({
+    id: c,
+    label: CATEGORY_LABELS[c],
+    href: `/kb/${c}`,
+    count: counts[c],
+  }));
 
-      <ControlStrip>
-        <form
-        method="GET"
-        action={`/kb/${category}`}
-        style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}
-      >
-        <input
-          type="search"
-          name="q"
-          defaultValue={q}
-          placeholder="Search class name or display name…"
-          autoComplete="off"
-          style={{
-            flex: '1 1 280px',
-            padding: '8px 12px',
-            background: 'var(--bg-elev)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-sm)',
-            color: 'var(--fg)',
-            fontSize: 13,
-          }}
-        />
-        {facet && <input type="hidden" name="facet" value={facet} />}
-        {/* Preserve sort across a GET search submit (the form only
-            carries its own fields, so non-default sort would reset). */}
-        {sortKey !== 'name' && (
-          <input type="hidden" name="sort" value={sortKey} />
-        )}
-        {dir !== 'asc' && <input type="hidden" name="dir" value={dir} />}
-        <button type="submit" className="ss-btn ss-btn--primary">
-          Search
-        </button>
-        {(q || facet) && (
-          <Link
-            href={`/kb/${category}` as Route}
-            className="ss-btn ss-btn--ghost"
-            // No prefetch: re-fetches the full category bundle on the
-            // rate-limited reference API; click navigation is enough.
-            prefetch={false}
-            style={{ textDecoration: 'none' }}
-          >
-            Clear
-          </Link>
-        )}
-      </form>
-
-      {facetValues.length > 1 && facetKey && (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 6,
-            marginTop: 12,
-          }}
-          aria-label={`Filter by ${facetKey}`}
-        >
-          {facetValues.map((v) => {
-            const active = facet === v;
-            return (
+  const sections: KbSection[] = [
+    {
+      id: 'browse',
+      title: CATEGORY_LABELS[category],
+      ctx: `${filtered.length.toLocaleString()} entries${q ? ` matching “${q}”` : ''}${facet ? ` · ${facet}` : ''}`,
+      group: 'kb',
+      node: (
+        <>
+          <CatalogueHeader categories={categories} active={category} />
+          {/* A plain GET form, deliberately: the browse is a URL, so a search
+              is shareable, bookmarkable and back-button correct, and it works
+              with JavaScript off. The hidden fields preserve facet/sort/dir
+              across a submit — the form only carries its own fields, so
+              without them a search would silently reset the reader's sort. */}
+          <form method="GET" action={`/kb/${category}`} className="hp-formrow">
+            <BeamInput
+              id="kb-q"
+              label="Search"
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="Class name or display name…"
+              autoComplete="off"
+            />
+            {facet ? <input type="hidden" name="facet" value={facet} /> : null}
+            {sortKey !== 'name' ? (
+              <input type="hidden" name="sort" value={sortKey} />
+            ) : null}
+            {dir !== 'asc' ? <input type="hidden" name="dir" value={dir} /> : null}
+            <BeamButton type="submit" variant="primary">
+              Search
+            </BeamButton>
+            {q || facet ? (
               <Link
-                key={v}
-                href={buildHref(0, { facet: active ? '' : v })}
-                style={{
-                  fontSize: 11,
-                  padding: '4px 8px',
-                  borderRadius: 999,
-                  border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                  background: active ? 'var(--accent)' : 'transparent',
-                  color: active ? 'var(--bg)' : 'var(--fg-muted)',
-                  textDecoration: 'none',
-                  letterSpacing: '0.02em',
-                }}
-              >
-                {v}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          flexWrap: 'wrap',
-          gap: 8,
-          marginTop: 12,
-        }}
-        aria-label="Sort entries"
-      >
-        <span style={{ fontSize: 11, color: 'var(--fg-dim)', letterSpacing: '0.04em' }}>
-          Sort
-        </span>
-        {(facetKey ? ['name', facetKey] : ['name']).map((key) => {
-          const active = sortKey === key;
-          return (
-            <Link
-              key={key}
-              href={buildHref(0, { sort: key === 'name' ? '' : key })}
-              prefetch={false}
-              data-active={active ? 'true' : undefined}
-              style={{
-                fontSize: 11,
-                padding: '4px 10px',
-                borderRadius: 999,
-                border: `1px solid ${active ? 'var(--accent)' : 'var(--border)'}`,
-                background: active ? 'var(--accent)' : 'transparent',
-                color: active ? 'var(--bg)' : 'var(--fg-muted)',
-                textDecoration: 'none',
-                letterSpacing: '0.02em',
-              }}
-            >
-              {sortKeyLabel(key)}
-            </Link>
-          );
-        })}
-        <Link
-          href={buildHref(0, { dir: dir === 'asc' ? 'desc' : 'asc' })}
-          prefetch={false}
-          aria-label={
-            dir === 'asc' ? 'Sort descending' : 'Sort ascending'
-          }
-          title={dir === 'asc' ? 'Ascending — click for descending' : 'Descending — click for ascending'}
-          style={{
-            fontSize: 11,
-            padding: '4px 10px',
-            borderRadius: 999,
-            border: '1px solid var(--border-strong)',
-            background: 'transparent',
-            color: 'var(--fg-muted)',
-            textDecoration: 'none',
-            letterSpacing: '0.02em',
-          }}
-        >
-          {dir === 'asc' ? '↑ A–Z' : '↓ Z–A'}
-        </Link>
-      </div>
-      </ControlStrip>
-
-      <section
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 12,
-          marginTop: 16,
-        }}
-      >
-        {page.length === 0 ? (
-          <p style={{ color: 'var(--fg-dim)', fontSize: 13 }}>
-            No entries match this filter.
-          </p>
-        ) : (
-          page.map((e) => {
-            // No slug → no detail page; skip the link wrapper so we
-            // don't ship a dead route, but still surface the entry.
-            const card = (
-              <article
-                className="hud-tile"
-                style={{
-                  padding: '10px 12px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 3,
-                  height: '100%',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: 14,
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: 6,
-                    flexWrap: 'wrap',
-                  }}
-                >
-                  {e.display_name}
-                  {e.summary.category === 'location' && e.summary.tier && (
-                    <TierChip
-                      tier={e.summary.tier}
-                      subtype={e.summary.subtype}
-                    />
-                  )}
-                </span>
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: 11,
-                    color: 'var(--fg-dim)',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  {e.class_name}
-                </span>
-                {summaryPreviewFields(e.summary)
-                  .slice(0, 3)
-                  .map(([k, v]) => (
-                    <span
-                      key={k}
-                      style={{ fontSize: 11, color: 'var(--fg-muted)' }}
-                    >
-                      <span style={{ color: 'var(--fg-dim)' }}>{k}: </span>
-                      {v}
-                    </span>
-                  ))}
-              </article>
-            );
-            if (!e.slug) return <div key={e.class_name}>{card}</div>;
-            // `aria-label` is load-bearing: the card contents live
-            // inside `<article>`, which is an ARIA landmark, and the
-            // accessible-name algorithm stops at landmark boundaries
-            // — without this, the link reports as nameless to screen
-            // readers AND to `getByRole('link', { name: ... })`
-            // assertions in e2e tests.
-            return (
-              <Link
-                key={e.class_name}
-                href={`/kb/${category}/${e.slug}` as Route}
-                aria-label={e.display_name}
-                // Disable viewport prefetch: a full list page has ~60
-                // visible cards, and Next would prefetch every detail
-                // route at once — a burst of `/slug/` SSR renders from
-                // the web container's single IP that trips the API's
-                // per-IP reference rate limiter (429) and crashes the
-                // prefetched detail page. Navigation on click is
-                // unaffected (one request).
+                href={`/kb/${category}` as Route}
+                className="hp-btn hp-btn--ghost"
+                // No prefetch: this re-fetches the whole category bundle from
+                // the rate-limited reference API.
                 prefetch={false}
-                style={{ textDecoration: 'none', color: 'inherit' }}
               >
-                {card}
+                Clear
               </Link>
-            );
-          })
-        )}
-      </section>
+            ) : null}
+          </form>
 
-      {totalPages > 1 && (
-        <nav
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 12,
-            marginTop: 20,
-            flexWrap: 'wrap',
-          }}
-        >
-          <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
-            Page {currentPage} of {totalPages}
-          </span>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {offset > 0 ? (
+          {/* Facets come from the UNFILTERED set, so choosing one never
+              removes the others from the row — otherwise a reader who picks a
+              facet can no longer see what else was available. */}
+          {facetValues.length > 1 && facetKey ? (
+            <nav style={{ marginTop: 16 }} aria-label={`Filter by ${facetKey}`}>
+              <div className="hp-catlabel">{facetKey}</div>
+              <div className="hp-catstrip">
+                {facetValues.map((v) => (
+                  <Link
+                    key={v}
+                    href={buildHref(0, { facet: facet === v ? '' : v })}
+                    prefetch={false}
+                    className="hp-catchip"
+                    data-active={facet === v ? 'true' : undefined}
+                  >
+                    {v}
+                  </Link>
+                ))}
+              </div>
+            </nav>
+          ) : null}
+
+          <nav
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              marginTop: 16,
+              flexWrap: 'wrap',
+            }}
+            aria-label="Sort entries"
+          >
+            <span className="hp-catlabel" style={{ margin: 0 }}>
+              Sort
+            </span>
+            {(facetKey ? ['name', facetKey] : ['name']).map((key) => (
               <Link
-                href={buildHref(Math.max(0, offset - PAGE_SIZE))}
-                className="ss-btn ss-btn--ghost"
+                key={key}
+                href={buildHref(0, { sort: key === 'name' ? '' : key })}
+                prefetch={false}
+                className="hp-catchip"
+                aria-current={sortKey === key ? 'page' : undefined}
               >
-                ← Prev
+                {sortKeyLabel(key)}
               </Link>
-            ) : (
-              <span
-                className="ss-btn ss-btn--ghost"
-                style={{ opacity: 0.4, pointerEvents: 'none' }}
-              >
-                ← Prev
+            ))}
+            <Link
+              href={buildHref(0, { dir: dir === 'asc' ? 'desc' : 'asc' })}
+              prefetch={false}
+              className="hp-catchip"
+              aria-label={dir === 'asc' ? 'Sort descending' : 'Sort ascending'}
+              title={
+                dir === 'asc'
+                  ? 'Ascending — click for descending'
+                  : 'Descending — click for ascending'
+              }
+            >
+              {dir === 'asc' ? '↑ A–Z' : '↓ Z–A'}
+            </Link>
+          </nav>
+
+          {/* Overlay comparison — `Catalogue.jsx` puts it between the sort row
+              and the grid, and the first pass at this page omitted it entirely.
+              Options come from the CURRENT page, so what you can compare is
+              what you are looking at. */}
+          <BrowseCompare
+            category={category}
+            options={page
+              .filter((e) => e.slug)
+              .map((e) => ({ slug: e.slug as string, name: e.display_name }))}
+          />
+
+          {page.length === 0 ? (
+            <Flatline
+              title="No entries match this filter"
+              reason="no-data"
+              hint="Clear the search or pick a different facet."
+            />
+          ) : (
+            <div className="hp-catgrid">
+              {page.map((e) => {
+                // The card IS a plane — `Catalogue.jsx` draws each entry as
+                // `hp-plane flat`, not as a bespoke card class. The first pass
+                // at this page invented `hp-kbcard` because the spec'd screen
+                // was never read.
+                const body = (
+                  <article className="hp-plane flat hp-catcard">
+                    <span className="hp-catcard__name">
+                      {e.display_name}
+                      {e.summary.category === 'location' && e.summary.tier ? (
+                        <TierChip
+                          tier={e.summary.tier}
+                          subtype={e.summary.subtype}
+                        />
+                      ) : null}
+                    </span>
+                    <span className="hp-catcard__cls">{e.class_name}</span>
+                    {summaryPreviewFields(e.summary)
+                      .slice(0, 3)
+                      .map(([k, v]) => (
+                        <span className="hp-catcard__fact" key={k}>
+                          <i>{k}: </i>
+                          {v}
+                        </span>
+                      ))}
+                  </article>
+                );
+                // No slug means no detail route — surface the entry but do not
+                // ship a dead link.
+                if (!e.slug) return <div key={e.class_name}>{body}</div>;
+                return (
+                  <Link
+                    key={e.class_name}
+                    href={`/kb/${category}/${e.slug}` as Route}
+                    prefetch={false}
+                    // LOAD-BEARING. The card's contents sit inside `<article>`,
+                    // an ARIA landmark, and the accessible-name algorithm stops
+                    // at landmark boundaries — without this the link reports as
+                    // nameless to screen readers AND to `getByRole('link', {
+                    // name })` in the e2e suite.
+                    aria-label={e.display_name}
+                    className="hp-catcard"
+                  >
+                    {body}
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+
+          {totalPages > 1 ? (
+            <nav className="hp-catpager" aria-label="Pagination">
+              <span>
+                Page {currentPage} of {totalPages}
               </span>
-            )}
-            {offset + page.length < filtered.length ? (
-              <Link
-                href={buildHref(offset + PAGE_SIZE)}
-                className="ss-btn ss-btn--ghost"
-              >
-                Next →
-              </Link>
-            ) : (
-              <span
-                className="ss-btn ss-btn--ghost"
-                style={{ opacity: 0.4, pointerEvents: 'none' }}
-              >
-                Next →
+              <span className="hp-catpager__btns">
+                {offset > 0 ? (
+                  <Link
+                    href={buildHref(Math.max(0, offset - PAGE_SIZE))}
+                    prefetch={false}
+                    className="hp-btn hp-btn--ghost"
+                  >
+                    ← Prev
+                  </Link>
+                ) : (
+                  <span className="hp-btn hp-btn--ghost" aria-disabled="true">
+                    ← Prev
+                  </span>
+                )}
+                {offset + page.length < filtered.length ? (
+                  <Link
+                    href={buildHref(offset + PAGE_SIZE)}
+                    prefetch={false}
+                    className="hp-btn hp-btn--ghost"
+                  >
+                    Next →
+                  </Link>
+                ) : (
+                  <span className="hp-btn hp-btn--ghost" aria-disabled="true">
+                    Next →
+                  </span>
+                )}
               </span>
-            )}
-          </div>
-        </nav>
+            </nav>
+          ) : null}
+        </>
+      ),
+    },
+  ];
+
+  return (
+    <KbProjection
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections(
+        { signedIn: Boolean(session), staffRoles: session?.staffRoles },
+        'kb',
       )}
-    </main>
+      crumb={[
+        { label: 'Knowledge base', href: '/kb' },
+        { label: CATEGORY_LABELS[category] },
+      ]}
+      sections={sections}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 

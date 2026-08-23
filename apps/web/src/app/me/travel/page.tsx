@@ -32,8 +32,6 @@
 
 import 'server-only';
 import React from 'react';
-import Link from 'next/link';
-import type { Route } from 'next';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import {
@@ -41,33 +39,71 @@ import {
   getRoutes,
   getTravelStats,
   getLocationTrace,
+  getLocationBreakdown,
+  getCurrentLocation,
   statusOf,
   type TraceEntry,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { parseRange, rangeToHours, rangeToMetricsRange, rangeLabel } from '@/lib/range';
-import { RangeBar } from '@/components/journey/RangeBar';
 import { aggregateLocationBuckets } from '@/lib/class-name-parts';
 import { loadAllReferenceBundles } from '@/lib/reference';
 import { EntityLink } from '@/components/kb/EntityLink';
-import { InfoTip } from '@/components/hud/InfoTip';
 import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
-import { NoSignal } from '@/components/hud/NoSignal';
-import { Sparkline } from '@/components/metrics/Sparkline';
 import { LocationChainStrip } from '@/components/journey/LocationChainStrip';
-import { LocationTimeline } from '@/components/journey/LocationTimeline';
-import { LocationActivityHeatmap } from '@/components/journey/LocationActivityHeatmap';
 import { deriveTransitionGraph } from '@/components/journey/TransitionGraph';
 import { SystemBreakdown } from '@/components/journey/SystemBreakdown';
+import {
+  TaxonomyStrip,
+  type TaxonomyLevel,
+} from './_components/TaxonomyStrip';
+import Link from 'next/link';
+import type { Route } from 'next';
+import { PlaceDetail } from './_components/PlaceDetail';
+import { buildDwellIndex } from './_components/dwell';
+import { LocationHero } from '@/components/journey/LocationHero';
+
+/**
+ * Level nouns for the detail pane. Both forms are spelled out because the
+ * plural is not the singular plus "s" — deriving it produced "Back to all
+ * citys" on screen.
+ */
+const LEVEL_NOUN_FOR_CTX: Record<TaxonomyLevel, string> = {
+  system: 'System',
+  planet: 'Planet',
+  city: 'City',
+  site: 'Site',
+};
+
+const LEVEL_PLURAL: Record<TaxonomyLevel, string> = {
+  system: 'systems',
+  planet: 'planets',
+  city: 'cities',
+  site: 'sites',
+};
 import { TrafficMatrix } from '@/components/journey/TrafficMatrix';
 import { toDistinctStops } from '@/components/journey/trail-utils';
-import { ReadoutGroup, type Readout } from '@/app/_components/widgets/kit/archetypes';
 import { countsByType, fmtNum } from '@/app/_components/widgets/kit/format';
+import {
+  Plane,
+  MeterRow,
+  SubStats,
+  Flatline,
+  BeamTip,
+  type Calibration,
+} from 'holo';
+import { navSections } from '@/lib/nav';
+import { getTheme } from '@/lib/theme';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import {
+  TravelProjection,
+  type TravelSection,
+} from './_projection/TravelProjection';
 
 export const metadata = { title: 'Travel' };
 
 interface PageProps {
-  searchParams?: Promise<{ range?: string }>;
+  searchParams?: Promise<{ range?: string; level?: string; place?: string }>;
 }
 
 /** Honest daily-activity series from the trace: total event_count per
@@ -94,17 +130,54 @@ export default async function TravelPage(props: PageProps) {
   const token = session.token;
   const sp = props.searchParams ? await props.searchParams : {};
   const range = parseRange(sp.range);
+  // The taxonomy level is URL state like the range, so a chosen level is
+  // shareable and survives the back button rather than being client state
+  // pretending to be navigation.
+  const level: TaxonomyLevel = (
+    ['system', 'planet', 'city', 'site'] as const
+  ).includes(sp.level as TaxonomyLevel)
+    ? (sp.level as TaxonomyLevel)
+    : 'system';
+  const levelHref = (l: TaxonomyLevel) =>
+    `/me/travel?range=${range}&level=${l}`;
+
+  // The selected place, if any. URL state like the level and the range, so a
+  // place is shareable and the back button climbs back out of it — the kit
+  // holds it in `useState` because it is one mock screen.
+  const place = typeof sp.place === 'string' && sp.place ? sp.place : null;
+  const placeHref = (l: TaxonomyLevel, p: string) =>
+    `/me/travel?range=${range}&level=${l}&place=${encodeURIComponent(p)}`;
   const hours = rangeToHours(range);
+
+  // The beam for this render; falls back to the system default rather than
+  // failing the page.
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
 
   // docs/ENGINEERING.md: multi-endpoint render → Promise.allSettled. Each source
   // degrades a single section, never the whole page; each rejection logs
   // its `call=` label + status.
-  const [breakdownRes, routesRes, travelRes, traceRes] = await Promise.allSettled([
-    getMetricsEventTypes(token, rangeToMetricsRange(range)),
-    getRoutes(token),
-    getTravelStats(token, hours),
-    getLocationTrace(token, hours),
-  ]);
+  const [breakdownRes, routesRes, travelRes, traceRes, dwellRes, currentRes] =
+    await Promise.allSettled([
+      getMetricsEventTypes(token, rangeToMetricsRange(range)),
+      getRoutes(token),
+      getTravelStats(token, hours),
+      getLocationTrace(token, hours),
+      // Real per-place dwell. The taxonomy ranked by visit count and said in a
+      // comment that the product had no dwell — it does, at exactly the levels
+      // the strip groups by, and this endpoint has been in `lib/api.ts` all
+      // along. (`breakdownRes` above is the event-TYPE metrics call, despite
+      // the name; that is what made it look already fetched.)
+      getLocationBreakdown(token, hours),
+      // Where the reader is NOW. A different shape from a trace entry's
+      // `resolved_location` — this one carries `entered_at` / `last_seen_at`,
+      // which is what the hero's live dwell ticker counts from.
+      getCurrentLocation(token),
+    ]);
 
   if (breakdownRes.status === 'rejected') {
     logger.warn(
@@ -124,6 +197,18 @@ export default async function TravelPage(props: PageProps) {
       'fetch failed',
     );
   }
+  if (currentRes.status === 'rejected') {
+    logger.warn(
+      { err: currentRes.reason, call: 'me.travel.current', status: statusOf(currentRes.reason) },
+      'fetch failed',
+    );
+  }
+  if (dwellRes.status === 'rejected') {
+    logger.warn(
+      { err: dwellRes.reason, call: 'me.travel.dwell', status: statusOf(dwellRes.reason) },
+      'fetch failed',
+    );
+  }
   if (traceRes.status === 'rejected') {
     logger.warn(
       { err: traceRes.reason, call: 'me.travel.trace', status: statusOf(traceRes.reason) },
@@ -132,6 +217,11 @@ export default async function TravelPage(props: PageProps) {
   }
 
   const breakdown = breakdownRes.status === 'fulfilled' ? breakdownRes.value : null;
+  const currentLocation =
+    currentRes.status === 'fulfilled' ? currentRes.value : null;
+  const dwellIndex = buildDwellIndex(
+    dwellRes.status === 'fulfilled' ? dwellRes.value : null,
+  );
   const travelStats = travelRes.status === 'fulfilled' ? travelRes.value : null;
   const routes = routesRes.status === 'fulfilled' ? routesRes.value?.routes ?? [] : [];
   const entries: TraceEntry[] = traceRes.status === 'fulfilled' ? traceRes.value.entries ?? [] : [];
@@ -148,19 +238,6 @@ export default async function TravelPage(props: PageProps) {
   const { catalogs } = await loadAllReferenceBundles();
   const locations = catalogs.locations;
 
-  const readouts: Readout[] = [
-    {
-      label: 'quantum',
-      info: <InfoTip label="quantum jumps" text={INFERENCE_EXPLANATIONS.quantum_jumps} />,
-      value: fmtNum(quantums),
-    },
-    {
-      label: 'server hops',
-      info: <InfoTip label="server hops" text={INFERENCE_EXPLANATIONS.server_hops} />,
-      value: fmtNum(serverHops),
-    },
-    ...(planets > 0 ? [{ label: 'planets', value: fmtNum(planets) } as Readout] : []),
-  ];
 
   // The FULL routes list — resolve raw engine ids / pipe hierarchies to
   // friendly labels and merge duplicates, then deep-link each. `label` is
@@ -185,160 +262,224 @@ export default async function TravelPage(props: PageProps) {
   const series = dailyActivitySeries(entries);
   const hasAnyTravel = routeRows.length > 0 || entries.length > 0;
 
-  return (
-    // `role="main"` on a DIV (not a <main> element) so the global
-    // `main {}` 720px legacy column in globals.css doesn't clamp this
-    // full-width detail page — same landmark for AT, zero CSS collision.
-    <div
-      role="main"
-      className="ss-screen-enter"
-      style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
-    >
-      {/* Command-bar header: page identity on the left, controls right —
-          mirrors the /me focus strip (ss-eyebrow + .hud-controls chips). */}
-      <header
-        style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}
-      >
-        <div>
-          <div className="ss-eyebrow">Travel</div>
-          <h1
-            style={{ margin: '3px 0 0', fontSize: 24, fontWeight: 600, letterSpacing: '-0.02em' }}
-          >
-            Travel map
-          </h1>
-        </div>
-        <div className="hud-controls" style={{ marginLeft: 'auto', marginBottom: 0 }}>
-          <Link href={'/me' as Route} className="hud-chip">
-            ← Dashboard
-          </Link>
-          <RangeBar active={range} buildHref={(id) => `/me/travel?range=${id}` as Route} />
-        </div>
-      </header>
-
-      {/* Overview — quantum / hops / planets as HUD readouts */}
-      <section className="hud-tile">
-        <div className="hud-tile__hd">
-          <span className="hud-tile__eyebrow">Quantum travel</span>
-          <span className="hud-tile__title">Overview</span>
-          <span className="hud-tile__sub">{rangeLabel(range)}</span>
-        </div>
-        <div className="hud-tile__body" style={{ marginTop: 4 }}>
-          <ReadoutGroup readouts={readouts} />
-        </div>
-      </section>
-
-      {!hasAnyTravel ? (
-        <section className="hud-tile">
-          <div className="hud-tile__body">
-            <NoSignal reason="no-telemetry" />
-          </div>
-        </section>
-      ) : (
+  // ---------------------------------------------------------------------
+  // Sections. Two groups: the ranked destinations, and the location trail.
+  //
+  // This page is the UNCAPPED counterpart to /me's Travel lens — every route
+  // rather than the top six — which is what its "see all →" links point at.
+  // ---------------------------------------------------------------------
+  const sections: TravelSection[] = [
+    {
+      id: 'overview',
+      title: 'Quantum travel',
+      ctx: rangeLabel(range),
+      group: 'routes',
+      node: (
         <>
-          {/* All routes — full, uncapped ranked list */}
-          {routeRows.length > 0 && (
-            <section className="hud-tile">
-              <div className="hud-tile__hd">
-                <span className="hud-tile__eyebrow">Quantum destinations</span>
-                <span className="hud-tile__title">All routes</span>
-                <span className="hud-tile__sub">
-                  {routeRows.length.toLocaleString()} · by trips
-                </span>
-              </div>
-              <div className="hud-tile__body" style={{ marginTop: 4 }}>
-                {/* Ranked leaderboard — 2-digit mono rank, destination
-                    (EntityLink) with an underline meter beneath, trip count
-                    right. Uncapped: this is the detail page. */}
-                <ul className="tl-lead-list">
-                  {routeRows.map((r, i) => (
-                    <li key={r.key} className="tl-lead">
-                      <span
-                        className={
-                          i === 0 ? 'tl-lead__rank tl-lead__rank--top' : 'tl-lead__rank'
-                        }
-                      >
-                        {String(i + 1).padStart(2, '0')}
-                      </span>
-                      <span className="tl-lead__lab">
-                        {r.label}
-                        <small
-                          className="tl-lead__meter"
-                          style={{ width: `${(r.count / maxRouteCount) * 100}%` }}
-                        />
-                      </span>
-                      <span className="tl-lead__num">{fmtNum(r.count)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </section>
-          )}
+          <SubStats
+            items={[
+              { k: 'Quantum', v: fmtNum(quantums) },
+              { k: 'Server hops', v: fmtNum(serverHops) },
+              ...(planets > 0
+                ? [{ k: 'Planets', v: fmtNum(planets) }]
+                : []),
+            ]}
+          />
+          {/* Both headline figures are INFERRED from log lines rather than
+              logged as such, and the system's rule is that an inferred metric
+              carries its derivation rather than rounding the caveat away. */}
+          <p className="hp-prose">
+            <BeamTip
+              note={INFERENCE_EXPLANATIONS.quantum_jumps}
+              label="How quantum jumps are derived"
+            >
+              Quantum jumps
+            </BeamTip>{' '}
+            and{' '}
+            <BeamTip
+              note={INFERENCE_EXPLANATIONS.server_hops}
+              label="How server hops are derived"
+            >
+              server hops
+            </BeamTip>{' '}
+            are both inferred from the log.
+          </p>
+        </>
+      ),
+    },
 
-          {/* Journey — the location trail: recent stops, map, activity, timeline */}
-          {entries.length > 0 && (
-            <section className="hud-tile">
-              <div className="hud-tile__hd">
-                <span className="hud-tile__eyebrow">Location trail</span>
-                <span className="hud-tile__title">Journey</span>
-                <span className="hud-tile__sub">{rangeLabel(range)}</span>
-              </div>
-              <div
-                className="hud-tile__body"
-                style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 8 }}
+    ...(!hasAnyTravel
+      ? [
+          {
+            id: 'empty',
+            title: 'No travel in this window',
+            group: 'routes',
+            node: <Flatline reason="no-telemetry" />,
+          } satisfies TravelSection,
+        ]
+      : []),
+
+    ...(hasAnyTravel && routeRows.length > 0
+      ? [
+          {
+            id: 'routes',
+            title: 'All routes',
+            ctx: `${routeRows.length.toLocaleString()} · by trips`,
+            group: 'routes',
+            node: (
+              <Plane
+                tilt="flat"
+                cap="Quantum destinations"
+                hint="uncapped"
+                style={{ marginTop: 18 }}
               >
+                {/* UNCAPPED on purpose — the lens shows six and links here for
+                    the rest. A cap on the detail page would leave the reader
+                    with nowhere further to go. */}
+                {routeRows.map((r, i) => (
+                  <MeterRow
+                    key={r.key}
+                    rank={i + 1}
+                    name={r.label}
+                    value={fmtNum(r.count)}
+                    pct={(r.count / maxRouteCount) * 100}
+                  />
+                ))}
+              </Plane>
+            ),
+          } satisfies TravelSection,
+        ]
+      : []),
+
+    ...(hasAnyTravel && entries.length > 0
+      ? [
+          {
+            id: 'trail',
+            title: 'Location trail',
+            ctx: rangeLabel(range),
+            group: 'trail',
+            node: (
+              <>
+                {/* WHERE YOU ARE NOW, restored.
+                    `LocationHero` — the System > Planet > City breadcrumb, the
+                    live dwell ticker counting up from the last stop, and the
+                    "came from" trail — was built for `/journey?view=location`
+                    and has rendered NOWHERE since that route became a redirect
+                    to `/me`. It was dead code on `next` before this port, not
+                    something the port dropped, and it is the most specific
+                    answer this page can give to "where am I": everything else
+                    here is an aggregate over a window. */}
+                <LocationHero
+                  location={currentLocation}
+                  stops={stops}
+                  catalog={locations}
+                />
                 <LocationChainStrip
                   entries={entries}
-                  maxStops={6}
                   eyebrow="Recent stops"
                   catalog={locations}
                 />
+                {series.length >= 2 ? (
+                  <Plane
+                    tilt="flat"
+                    cap="Daily activity"
+                    hint={rangeLabel(range)}
+                    style={{ marginTop: 20 }}
+                  >
+                    {/* Real summed event counts per calendar day, not a
+                        fabricated trend — height and brightness, never hue. */}
+                    <div
+                      className="hp-spark"
+                      aria-label={`Location activity by day, ${rangeLabel(range)}`}
+                    >
+                      {series.map((n, i) => (
+                        <i
+                          key={i}
+                          title={`${n} event${n === 1 ? '' : 's'}`}
+                          style={{
+                            height: `${Math.max(2, (n / Math.max(...series, 1)) * 100)}%`,
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </Plane>
+                ) : null}
+              </>
+            ),
+          } satisfies TravelSection,
+        ]
+      : []),
 
-                {series.length >= 2 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <Sparkline
-                      series={series}
-                      label={`Location activity by day, ${rangeLabel(range)}`}
-                      width={160}
-                      height={28}
+    ...(hasAnyTravel && entries.length > 0
+      ? [
+          {
+            id: 'systems',
+            title: place ?? 'Where you have been',
+            ctx: place
+              ? `${LEVEL_NOUN_FOR_CTX[level]} · charted`
+              : 'By taxonomy level',
+            group: 'trail',
+            // `Journey.jsx` browses locations through a category strip —
+            // Systems / Planets / Cities / Sites — where this page had one
+            // fixed level. The system breakdown stays below it: it answers a
+            // different question (how the window splits across systems) and is
+            // the one level with a share worth drawing.
+            node: (
+              <>
+                <TaxonomyStrip
+                  stops={stops}
+                  level={level}
+                  buildHref={levelHref}
+                  buildPlaceHref={(p) => placeHref(level, p)}
+                  dwell={dwellIndex}
+                />
+                {place ? (
+                  <>
+                    <p className="hp-prose" style={{ marginTop: 18 }}>
+                      <Link href={levelHref(level) as Route}>
+                        &larr; Back to all {LEVEL_PLURAL[level]}
+                      </Link>
+                    </p>
+                    <PlaceDetail
+                      stops={stops}
+                      level={level}
+                      place={place}
+                      buildChildHref={placeHref}
+                      dwell={dwellIndex}
                     />
-                    <span className="hud-note" style={{ margin: 0 }}>
-                      Daily activity · {rangeLabel(range)}
-                    </span>
-                  </div>
-                )}
-
-                <div>
-                  <div className="hud-tile__eyebrow" style={{ marginBottom: 6 }}>
-                    System breakdown
-                  </div>
+                  </>
+                ) : (
                   <SystemBreakdown entries={entries} catalog={locations} />
-                </div>
+                )}
+              </>
+            ),
+          } satisfies TravelSection,
+          {
+            id: 'matrix',
+            title: 'Traffic matrix',
+            ctx: 'Between stops',
+            group: 'trail',
+            node: <TrafficMatrix graph={deriveTransitionGraph(stops)} />,
+          } satisfies TravelSection,
+        ]
+      : []),
+  ];
 
-                <div>
-                  <div className="hud-tile__eyebrow" style={{ marginBottom: 6 }}>
-                    Traffic matrix
-                  </div>
-                  <TrafficMatrix graph={deriveTransitionGraph(stops)} />
-                </div>
-
-                <div>
-                  <div className="hud-tile__eyebrow" style={{ marginBottom: 6 }}>
-                    When you played
-                  </div>
-                  <LocationActivityHeatmap entries={entries} windowHours={hours} />
-                </div>
-
-                <div>
-                  <div className="hud-tile__eyebrow" style={{ marginBottom: 6 }}>
-                    Stops
-                  </div>
-                  <LocationTimeline entries={entries} catalog={locations} />
-                </div>
-              </div>
-            </section>
-          )}
-        </>
+  return (
+    <TravelProjection
+      handle={session.claimedHandle}
+      calibration={calibration}
+      range={range}
+      nav={navSections(
+        { signedIn: true, staffRoles: session.staffRoles },
+        'travel',
       )}
-    </div>
+      sections={sections}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }

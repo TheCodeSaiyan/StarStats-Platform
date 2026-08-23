@@ -18,114 +18,6 @@ interface SearchParams {
   error?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  margin: 0,
-  padding: 0,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-end',
-  justifyContent: 'space-between',
-  gap: 24,
-  flexWrap: 'wrap',
-};
-
-const headerTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 32,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
-
-const headerSubtitleStyle: React.CSSProperties = {
-  margin: '6px 0 0',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  flexWrap: 'wrap',
-};
-
-const cardHeaderStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-  marginBottom: 16,
-};
-
-const cardTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-};
-
-const sectionGapStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-};
-
-const memberListStyle: React.CSSProperties = {
-  listStyle: 'none',
-  margin: 0,
-  padding: 0,
-  display: 'flex',
-  flexDirection: 'column',
-};
-
-const memberRowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 12,
-  padding: '12px 0',
-  borderBottom: '1px solid var(--border)',
-};
-
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  margin: 0,
-  maxWidth: 520,
-};
-
-const inlineFormGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 160px',
-  gap: 12,
-};
-
-const formActionsStyle: React.CSSProperties = {
-  display: 'flex',
-  marginTop: 4,
-};
-
-const dangerCardStyle: React.CSSProperties = {
-  borderColor: 'color-mix(in oklab, var(--danger) 40%, transparent)',
-  background: 'color-mix(in oklab, var(--danger) 6%, var(--surface))',
-};
-
-const emptyStyle: React.CSSProperties = {
-  textAlign: 'center',
-  padding: '32px 16px',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-};
-
-const emptyTitleStyle: React.CSSProperties = {
-  fontSize: 16,
-  color: 'var(--fg)',
-  marginBottom: 6,
-};
-
 export default async function OrgDetailPage(props: {
   params: Promise<{ slug: string }>;
   searchParams: Promise<SearchParams>;
@@ -251,13 +143,13 @@ export default async function OrgDetailPage(props: {
 
   if (notFound) {
     return (
-      <main className="ss-screen-enter" style={mainStyle}>
+      <div className="hp-recstack">
         <header>
           <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
             Orgs
           </div>
-          <h1 style={headerTitleStyle}>Org not found</h1>
-          <p style={{ ...headerSubtitleStyle, display: 'block' }}>
+          <h1>Org not found</h1>
+          <p className="hp-recsub hp-recsub--block">
             Either this org doesn&apos;t exist, or you aren&apos;t a member.
           </p>
         </header>
@@ -266,23 +158,23 @@ export default async function OrgDetailPage(props: {
             ← Back to your orgs
           </Link>
         </section>
-      </main>
+      </div>
     );
   }
 
   if (degraded || !org) {
     return (
-      <main className="ss-screen-enter" style={mainStyle}>
+      <div className="hp-recstack">
         <header>
           <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
             Orgs
           </div>
-          <h1 style={headerTitleStyle}>Org unavailable</h1>
-          <p style={{ ...headerSubtitleStyle, display: 'block' }}>
+          <h1>Org unavailable</h1>
+          <p className="hp-recsub hp-recsub--block">
             The authorisation service is offline. Try again shortly.
           </p>
         </header>
-      </main>
+      </div>
     );
   }
 
@@ -298,14 +190,14 @@ export default async function OrgDetailPage(props: {
         : '';
 
   return (
-    <main className="ss-screen-enter" style={mainStyle}>
-      <header style={headerStyle}>
+    <div className="hp-recstack">
+      <header className="hp-rechead">
         <div>
           <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
             Org
           </div>
-          <h1 style={headerTitleStyle}>{org.org.name}</h1>
-          <div style={headerSubtitleStyle}>
+          <h1>{org.org.name}</h1>
+          <div className="hp-recsub">
             <span className="mono">/orgs/{org.org.slug}</span>
             {org.your_role && (
               <span className={`ss-badge ${roleBadgeKind}`}>
@@ -331,9 +223,9 @@ export default async function OrgDetailPage(props: {
       )}
 
       <section className="ss-card ss-card-pad">
-        <div style={cardHeaderStyle}>
+        <div className="hp-cardhead">
           <span className="ss-eyebrow">Details</span>
-          <h2 style={cardTitleStyle}>Org info</h2>
+          <h2>Org info</h2>
         </div>
         <dl className="ss-kv">
           <dt>Org SID</dt>
@@ -356,17 +248,17 @@ export default async function OrgDetailPage(props: {
       </section>
 
       <section className="ss-card ss-card-pad">
-        <div style={cardHeaderStyle}>
+        <div className="hp-cardhead">
           <span className="ss-eyebrow">Crew</span>
-          <h2 style={cardTitleStyle}>Members ({memberCount})</h2>
+          <h2>Members ({memberCount})</h2>
         </div>
         {memberCount === 0 ? (
-          <div style={emptyStyle}>
-            <div style={emptyTitleStyle}>Scope is clear.</div>
+          <div className="hp-recempty">
+            <div className="hp-recempty__t">Scope is clear.</div>
             <div>No members yet.</div>
           </div>
         ) : (
-          <ul style={memberListStyle}>
+          <ul className="hp-memberlist">
             {org.members.map((m, idx) => {
               const badgeKind =
                 m.role === 'owner'
@@ -378,11 +270,8 @@ export default async function OrgDetailPage(props: {
               return (
                 <li
                   key={`${m.handle}:${m.role}`}
-                  style={
-                    isLast
-                      ? { ...memberRowStyle, borderBottom: 'none' }
-                      : memberRowStyle
-                  }
+                  className="hp-memberrow"
+                  data-last={isLast ? 'true' : undefined}
                 >
                   <div
                     style={{
@@ -422,12 +311,12 @@ export default async function OrgDetailPage(props: {
 
       {canManageMembers && (
         <section className="ss-card ss-card-pad">
-          <div style={cardHeaderStyle}>
+          <div className="hp-cardhead">
             <span className="ss-eyebrow">Add member</span>
-            <h2 style={cardTitleStyle}>Bring someone aboard</h2>
+            <h2>Bring someone aboard</h2>
           </div>
-          <form action={addMemberAction} style={formStyle}>
-            <div style={inlineFormGridStyle}>
+          <form action={addMemberAction} className="hp-recform">
+            <div className="hp-recform__inline">
               <label className="ss-label">
                 <span className="ss-label-text">RSI handle</span>
                 <input
@@ -452,7 +341,7 @@ export default async function OrgDetailPage(props: {
                 </select>
               </label>
             </div>
-            <div style={formActionsStyle}>
+            <div className="hp-recform__actions">
               <button type="submit" className="ss-btn ss-btn--primary">
                 Add to org
               </button>
@@ -462,16 +351,16 @@ export default async function OrgDetailPage(props: {
       )}
 
       {isOwner && (
-        <section className="ss-card ss-card-pad" style={dangerCardStyle}>
-          <div style={cardHeaderStyle}>
+        <section className="ss-card ss-card-pad hp-dangercard">
+          <div className="hp-cardhead">
             <span className="ss-eyebrow" style={{ color: 'var(--danger)' }}>
               Danger zone
             </span>
-            <h2 style={{ ...cardTitleStyle, color: 'var(--danger)' }}>
+            <h2 className="hp-cardhead__danger">
               Decommission this org
             </h2>
           </div>
-          <div style={sectionGapStyle}>
+          <div className="hp-recgroup">
             <p style={{ margin: 0, color: 'var(--fg-muted)', fontSize: 14 }}>
               Deleting the org removes every membership row. Members lose
               access immediately. The slug{' '}
@@ -486,7 +375,7 @@ export default async function OrgDetailPage(props: {
           </div>
         </section>
       )}
-    </main>
+    </div>
   );
 }
 

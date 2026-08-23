@@ -1,3 +1,4 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
@@ -29,7 +30,16 @@ export default async function RoadmapDetailPage({ params }: PageProps) {
   if (!item) notFound();
 
   return (
-    <main
+    <MarketingSurface
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Roadmap', href: '/roadmap' },
+        { label: 'Roadmap item' },
+      ]}
+      title="Roadmap item"
+      ctx="One item, in detail"
+    >
+    <div
       style={{
         maxWidth: 760,
         margin: '0 auto',
@@ -106,7 +116,8 @@ export default async function RoadmapDetailPage({ params }: PageProps) {
         )}
         <MetaField label="Votes" value={String(item.votes)} />
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }
 

@@ -31,6 +31,10 @@ test('orgs_index_renders_owned_orgs', async ({ page, request }) => {
 });
 
 test('create_new_org_redirects_to_detail', async ({ page, request }) => {
+  // Two cold routes in one case — `/orgs/new` and then `/orgs/[slug]` — and the
+  // config's navigation budget is sized for a warm one. Under full-suite load
+  // the dev server compiles both on demand.
+  test.slow();
   await setScenario(
     request,
     scenarioFor('org_create', {
@@ -51,10 +55,33 @@ test('create_new_org_redirects_to_detail', async ({ page, request }) => {
   );
 
   await page.goto('/orgs/new');
+  // Wait for the surface before touching the form. The page is a projection
+  // now, so the tree above this form is client-rendered — and a submit that
+  // lands before React has attached is swallowed rather than posted. It failed
+  // only in a full-suite run and never in isolation, which is the signature of
+  // that race and not of flake; the same shape has bitten this suite twice.
+  await expect(page.locator('.hp-stage')).toBeVisible();
+  // Wait for the FORM, not just the surface. The projection shell renders
+  // before the page body streams in, so `.hp-stage` being visible does not mean
+  // the button exists yet — a retry loop around the click then spends its whole
+  // budget waiting for an element that has not arrived.
+  const submit = page.getByRole('button', { name: 'Create org' });
+  await expect(submit).toBeVisible({ timeout: 15_000 });
   await page.getByLabel('Name').fill('New Squadron');
-  await page.getByRole('button', { name: 'Create org' }).click();
 
-  await expect(page).toHaveURL(/\/orgs\/new-squadron$/);
+  await expect(async () => {
+    // GUARD THE RETRY. The click is retried because a submit landing before
+    // hydration is swallowed — but the retry is not idempotent: once the first
+    // click HAS navigated (just slowly, `/orgs/[slug]` compiling cold), the
+    // next pass looks for "Create org" on the DETAIL page, waits out its own
+    // 5s locator timeout and burns the budget on the wrong screen. That is how
+    // this failed in a full-suite run, and the stored page snapshot showed the
+    // detail page already rendered underneath the timeout.
+    if (new URL(page.url()).pathname === '/orgs/new') {
+      await submit.click();
+    }
+    await expect(page).toHaveURL(/\/orgs\/new-squadron$/, { timeout: 5000 });
+  }).toPass({ timeout: 30_000 });
   await expect(
     page.getByRole('heading', { name: 'New Squadron' }),
   ).toBeVisible();

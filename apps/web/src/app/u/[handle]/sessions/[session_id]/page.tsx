@@ -233,7 +233,7 @@ function ViewToggle({
         padding: 4,
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
       }}
     >
       <Link
@@ -423,7 +423,7 @@ function TimelineRowItem({ row }: { row: TimelineRow }) {
         gap: 12,
         alignItems: 'baseline',
         padding: '6px 10px',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         background: 'var(--surface-1)',
         border: '1px solid var(--border)',
       }}
@@ -444,7 +444,7 @@ function TimelineRowItem({ row }: { row: TimelineRow }) {
             style={{
               marginLeft: 8,
               padding: '1px 6px',
-              borderRadius: 'var(--r-pill)',
+              borderRadius: 0,
               background: 'var(--surface-2)',
               color: 'var(--fg-muted)',
               fontFamily: 'var(--font-mono)',
@@ -487,7 +487,7 @@ function LoadMoreNotice({
         padding: '12px 18px',
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         color: 'var(--fg-muted)',
         fontSize: 12,
         display: 'flex',

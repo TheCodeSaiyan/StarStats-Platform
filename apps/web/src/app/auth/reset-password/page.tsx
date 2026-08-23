@@ -11,41 +11,10 @@ interface SearchParams {
   done?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
 
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 440,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
 
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  margin: 0,
-};
 
 /**
  * Password-reset completion page.
@@ -67,11 +36,11 @@ export default async function ResetPasswordPage(props: {
 
   if (done === '1') {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Password updated</span>
-          <h1 style={titleStyle}>Password updated.</h1>
-          <p style={subtitleStyle}>
+          <h1>Password updated.</h1>
+          <p className="hp-authsub">
             Your password has been changed. For safety we&apos;ve signed out
             every paired device — sign in again to continue.
           </p>
@@ -79,17 +48,17 @@ export default async function ResetPasswordPage(props: {
             Sign in
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!token) {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Reset password</span>
-          <h1 style={titleStyle}>Missing reset token.</h1>
-          <p style={subtitleStyle}>
+          <h1>Missing reset token.</h1>
+          <p className="hp-authsub">
             The reset link is incomplete. Open the email we sent you and click
             the link from there.
           </p>
@@ -97,7 +66,7 @@ export default async function ResetPasswordPage(props: {
             Request a new link
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -141,11 +110,11 @@ export default async function ResetPasswordPage(props: {
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         <span className="ss-eyebrow">Reset password</span>
-        <h1 style={titleStyle}>Choose a new password.</h1>
-        <p style={subtitleStyle}>
+        <h1>Choose a new password.</h1>
+        <p className="hp-authsub">
           Pick something at least 12 characters. All your paired devices will
           be signed out when you save.
         </p>
@@ -171,7 +140,7 @@ export default async function ResetPasswordPage(props: {
           </div>
         )}
 
-        <form action={action} style={formStyle}>
+        <form action={action} className="hp-authform">
           <input type="hidden" name="token" value={token} />
           <label className="ss-label">
             <span className="ss-label-text">New password</span>
@@ -214,6 +183,6 @@ export default async function ResetPasswordPage(props: {
           .
         </p>
       </div>
-    </main>
+    </div>
   );
 }

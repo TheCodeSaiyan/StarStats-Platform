@@ -1,4 +1,5 @@
 import React from 'react';
+import { Plane, HoloKV } from 'holo';
 import {
   shipMatrixSpecRows,
   type ShipMatrix,
@@ -33,84 +34,59 @@ interface ShipMatrixSectionProps {
  * The caller is responsible for only rendering this for
  * `category === 'vehicle'` when `metadata.ship_matrix` parsed
  * successfully.
+ *
+ * REDRAWN. It was an `.ss-card` with a hand-built `<dl>` grid and five inline
+ * type sizes. It is a `Plane` with a `HoloKV` now — same rows, same order, same
+ * copy, same disclaimer. The `heading` prop still suppresses the caption when a
+ * pane header above already carries the words.
  */
 export function ShipMatrixSection({
   shipMatrix,
   mediaUrls,
-}: ShipMatrixSectionProps) {
+  heading = true,
+}: ShipMatrixSectionProps & {
+  /**
+   * Render the component's own "Ship Matrix" `<h2>`.
+   *
+   * The projection frames each section in a `Pane` whose header IS an `<h2>`
+   * carrying the section name, so inside one this heading would announce
+   * "Ship Matrix" twice — once as the pane header, once nested. Defaults to
+   * true so the flat page and this component's own tests are unchanged; the
+   * projection opts out and puts the same words, verbatim, in the pane title.
+   */
+  heading?: boolean;
+}) {
   const specRows = shipMatrixSpecRows(shipMatrix);
   const hasGallery = mediaUrls.length > 0;
 
   return (
-    <section
-      className="ss-card"
-      style={{ marginTop: 16, padding: '14px 16px' }}
+    <Plane
+      tilt="flat"
+      cap={heading ? 'Ship Matrix' : undefined}
+      hint="official specifications"
       aria-label="Ship Matrix"
+      style={{ marginTop: 16 }}
     >
-      <h2
-        style={{
-          margin: '0 0 4px',
-          fontSize: 14,
-          fontWeight: 600,
-          color: 'var(--fg)',
-        }}
-      >
-        Ship Matrix
-      </h2>
-      <p
-        style={{
-          margin: '0 0 10px',
-          fontSize: 11,
-          color: 'var(--fg-muted)',
-        }}
-      >
-        Official specifications from RSI&apos;s Ship Matrix.
-      </p>
+      {/* CIG's own copy about CIG's own data — kept verbatim, and kept as the
+          plane's own line rather than the caption hint so it reads as a source
+          note rather than a label. */}
+      <p className="hp-prose">Official specifications from RSI&apos;s Ship Matrix.</p>
 
-      {specRows.length > 0 && (
-        <dl
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: 12,
-            margin: 0,
-          }}
-        >
-          {specRows.map((row) => (
-            <div key={row.label}>
-              <dt
-                style={{
-                  color: 'var(--fg-muted)',
-                  fontSize: 11,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
-                }}
-              >
-                {row.label}
-              </dt>
-              <dd style={{ margin: '4px 0 0', fontSize: 14 }}>{row.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
+      {specRows.length > 0 ? (
+        <HoloKV
+          items={specRows.map((row) => ({ k: row.label, v: row.value }))}
+        />
+      ) : null}
 
-      {shipMatrix.description && (
-        <p
-          style={{
-            margin: specRows.length > 0 ? '14px 0 0' : 0,
-            fontSize: 13,
-            lineHeight: 1.6,
-            color: 'var(--fg)',
-            whiteSpace: 'pre-line',
-          }}
-        >
+      {shipMatrix.description ? (
+        <p className="hp-prose hp-prose--pre" style={{ marginTop: 14 }}>
           {shipMatrix.description}
         </p>
-      )}
+      ) : null}
 
       {hasGallery && <ShipMatrixGallery mediaUrls={mediaUrls} />}
 
       <ShipMatrixDisclaimer />
-    </section>
+    </Plane>
   );
 }

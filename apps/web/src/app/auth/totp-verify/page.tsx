@@ -12,56 +12,6 @@ interface SearchParams {
   error?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
-
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 480,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 22,
-};
-
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
-
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
-
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 16,
-  margin: 0,
-};
-
-const otpRowStyle: React.CSSProperties = {
-  justifyContent: 'flex-start',
-};
-
-const explainerStyle: React.CSSProperties = {
-  padding: '12px 16px',
-  background: 'var(--bg-elev)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--r-sm)',
-  color: 'var(--fg-dim)',
-  fontSize: 12,
-  lineHeight: 1.5,
-};
-
 /**
  * Second leg of the 2FA login flow.
  *
@@ -82,11 +32,11 @@ export default async function TotpVerifyPage(props: {
 
   if (!interim) {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Two-factor verification</span>
-          <h1 style={titleStyle}>Sign-in incomplete.</h1>
-          <p style={subtitleStyle}>
+          <h1>Sign-in incomplete.</h1>
+          <p className="hp-authsub">
             We don&apos;t have a half-finished sign-in for this browser. Start
             over from the sign-in page.
           </p>
@@ -94,7 +44,7 @@ export default async function TotpVerifyPage(props: {
             Back to sign in
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -166,11 +116,11 @@ export default async function TotpVerifyPage(props: {
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         <span className="ss-eyebrow">Two-factor verification</span>
-        <h1 style={titleStyle}>Authentication code.</h1>
-        <p style={subtitleStyle}>
+        <h1>Authentication code.</h1>
+        <p className="hp-authsub">
           Open your authenticator app and type the 6-digit code for StarStats.
           Codes refresh every 30 seconds.
         </p>
@@ -187,12 +137,12 @@ export default async function TotpVerifyPage(props: {
           </div>
         )}
 
-        <form action={action} style={formStyle}>
+        <form action={action} className="hp-authform">
           <input type="hidden" name="interim" value={interim} />
 
           <div className="ss-label">
             <span className="ss-label-text">Code</span>
-            <div className="ss-otp" style={otpRowStyle}>
+            <div className="ss-otp hp-otp">
               <input
                 className="ss-otp-cell"
                 name="c0"
@@ -291,12 +241,12 @@ export default async function TotpVerifyPage(props: {
           </div>
         </form>
 
-        <div style={explainerStyle}>
+        <div className="hp-authnote">
           <strong style={{ color: 'var(--fg-muted)' }}>Why this exists.</strong>{' '}
           Your interim sign-in token is single-use and expires in 5 minutes.
           Backing out invalidates it — that&apos;s by design.
         </div>
       </div>
-    </main>
+    </div>
   );
 }

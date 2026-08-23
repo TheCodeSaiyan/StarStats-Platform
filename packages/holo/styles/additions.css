@@ -1,0 +1,2910 @@
+/* Additions to the projection pattern layer.
+ *
+ * Kept in a SEPARATE file from `patterns-holo.css` so the vendored upstream
+ * stays byte-identical to the design system and stays diffable against it. Each
+ * rule here backs a decision recorded in docs/PLAN-PROJECTION-PORT.md.
+ *
+ * Everything is `.hp-*` prefixed, matching the upstream convention, so nothing
+ * here can reach the flat `design-tokens` system during the coexistence period.
+ */
+
+/* ── Plane trailing slot (gap A3) ──────────────────────────────────────────
+ * The caption row is already flex, and `.cap i` (the hint) takes
+ * `margin-left: auto` to push right. The trailing slot follows it, so a Plane
+ * with BOTH a hint and a link gets them grouped at the right rather than
+ * fighting over the same auto margin.
+ *
+ * Unlike the hint, this slot is interactive — it carries the "see all →" Link —
+ * so it takes the beam rather than the dim value, and lifts to --hot on hover
+ * like every other forward action in the system. */
+.hp-plane .cap .tr {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hp-plane .cap i + .tr {
+  margin-left: 10px;
+}
+.hp-plane .cap .tr a,
+.hp-plane .cap .tr button {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: var(--beam);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: color var(--t-fast) var(--ease-out), opacity var(--t-fast) var(--ease-out);
+}
+.hp-plane .cap .tr a:hover,
+.hp-plane .cap .tr button:hover {
+  color: var(--hot);
+  opacity: 1;
+}
+
+/* The per-element empty state. A Plane with no rows says so in the dim value
+ * and holds a little height, so an empty element reads as "nothing here yet"
+ * rather than as a broken sheet. Missing is an em-dash, never a zero. */
+.hp-plane .hp-empty {
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 2px 0;
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+}
+
+/* ── BeamTip (gap A4) ──────────────────────────────────────────────────────
+ * The disclosure affordance the system mandates but does not ship. The trigger
+ * is a lit hairline UNDER the figure — never a boxed icon and never a glyph
+ * beside it, because only figures glow and a plated icon would read as chrome.
+ *
+ * The 44px minimum target is met by growing the button around the visual, not
+ * by scaling the 1px rule up: the hairline stays a hairline and the hit area
+ * extends invisibly above and below it. */
+.hp-tip {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+}
+/* The trigger OVERLAYS the figure exactly (`inset: 0` against the wrapper), so
+ * the affordance is the number itself rather than a plated icon beside it.
+ *
+ * It must have a real box. An earlier version used `height: 0` with only a
+ * pseudo-element for the hit area: the rule then stretched across whatever
+ * space the flex parent gave it (drawing a long dash between "1.4" and "k/d"),
+ * and a zero-height control is not a target at all — assistive tech and
+ * Playwright both correctly refused to see it. */
+.hp-tip__t {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: help;
+}
+/* 44px minimum target, grown AROUND the visual rather than by scaling it — the
+ * hairline stays a hairline and the hit area extends past the figure. */
+.hp-tip__t::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: max(100%, 44px);
+  height: 44px;
+}
+.hp-tip__rule {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 1px;
+  background: var(--beam);
+  opacity: 0.5;
+  transition: opacity var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+}
+.hp-tip__t:hover .hp-tip__rule,
+.hp-tip__t[aria-expanded="true"] .hp-tip__rule {
+  background: var(--hot);
+  opacity: 1;
+}
+.hp-tip__t:focus-visible {
+  outline: none;
+}
+.hp-tip__t:focus-visible .hp-tip__rule {
+  background: var(--hot);
+  opacity: 1;
+  box-shadow: 0 0 0 1px var(--hot);
+}
+
+/* The popover itself is PORTALED to document.body, so it sits outside the
+ * stage and cannot inherit the beam by cascade. `data-cal` is deliberately NOT
+ * on <html> — that would leak the beam tokens onto every un-ported flat page —
+ * so BeamTip copies the calibration off the trigger's nearest `[data-cal]`
+ * ancestor and stamps it on the popover, which re-scopes the tokens there.
+ *
+ * `position: fixed` is correct here precisely BECAUSE it is portaled: inside
+ * the stage a transform ancestor would have made it a containing block and
+ * pinned it to the sheet instead of the viewport. */
+.hp-tip__pop {
+  position: fixed;
+  z-index: 92;
+  background: rgba(3, 6, 11, 0.94);
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.32);
+  box-shadow:
+    0 0 44px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(var(--hR), var(--hG), var(--hB), 0.14);
+  backdrop-filter: blur(6px);
+  padding: 10px 12px;
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  font-size: var(--fs-xs);
+  line-height: 1.55;
+  letter-spacing: var(--tracking-wide);
+  /* A caption, so it never glows. */
+  text-shadow: none;
+}
+
+/* ── Map ticks for unvisited systems (gap B3) ─────────────────────────────
+ * Non-interactive by construction: there is nothing to open, so they take no
+ * pointer events and no focus. Purely a statement that the place exists. */
+.hp-maptick {
+  pointer-events: none;
+}
+
+/* ── Flight facts (bespoke element) ────────────────────────────────────────
+ * `facts` is one of the widgets with no archetype behind it, so it gets a
+ * purpose-built flat Plane rather than being forced into a ranked list. Each
+ * observation shows its arithmetic underneath — the claim showing its working
+ * IS the surface, so the detail line is never truncated away.
+ *
+ * The headline takes the beam; the detail is a caption and therefore does not
+ * glow, per the system's one hard typographic rule. */
+.hp-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 0;
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.1);
+}
+.hp-fact:first-of-type {
+  border-top: 0;
+}
+.hp-fact__h {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  color: var(--beam);
+}
+.hp-fact__d {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+}
+
+/* ── Activity calendar (bespoke element) ───────────────────────────────────
+ * The heatmap, redrawn in beam alphas. RANKING IS BRIGHTNESS, NEVER HUE: the
+ * system has one hue per calibration, and a categorical scale would survive a
+ * recalibration as a foreign palette.
+ *
+ * A zero-count day draws as an empty cell rather than being omitted, so the
+ * rhythm of the gaps stays readable — the gaps are the information. */
+.hp-cal-grid {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 9px;
+  gap: 3px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+.hp-cal-grid i {
+  width: 9px;
+  height: 9px;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+  outline: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.08);
+  outline-offset: -1px;
+}
+.hp-cal-grid i[data-step="1"] { background: rgba(var(--bR), var(--bG), var(--bB), 0.22); }
+.hp-cal-grid i[data-step="2"] { background: rgba(var(--bR), var(--bG), var(--bB), 0.42); }
+.hp-cal-grid i[data-step="3"] { background: rgba(var(--bR), var(--bG), var(--bB), 0.64); }
+.hp-cal-grid i[data-step="4"] { background: var(--hot); }
+
+/* ── Chrome identity readouts (gaps A5, B6) ────────────────────────────────
+ * The lifetime figures, which are range-INDEPENDENT. They sit in the chrome
+ * precisely because nothing up here moves when the range control changes —
+ * that separation is the whole point, so they must not read as part of the
+ * range-scoped volume below.
+ *
+ * The figure takes --hot (it is a figure); the trailing noun stays dim. */
+.hp-idstats {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  white-space: nowrap;
+}
+.hp-idstats b {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: var(--tracking-tight);
+  color: var(--hot);
+}
+.hp-idstats s {
+  width: 1px;
+  height: 9px;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.25);
+  margin: 0 3px;
+  text-decoration: none;
+}
+/* The chrome measures itself and densifies before collapsing the nav. At the
+ * tightest step the identity strip is the first thing to go: it is a
+ * convenience readout, and the same figures are reachable in the volume. */
+.hp-top[data-dense="2"] .hp-idstats {
+  display: none;
+}
+
+
+/* ── RangeTabs as links (gap A6) ───────────────────────────────────────────
+ * On /me the range is a URL param, so the tabs are real Next <Link>s rather
+ * than buttons — that is what keeps server components re-querying and the view
+ * shareable. The upstream sheet styles `.hp-rng button` only, so an anchor got
+ * the layout and none of the state: every range looked inactive.
+ *
+ * `aria-current="page"` is the correct attribute for a link marking the current
+ * view; `aria-pressed` belongs to toggle buttons, so both are matched here and
+ * the component uses the right one for the element it renders. */
+.hp-rng a {
+  font: inherit;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wider);
+  text-transform: uppercase;
+  color: var(--dim);
+  text-decoration: none;
+  padding: 13px 8px;
+  position: relative;
+}
+.hp-rng a::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  width: 0;
+  height: 1px;
+  background: var(--hot);
+  box-shadow: 0 0 7px var(--hot);
+  transition: width 240ms, margin-left 240ms;
+}
+.hp-rng a:hover {
+  color: var(--beam);
+}
+.hp-rng a[aria-current="page"] {
+  color: var(--hot);
+}
+.hp-rng a[aria-current="page"]::after {
+  width: 100%;
+  margin-left: -50%;
+}
+.hp-rng a:focus-visible {
+  outline: 1px solid var(--hot);
+  outline-offset: 3px;
+}
+
+/* ── BeamSelect ────────────────────────────────────────────────────────────
+ * Inherits `.hp-input` wholesale — the lit-underline field — and strips the
+ * platform control chrome so it reads as a hairline rather than a box. The
+ * caret is drawn by us in the beam.
+ *
+ * Only the CLOSED control is ours. The open dropdown is OS chrome and cannot
+ * be styled by any page; that limitation is accepted in exchange for
+ * type-to-search over ~400 time zones, the platform picker on touch, and the
+ * native screen-reader contract. */
+.hp-selectwrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+.hp-select {
+  appearance: none;
+  -webkit-appearance: none;
+  /* Room for our caret; the platform one is gone. */
+  padding-right: 22px;
+  cursor: pointer;
+}
+/* The options list is painted by the OS, which does not inherit the beam.
+ * Give it the void and the hot value so it is at least not white-on-white in
+ * the browsers that do honour these two properties. */
+.hp-select option {
+  background: var(--void);
+  color: var(--hot);
+}
+.hp-select__caret {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: var(--fs-xs);
+  color: var(--beam);
+  opacity: 0.7;
+  transition: color var(--t-fast) var(--ease-out), opacity var(--t-fast) var(--ease-out);
+}
+.hp-selectwrap:focus-within .hp-select__caret {
+  color: var(--hot);
+  opacity: 1;
+}
+
+/* ── BeamAlert ─────────────────────────────────────────────────────────────
+ * A hairline in the tone plus text in the tone. NO FILL: a tinted banner is
+ * the card vocabulary this language exists to replace, and the system already
+ * applies tone to a figure rather than to a plate behind it.
+ *
+ * Deliberately NOT glowing. Only figures glow — an alert is a sentence, and a
+ * lit sentence would read as a readout. */
+.hp-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 0 9px 12px;
+  border-left: 1px solid var(--good);
+  color: var(--good);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  letter-spacing: var(--tracking-wide);
+  text-shadow: none;
+}
+.hp-alert[data-tone="warn"] {
+  border-left-color: var(--warn);
+  color: var(--warn);
+}
+.hp-alert[data-tone="bad"] {
+  border-left-color: var(--bad);
+  color: var(--bad);
+}
+
+/* ── Settings surface ──────────────────────────────────────────────────────
+ * A stack of static Panes inside a non-parallax volume. The volume has no
+ * scroll of its own (depth changes are pane transitions), but a settings page
+ * genuinely IS a long document, so this one container scrolls internally.
+ *
+ * Scoped to the `.hp-settings` class rather than a `data-surface` value: the
+ * system declares exactly three surfaces and a fourth would be invented
+ * vocabulary. Nothing else mounts this class, so it cannot reach the reader's
+ * projection. */
+.hp-stage .hp-settings {
+  position: absolute;
+  /* The bottom inset clears the lens rail, which floats at 26px. On /me the
+   * volume never scrolls so the rail can never collide with anything; a
+   * settings page DOES scroll, and prose sliding under a floating rail is a
+   * legibility fault. Bounding the scroll region is the fix — a fade behind
+   * the rail would be decoration, which this language does not do. */
+  inset: 96px 0 84px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 0 34px 40px;
+}
+.hp-settings__inner {
+  max-width: 1040px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+/* Static panes stack in flow here rather than docking to a depth slot. */
+.hp-settings .hp-pane--static {
+  position: static;
+  width: auto;
+  max-width: none;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .hp-stage .hp-settings {
+    inset: 84px 0 78px;
+    padding: 0 16px 32px;
+  }
+}
+
+/* Rows of controls inside a settings pane. */
+.hp-formrow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.hp-formrow > .hp-field {
+  flex: 1;
+  min-width: 220px;
+}
+.hp-formcol {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 16px;
+  max-width: 520px;
+}
+/* Body copy inside a pane. Never glows — only figures do. */
+.hp-prose {
+  margin: 14px 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.65;
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  max-width: 62ch;
+  text-shadow: none;
+}
+.hp-prose strong,
+.hp-prose .val {
+  color: var(--beam);
+  font-weight: 500;
+}
+
+/* A secret the reader has to copy out — the RSI ownership code, a TOTP key.
+ * Tracked wide and set in the hot value, because it is read character by
+ * character and mis-transcribing it is the failure mode. */
+.hp-secret {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 10px 14px;
+  font-size: var(--fs-lg);
+  font-weight: 300;
+  letter-spacing: 0.28em;
+  color: var(--hot);
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.07);
+  border-left: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.34);
+  font-variant-numeric: tabular-nums;
+  word-break: break-all;
+}
+
+/* Numbered procedure — the RSI ownership steps. The count is information (it
+ * is a sequence you carry out in order), so it is a real <ol>. */
+.hp-steps {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: hpstep;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.hp-steps > li {
+  counter-increment: hpstep;
+  position: relative;
+  padding-left: 30px;
+  font-size: var(--fs-sm);
+  line-height: 1.65;
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  max-width: 62ch;
+}
+.hp-steps > li::before {
+  content: counter(hpstep, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 1px;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  color: var(--beam);
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+.hp-steps a {
+  color: var(--beam);
+}
+.hp-steps a:hover {
+  color: var(--hot);
+}
+
+/* ── Calibration field (settings) ──────────────────────────────────────────
+ * The same four pips as the chrome, but as a real <form> so a pip works with
+ * JavaScript off — which is how the flat theme picker behaved and is worth
+ * keeping for a preference that has to survive a broken bundle. */
+.hp-calfield {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.hp-calfield__name {
+  font-size: var(--fs-sm);
+  color: var(--beam);
+  letter-spacing: var(--tracking-wide);
+}
+/* The pip stays 7px; the TARGET grows to 44px around it. Growing the button
+ * rather than scaling the visual is the system's touch rule. */
+.hp-calfield .hp-cal button {
+  width: 44px;
+  height: 44px;
+}
+
+/* ── Status line ───────────────────────────────────────────────────────────
+ * A state chip beside the sentence explaining that state. Used by the 2FA
+ * pane for On / Off / Pairing. */
+.hp-statusline {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-top: 14px;
+}
+.hp-statusline > span:last-child {
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  max-width: 62ch;
+}
+.hp-statusline .val {
+  color: var(--beam);
+}
+
+/* A standalone field label, for a value that is displayed rather than typed. */
+.hp-fieldlabel {
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+/* Recovery codes. Two columns, tabular, index dimmed — they are transcribed
+ * by hand under time pressure, so the ordinal must not compete with the code. */
+.hp-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 24px;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  letter-spacing: 0.06em;
+  color: var(--hot);
+  font-variant-numeric: tabular-nums;
+}
+.hp-codes i {
+  font-style: normal;
+  color: var(--dim);
+  margin-right: 8px;
+}
+@media (max-width: 700px) {
+  .hp-codes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Long secrets (a provisioning URI) wrap rather than track wide — this one is
+ * copied, not read aloud, so legibility per character matters less than
+ * seeing all of it. */
+.hp-secret--uri {
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+  max-width: 100%;
+}
+
+/* 2FA enrolment: QR beside the manual secret. */
+.hp-2fa {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) 1fr;
+  gap: 18px;
+  align-items: start;
+  margin-top: 18px;
+}
+@media (max-width: 700px) {
+  .hp-2fa {
+    grid-template-columns: 1fr;
+  }
+}
+/* The ONE white surface in the system, and deliberately so: a QR is scanned by
+ * a camera, and a beam-tinted or inverted backdrop makes readers reject it.
+ * The SVG carries its own quiet zone. Bracketed like a Plane so it still reads
+ * as part of the volume rather than as a pasted-in image. */
+.hp-qr {
+  position: relative;
+  display: grid;
+  place-items: center;
+  padding: 12px;
+  background: #ffffff;
+}
+.hp-qr::before,
+.hp-qr::after {
+  content: "";
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border: 1px solid var(--beam);
+}
+.hp-qr::before {
+  top: -1px;
+  left: -1px;
+  border-right: 0;
+  border-bottom: 0;
+}
+.hp-qr::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: 0;
+  border-top: 0;
+}
+.hp-qr img {
+  display: block;
+}
+
+/* The one-time-code field: wide tracking and centred, because it is read off a
+ * phone one digit at a time. */
+.hp-otp {
+  letter-spacing: 0.4em;
+  font-size: var(--fs-lg);
+  text-align: center;
+  max-width: 220px;
+}
+
+/* ── CalibrationChoice ─────────────────────────────────────────────────────
+ * The settings-scale calibration picker: name and character beside the pip,
+ * because here the reader is deciding rather than nudging.
+ *
+ * A lit hairline box, never a filled swatch — the flat system used a colour
+ * chip with a rounded accent bar, and reproducing that would put the one
+ * vocabulary this language removed back on the page. The pip carries the hue;
+ * the box carries the state. */
+.hp-calchoice {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.hp-calchoice button {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.18);
+  padding: 12px 14px;
+  display: grid;
+  gap: 4px;
+  transition: border-color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+}
+.hp-calchoice button:hover {
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.42);
+}
+.hp-calchoice button[data-active='true'] {
+  border-color: var(--hot);
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.07);
+}
+.hp-calchoice button:focus-visible {
+  outline: 1px solid var(--hot);
+  outline-offset: 3px;
+}
+/* The hue lives here and nowhere else, so a calibration is identifiable
+ * before it is applied. */
+.hp-calchoice .pip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pip);
+  box-shadow: 0 0 8px var(--pip);
+}
+.hp-calchoice .nm {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  color: var(--beam);
+}
+.hp-calchoice button[data-active='true'] .nm {
+  color: var(--hot);
+}
+.hp-calchoice .ch {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+@media (max-width: 700px) {
+  .hp-calchoice {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ── Grant rows (sharing) ──────────────────────────────────────────────────
+ * One row per person or org you have granted access to, or who has granted it
+ * to you. Not a `MeterRow`: there is no rank and no share-of-total to meter —
+ * a grant is a fact, not a quantity — so it gets its own row shape.
+ *
+ * The activity line ("viewed 4 times · last 2d ago") is a caption and stays
+ * dim. It matters that the reader can see a share being USED without it
+ * competing with the handle. */
+.hp-grant {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 9px 0;
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.1);
+}
+.hp-grant:first-of-type {
+  border-top: 0;
+}
+.hp-grant[data-expired='true'] {
+  opacity: 0.62;
+}
+.hp-grant__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 200px;
+}
+.hp-grant__who a,
+.hp-grant__who > span:first-child {
+  font-size: var(--fs-sm);
+  letter-spacing: var(--tracking-wide);
+  color: var(--beam);
+  font-variant-numeric: tabular-nums;
+}
+.hp-grant__who a:hover {
+  color: var(--hot);
+}
+.hp-grant__note {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+}
+.hp-grant__act {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.hp-grant__act-btns {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hp-grant__act-btns a {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--beam);
+}
+.hp-grant__act-btns a:hover {
+  color: var(--hot);
+}
+
+/* Bulk-operations row above the grant list. */
+.hp-bulkrow {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+/* The report disclosure inside an inbound row. `<details>` because the system
+ * ships no accordion and this genuinely is one — inventing a component for a
+ * control most readers never open would be the wrong trade. */
+.hp-report {
+  flex-basis: 100%;
+}
+.hp-report > summary {
+  cursor: pointer;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding: 4px 0;
+  list-style: none;
+}
+.hp-report > summary::-webkit-details-marker {
+  display: none;
+}
+.hp-report > summary::before {
+  content: '▸ ';
+  color: var(--beam);
+}
+.hp-report[open] > summary::before {
+  content: '▾ ';
+}
+.hp-report > summary:hover {
+  color: var(--beam);
+}
+
+/* ── Sparkline ─────────────────────────────────────────────────────────────
+ * Daily counts as bar heights. Height and brightness, never hue — and a zero
+ * day draws as a stub rather than being dropped, because the gaps are part of
+ * the shape. */
+.hp-spark {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 54px;
+  margin-top: 4px;
+}
+.hp-spark i {
+  flex: 1;
+  min-width: 3px;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.42);
+  transition: background var(--t-fast) var(--ease-out);
+}
+.hp-spark i[data-peak='true'] {
+  background: var(--hot);
+}
+
+/* ── Preset chips (sharing quick-start) ────────────────────────────────────
+ * The flat version drew rounded, filled pills — the exact vocabulary this
+ * language removed. A preset is a lit hairline box like every other control
+ * here; the active one lights rather than fills. */
+.hp-preset {
+  font: inherit;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  padding: 5px 11px;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.22);
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
+}
+.hp-preset:hover {
+  color: var(--beam);
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.45);
+}
+.hp-preset[data-active='true'] {
+  color: var(--hot);
+  border-color: var(--hot);
+}
+.hp-preset:focus-visible {
+  outline: 1px solid var(--hot);
+  outline-offset: 2px;
+}
+
+/* Native datetime-local: same deal as the select — the closed control is
+ * ours, the picker is the platform's. Tint the calendar indicator so it is
+ * not a black glyph on the void. */
+.hp-datetime::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.55;
+  cursor: pointer;
+}
+.hp-datetime::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
+/* The profile-view headline. A figure, so it glows — and the only thing in
+ * that pane that does. */
+.hp-viewcount {
+  margin-top: 12px;
+  font-size: var(--fs-2xl);
+  font-weight: 300;
+  letter-spacing: var(--tracking-tight);
+  color: var(--hot);
+  font-variant-numeric: tabular-nums;
+  text-shadow:
+    0 0 12px rgba(var(--hR), var(--hG), var(--hB), 0.55),
+    0 0 40px rgba(var(--bR), var(--bG), var(--bB), 0.35);
+}
+
+/* ── Pairing code ──────────────────────────────────────────────────────────
+ * Read off one screen and typed into another, so tracking is wide and the
+ * figure is lit — mis-transcribing it is the failure mode, not mis-reading
+ * the label above it. */
+.hp-paircode {
+  margin-top: 14px;
+  padding: 16px 20px;
+  font-size: var(--fs-xl);
+  font-weight: 300;
+  letter-spacing: 0.42em;
+  color: var(--hot);
+  font-variant-numeric: tabular-nums;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+  border-left: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.34);
+  text-shadow: 0 0 14px rgba(var(--bR), var(--bG), var(--bB), 0.6);
+  word-break: break-all;
+}
+.hp-paircode--idle {
+  color: var(--dim);
+  text-shadow: none;
+}
+
+/* ── Device tabs ───────────────────────────────────────────────────────────
+ * Links, not rail state: selecting a device re-fetches its batches
+ * server-side. Underline lights on the current one, matching RangeTabs. */
+.hp-devtabs {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
+}
+.hp-devtabs a {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 2px;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--dim);
+}
+.hp-devtabs a:hover {
+  color: var(--beam);
+}
+.hp-devtabs a[aria-current='page'] {
+  color: var(--hot);
+}
+.hp-devtabs a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: var(--hot);
+  box-shadow: 0 0 7px var(--hot);
+}
+/* Online marker. A lit dot, not a word, because it sits beside a name. */
+.hp-devtabs a > i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--good);
+  box-shadow: 0 0 6px var(--good);
+}
+
+/* A checkbox in the beam. The switch component is for a standalone toggle;
+ * this is a checkbox inside a form that posts, so it keeps native semantics
+ * and takes a lit box. */
+.hp-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: var(--fs-sm);
+  letter-spacing: var(--tracking-wide);
+  color: var(--beam);
+  cursor: pointer;
+}
+.hp-check input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.42);
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: border-color var(--t-fast) var(--ease-out);
+}
+.hp-check input[type='checkbox']:checked {
+  border-color: var(--hot);
+}
+.hp-check input[type='checkbox']:checked::after {
+  content: '✓';
+  font-size: 11px;
+  line-height: 1;
+  color: var(--hot);
+}
+.hp-check input[type='checkbox']:focus-visible {
+  outline: 1px solid var(--hot);
+  outline-offset: 2px;
+}
+
+/* The crumb's final step doubles as the page's <h1>. It must look exactly like
+ * the span it replaces — this is a semantics fix, not a visual one — so the
+ * heading defaults are reset back to the crumb's own type. */
+.hp-crumb h1 {
+  margin: 0;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  display: inline;
+}
+
+/* A grouped set of checkboxes. `<fieldset>`/`<legend>` because the group has a
+ * shared question ("which tabs?") that a screen reader needs before the
+ * options — the flat original used the same pair. Reset out of the browser's
+ * default box and drawn as a caption plus a row. */
+.hp-fieldset {
+  border: 0;
+  padding: 0;
+  margin: 18px 0 0;
+  min-inline-size: 0;
+}
+.hp-fieldset > legend {
+  padding: 0;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.hp-checkrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  margin-top: 10px;
+}
+
+/* Multi-line field. Vertical resize only — horizontal would let a reader drag
+ * the control out past the pane containing it. */
+.hp-textarea {
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.55;
+  font-family: inherit;
+}
+
+/* Objective list inside a run. The counter is a STEP ORDER, not a rank, and
+ * each row already carries its own state label, so the numbering is dropped
+ * and the rows sit flush. */
+.hp-steps--objectives {
+  gap: 0;
+  margin-top: 14px;
+}
+.hp-steps--objectives > li {
+  counter-increment: none;
+  padding-left: 0;
+  max-width: none;
+}
+.hp-steps--objectives > li::before {
+  content: none;
+}
+
+/* ── Paperdoll (/me/loadout) ───────────────────────────────────────────────
+ * Armour arranged as a body rather than a list. The ARRANGEMENT is the
+ * information — you read "no helmet" off the gap where the head should be,
+ * which six labelled rows do not give you. Consistent with the system's stance
+ * that the imagery is the data: no illustration, just the shape the data makes.
+ *
+ * Ported from the flat `.body-outline` rules, which used the flat token set
+ * (`--bg-elev`, `--border`, `--r-sm`). Those are NOT redefined inside the
+ * projection, so reusing the classes would have produced a half-beam,
+ * half-flat panel. Redrawn on beam alphas with square corners. */
+.hp-paperdoll {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  max-width: 560px;
+  margin: 18px auto 0;
+}
+.hp-paperdoll__row {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+}
+.hp-slot {
+  flex: 0 1 168px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.hp-slot__label {
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+/* An empty slot is a HAIRLINE OUTLINE, not a dashed grey box: the gap is
+ * meaningful, so it is drawn as absence rather than as a broken tile. */
+.hp-slot--empty {
+  min-height: 92px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+}
+.hp-slot--empty .hp-slot__label {
+  opacity: 0.7;
+}
+
+/* ── Kit tile ──────────────────────────────────────────────────────────────
+ * A bounded thumbnail plus the item's name. `object-fit: contain` and an
+ * explicit height are load-bearing: the paperdoll once shipped with full-res
+ * images because a className with no CSS behind it passes every gate — RTL
+ * and Playwright both assert presence, never computed style. */
+.hp-kit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  min-width: 0;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.05);
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.18);
+}
+.hp-kit__img {
+  width: 100%;
+  height: 72px;
+  object-fit: contain;
+  object-position: center;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+}
+.hp-kit__name {
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  word-break: break-word;
+}
+.hp-kit__name a {
+  color: var(--beam);
+}
+.hp-kit__name a:hover {
+  color: var(--hot);
+}
+
+/* Carried gear. Auto-fill so a group of two does not stretch to the width of
+ * a group of twelve. */
+.hp-geargrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+@media (max-width: 720px) {
+  .hp-geargrid {
+    grid-template-columns: repeat(auto-fill, minmax(98px, 1fr));
+  }
+  .hp-slot {
+    flex-basis: 112px;
+  }
+}
+
+/* A Plane caption that is also a heading. Same reasoning as the crumb's h1:
+ * this is a semantics fix, not a visual one, so the heading defaults are reset
+ * back to the caption's own type. */
+.hp-plane .cap h2,
+.hp-plane .cap h3,
+.hp-plane .cap h4 {
+  margin: 0;
+  font: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  display: inline;
+}
+
+/* ── Catalogue browse (/kb/[category]) ─────────────────────────────────────
+ * Facets, sort and the card grid. The facet row reuses `.hp-preset` (the same
+ * lit hairline chip the sharing quick-starts use) rather than minting a third
+ * chip shape — a filter and a preset are the same affordance. */
+.hp-facets,
+.hp-sortrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.hp-sortrow a {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: var(--dim);
+  padding: 3px 0;
+  position: relative;
+}
+.hp-sortrow a:hover {
+  color: var(--beam);
+}
+.hp-sortrow a[aria-current='page'] {
+  color: var(--hot);
+}
+.hp-sortrow a[aria-current='page']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 1px;
+  background: var(--hot);
+  box-shadow: 0 0 7px var(--hot);
+}
+
+.hp-kbgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 20px;
+}
+.hp-kbcard__link {
+  display: block;
+}
+.hp-kbcard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  height: 100%;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.04);
+  transition: border-color var(--t-fast) var(--ease-out), background var(--t-fast) var(--ease-out);
+}
+.hp-kbcard__link:hover .hp-kbcard {
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.45);
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.07);
+}
+.hp-kbcard__name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: var(--tracking-wide);
+  color: var(--beam);
+}
+.hp-kbcard__link:hover .hp-kbcard__name {
+  color: var(--hot);
+}
+/* The raw engine identifier. Kept visible and never prettified — it is what
+ * the log says, and it is what a reader searches by. */
+.hp-kbcard__cls {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+  color: var(--dim);
+  word-break: break-word;
+}
+.hp-kbcard__fact {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+}
+.hp-kbcard__fact i {
+  font-style: normal;
+  color: var(--dim);
+  margin-right: 4px;
+}
+
+.hp-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-wide);
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+}
+.hp-pager__btns {
+  display: flex;
+  gap: 10px;
+}
+/* A pager end-stop is a real control that is simply unavailable, so it is
+ * dimmed in place rather than removed — the row must not reflow as you page. */
+.hp-pager__btns [aria-disabled='true'] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── Inline nav spacing ────────────────────────────────────────────────────
+ * The grouped nav is a flex column when it drops out of the chrome, but in
+ * INLINE mode it becomes a row — and upstream sets `display: flex` on the
+ * container only, leaving the groups and their links with no gaps. At four
+ * links nothing showed; at nine (the public set) it rendered as one word:
+ * "SITEOVERVIEWFEATURESSTARPLATFORM…". */
+.hp-top[data-nav='inline'] .hp-lk {
+  gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.hp-top[data-nav='inline'] .hp-lk .grp {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+/* The group heading is a column label when the nav is a panel; inline it is
+ * just noise between two runs of links, so it is dropped rather than shown
+ * squeezed between them. */
+.hp-top[data-nav='inline'] .hp-lk .grp .ttl {
+  display: none;
+}
+
+/* ── Flat-primitive bridge ─────────────────────────────────────────────────
+ * A COMPATIBILITY LAYER, not an end state. Delete it as each surface's own
+ * components are redrawn.
+ *
+ * The token layer already aliases the flat semantic names onto the beam
+ * (`--fg`, `--border`, `--accent`, `--grid-*` — see tokens-holo.css, whose own
+ * comment says this exists "so component code written against --bg / --fg /
+ * --accent lands in the projection without knowing the beam vocabulary"). So a
+ * flat component inside a `[data-cal]` subtree already picks up beam COLOURS.
+ *
+ * What does NOT map is geometry: `--r-sm` / `--r-xs` / `--r-pill` have no
+ * projection equivalent, because radius is 0 almost everywhere here. A flat
+ * card therefore lands in the volume correctly coloured and still rounded,
+ * which reads as a foreign object rather than a wrong one.
+ *
+ * This squares them off and drops them to a hairline. Scoped to `.hp-stage`,
+ * so nothing here can reach an un-ported flat page. */
+
+/* --------------------------------------------------------------------------
+   Emitter — disclosure, dimmed cell text, preformatted prose.
+
+   `<details>` is the right element for release notes and the preview build:
+   it is closed by default, it is keyboard-operable and it needs no state. The
+   system has no Disclosure primitive and one was not invented for this — these
+   are the beam's own rules applied to a native element.
+
+   `hp-prose--pre` preserves the newlines a GitHub release body arrives with.
+   Without it the notes render as one run-on paragraph.
+   -------------------------------------------------------------------------- */
+.hp-disclose {
+  margin-top: 18px;
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+  padding-top: 14px;
+}
+
+.hp-disclose > summary {
+  cursor: pointer;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  list-style: none;
+}
+
+.hp-disclose > summary::-webkit-details-marker {
+  display: none;
+}
+
+/* The marker is drawn, not left to the UA: a native triangle is the one piece
+   of chrome in this surface that would not be hairline geometry. */
+.hp-disclose > summary::before {
+  content: '+';
+  display: inline-block;
+  width: 1.2em;
+  color: var(--hot);
+}
+
+.hp-disclose[open] > summary::before {
+  content: '−';
+}
+
+.hp-disclose > summary:hover,
+.hp-disclose > summary:focus-visible {
+  color: var(--hot);
+}
+
+.hp-prose--pre {
+  white-space: pre-wrap;
+}
+
+.hp-dim {
+  color: var(--dim);
+}
+
+/* --------------------------------------------------------------------------
+   Directory — the public-profile listing.
+
+   A ranked LIST, per `Directory.jsx`: pilots go through `CatalogueLayout`'s
+   list state, not the entity grid the catalogue uses for ships. The rows reuse
+   the system's own `hp-rw hp-rw--text` meter-row shape (rank / name / value)
+   and only add what a LINK needs, since these rows navigate and `MeterRow`
+   renders a div.
+
+   METERLESS — `hp-rw--text` — because the listing endpoint carries nothing
+   countable to rank by. Drawing a share bar would mean inventing the ranking
+   it displays.
+   -------------------------------------------------------------------------- */
+.hp-dirlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hp-dirrow {
+  text-decoration: none;
+}
+
+.hp-dirrow:hover,
+.hp-dirrow:focus-visible {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+}
+
+.hp-dirrow .nm {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hp-dirrow__handle {
+  color: var(--hot);
+  letter-spacing: 0.02em;
+}
+
+.hp-dirrow__name {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+.hp-dirmore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding-top: 18px;
+}
+
+.hp-dirmore__err {
+  font-size: var(--fs-base);
+  color: var(--bad);
+}
+
+/* --------------------------------------------------------------------------
+   Console — the /admin surface.
+
+   `surface="console"` already kills the ambience (no parallax, scanlines or
+   floor); these are the pieces the admin layout needs on top of it.
+
+   The section nav was a wrapping row of ROUNDED PILLS, which the system does
+   not have: there is no filled control and no radius anywhere in it. An active
+   tab is a lit hairline box; an inactive one is dim text with a transparent
+   border so nothing reflows when the active tab moves.
+   -------------------------------------------------------------------------- */
+/* `.hp-consnav` / `.hp-constab` — the hand-built console tab strip — are GONE.
+   The admin rail is the system's `Console` (`hp-cnav`), which the pattern layer
+   already styles.
+
+   What the strip's styling was actually good for survives as `.hp-toggle`: a
+   lit hairline box for a real TOGGLE (the KB's visual/compact and metric/
+   imperial pairs), which is a different thing from navigation and should not
+   have been sharing a class with it. */
+.hp-toggle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 5px 11px;
+  border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: var(--fs-base);
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.hp-toggle:hover {
+  color: var(--hot);
+}
+
+.hp-toggle[data-active='true'] {
+  color: var(--hot);
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.42);
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+}
+
+@media (pointer: coarse) {
+  .hp-toggle {
+    min-height: 44px;
+  }
+}
+
+/* The console's content column.
+   RENAMED from `.hp-console`, which is the SYSTEM's own class for the Console
+   shell (`hp-console` / `hp-cnav` / `hp-cwork` in the pattern layer). Hand-
+   picking that name meant a bespoke flex column silently fighting the shell's
+   grid the moment the real component was used. */
+.hp-conwork {
+  max-width: 1400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* --------------------------------------------------------------------------
+   Flat-primitive bridge, console additions.
+
+   Twenty admin pages render their own content through this layer. Same terms
+   as the bridge above: A COMPATIBILITY LAYER, not an end state — delete each
+   rule as the page that needs it is redrawn.
+   -------------------------------------------------------------------------- */
+
+/* Loading skeletons. Seven `loading.tsx` files across the app share one class,
+   and its flat form is a FILLED box — `background: var(--surface)` with a 1px
+   border. `--surface` is aliased onto the beam, so it kept rendering as a
+   filled card while everything around it became a lit hairline: the first
+   thing a reader sees on a slow route was the old design.
+
+   The radius came out right only by accident — `var(--r-sm)` is one of the
+   tokens NOT aliased onto the beam, so the declaration was invalid and
+   dropped. That is not something to rely on; it is set explicitly here. */
+.hp-stage .skeleton {
+  background: color-mix(in oklab, var(--beam) 7%, transparent);
+  border: 1px solid color-mix(in oklab, var(--beam) 22%, transparent);
+  border-radius: 0;
+}
+
+/* The eyebrow above each admin page's h1. Sanctioned use (a section category
+   label), so it stays — in the projection's tracked-caption idiom. */
+.hp-stage .ss-eyebrow {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* Admin tables: hairline rules, tracked uppercase heads, tabular figures. The
+   markup is `AdminTable`'s inline-styled <table>, which the flat semantic
+   tokens already colour correctly — this is the geometry those tokens do not
+   carry. */
+.hp-stage table th {
+  font-weight: 400 !important;
+  letter-spacing: 0.18em !important;
+  color: var(--dim) !important;
+}
+
+.hp-stage table td,
+.hp-stage table th {
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.16) !important;
+}
+
+.hp-stage table thead tr {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.04) !important;
+}
+
+/* `!important` is required and is not a specificity workaround: `AdminTable`
+   and most admin pages set these as INLINE styles, which no selector can beat.
+   Removing the inline styles is the real fix and belongs with redrawing each
+   page. The word is placed mid-sentence deliberately — cssnano treats a comment
+   OPENING with it as a licence header and ships it verbatim. */
+
+/* --------------------------------------------------------------------------
+   Landing — the reading half.
+
+   The volume occupies the first screen; this docks below it. `100vh` of margin
+   is what puts it there, and it is the kit's own arrangement: the ring, hero
+   and callouts are the sell, and the reader scrolls past them to the argument.
+
+   Capped at 980px because this half is PROSE. The console's 1400px column is
+   right for an eight-column audit table and wrong for a paragraph.
+   -------------------------------------------------------------------------- */
+.hp-landing-read {
+  position: relative;
+  z-index: 20;
+  margin: 100vh auto 0;
+  max-width: 980px;
+  padding: 0 32px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+}
+
+/* Two columns of feature planes. Collapses to one below the width where a
+   caption plus two lines of body stops fitting side by side. */
+.hp-landing-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 14px;
+  margin-top: 22px;
+}
+
+@media (max-width: 860px) {
+  .hp-landing-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Below the width where `CalloutField` hides itself, the volume is a hero and
+   nothing more — so the reading half starts sooner rather than leaving a screen
+   and a half of empty stage above it. */
+@media (max-width: 1180px) {
+  .hp-landing-read {
+    margin-top: 82vh;
+  }
+}
+
+.hp-legal .lk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+/* --------------------------------------------------------------------------
+   Static marketing pages, inside the projection.
+
+   Chrome-only ports: nine pages keep their own hand-written prose layout and
+   render through the flat-primitive bridge. These rules are the part of that
+   bridge specific to them — and like the rest of it, each is meant to be
+   deleted as the page it serves is redrawn.
+
+   The global `main { max-width: 720px; margin: 0 auto; padding: 48px 24px }`
+   in globals.css no longer applies, because these pages' `<main>` elements
+   became plain `<div>`s (the pane owns the landmark). The column has to be
+   re-established here or the prose runs the full width of the volume.
+   -------------------------------------------------------------------------- */
+.hp-marketing {
+  max-width: 760px;
+}
+
+/* `ss-landing` and `ss-about` were full-bleed or self-columned in the flat
+   shell. Inside a pane the pane owns the width, so they stop fighting it. */
+.hp-marketing .ss-landing,
+.hp-marketing .ss-about {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* The eyebrow above each page's h1 — the sanctioned section-label use, in the
+   projection's tracked-caption idiom. */
+.hp-stage .ss-placard {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hp-stage .ss-lede {
+  color: var(--dim);
+}
+
+/* Rules and section dividers become hairlines on the beam. */
+.hp-stage hr.ss-rule,
+.hp-stage .ss-about-section {
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.16);
+}
+
+.hp-stage .ss-about-section-eyebrow {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* The pages that carried their own footer are now inside a pane that ends
+   where the prose ends; a full-bleed top border would draw across the pane. */
+.hp-marketing footer {
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16) !important;
+}
+
+.hp-marketing footer > div {
+  max-width: none !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* App-section pages framed from a `layout.tsx` — the org detail, submission
+   detail, profile sessions and entities, the donate flow. Full width, unlike
+   `.hp-marketing`: these are tables and record sheets, not prose. */
+.hp-appsection {
+  max-width: none;
+}
+
+/* Auth pages. Narrow, because a sign-in form read across a 1400px stage is
+   worse than one read across a column — and because globals.css's
+   `main { max-width: 720px }` no longer applies once the element is a div. */
+.hp-auth {
+  max-width: 560px;
+}
+
+/* ---- Journey detail --------------------------------------------------------
+   `CatalogueLayout.jsx`'s detail state: a 1.1fr / 1fr grid, figures and
+   what-is-inside on the left, record panes stacked on the right. Collapses to
+   one column where the right-hand records would be too narrow to read — the
+   HoloKV rows and the arrivals table both need their width more than the
+   layout needs its shape. */
+.hp-journeydetail {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 24px;
+  align-items: start;
+  margin-top: 18px;
+}
+
+.hp-journeyrecords {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .hp-journeydetail {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---- catalogue shell -------------------------------------------------------
+   The header `CatalogueLayout.jsx` calls fixed: counts, then categories as
+   tabs. The tab treatment is the spec's own — tracked caps on a hairline
+   baseline, the active one lit and underlined — deliberately NOT the facet
+   chips' box, so "which category am I in" and "which facet am I filtering by"
+   stay two visibly different questions. */
+.hp-cathead {
+  margin-bottom: 26px;
+}
+
+.hp-cattabs {
+  display: flex;
+  gap: 22px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+
+.hp-cattab {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-decoration: none;
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+  transition: color 160ms, border-color 160ms;
+}
+
+.hp-cattab:hover {
+  color: var(--beam);
+}
+
+/* Nothing selected: every tab is equally available, so none of them is the
+   greyed-out one. */
+.hp-cattabs[data-nocurrent='true'] .hp-cattab {
+  color: var(--beam);
+}
+
+.hp-cattab[data-active='true'] {
+  color: var(--hot);
+  border-bottom-color: var(--hot);
+}
+
+/* ---- public profile (/u/[handle]) -----------------------------------------
+   The subject's handle IS the page heading, and it sits in the pane header
+   rather than above the volume — the volume has no titled surface to hang one
+   on. `Pane`'s `level` prop makes that header an h1; no extra rule is needed,
+   because it must look exactly like every other pane header.
+
+   THE PANE DOCKS BELOW THE VOLUME. `.hp-pane` is `opacity: 0;
+   pointer-events: none` until the stage is in `data-mode="detail"` — a pane is
+   what a LENS opens. This screen has no in-page lens (Sessions and Entities
+   are real routes), so a pane inside its overview volume renders invisible and
+   inert. The ring and callouts are the headline; the detail reads underneath,
+   the same offset device `/me` uses for its legal plate. */
+.hp-volume-below {
+  position: relative;
+  z-index: 20;
+  margin: 100vh auto 0;
+  max-width: 980px;
+  padding: 0 32px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Badges beside the pane title: viewer relationship, RSI verification,
+   supporter tier. */
+.hp-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* An aside — what this view does and does not include. Was a filled
+   `--bg-elev` box on the public profile; the beam carries it on the edge, the
+   same shape `.hp-authnote` uses. Shared, so the two cannot drift apart. */
+.hp-note {
+  margin: 0;
+  padding: 10px 0 10px 14px;
+  border-left: 1px solid color-mix(in oklab, var(--beam) 40%, transparent);
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.5;
+  max-width: 68ch;
+}
+
+/* ---- record pages (org detail) --------------------------------------------
+   Same story as the auth bodies: 15 inline style objects, so the projection's
+   redraw could not reach any of them. Two extra faults here, both visible in
+   a Playwright page snapshot rather than in review:
+
+     - The page wrapped itself in `<main>` while the projection already puts
+       `role="main"` on `#hp-content` — a SECOND main landmark on every org
+       route, and globals.css's legacy `main { max-width: 720px }` column with
+       it. The inline `maxWidth:'none', margin:0, padding:0` existed purely to
+       fight that rule; as a div, none of it is needed.
+     - `className="ss-screen-enter"` is the TRAY's animated wrapper. No web
+       stylesheet defines it, so it was doing nothing at all.
+   -------------------------------------------------------------------------- */
+
+.hp-recstack {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.hp-recstack h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+
+.hp-rechead {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.hp-recsub {
+  margin: 6px 0 0;
+  color: var(--dim);
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hp-recsub--block {
+  display: block;
+}
+
+.hp-cardhead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.hp-cardhead h2,
+.hp-cardhead__danger {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+
+.hp-cardhead__danger {
+  color: var(--bad);
+}
+
+.hp-recgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hp-memberlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.hp-memberrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--beam) 22%, transparent);
+}
+
+/* The last row's rule would draw a line under the list with nothing below it.
+   Was an inline `borderBottom: 'none'` spread over the shared object; a data
+   attribute keeps the decision in the markup and the drawing in CSS. */
+.hp-memberrow[data-last='true'] {
+  border-bottom: 0;
+}
+
+.hp-recform {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+  max-width: 520px;
+}
+
+.hp-recform__inline {
+  display: grid;
+  grid-template-columns: 1fr 160px;
+  gap: 12px;
+}
+
+.hp-recform__actions {
+  display: flex;
+  margin-top: 4px;
+}
+
+/* The danger zone. Was a FILLED tint — `color-mix(--danger 6%, --surface)`.
+   The beam has no filled panels, so the warning is carried by the edge. */
+.hp-dangercard {
+  border-color: color-mix(in oklab, var(--bad) 45%, transparent) !important;
+  background: none !important;
+  border-left-width: 2px !important;
+}
+
+.hp-recempty {
+  text-align: center;
+  padding: 32px 16px;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+.hp-recempty__t {
+  font-size: 15px;
+  color: var(--fg);
+  margin-bottom: 6px;
+}
+
+/* ---- /auth/** bodies -------------------------------------------------------
+   Nine auth pages each carried their own copy of the same seven inline style
+   objects — 50 blocks in total, defining a 420px card, a 28px/600 title and a
+   filled explainer box. Inline is the one place a stylesheet cannot reach
+   (`web-ui.md`: "CSS cannot override an inline style without !important"), so
+   the projection's redraw of the flat primitives went straight past all of
+   them: every auth page wore the old type and the old boxes inside the new
+   frame. These classes replace them, so auth is calibrated with everything
+   else and the pages stop each defining their own scale.
+
+   No filled surfaces here and no radii — the flat versions had
+   `background: var(--bg-elev)` with a 1px border, which is the idiom the beam
+   replaced with lit hairlines. */
+
+.hp-authpage {
+  display: block;
+  padding: 0;
+}
+
+.hp-authcard {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* The h1 the page brings itself. `.hp-auth` is the only place a body-level h1
+   survives in the projection, because each auth STATE is its own screen
+   ("Check your email.", "Token invalid or expired.") and that is a better
+   heading than the route's. It takes the beam's voice rather than the flat
+   28px/600 it used to set inline. */
+.hp-authpage h1 {
+  margin: 4px 0 0;
+  font-size: 26px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+
+.hp-authsub {
+  margin: 0;
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+.hp-authform {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: 0;
+}
+
+.hp-authactions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.hp-authlinks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.hp-authfine {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+/* Was a filled `--bg-elev` box. A left-edge lit rule instead, the same shape
+   the `.ss-alert` redraw uses, so a note reads as an aside rather than as a
+   second card. */
+.hp-authnote {
+  padding: 10px 0 10px 14px;
+  border-left: 1px solid color-mix(in oklab, var(--beam) 40%, transparent);
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* Was a 48px filled accent bubble. A hairline square, unfilled. */
+.hp-authmark {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in oklab, var(--beam) 45%, transparent);
+  color: var(--hot);
+  font-size: 18px;
+  font-weight: 300;
+}
+
+/* Six digit cells. The spec draws them as tall lit underlines rather than
+   boxes; the current cell is the hot one, but that is a focus state the server
+   render cannot know, so every cell is lit equally and `:focus` carries it. */
+.hp-otp {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.hp-otp .ss-otp-cell {
+  width: 48px;
+  height: 58px;
+  text-align: center;
+  font-size: 26px;
+  font-weight: 300;
+  color: var(--fg);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--beam) 45%, transparent);
+  border-radius: 0;
+}
+
+.hp-otp .ss-otp-cell:focus {
+  outline: none;
+  border-bottom-color: var(--hot);
+  box-shadow: 0 1px 0 0 var(--hot);
+}
+
+/* The ways in, above whichever step you are on. Sits clear of the form rather
+   than reading as part of it — a reader scanning for the passphrase field
+   should not have to parse four links first. */
+.hp-authsteps {
+  margin-bottom: 26px;
+}
+
+/* Error and not-found boundaries. Narrow: these are two sentences and two
+   actions, and a recovery screen read across a full stage is worse than one
+   read in a column. */
+.hp-boundary {
+  max-width: 620px;
+}
+
+/* `/me` is a full-viewport volume with no scrolling reading half, so the legal
+   plate docks below it rather than inside. `100vh` of offset is the same device
+   the landing page uses for its reading half. */
+.hp-me-legal {
+  position: relative;
+  z-index: 20;
+  margin: 100vh auto 0;
+  max-width: 980px;
+  padding: 0 32px 40px;
+}
+
+/* Account badge — the inbound-share count. Carried on the handle control and
+   on the menu item it belongs to. A lit hairline dot-count, never a filled
+   pill: the system has no rounded control. */
+.hp-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid var(--hot);
+  color: var(--hot);
+  font-size: var(--fs-micro);
+  font-style: normal;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+/* `SubStats` additions: a derivation line under the figure, and the `bad` tone.
+   Both were added while redrawing the knowledge base — see the component. */
+.hp-subs i {
+  display: block;
+  margin-top: 4px;
+  font-style: normal;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+.hp-subs b.b {
+  color: var(--bad);
+}
+
+/* --------------------------------------------------------------------------
+   Knowledge base — the peer-relative stat track.
+
+   The flat version was a rounded pill with a hardcoded amber gradient that did
+   not follow the beam. Here height and brightness carry the value and hue never
+   does; the class median is a tick rather than a second colour.
+   -------------------------------------------------------------------------- */
+.hp-statbar {
+  margin-bottom: 16px;
+}
+
+.hp-statbar__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.hp-statbar__label {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hp-statbar__value {
+  font-size: var(--fs-base);
+  font-weight: 400;
+  color: var(--hot);
+}
+
+.hp-statbar__track {
+  position: relative;
+  height: 6px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.18);
+}
+
+.hp-statbar__track .fill {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--bR), var(--bG), var(--bB), 0.14),
+    rgba(var(--bR), var(--bG), var(--bB), 0.55)
+  );
+  border-right: 1px solid var(--hot);
+}
+
+/* The median is structure, so it is `--dim` — the system's rule is that only
+   figures glow. */
+.hp-statbar__track .median {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--dim);
+  transform: translateX(-50%);
+}
+
+.hp-statbar__band {
+  display: block;
+  margin-top: 6px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+.hp-statbar__band.good {
+  color: var(--ok);
+}
+
+.hp-statbar__band.warn {
+  color: var(--warn);
+}
+
+.hp-statbar__band.bad {
+  color: var(--bad);
+}
+
+/* Contracts referencing a knowledge-base entity. Lit hairline rows rather than
+   the flat `.hud-tile` cards they replaced — same idiom as the directory. */
+.hp-conlist {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.16);
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+}
+
+.hp-conlist__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: var(--void);
+  text-decoration: none;
+  transition: background 0.16s ease;
+}
+
+.hp-conlist__row:hover,
+.hp-conlist__row:focus-visible {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+}
+
+.hp-conlist__row .nm {
+  font-size: var(--fs-base);
+  color: var(--hot);
+}
+
+.hp-conlist__row .dt {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+/* ==========================================================================
+   SANCTIONED SERIES PALETTE — an amendment to the one-colour rule.
+   ==========================================================================
+
+   The system's rule is that hue never carries meaning: only figures glow, and
+   everything on a surface belongs to one beam. That rule has no answer for a
+   chart that must tell SIX SHIPS APART on one radar, and the flat product
+   solved it with nine hardcoded hex values that ignored the calibration
+   entirely — a comparison chart that stayed teal-and-violet on Pyro.
+
+   This is the narrow exception, and it is narrow deliberately:
+
+     - ONLY for multi-series IDENTITY. Never for state, never for good/bad,
+       never for emphasis, never on a single-series chart. Those keep the beam.
+     - The anchor — the entity whose page you are on — is NOT in the palette.
+       It is `--hot`, so the thing you came to read is the thing that glows and
+       the comparators are visibly secondary.
+     - The hues are held at low saturation and rotate around the CALIBRATION's
+       own hue, so the set recalibrates with everything else instead of sitting
+       outside it.
+     - Six, because `CalloutField` caps at six for the same reason: past that
+       they stop being distinguishable and the chart is lying about how much it
+       can show.
+
+   A series beyond the sixth reuses the ramp and MUST be distinguished by dash
+   as well — see `--hp-series-dash-*`.
+   -------------------------------------------------------------------------- */
+[data-cal] {
+  /* Rotations off the beam hue. Kept inside a 200° arc so nothing lands on the
+     complementary colour, which reads as an error state next to `--bad`. */
+  --hp-series-1: color-mix(in oklab, rgb(var(--bR) var(--bG) var(--bB)) 62%, #7fe4c0);
+  --hp-series-2: color-mix(in oklab, rgb(var(--bR) var(--bG) var(--bB)) 62%, #b9a6ff);
+  --hp-series-3: color-mix(in oklab, rgb(var(--bR) var(--bG) var(--bB)) 62%, #ffd98c);
+  --hp-series-4: color-mix(in oklab, rgb(var(--bR) var(--bG) var(--bB)) 62%, #ff9ec2);
+  --hp-series-5: color-mix(in oklab, rgb(var(--bR) var(--bG) var(--bB)) 62%, #8fd0ff);
+  --hp-series-6: color-mix(in oklab, rgb(var(--bR) var(--bG) var(--bB)) 62%, #c8e08a);
+}
+
+/* Legend swatch. A hairline box, never a filled dot — the shape rules still
+   apply inside the exception. */
+.hp-series-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+}
+
+.hp-series-key i {
+  width: 10px;
+  height: 0;
+  border-top: 2px solid currentColor;
+}
+
+.hp-series-key[data-anchor='true'] {
+  color: var(--hot);
+}
+
+/* KB view / units toggle rows. */
+.hp-kbtoggles {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.hp-toggleset {
+  display: flex;
+  gap: 4px;
+}
+
+.hp-togglediv {
+  width: 1px;
+  height: 18px;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.18);
+}
+
+.hp-center {
+  display: flex;
+  justify-content: center;
+}
+
+/* Comparison matrix: sortable row headers and the per-cell fill.
+
+   The fill was a rounded 3px pill in literal amber for the anchor column and
+   flat white elsewhere. Here the anchor column is the beam and the comparators
+   are dim — brightness, not hue, and no radius. */
+.hp-sortbtn {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hp-sortbtn:hover,
+.hp-sortbtn[data-active='true'] {
+  color: var(--hot);
+}
+
+.hp-cellbar {
+  height: 4px;
+  margin-top: 6px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
+}
+
+.hp-cellbar i {
+  display: block;
+  height: 100%;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.28);
+}
+
+.hp-cellbar i[data-anchor='true'] {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.62);
+  border-right: 1px solid var(--hot);
+}
+
+.hp-stage table td .lead {
+  color: var(--hot);
+}
+
+/* --------------------------------------------------------------------------
+   Widget tiles, drawn as planes.
+
+   `Tile` now emits `hp-plane flat` alongside its own classes, so a tile IS a
+   plane rather than a flat card with its corners filed off. These rules undo
+   the flat `.hud-tile` paint that would otherwise fight it — the fill, the
+   radius, the shadow — and put the header on the plane's caption rules.
+
+   The `.hud-tile__*` classes stay because they are load-bearing elsewhere:
+   the mobile type rules key on `:not(.hud-tile__title)`, and the audit spec
+   measures through them.
+   -------------------------------------------------------------------------- */
+.hp-stage .hud-tile {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.035);
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.hp-stage .hud-tile .hud-tile__hd {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
+}
+
+.hp-stage .hud-tile .hud-tile__eyebrow,
+.hp-stage .hud-tile .hud-tile__title {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 400;
+}
+
+/* The title is the tile's name, so it takes the beam; the eyebrow stays
+   structure. Only figures glow — a tile title is a label, not a figure, so it
+   is lifted rather than lit. */
+.hp-stage .hud-tile .hud-tile__title {
+  color: var(--beam);
+}
+
+.hp-stage .hud-tile .hud-tile__sub {
+  margin-left: auto;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  color: var(--dim);
+}
+
+.hp-stage .hud-tile .hud-tile__empty {
+  margin: 0;
+  padding: 10px 0 2px;
+  font-size: var(--fs-base);
+  color: var(--dim);
+}
+
+/* ==========================================================================
+   THE FLAT PRIMITIVES, REDRAWN.
+   ==========================================================================
+
+   This replaces what used to be a "flat-primitive bridge" — a handful of rules
+   that set `border-radius: 0` on `.ss-card` and called it done. That was the
+   wrong idea, and it showed: pages ported that way were the old UI in a new
+   frame, which is exactly what they looked like.
+
+   The class NAMES are legacy — around 500 call sites across ~45 pages use
+   them, and rewriting every one is a different piece of work — but what they
+   DRAW is the design system, not the flat one. A `.ss-card` inside the stage is
+   a plane. A `.ss-btn` is a lit hairline box. A `.ss-alert` is a beam alert.
+   Nothing here is a filled control, nothing has a radius, and every colour is
+   the beam so the whole surface recalibrates together.
+
+   Scoped to `.hp-stage`, so a component rendered outside a projection (a test,
+   a fixture) is untouched.
+
+   These rules retire as call sites move to the real primitives — but they are
+   NOT a holding pattern. A page drawn through them is a projection page.
+   -------------------------------------------------------------------------- */
+
+/* --- Sheets ------------------------------------------------------------- */
+.hp-stage .ss-card,
+.hp-stage .ss-card--elev {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.035);
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+  border-radius: 0;
+  box-shadow: none;
+  padding: 16px 18px;
+}
+
+.hp-stage .ss-card--elev {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.24);
+}
+
+/* A card's leading heading becomes the sheet's tracked caption. */
+.hp-stage .ss-card > h2:first-child,
+.hp-stage .ss-card > h3:first-child,
+.hp-stage .ss-card > header:first-child > h2:first-child {
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--beam);
+}
+
+/* --- Controls ----------------------------------------------------------- */
+/* Never filled, never rounded. The primary reads hotter, not heavier — the
+   system's whole button vocabulary is one lit box at two brightnesses. */
+.hp-stage .ss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 8px 16px;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.32);
+  border-radius: 0;
+  background: transparent;
+  color: var(--beam);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.hp-stage .ss-btn:hover {
+  color: var(--hot);
+  border-color: var(--hot);
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+}
+
+.hp-stage .ss-btn:active {
+  transform: none;
+}
+
+.hp-stage .ss-btn--primary {
+  color: var(--hot);
+  border-color: var(--hot);
+  background: transparent;
+  box-shadow: none;
+}
+
+.hp-stage .ss-btn--primary:hover {
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.1);
+  box-shadow: none;
+}
+
+.hp-stage .ss-btn--ghost {
+  color: var(--dim);
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.22);
+}
+
+.hp-stage .ss-btn--danger {
+  color: var(--bad);
+  border-color: color-mix(in oklab, var(--bad) 55%, transparent);
+}
+
+.hp-stage .ss-btn--danger:hover {
+  color: var(--bad);
+  border-color: var(--bad);
+  background: color-mix(in oklab, var(--bad) 10%, transparent);
+}
+
+.hp-stage .ss-btn[disabled],
+.hp-stage .ss-btn[aria-disabled='true'] {
+  color: var(--dim);
+  border-color: rgba(var(--bR), var(--bG), var(--bB), 0.12);
+  cursor: default;
+}
+
+.hp-stage .ss-btn:focus-visible {
+  outline: 1px solid var(--hot);
+  outline-offset: 2px;
+  border-radius: 0;
+}
+
+/* --- Notices ------------------------------------------------------------ */
+/* A left-edge lit rule, matching `BeamAlert` — not a filled tinted box. */
+.hp-stage .ss-alert {
+  border: 0;
+  border-left: 2px solid var(--beam);
+  border-radius: 0;
+  background: rgba(var(--bR), var(--bG), var(--bB), 0.05);
+  padding: 10px 14px;
+  color: var(--beam);
+  font-size: var(--fs-base);
+  letter-spacing: 0.04em;
+}
+
+.hp-stage .ss-alert--danger {
+  border-left-color: var(--bad);
+  color: var(--bad);
+}
+
+.hp-stage .ss-alert--ok {
+  border-left-color: var(--ok);
+  color: var(--ok);
+}
+
+.hp-stage .ss-alert--warn {
+  border-left-color: var(--warn);
+  color: var(--warn);
+}
+
+/* --- Chips -------------------------------------------------------------- */
+.hp-stage .ss-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.28);
+  border-radius: 0;
+  background: transparent;
+  color: var(--dim);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hp-stage .ss-badge--accent {
+  color: var(--hot);
+  border-color: var(--hot);
+}
+
+.hp-stage .ss-badge--danger {
+  color: var(--bad);
+  border-color: color-mix(in oklab, var(--bad) 50%, transparent);
+}
+
+.hp-stage .ss-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* --- Type --------------------------------------------------------------- */
+/* `.ss-placard` is Michroma in the flat system. The projection has ONE face —
+   Chakra Petch — so the placard becomes a tracked caption instead. */
+.hp-stage .ss-placard {
+  font-family: inherit;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hp-stage .ss-lede {
+  color: var(--dim);
+  font-size: var(--fs-md);
+  line-height: 1.6;
+}
+
+.hp-stage hr.ss-rule {
+  border: 0;
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+}
+
+/* --- Inputs ------------------------------------------------------------- */
+/* Never a boxed field: a lit underline, like `BeamInput`. */
+.hp-stage .ss-input,
+.hp-stage input[type='text'],
+.hp-stage input[type='email'],
+.hp-stage input[type='password'],
+.hp-stage input[type='search'],
+.hp-stage input[type='number'],
+.hp-stage input[type='datetime-local'],
+.hp-stage textarea,
+.hp-stage select {
+  border: 0;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.32);
+  border-radius: 0;
+  background: transparent;
+  color: var(--hot);
+  font: inherit;
+  letter-spacing: 0.04em;
+  padding: 6px 2px;
+}
+
+.hp-stage .ss-input:focus,
+.hp-stage input:focus,
+.hp-stage textarea:focus,
+.hp-stage select:focus {
+  outline: none;
+  border-bottom-color: var(--hot);
+}
+
+/* A native select still needs its own popup readable against the page. */
+.hp-stage select option {
+  background: var(--void);
+  color: var(--beam);
+}
+
+/* --------------------------------------------------------------------------
+   Catalogue — the chip strip and the card grid, matching `Catalogue.jsx`.
+
+   These replace `hp-preset` / `hp-sortrow` / `hp-kbgrid` / `hp-kbcard`, which
+   were invented during the first pass at `/kb` because the spec'd screen was
+   never read. The kit's own answers: one chip style shared by the facet strip
+   and the sort row, and a card grid whose cards are PLANES.
+   -------------------------------------------------------------------------- */
+.hp-catchip {
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 10px;
+  background: none;
+  border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.28);
+  color: var(--dim);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.hp-catchip[data-active='true'],
+.hp-catchip[aria-current='page'] {
+  border-color: var(--hot);
+  color: var(--hot);
+}
+
+.hp-catchip:hover {
+  color: var(--hot);
+}
+
+.hp-catstrip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hp-catlabel {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 8px;
+}
+
+.hp-catgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+  list-style: none;
+  padding: 0;
+}
+
+/* The card IS a plane — `hp-plane flat` on the anchor, so it needs the plane's
+   own reset for a link. */
+.hp-catcard {
+  display: block;
+  height: 100%;
+  margin: 0;
+  text-decoration: none;
+}
+
+.hp-catcard__name {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--hot);
+}
+
+.hp-catcard__cls {
+  display: block;
+  font-size: 11px;
+  color: var(--dim);
+  word-break: break-word;
+  margin-top: 3px;
+}
+
+.hp-catcard__fact {
+  display: block;
+  font-size: 11px;
+  color: var(--beam);
+  margin-top: 2px;
+}
+
+.hp-catcard__fact i {
+  font-style: normal;
+  color: var(--dim);
+}
+
+.hp-catpager {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  font-size: var(--fs-xs);
+  color: var(--dim);
+  letter-spacing: 0.1em;
+}
+
+.hp-catpager__btns {
+  display: flex;
+  gap: 8px;
+}
+
+.hp-cmpwrap {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+}
+
+/* Docs index — the grouped row set from `Docs.jsx`. A label column, then the
+   entries as underlined text links; the active one is lit. No chips: these are
+   destinations in a reference list, not filters. */
+.hp-docsindex {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
+}
+
+.hp-docsindex__row {
+  display: flex;
+  gap: 18px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.hp-docsindex__grp {
+  width: 76px;
+  flex: none;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.hp-docsindex__lk {
+  font-size: var(--fs-sm);
+  letter-spacing: 0.06em;
+  color: var(--dim);
+  text-decoration: none;
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+}
+
+.hp-docsindex__lk:hover {
+  color: var(--hot);
+}
+
+.hp-docsindex__lk[aria-current='page'] {
+  color: var(--hot);
+  border-bottom-color: var(--hot);
+}
+
+/* --------------------------------------------------------------------------
+   Wave speed, repurposed.
+
+   `data-wave-speed` on `<html>` is an ADMIN-CONFIGURABLE setting whose only
+   consumer was the flat `QuantumWarp` canvas. That canvas was hidden behind
+   the projection for the whole port — rendering, running a rAF loop, and
+   invisible — and has now been deleted.
+
+   Deleting the setting with it would have removed an admin feature nobody
+   asked to remove; leaving it would have left a control in the admin console
+   that changes nothing a reader can see. So it drives the ambience the
+   projection actually has: the scanline drift. Same intent — how fast the
+   background moves — against the background that exists.
+
+   `prefers-reduced-motion` still wins: the pattern layer stops the drift
+   outright, and nothing here re-starts it.
+   -------------------------------------------------------------------------- */
+html[data-wave-speed='slow'] .hp-stage::after {
+  animation-duration: 14s;
+}
+
+html[data-wave-speed='fast'] .hp-stage::after {
+  animation-duration: 3.5s;
+}
+
+html[data-wave-speed='off'] .hp-stage::after {
+  animation: none;
+}
+
+/* Contract guide section headings — the tracked caption, still a real `<h2>`
+   because the guide's sections are its structure. */
+.hp-guidehead {
+  margin: 0 0 10px;
+  font-size: var(--fs-micro);
+  font-weight: 400;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+/* A count carried inside a catalogue chip — the taxonomy strip's "Systems 2".
+   Knowing there are two systems and 179 sites is most of the answer before you
+   pick a level. */
+.hp-catchip__n {
+  margin-left: 7px;
+  font-weight: 400;
+  color: var(--hot);
+}
+
+/* The legal plate's read-more. Lit, because it is the one affordance in the
+   plate a reader is meant to follow — the rest of the line is a statement. */
+.hp-legal__more {
+  color: var(--hot);
+  white-space: nowrap;
+}
+
+/* Legal and docs prose sit at a 68ch measure, per `Legal.jsx`: "body copy is a
+   measure, not a plane grid — 68ch and one column". A `ch` measure tracks the
+   face rather than guessing a pixel width for it. */
+.hp-marketing :is(p, li) {
+  max-width: 68ch;
+}

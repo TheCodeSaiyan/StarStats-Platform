@@ -65,5 +65,14 @@ export function defineWidget<D>(cfg: WidgetConfig<D>): WidgetDef {
       if (data == null) return null;
       return cfg.body(data, ctx, size);
     },
+    // Exposed so a DIFFERENT render layer can reuse the same fetch.
+    //
+    // The projection (`/me`) draws the same data as callouts, SubStats and
+    // ranked Planes rather than as flat widget tiles — but every endpoint call,
+    // empty-check, trend computation and provenance caveat in `load` is still
+    // exactly right, and duplicating that per element would be 13 near-copies
+    // drifting apart. So `load` comes out and the projection supplies its own
+    // body; `render` is untouched and the flat profile surface keeps working.
+    load: cfg.load as (ctx: ViewerCtx) => Promise<unknown | null>,
   };
 }

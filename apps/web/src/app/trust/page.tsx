@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { LegalIndex } from '@/components/projection/LegalIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -53,7 +55,17 @@ const CONTACT_EMAIL = 'dojo@thecodesaiyan.io';
  * are true and the page has to say both. */
 export default function TrustPage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="trust"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Trust' },
+      ]}
+      title="Trust"
+      ctx="What runs on your machine, and why it is safe"
+    >
+      <LegalIndex active="/trust" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Trust
       </div>
@@ -273,6 +285,7 @@ export default function TrustPage() {
       <p style={{ marginTop: 'var(--s6)' }}>
         <Link href="/">← Back to StarStats</Link>
       </p>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

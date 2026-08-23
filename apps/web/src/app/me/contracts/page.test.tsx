@@ -1,15 +1,32 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
+
+/**
+ * Render the page and open the Runs group.
+ *
+ * `/me/contracts` is a projection now: its sections are grouped behind the
+ * lens rail and only the active group is MOUNTED, so the run list is not in
+ * the tree until Runs is selected. Every assertion below is about a run, so
+ * they all go through here. The figures and the wording are unchanged — this
+ * only navigates to them.
+ */
+async function renderRuns(): Promise<void> {
+  render(await ContractsPage({}));
+  const runsTab = screen
+    .getAllByRole('button')
+    .find((b) => b.textContent === 'Runs');
+  if (!runsTab) throw new Error('Runs group not found in the lens rail');
+  fireEvent.click(runsTab);
+}
 
 // Mock next/navigation (redirect) and next/link. `redirect` throws, same
 // as the real implementation, so a signed-out render actually halts
 // instead of falling through to code that assumes a session exists.
-vi.mock('next/navigation', () => ({
-  redirect: vi.fn((url: string) => {
-    throw new Error(`REDIRECT:${url}`);
-  }),
-}));
+vi.mock('next/navigation', async () => {
+  const m = await import('@/test-support/next-navigation');
+  return m.navigationMock();
+});
 
 vi.mock('next/link', () => ({
   default: ({
@@ -115,7 +132,7 @@ describe('ContractsPage', () => {
     });
     mockGetContracts.mockResolvedValue(makeResponse([run]));
 
-    render(await ContractsPage({}));
+    await renderRuns();
 
     // Default range is 7d -> 168 hours (see @/lib/range's DEFAULT_RANGE).
     expect(mockGetContracts).toHaveBeenCalledWith('test-token', 24 * 7, true);
@@ -131,7 +148,7 @@ describe('ContractsPage', () => {
     const run = makeRun({ state: 'abandoned', closed_by: 'session_end' });
     mockGetContracts.mockResolvedValue(makeResponse([run]));
 
-    render(await ContractsPage({}));
+    await renderRuns();
 
     expect(screen.getByText(/app exit/)).toBeInTheDocument();
     expect(screen.queryByText('session_end')).not.toBeInTheDocument();
@@ -143,7 +160,7 @@ describe('ContractsPage', () => {
     });
     mockGetContracts.mockResolvedValue(makeResponse([run]));
 
-    render(await ContractsPage({}));
+    await renderRuns();
 
     expect(screen.getByText('obj-fallback')).toBeInTheDocument();
   });
@@ -152,7 +169,7 @@ describe('ContractsPage', () => {
     const run = makeRun({ partial_history: true });
     mockGetContracts.mockResolvedValue(makeResponse([run]));
 
-    render(await ContractsPage({}));
+    await renderRuns();
 
     expect(screen.getByText(/history incomplete/)).toBeInTheDocument();
   });
@@ -167,7 +184,7 @@ describe('ContractsPage', () => {
     );
     mockGetContracts.mockResolvedValue(makeResponse(runs));
 
-    render(await ContractsPage({}));
+    await renderRuns();
 
     expect(screen.getByText(/200 most recent runs of 210/)).toBeInTheDocument();
     expect(screen.getByText(/10 older runs/)).toBeInTheDocument();
@@ -181,8 +198,8 @@ describe('ContractsPage', () => {
 
   it('renders a no-signal state when there are no runs in the window', async () => {
     mockGetContracts.mockResolvedValue(makeResponse([]));
-    render(await ContractsPage({}));
-    expect(screen.getByText(/No Telemetry Signal Found/i)).toBeInTheDocument();
+    await renderRuns();
+    expect(screen.getByText(/No signal in this window/i)).toBeInTheDocument();
   });
 
   it('renders a friendly error state when the fetch fails', async () => {

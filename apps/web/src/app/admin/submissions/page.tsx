@@ -213,7 +213,7 @@ export default async function AdminSubmissionsPage(props: {
                 borderColor: active ? 'var(--border-strong)' : 'transparent',
                 color: active ? 'var(--fg)' : 'var(--fg-muted)',
                 padding: '8px 14px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 fontSize: 13,
                 textDecoration: 'none',
                 display: 'inline-flex',
@@ -227,7 +227,7 @@ export default async function AdminSubmissionsPage(props: {
                 style={{
                   width: 6,
                   height: 6,
-                  borderRadius: 999,
+                  borderRadius: 0,
                   background: probed
                     ? 'var(--accent)'
                     : 'var(--border-strong)',

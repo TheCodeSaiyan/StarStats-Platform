@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata } from 'next';
 import { listChangelog } from '@/lib/roadmap';
 
@@ -29,7 +31,16 @@ export default async function ChangelogPage() {
   const { entries } = await listChangelog();
 
   return (
-    <main
+    <MarketingSurface
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Changelog' },
+      ]}
+      title="Changelog"
+      ctx="What shipped, and when"
+    >
+      <DocsIndex active="/changelog" />
+    <div
       style={{
         maxWidth: 760,
         margin: '0 auto',
@@ -110,6 +121,7 @@ export default async function ChangelogPage() {
           ))}
         </ul>
       )}
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

@@ -30,6 +30,11 @@ import {
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
+import { AppSurface } from '@/components/projection/AppSurface';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import type { Calibration } from 'holo';
 
 export const metadata = { title: "Submissions" };
 
@@ -73,6 +78,13 @@ export default async function SubmissionsPage(props: {
 }) {
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/submissions');
+
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
 
   const params = await props.searchParams;
   const filter = parseFilter(params.status);
@@ -155,10 +167,28 @@ export default async function SubmissionsPage(props: {
   const heading = headingFor(filter, mine);
 
   return (
-    // role="main" over <main> element — avoids the global 720px column
-    // (globals.css) on this full-width page (M-W9).
+    <AppSurface
+      handle={session.claimedHandle}
+      calibration={calibration}
+      nav={navSections({
+        signedIn: true,
+        staffRoles: session.staffRoles,
+      })}
+      crumb={[
+        { label: 'Projection', href: '/me' },
+        { label: 'Submissions' },
+      ]}
+      sections={[
+        {
+          id: 'page',
+          group: 'page',
+          title: 'Submissions',
+          ctx: 'Community-curated parser rules',
+          node: (
+    // No `role="main"`: `Projection` owns the single landmark on
+    // `#hp-content`. Still a DIV — globals.css clamps a bare `<main>` to a
+    // 720px column, which this full-width page cannot take (M-W9).
     <div
-      role="main"
       className="ss-screen-enter"
       style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
     >
@@ -237,7 +267,7 @@ export default async function SubmissionsPage(props: {
                 borderColor: active ? 'var(--border-strong)' : 'transparent',
                 color: active ? 'var(--fg)' : 'var(--fg-muted)',
                 padding: '8px 14px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 fontSize: 13,
                 textDecoration: 'none',
                 display: 'inline-flex',
@@ -253,7 +283,7 @@ export default async function SubmissionsPage(props: {
                   style={{
                     width: 6,
                     height: 6,
-                    borderRadius: 999,
+                    borderRadius: 0,
                     background: probed
                       ? 'var(--accent)'
                       : 'var(--border-strong)',
@@ -276,7 +306,7 @@ export default async function SubmissionsPage(props: {
             borderColor: mine ? 'var(--accent)' : 'var(--border)',
             color: mine ? 'var(--accent)' : 'var(--fg-muted)',
             padding: '8px 14px',
-            borderRadius: 'var(--r-pill)',
+            borderRadius: 0,
             fontSize: 13,
             textDecoration: 'none',
           }}
@@ -314,7 +344,7 @@ export default async function SubmissionsPage(props: {
                 borderColor: active ? 'var(--border-strong)' : 'transparent',
                 color: active ? 'var(--fg)' : 'var(--fg-muted)',
                 padding: '6px 12px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 fontSize: 12,
                 textDecoration: 'none',
               }}
@@ -408,6 +438,15 @@ export default async function SubmissionsPage(props: {
         </nav>
       )}
     </div>
+          ),
+        },
+      ]}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 

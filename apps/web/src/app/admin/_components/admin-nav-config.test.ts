@@ -1,7 +1,7 @@
 /**
  * Invariant tests for the admin nav config.
  *
- * The href test is deliberately FILESYSTEM-backed. `settings-nav-config`
+ * The href test is deliberately FILESYSTEM-backed. A hand-maintained nav
  * documents an equivalent nav/section invariant but its "one link per
  * configured item" test derives the expected count from the very config
  * it is checking, so config and reality can drift with a green suite —

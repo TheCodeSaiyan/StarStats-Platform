@@ -30,9 +30,11 @@ interface ProxyResponse {
 interface Props {
   initialAfter: string;
   limit: number;
+  /** How many rows the server already rendered, so ranks continue. */
+  initialCount: number;
 }
 
-export function DiscoverLoadMore({ initialAfter, limit }: Props) {
+export function DiscoverLoadMore({ initialAfter, limit, initialCount }: Props) {
   const [cursor, setCursor] = useState<string | null>(initialAfter);
   const [extra, setExtra] = useState<DiscoverProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -83,26 +85,24 @@ export function DiscoverLoadMore({ initialAfter, limit }: Props) {
           remains queryable regardless of SSR vs. load-more source. */}
       {gridEl && extra.length > 0
         ? createPortal(
-            extra.map((p) => (
+            extra.map((p, i) => (
               <li key={p.handle}>
-                <DiscoverProfileCard profile={p} />
+                {/* Rank continues the SSR page's numbering rather than
+                    restarting at 1 — a second page that counts from one reads
+                    as a second list. */}
+                <DiscoverProfileCard profile={p} rank={initialCount + i + 1} />
               </li>
             )),
             gridEl,
           )
         : null}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 12,
-          paddingTop: 12,
-        }}
-      >
+      <div className="hp-dirmore">
+        {/* A raw <button>, not `BeamButton`: this one carries `disabled` and a
+            `data-testid` the specs query, and the primitive's own class is all
+            `BeamButton` would add. Same lit hairline box either way. */}
         <button
           type="button"
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           onClick={onClick}
           disabled={loading || cursor === null}
           data-testid="discover-load-more"
@@ -110,10 +110,7 @@ export function DiscoverLoadMore({ initialAfter, limit }: Props) {
           {loading ? 'Loading…' : cursor === null ? 'All loaded' : 'Load more'}
         </button>
         {error ? (
-          <span
-            style={{ color: 'var(--danger)', fontSize: 12 }}
-            role="alert"
-          >
+          <span className="hp-dirmore__err" role="alert">
             Couldn&apos;t load more. Try again.
           </span>
         ) : null}

@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 import { CODE_SIGNING_PUBLISHER } from '@/lib/signing';
@@ -24,7 +26,17 @@ export const metadata: Metadata = {
  * FOUR bundle targets, not two. */
 export default function DocsPage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="docs"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Docs' },
+      ]}
+      title="Docs"
+      ctx="Setup, troubleshooting and reference"
+    >
+      <DocsIndex active="/docs" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Docs
       </div>
@@ -193,6 +205,7 @@ export default function DocsPage() {
           covers each one and why it happens.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

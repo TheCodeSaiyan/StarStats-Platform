@@ -549,7 +549,7 @@ function SharingContext({ context }: { context: UserSharingContext | null }) {
       style={{
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-card)',
+        borderRadius: 0,
         padding: 20,
         display: 'flex',
         flexDirection: 'column',
@@ -791,7 +791,7 @@ function RoleControl({
         padding: '12px 16px',
         background: 'var(--bg-elev)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--r-sm)',
+        borderRadius: 0,
         flexWrap: 'wrap',
       }}
     >
@@ -838,7 +838,7 @@ function RoleControl({
               padding: '6px 10px',
               background: 'var(--bg)',
               border: '1px solid var(--border)',
-              borderRadius: 'var(--r-sm)',
+              borderRadius: 0,
               color: 'var(--fg)',
               fontSize: 12,
               minWidth: 200,

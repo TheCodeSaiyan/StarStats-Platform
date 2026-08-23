@@ -1,3 +1,4 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -34,8 +35,17 @@ export default async function FeaturesPage() {
   if (session) redirect('/me');
 
   return (
+    <MarketingSurface
+      navId="features"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Features' },
+      ]}
+      title="Features"
+      ctx="What StarStats does, in detail"
+    >
     <div className="ss-landing" style={{ minHeight: '100%', position: 'relative' }}>
-      <main style={{ position: 'relative', zIndex: 1, maxWidth: 'none', margin: 0, padding: 0 }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 'none', margin: 0, padding: 0 }}>
         <HeroComparison />
         <SectionTransparency />
         <SectionDashboard />
@@ -45,8 +55,9 @@ export default async function FeaturesPage() {
         <SectionSharing />
         <SectionOwnership />
         <Footer />
-      </main>
+      </div>
     </div>
+    </MarketingSurface>
   );
 }
 
@@ -160,7 +171,7 @@ function BeforePane() {
           position: 'relative',
           flex: 1,
           minHeight: 320,
-          borderRadius: 'var(--r-sm)',
+          borderRadius: 0,
           overflow: 'hidden',
           border: '1px solid var(--border-dim)',
         }}

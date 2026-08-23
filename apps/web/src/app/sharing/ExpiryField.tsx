@@ -45,9 +45,13 @@ export function ExpiryField({
         name="tz_offset_minutes"
         value={String(offsetMinutes)}
       />
+      {/* Native `datetime-local`. Like `BeamSelect`, only the CLOSED control
+          can be styled — the picker itself is OS chrome — so it takes the
+          same `hp-input` lit underline and its own picker-indicator tint. */}
       <input
         type="datetime-local"
         name="expires_at_local"
+        className="hp-input hp-datetime"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         aria-label="Auto-expiry (optional)"

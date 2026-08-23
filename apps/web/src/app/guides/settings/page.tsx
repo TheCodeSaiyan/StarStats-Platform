@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -20,7 +22,18 @@ export const metadata: Metadata = {
  * emptiness reads as a bug, so say it out loud. */
 export default function SettingsGuidePage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="guides"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Guides', href: '/guides' },
+        { label: 'Settings' },
+      ]}
+      title="Settings"
+      ctx="Guides · calibration and consent"
+    >
+      <DocsIndex active="/guides/settings" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Guides
       </div>
@@ -121,7 +134,7 @@ export default function SettingsGuidePage() {
         <div className="ss-about-section-eyebrow">Elsewhere</div>
         <h2>Adjacent pages people look for here.</h2>
         <p>
-          <Link href={'/devices' as Route}>Connected uplinks</Link> — paired
+          <Link href={'/downloads' as Route}>Connected uplinks</Link> — paired
           machines, and where you generate a pairing code or revoke one.{' '}
           <Link href={'/guides/sharing' as Route}>Sharing</Link> — who can
           see your profile, which is deliberately not a settings card.
@@ -132,6 +145,7 @@ export default function SettingsGuidePage() {
           what&apos;s next.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

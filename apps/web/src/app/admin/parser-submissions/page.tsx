@@ -168,7 +168,7 @@ export default async function AdminParserSubmissionsPage(props: {
               data-active={active ? 'true' : undefined}
               style={{
                 padding: '6px 12px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 fontSize: 13,
                 textDecoration: 'none',
                 border: '1px solid',
@@ -202,7 +202,7 @@ export default async function AdminParserSubmissionsPage(props: {
               data-active={active ? 'true' : undefined}
               style={{
                 padding: '6px 12px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 fontSize: 13,
                 textDecoration: 'none',
                 border: '1px solid',
@@ -452,7 +452,7 @@ function StatusPill({ status }: { status: string }) {
       style={{
         display: 'inline-block',
         padding: '2px 10px',
-        borderRadius: 'var(--r-pill)',
+        borderRadius: 0,
         border: '1px solid var(--border)',
         background: m.bg,
         color: m.fg,

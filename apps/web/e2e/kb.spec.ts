@@ -52,17 +52,24 @@ test('kb_landing_renders_four_category_tiles_with_counts', async ({
     page.getByRole('heading', { name: 'Knowledge base', level: 1 }),
   ).toBeVisible();
 
-  // Each tile shows its real static entry count. `exact: true` on the
-  // labels so the tile title 'Vehicles' doesn't collide with the
-  // lower-cased 'vehicles' in a blurb.
-  await expect(page.getByText('Vehicles', { exact: true })).toBeVisible();
-  await expect(page.getByText(REAL_COUNTS.vehicle)).toBeVisible();
-  await expect(page.getByText('Weapons', { exact: true })).toBeVisible();
-  await expect(page.getByText(REAL_COUNTS.weapon)).toBeVisible();
-  await expect(page.getByText('Items', { exact: true })).toBeVisible();
-  await expect(page.getByText(REAL_COUNTS.item)).toBeVisible();
-  await expect(page.getByText('Locations', { exact: true })).toBeVisible();
-  await expect(page.getByText(REAL_COUNTS.location)).toBeVisible();
+  // Each category shows its real static entry count. SCOPED to the catalogue
+  // header, which is where the label and its count now sit together: a
+  // page-wide `getByText('Vehicles', { exact: true })` matches three elements
+  // since the header arrived (the count's label, the tab, the list row) and
+  // resolves to a strict-mode violation rather than a useful assertion.
+  const head = page.locator('.hp-cathead');
+  for (const [label, count] of [
+    ['Vehicles', REAL_COUNTS.vehicle],
+    ['Weapons', REAL_COUNTS.weapon],
+    ['Items', REAL_COUNTS.item],
+    ['Locations', REAL_COUNTS.location],
+  ] as const) {
+    const stat = head.locator('.hp-subs > div', { hasText: label });
+    await expect(stat, label).toHaveCount(1);
+    // The header carries the bare figure; the word "entries" belongs to the
+    // pane's own context line, not to every stat in the strip.
+    await expect(stat, label).toContainText(count.replace(' entries', ''));
+  }
 });
 
 test('kb_category_renders_entries_and_links_to_detail', async ({ page }) => {

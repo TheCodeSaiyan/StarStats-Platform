@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -55,7 +57,17 @@ const listStyle: React.CSSProperties = {
 
 export default function LorePage() {
   return (
-    <main>
+    <MarketingSurface
+      navId="home"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Lore' },
+      ]}
+      title="Lore"
+      ctx="The in-universe framing"
+    >
+      <DocsIndex active="/lore" />
+    <div>
       <div className="ss-placard" style={{ marginBottom: 'var(--s2)' }}>
         Lore · Star Citizen
       </div>
@@ -206,6 +218,7 @@ export default function LorePage() {
           </li>
         </ul>
       </LoreSection>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

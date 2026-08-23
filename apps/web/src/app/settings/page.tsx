@@ -20,10 +20,6 @@ import {
   type ProfileResponse,
   type RsiStartResponse,
 } from '@/lib/api';
-import { HangarCard } from '@/components/HangarCard';
-import { TimezoneControl } from './_components/TimezoneControl';
-import { ThemeSwatchGrid } from '@/components/theme/ThemeSwatchGrid';
-import { WaveSpeedControl } from '@/components/theme/WaveSpeedControl';
 import { logger } from '@/lib/logger';
 import { clearSession, getSession } from '@/lib/session';
 import { getTheme, isTheme, setTheme, type Theme } from '@/lib/theme';
@@ -33,8 +29,23 @@ import {
   type WaveSpeed,
 } from '@/lib/wave-speed';
 import { SecuritySection } from './_components/SecuritySection';
-import { SettingsNav } from './_components/SettingsNav';
-import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
+import {
+  BeamButton,
+  BeamChip,
+  BeamInput,
+  HoloKV,
+  Plane,
+  type Calibration,
+} from 'holo';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import {
+  SettingsProjection,
+  type SettingsSection,
+} from './_projection/SettingsProjection';
+import { TimezoneField, WaveSpeedField } from './_projection/controls';
+import { HangarPane } from './_projection/HangarPane';
+import { SETTINGS_GROUPS } from './_projection/groups';
 
 export const metadata = { title: "Settings" };
 
@@ -48,83 +59,18 @@ interface SearchParams {
 // We're inside `.ss-main` (provided by the app shell in layout.tsx), so the
 // page itself just needs a centered stack of cards. No `.dashboard` wrapper.
 
-const pageStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  maxWidth: 1120,
-  margin: '0 auto',
-  padding: '8px 0 60px',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: '6px 0 0',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
-const cardHeaderStyle: React.CSSProperties = {
-  padding: '13px 16px 0',
-};
 
-const cardBodyStyle: React.CSSProperties = {
-  padding: '11px 16px 14px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 10,
-};
 
-const cardFooterStyle: React.CSSProperties = {
-  padding: '14px 24px',
-};
 
-const cardTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 15,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-  color: 'var(--fg)',
-};
 
-const dangerCardStyle: React.CSSProperties = {
-  borderColor: 'color-mix(in oklab, var(--danger) 35%, transparent)',
-};
 
-const dangerCardTitleStyle: React.CSSProperties = {
-  ...cardTitleStyle,
-  color: 'var(--danger)',
-};
 
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  margin: 0,
-};
 
-const formRowEndStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  flexWrap: 'wrap',
-  alignItems: 'flex-end',
-};
 
-const mutedStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 13,
-  lineHeight: 1.55,
-};
 
-const dimStyle: React.CSSProperties = {
-  color: 'var(--fg-dim)',
-  fontSize: 12,
-};
 
-const monoStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-};
 
 // ---------------------------------------------------------------------------
 
@@ -466,495 +412,429 @@ export default async function SettingsPage(props: {
     redirect('/');
   }
 
-  return (
-    // role="main" over <main> element — global 720px column avoidance (M-W9).
-    <div role="main" style={pageStyle}>
-      <header>
-        <InstrumentStrip
-          title={<h1 className="hud-tile__title" style={{ margin: 0, fontSize: 18 }}>Preferences</h1>}
-          context="Account settings"
-        />
-        <p style={subtitleStyle}>
-          Manage your StarStats email, RSI handle ownership, sharing,
-          and security.
-        </p>
-      </header>
+  // ---------------------------------------------------------------------
+  // Sections.
+  //
+  // The ten anchored sections of the real page, each carrying the same server
+  // action it always did. `id` values are LOAD-BEARING: every action above
+  // redirects to one of these fragments, and `/settings/2fa` redirects to
+  // `#security`. `group` maps a section onto the lens rail, and the rail is
+  // driven from the fragment so those redirects still land — see
+  // SettingsProjection.
+  //
+  // Groups and ids are the ones the scroll-spy sidebar used before the port
+  // (its `settings-nav-config.ts` is gone with it); `_projection/groups.ts` is
+  // now the group axis, and these ids remain the redirect targets.
+  // ---------------------------------------------------------------------
+  const sections: SettingsSection[] = [
+    {
+      id: 'retention',
+      title: 'Retention',
+      ctx: 'What is stored, and for how long',
+      group: 'general',
+      node: (
+        <>
+          {/* `Calibrate.jsx` carries a Retention pane and this page had none —
+              so the single most important fact about a reader's data, that it
+              is bounded at a year, was surfaced nowhere in settings.
 
-      {status && (
-        <div className="ss-alert ss-alert--ok" role="status">
-          <span>{labelForStatus(status)}</span>
-        </div>
-      )}
-      {error && (
-        <div className="ss-alert ss-alert--danger" role="alert">
-          <span>{labelForError(error)}</span>
-        </div>
-      )}
-
-      {/* Two-pane shell (M2): categorised scroll-spy sidebar + a
-          scrollable content pane of grouped cards. The sidebar is a
-          client component (IntersectionObserver); every server action
-          stays in this server component, on the section it belongs to.
-          Section DOM order matches the nav order in
-          _components/settings-nav-config.ts so scroll-spy stays
-          monotonic. */}
-      <div className="ss-settings-layout">
-        <SettingsNav />
-
-        <div className="ss-settings-content">
-          {/* ===== General ===== */}
-
-          {/* Theme — clicking a swatch submits the form, which writes the
-              ss-theme cookie and persists via PUT /v1/me/preferences.
-              Appearance is the slot the animation-speed program extends. */}
-          <section className="ss-card" id="theme">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Theme
-              </div>
-              <h2 style={cardTitleStyle}>Appearance</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              <p style={mutedStyle}>
-                Themes change accent and surface tints. Type, spacing, and
-                component shapes are identical across all four. Your choice
-                follows you across devices.
-              </p>
-              <ThemeSwatchGrid activeTheme={activeTheme} themeAction={themeAction} />
-
-              <hr className="ss-rule" />
-
-              <div className="ss-eyebrow" style={{ marginBottom: 4 }}>
-                Wave speed
-              </div>
-              <p style={mutedStyle}>
-                How fast the sweep animation runs when you switch themes.
-                &quot;Off&quot; swaps instantly with no animation.
-              </p>
-              <WaveSpeedControl
-                initialSpeed={activeWaveSpeed}
-                waveSpeedAction={waveSpeedAction}
-              />
-            </div>
-          </section>
-
-          <section className="ss-card" id="timezone">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Time zone
-              </div>
-              <h2 style={cardTitleStyle}>Local time</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              <p style={mutedStyle}>
-                Used for facts about when you fly. Without it, times of day
-                are left out entirely.
-              </p>
-              <TimezoneControl
-                storedTimezone={storedTimezone}
-                timezoneAction={timezoneAction}
-              />
-            </div>
-          </section>
-
-          {/* ===== Account ===== */}
-
-          {/* Account info */}
-          <section className="ss-card" id="account-info">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Account
-              </div>
-              <h2 style={cardTitleStyle}>Account info</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              <dl className="ss-kv">
-                <dt>Email</dt>
-                <dd>
-                  <span className="mono">{me.email}</span>{' '}
-                  {me.email_verified ? (
-                    <span className="ss-badge ss-badge--ok">
-                      <span className="ss-badge-dot" />
-                      Verified
-                    </span>
-                  ) : (
-                    <span className="ss-badge ss-badge--warn">
-                      <span className="ss-badge-dot" />
-                      Not verified
-                    </span>
-                  )}
-                </dd>
-                <dt>RSI handle</dt>
-                <dd>
-                  <span className="mono">{me.claimed_handle}</span>{' '}
-                  {me.rsi_verified ? (
-                    <span className="ss-badge ss-badge--ok">
-                      <span className="ss-badge-dot" />
-                      Ownership proven
-                    </span>
-                  ) : (
-                    <span className="ss-badge ss-badge--warn">
-                      Unverified
-                    </span>
-                  )}
-                </dd>
-                {me.pending_email && (
+              THE SPEC'S OTHER ROWS ARE OMITTED, NOT FAKED. Its pane also lists
+              parsed-event bytes, a raw-archive size, a free-tier cap and an
+              export format, with "Export manifest" and "Re-parse local store"
+              buttons. The product has no export endpoint and no storage
+              accounting — inventing figures for them here would be exactly the
+              inferred-field trap the kit's own Unverified banner warns about,
+              on the page where a reader goes to find out what is kept. */}
+          <HoloKV
+            items={[
+              { k: 'Window', v: '365 days (server maximum)' },
+              { k: 'Beyond the window', v: 'Deleted, not archived' },
+            ]}
+          />
+          <p className="hp-prose">
+            Nothing older than a year is kept, which is why the widest range is
+            called All rather than all time — it is everything there is, not
+            everything there ever was.
+          </p>
+        </>
+      ),
+    },
+    {
+      id: 'theme',
+      title: 'Emitter calibration',
+      ctx: 'Repaints every projection',
+      group: 'general',
+      // The picker is a CLIENT control: it recalibrates in place (repaints the
+      // beam and fires the shock) instead of posting and reloading, which the
+      // flat `ThemeSwatchGrid` also did via its wave. The projection supplies
+      // it; `themeAction` below is the no-JS fallback.
+      slot: 'calibration',
+      node: (
+        <>
+          <p className="hp-prose">
+            Calibrations change the beam. Type, spacing and component shapes
+            are identical across all four. Your choice follows you across
+            devices.
+          </p>
+          <Plane tilt="flat" cap="Wave speed" style={{ marginTop: 22 }}>
+            <p className="hp-prose" style={{ marginTop: 0 }}>
+              How fast the sweep runs when you recalibrate. &quot;Off&quot;
+              swaps instantly with no animation.
+            </p>
+            <WaveSpeedField
+              active={activeWaveSpeed}
+              waveSpeedAction={waveSpeedAction}
+            />
+          </Plane>
+        </>
+      ),
+    },
+    {
+      id: 'timezone',
+      title: 'Local time',
+      ctx: 'Used for facts about when you fly',
+      group: 'general',
+      node: (
+        <>
+          <p className="hp-prose">
+            Used for facts about when you fly. Without it, times of day are
+            left out entirely.
+          </p>
+          <TimezoneField
+            storedTimezone={storedTimezone}
+            timezoneAction={timezoneAction}
+          />
+        </>
+      ),
+    },
+    {
+      id: 'account-info',
+      title: 'Account info',
+      group: 'account',
+      node: (
+        <div style={{ marginTop: 16 }}>
+          <HoloKV
+            items={[
+              {
+                k: 'Email',
+                v: (
                   <>
-                    <dt>Pending email</dt>
-                    <dd>
-                      <span className="mono">{me.pending_email}</span>{' '}
-                      <span style={dimStyle}>· awaiting confirmation</span>
-                    </dd>
+                    {me.email}{' '}
+                    <BeamChip tone={me.email_verified ? 'good' : 'warn'} dot>
+                      {me.email_verified ? 'Verified' : 'Not verified'}
+                    </BeamChip>
                   </>
-                )}
-              </dl>
-            </div>
-          </section>
-
-          {/* Email verification */}
-          <section className="ss-card" id="verification">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Email
-              </div>
-              <h2 style={cardTitleStyle}>Email verification</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              {me.email_verified ? (
-                <p style={mutedStyle}>
-                  Your email is verified. Nothing to do here.
-                </p>
-              ) : (
-                <>
-                  <p style={mutedStyle}>
-                    We sent a verification link to{' '}
-                    <span className="mono" style={{ color: 'var(--fg)' }}>
-                      {me.email}
-                    </span>
-                    . Didn&apos;t arrive? Resend it below.
-                  </p>
-                  <form action={resendAction} style={formStyle}>
-                    <button
-                      type="submit"
-                      className="ss-btn ss-btn--primary"
-                      style={{ alignSelf: 'flex-start' }}
-                    >
-                      Resend verification link
-                    </button>
-                  </form>
-                </>
-              )}
-            </div>
-          </section>
-
-          {/* RSI handle ownership */}
-          <section className="ss-card" id="rsi">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Identity
-              </div>
-              <h2 style={cardTitleStyle}>RSI handle ownership</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              {me.rsi_verified ? (
-                <>
-                  <p style={mutedStyle}>
-                    <span className="mono" style={{ color: 'var(--fg)' }}>
-                      {me.claimed_handle}
-                    </span>{' '}
-                    is verified. Sharing, org access, and your public profile
-                    are unlocked.
-                  </p>
-                  <hr className="ss-rule" />
-                  <div className="ss-eyebrow">Citizen profile snapshot</div>
-                  {profileLoadFailed ? (
-                    <p style={mutedStyle}>
-                      Couldn&apos;t load the snapshot. Refresh the page or try
-                      again.
-                    </p>
-                  ) : profile ? (
-                    <p style={mutedStyle}>
-                      Last refreshed:{' '}
-                      <span className="mono" style={{ color: 'var(--fg)' }}>
-                        {new Date(profile.captured_at).toLocaleString()}
-                      </span>
-                      .
-                    </p>
-                  ) : (
-                    <p style={mutedStyle}>
-                      You haven&apos;t snapshotted your RSI profile yet.
-                      Snapshots cache your display name, badges, bio, and
-                      primary org so they show up on your dashboard and
-                      public profile.
-                    </p>
-                  )}
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexWrap: 'wrap',
-                      gap: 8,
-                      alignItems: 'center',
-                    }}
-                  >
-                    <form action={refreshProfileAction}>
-                      <button type="submit" className="ss-btn ss-btn--ghost">
-                        Refresh profile
-                      </button>
-                    </form>
-                    <form action={refreshRsiOrgsAction}>
-                      <button type="submit" className="ss-btn ss-btn--ghost">
-                        Refresh orgs
-                      </button>
-                    </form>
-                  </div>
-                </>
-              ) : rsiLoadFailed ? (
-                <p style={mutedStyle}>
-                  Couldn&apos;t load the verification code right now. Refresh
-                  the page to try again.
-                </p>
-              ) : rsiState ? (
-                <>
-                  <p style={mutedStyle}>
-                    Public profiles and shares display{' '}
-                    <span className="mono" style={{ color: 'var(--fg)' }}>
-                      {me.claimed_handle}
-                    </span>{' '}
-                    as your name. To stop someone signing up as a handle that
-                    isn&apos;t theirs, we ask you to prove ownership by
-                    pasting a short code into your RSI public bio. Once
-                    verified, you can take the code back out — we only check
-                    it once.
-                  </p>
-                  <ol
-                    style={{
-                      margin: 0,
-                      paddingLeft: 20,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: 14,
-                      color: 'var(--fg-muted)',
-                      fontSize: 13,
-                      lineHeight: 1.55,
-                    }}
-                  >
-                    <li>
-                      Open{' '}
-                      <a
-                        href={`https://robertsspaceindustries.com/citizens/${encodeURIComponent(me.claimed_handle)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ color: 'var(--accent)' }}
-                      >
-                        your RSI public profile
-                      </a>{' '}
-                      and click <em>Edit Profile</em> → <em>Bio</em>.
-                    </li>
-                    <li>
-                      Paste this code anywhere in the bio:
-                      <div className="ss-secret" style={{ marginTop: 8 }}>
-                        <code className="ss-secret-code mono">
-                          {rsiState.code}
-                        </code>
-                      </div>
-                      <small style={{ ...dimStyle, display: 'block', marginTop: 6 }}>
-                        Expires{' '}
-                        <span className="mono">
-                          {rsiState.expires_at
-                            ? new Date(rsiState.expires_at).toLocaleString()
-                            : '(unknown)'}
-                        </span>
-                        . Save the bio in RSI before pressing the button below.
-                      </small>
-                    </li>
-                    <li>
-                      <form action={rsiCheckAction} style={formStyle}>
-                        <button
-                          type="submit"
-                          className="ss-btn ss-btn--primary"
-                          style={{ alignSelf: 'flex-start' }}
-                        >
-                          Check now
-                        </button>
-                      </form>
-                    </li>
-                  </ol>
-                </>
-              ) : (
-                <p style={mutedStyle}>Loading verification state…</p>
-              )}
-            </div>
-          </section>
-
-          {/* Hangar sync status (read-only). The tray writes; the web
-              shows the result so the user can confirm the link is alive
-              without leaving the browser. Wrapped so the sidebar has a
-              #hangar anchor to target — HangarCard renders its own card. */}
-          <div id="hangar">
-            <HangarCard snapshot={hangar} />
-          </div>
-
-          {/* Change email */}
-          <section className="ss-card" id="email">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Account lifecycle
-              </div>
-              <h2 style={cardTitleStyle}>Change sign-in email</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              {me.pending_email ? (
-                <p style={mutedStyle}>
-                  We sent a confirmation link to{' '}
-                  <span className="mono" style={{ color: 'var(--fg)' }}>
-                    {me.pending_email}
-                  </span>
-                  . Click it from that inbox to switch your sign-in email.
-                  The link expires in 24 hours. Submitting this form again
-                  replaces the pending address.
-                </p>
-              ) : (
-                <p style={mutedStyle}>
-                  We&apos;ll send a confirmation link to the new address; your
-                  sign-in email only changes after you click it. Your
-                  current address (
-                  <span className="mono" style={{ color: 'var(--fg)' }}>
-                    {me.email}
-                  </span>
-                  ) stays active until then.
-                </p>
-              )}
-              <form action={emailChangeAction} style={formRowEndStyle}>
-                <label className="ss-label" style={{ flex: 1, minWidth: 220 }}>
-                  <span className="ss-label-text">New email</span>
-                  <input
-                    className="ss-input"
-                    type="email"
-                    name="new_email"
-                    required
-                    autoComplete="email"
-                    spellCheck={false}
-                    placeholder="new@example.com"
-                  />
-                </label>
-                <button type="submit" className="ss-btn ss-btn--primary">
-                  {me.pending_email
-                    ? 'Replace pending change'
-                    : 'Send confirmation link'}
-                </button>
+                ),
+              },
+              {
+                k: 'RSI handle',
+                v: (
+                  <>
+                    {me.claimed_handle}{' '}
+                    <BeamChip tone={me.rsi_verified ? 'good' : 'warn'} dot>
+                      {me.rsi_verified ? 'Ownership proven' : 'Unverified'}
+                    </BeamChip>
+                  </>
+                ),
+              },
+              ...(me.pending_email
+                ? [
+                    {
+                      k: 'Pending email',
+                      v: `${me.pending_email} · awaiting confirmation`,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+        </div>
+      ),
+    },
+    {
+      id: 'verification',
+      title: 'Email verification',
+      group: 'account',
+      node: me.email_verified ? (
+        <p className="hp-prose">Your email is verified. Nothing to do here.</p>
+      ) : (
+        <>
+          <p className="hp-prose">
+            We sent a verification link to{' '}
+            <span className="val">{me.email}</span>. Didn&apos;t arrive?
+            Resend it below.
+          </p>
+          <form action={resendAction} className="hp-formcol">
+            <BeamButton
+              type="submit"
+              variant="primary"
+              style={{ alignSelf: 'flex-start' }}
+            >
+              Resend verification link
+            </BeamButton>
+          </form>
+        </>
+      ),
+    },
+    {
+      id: 'rsi',
+      title: 'RSI handle ownership',
+      ctx: me.rsi_verified ? 'Proven' : 'Unproven',
+      group: 'account',
+      node: me.rsi_verified ? (
+        <>
+          <p className="hp-prose">
+            <span className="val">{me.claimed_handle}</span> is verified.
+            Sharing, org access and your public profile are unlocked.
+          </p>
+          <Plane
+            tilt="flat"
+            cap="Citizen profile snapshot"
+            style={{ marginTop: 20 }}
+          >
+            {profileLoadFailed ? (
+              <p className="hp-prose" style={{ marginTop: 0 }}>
+                Couldn&apos;t load the snapshot. Refresh the page or try again.
+              </p>
+            ) : profile ? (
+              <p className="hp-prose" style={{ marginTop: 0 }}>
+                Last refreshed:{' '}
+                <span className="val">
+                  {new Date(profile.captured_at).toLocaleString()}
+                </span>
+                .
+              </p>
+            ) : (
+              <p className="hp-prose" style={{ marginTop: 0 }}>
+                You haven&apos;t snapshotted your RSI profile yet. Snapshots
+                cache your display name, badges, bio and primary org so they
+                show up on your projection and public profile.
+              </p>
+            )}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 10,
+                marginTop: 16,
+              }}
+            >
+              <form action={refreshProfileAction}>
+                <BeamButton type="submit" variant="ghost">
+                  Refresh profile
+                </BeamButton>
+              </form>
+              <form action={refreshRsiOrgsAction}>
+                <BeamButton type="submit" variant="ghost">
+                  Refresh orgs
+                </BeamButton>
               </form>
             </div>
-          </section>
-
-          {/* ===== Security ===== */}
-
-          {/* Password — full-width row above the inline Security/2FA card.
-              The 2FA wizard is now absorbed into <SecuritySection> below
-              (audit v2 §09: inline 2FA wizard into Settings → Security),
-              so password no longer shares a 2-col row with it. */}
-          <section className="ss-card" id="password">
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Security
-              </div>
-              <h2 style={cardTitleStyle}>Change password</h2>
-            </header>
-            <div style={cardBodyStyle}>
-              <form action={passwordAction} style={formStyle}>
-                <label className="ss-label">
-                  <span className="ss-label-text">Current password</span>
-                  <input
-                    className="ss-input"
-                    type="password"
-                    name="current_password"
-                    required
-                    autoComplete="current-password"
-                  />
-                </label>
-                <label className="ss-label">
-                  <span className="ss-label-text">New password</span>
-                  <input
-                    className="ss-input"
-                    type="password"
-                    name="new_password"
-                    required
-                    minLength={12}
-                    autoComplete="new-password"
-                  />
-                  <small style={dimStyle}>At least 12 characters.</small>
-                </label>
-                <button
+          </Plane>
+        </>
+      ) : rsiLoadFailed ? (
+        <p className="hp-prose">
+          Couldn&apos;t load the verification code right now. Refresh the page
+          to try again.
+        </p>
+      ) : rsiState ? (
+        <>
+          <p className="hp-prose">
+            Public profiles and shares display{' '}
+            <span className="val">{me.claimed_handle}</span> as your name. To
+            stop someone signing up as a handle that isn&apos;t theirs, we ask
+            you to prove ownership by pasting a short code into your RSI public
+            bio. Once verified, you can take the code back out — we only check
+            it once.
+          </p>
+          <ol className="hp-steps">
+            <li>
+              Open{' '}
+              <a
+                href={`https://robertsspaceindustries.com/citizens/${encodeURIComponent(me.claimed_handle)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                your RSI public profile
+              </a>{' '}
+              and click <em>Edit Profile</em> → <em>Bio</em>.
+            </li>
+            <li>
+              Paste this code anywhere in the bio:
+              <div className="hp-secret">{rsiState.code}</div>
+              <p className="hp-prose" style={{ marginTop: 8 }}>
+                Expires{' '}
+                <span className="val">
+                  {rsiState.expires_at
+                    ? new Date(rsiState.expires_at).toLocaleString()
+                    : '(unknown)'}
+                </span>
+                . Save the bio in RSI before pressing the button below.
+              </p>
+            </li>
+            <li>
+              <form action={rsiCheckAction} className="hp-formcol">
+                <BeamButton
                   type="submit"
-                  className="ss-btn ss-btn--primary"
+                  variant="primary"
                   style={{ alignSelf: 'flex-start' }}
                 >
-                  Update password
-                </button>
+                  Check now
+                </BeamButton>
               </form>
-            </div>
-          </section>
+            </li>
+          </ol>
+        </>
+      ) : (
+        <p className="hp-prose">Loading verification state…</p>
+      ),
+    },
+    {
+      id: 'hangar',
+      title: 'Device sync',
+      ctx: 'Written by the tray, read here',
+      group: 'account',
+      node: <HangarPane snapshot={hangar} />,
+    },
+    {
+      id: 'email',
+      title: 'Change sign-in email',
+      group: 'account',
+      node: (
+        <>
+          {me.pending_email ? (
+            <p className="hp-prose">
+              We sent a confirmation link to{' '}
+              <span className="val">{me.pending_email}</span>. Click it from
+              that inbox to switch your sign-in email. The link expires in 24
+              hours. Submitting this form again replaces the pending address.
+            </p>
+          ) : (
+            <p className="hp-prose">
+              We&apos;ll send a confirmation link to the new address; your
+              sign-in email only changes after you click it. Your current
+              address (<span className="val">{me.email}</span>) stays active
+              until then.
+            </p>
+          )}
+          <form action={emailChangeAction} className="hp-formrow">
+            <BeamInput
+              id="new-email"
+              label="New email"
+              type="email"
+              name="new_email"
+              required
+              autoComplete="email"
+              spellCheck={false}
+              placeholder="new@example.com"
+            />
+            <BeamButton type="submit" variant="primary">
+              {me.pending_email
+                ? 'Replace pending change'
+                : 'Send confirmation link'}
+            </BeamButton>
+          </form>
+        </>
+      ),
+    },
+    {
+      id: 'password',
+      title: 'Change password',
+      group: 'security',
+      node: (
+        <form action={passwordAction} className="hp-formcol">
+          <BeamInput
+            id="current-password"
+            label="Current password"
+            type="password"
+            name="current_password"
+            required
+            autoComplete="current-password"
+          />
+          <BeamInput
+            id="new-password"
+            label="New password"
+            type="password"
+            name="new_password"
+            required
+            minLength={12}
+            autoComplete="new-password"
+            hint="At least 12 characters."
+          />
+          <BeamButton
+            type="submit"
+            variant="primary"
+            style={{ alignSelf: 'flex-start' }}
+          >
+            Update password
+          </BeamButton>
+        </form>
+      ),
+    },
+    {
+      id: 'security',
+      title: 'Two-factor authentication',
+      group: 'security',
+      // The wizard's state machine is untouched by the port — only its
+      // rendering moved into the beam. See SecuritySection.
+      node: <SecuritySection me={me} />,
+    },
+    {
+      id: 'danger',
+      title: 'Delete account',
+      ctx: 'No undo',
+      group: 'danger',
+      node: (
+        <form id="delete-account-form" action={deleteAction}>
+          <p className="hp-prose">
+            Deleting your account is permanent. Your account record, paired
+            devices and active shares are removed. Your ingested game events
+            are pseudonymised — the row count is preserved so anyone you shared
+            with keeps a coherent timeline, but the data is no longer linked to
+            you or your RSI handle. To confirm, type your RSI handle (
+            <span className="val">{me.claimed_handle}</span>) below.
+          </p>
+          <div className="hp-formrow">
+            <BeamInput
+              id="confirm-handle"
+              label="Type your handle to confirm"
+              type="text"
+              name="confirm_handle"
+              required
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={me.claimed_handle}
+            />
+            <BeamButton type="submit" variant="danger">
+              Delete my account
+            </BeamButton>
+          </div>
+        </form>
+      ),
+    },
+  ];
 
-          {/* Inline two-factor wizard. Replaces the standalone /settings/2fa
-              route per audit v2 §07 (absorb) and §09 (inline into Settings).
-              Anchored at #security so the legacy redirect from /settings/2fa
-              lands on this card. */}
-          <SecuritySection me={me} />
+  // `?status=` is a success and `?error=` is a failure; both map through the
+  // same label tables the flat page used, so the copy is unchanged.
+  const notice = status
+    ? { tone: 'good' as const, message: labelForStatus(status) }
+    : error
+      ? { tone: 'bad' as const, message: labelForError(error) }
+      : null;
 
-          {/* ===== Danger zone ===== */}
-
-          {/* Danger zone */}
-          <section className="ss-card" id="danger" style={dangerCardStyle}>
-            <header style={cardHeaderStyle}>
-              <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
-                Danger zone
-              </div>
-              <h2 style={dangerCardTitleStyle}>Delete account</h2>
-            </header>
-            <form
-              id="delete-account-form"
-              action={deleteAction}
-              style={{ margin: 0 }}
-            >
-              <div style={cardBodyStyle}>
-                <p style={mutedStyle}>
-                  Deleting your account is permanent. Your account record,
-                  paired devices, and active shares are removed. Your
-                  ingested game events are pseudonymised — the row count is
-                  preserved so anyone you shared with keeps a coherent
-                  timeline, but the data is no longer linked to you or your
-                  RSI handle. To confirm, type your RSI handle (
-                  <span className="mono" style={{ color: 'var(--fg)' }}>
-                    {me.claimed_handle}
-                  </span>
-                  ) below.
-                </p>
-                <label className="ss-label">
-                  <span className="ss-label-text">
-                    Type your handle to confirm
-                  </span>
-                  <input
-                    className="ss-input"
-                    type="text"
-                    name="confirm_handle"
-                    required
-                    autoComplete="off"
-                    spellCheck={false}
-                    placeholder={me.claimed_handle}
-                    style={monoStyle}
-                  />
-                </label>
-              </div>
-              <hr className="ss-rule" />
-              <div style={cardFooterStyle}>
-                <button type="submit" className="ss-btn ss-btn--danger">
-                  Delete my account
-                </button>
-              </div>
-            </form>
-          </section>
-        </div>
-      </div>
-    </div>
+  return (
+    <SettingsProjection
+      handle={session.claimedHandle}
+      calibration={activeTheme as Calibration}
+      nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'settings')}
+      groups={SETTINGS_GROUPS}
+      sections={sections}
+      notice={notice}
+      themeAction={themeAction}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 

@@ -46,7 +46,16 @@ export function HandlingRadar({ axes, size = 260 }: { axes: RadarAxis[]; size?: 
         );
       })}
       <polygon points={medPoly} fill="none" stroke="rgba(255,255,255,0.28)" strokeWidth={1.2} strokeDasharray="3 3" />
-      <polygon points={shipPoly} fill="rgba(232,162,60,0.16)" stroke="var(--accent, #E8A23C)" strokeWidth={2} />
+      {/* The beam, not a literal amber. This polygon IS the entity you are
+          reading, so it takes `--hot` and glows; hardcoding the flat accent
+          meant the one shape on the page representing "you are here" ignored
+          the calibration. */}
+      <polygon
+        points={shipPoly}
+        fill="rgba(var(--bR), var(--bG), var(--bB), 0.14)"
+        stroke="var(--hot)"
+        strokeWidth={1.6}
+      />
     </svg>
   );
 }

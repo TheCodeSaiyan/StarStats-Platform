@@ -127,7 +127,7 @@ export function SupporterChip({ status, size = 'md' }: Props) {
         color: palette.fg,
         background: palette.bg,
         border: `1px solid ${palette.border}`,
-        borderRadius: 'var(--r-pill)',
+        borderRadius: 0,
         whiteSpace: 'nowrap',
       }}
     >

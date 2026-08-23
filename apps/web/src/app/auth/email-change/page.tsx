@@ -8,34 +8,9 @@ interface SearchParams {
   token?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
 
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 460,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
 
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
 /**
  * Email-change confirmation landing page.
@@ -57,11 +32,11 @@ export default async function EmailChangeVerifyPage(props: {
 
   if (!token) {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Email change</span>
-          <h1 style={titleStyle}>Missing confirmation token.</h1>
-          <p style={subtitleStyle}>
+          <h1>Missing confirmation token.</h1>
+          <p className="hp-authsub">
             The confirmation link is incomplete. Open the email we sent to your
             new email and click the link from there.
           </p>
@@ -69,7 +44,7 @@ export default async function EmailChangeVerifyPage(props: {
             Back to account settings
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -97,11 +72,11 @@ export default async function EmailChangeVerifyPage(props: {
 
   if (outcome === 'changed') {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Email updated</span>
-          <h1 style={titleStyle}>Email updated.</h1>
-          <p style={subtitleStyle}>
+          <h1>Email updated.</h1>
+          <p className="hp-authsub">
             Your sign-in email is now{' '}
             <strong className="mono" style={{ color: 'var(--fg)' }}>
               {newEmail ?? 'updated'}
@@ -115,17 +90,17 @@ export default async function EmailChangeVerifyPage(props: {
             Back to account settings
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (outcome === 'taken') {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Email change</span>
-          <h1 style={titleStyle}>Address already in use.</h1>
-          <p style={subtitleStyle}>
+          <h1>Address already in use.</h1>
+          <p className="hp-authsub">
             Someone else claimed that email while your confirmation was
             pending. Pick a different address and try again from your settings
             page.
@@ -137,16 +112,16 @@ export default async function EmailChangeVerifyPage(props: {
             Back to account settings
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         <span className="ss-eyebrow">Email change</span>
-        <h1 style={titleStyle}>Token invalid or expired.</h1>
-        <p style={subtitleStyle}>
+        <h1>Token invalid or expired.</h1>
+        <p className="hp-authsub">
           This confirmation link is no longer valid. Start the email change
           again from your account settings.
         </p>
@@ -154,6 +129,6 @@ export default async function EmailChangeVerifyPage(props: {
           Back to account settings
         </Link>
       </div>
-    </main>
+    </div>
   );
 }

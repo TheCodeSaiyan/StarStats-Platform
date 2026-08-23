@@ -14,6 +14,23 @@ import { render, screen } from '@testing-library/react';
 
 // Keep the pure formatters real — the point is to exercise the page's
 // wiring to them, not to restate their unit tests.
+/**
+ * The page reads the session and the calibration for its CHROME — it is a
+ * public route and nothing on it is gated on either — and it renders a
+ * projection surface, whose chrome and crumb navigate. All three need stubbing
+ * to render this server component directly: `cookies()` throws outside a
+ * request scope, and `useRouter` needs the app router mounted.
+ *
+ * A `vi.mock` factory REPLACES the module, so `next/navigation` goes through
+ * the shared helper rather than a partial mock.
+ */
+vi.mock('@/lib/session', () => ({ getSession: async () => null }));
+vi.mock('@/lib/theme', () => ({ getTheme: async () => 'terra' }));
+vi.mock('next/navigation', async () => {
+  const m = await import('@/test-support/next-navigation');
+  return m.navigationMock();
+});
+
 vi.mock('@/lib/contracts', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/contracts')>();
   return { ...actual, getContractDetail: vi.fn() };

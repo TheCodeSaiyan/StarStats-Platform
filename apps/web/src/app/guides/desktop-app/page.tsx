@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -23,7 +25,18 @@ export const metadata: Metadata = {
  * pointing at a tab that is not labelled Settings. */
 export default function DesktopAppGuidePage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="guides"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Guides', href: '/guides' },
+        { label: 'Desktop app' },
+      ]}
+      title="Desktop app"
+      ctx="Guides · the emitter, pane by pane"
+    >
+      <DocsIndex active="/guides/desktop-app" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Docs
       </div>
@@ -230,6 +243,7 @@ export default function DesktopAppGuidePage() {
           else gets to see them.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

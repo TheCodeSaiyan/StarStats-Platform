@@ -4,6 +4,24 @@ import { render, screen } from '@testing-library/react';
 // Keep the rest of @/lib/contracts real (facet/sort/filter helpers are
 // pure and exercised elsewhere in contracts.test.ts); only stub the
 // network-backed listing calls so the page renders from fixtures.
+/**
+ * The page reads the session and the calibration for its CHROME — it is a
+ * public route and nothing in the catalogue is gated on either. Both reach for
+ * `cookies()`, which throws outside a request scope, so rendering this server
+ * component directly in vitest needs them stubbed. Signed-OUT is the right
+ * default here: it is the state a stranger browsing the catalogue is in.
+ */
+vi.mock('@/lib/session', () => ({ getSession: async () => null }));
+
+// The page now renders a projection surface, whose chrome and crumb navigate —
+// so `useRouter` has to exist. A `vi.mock` factory REPLACES the module, which
+// is why this goes through the shared helper rather than a partial mock.
+vi.mock('next/navigation', async () => {
+  const m = await import('@/test-support/next-navigation');
+  return m.navigationMock();
+});
+vi.mock('@/lib/theme', () => ({ getTheme: async () => 'terra' }));
+
 vi.mock('@/lib/contracts', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/contracts')>();
   return {

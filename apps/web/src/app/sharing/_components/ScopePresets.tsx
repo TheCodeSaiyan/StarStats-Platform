@@ -157,15 +157,8 @@ export function ScopePresets() {
         marginTop: 4,
       }}
     >
-      <span
-        style={{
-          fontSize: 11,
-          color: 'var(--fg-dim)',
-          alignSelf: 'center',
-          marginRight: 4,
-        }}
-      >
-        Quick start:
+      <span className="hp-fieldlabel" style={{ margin: 0, alignSelf: 'center' }}>
+        Quick start
       </span>
       {PRESETS.map((p) => {
         const isActive = active === p.id;
@@ -178,20 +171,8 @@ export function ScopePresets() {
             onClick={() => {
               if (applyPreset(p)) setActive(p.id);
             }}
-            style={{
-              fontSize: 12,
-              padding: '4px 10px',
-              borderRadius: 'var(--r-pill)',
-              border: '1px solid',
-              borderColor: isActive
-                ? 'var(--accent)'
-                : 'var(--border)',
-              background: isActive
-                ? 'color-mix(in oklab, var(--accent) 14%, var(--bg-elev))'
-                : 'var(--bg-elev)',
-              color: isActive ? 'var(--fg)' : 'var(--fg-muted)',
-              cursor: 'pointer',
-            }}
+            className="hp-preset"
+            data-active={isActive ? 'true' : undefined}
           >
             {p.label}
           </button>

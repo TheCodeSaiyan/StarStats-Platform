@@ -86,7 +86,7 @@ export function DeleteAccountPanel({
           <fieldset
             style={{
               border: '1px solid var(--border)',
-              borderRadius: 'var(--r-sm)',
+              borderRadius: 0,
               padding: '12px 14px',
               display: 'flex',
               flexDirection: 'column',
@@ -149,7 +149,7 @@ export function DeleteAccountPanel({
                 padding: '8px 12px',
                 background: 'var(--bg-elev)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-sm)',
+                borderRadius: 0,
                 color: 'var(--fg)',
               }}
             />

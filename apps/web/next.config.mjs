@@ -101,6 +101,10 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_PLATFORM_VERSION: PLATFORM_VERSION,
   },
+  // `holo` is a workspace package shipping TS/TSX SOURCE with real runtime
+  // JSX. Unlike `api-client-ts` (types only, fully erased at build time) it
+  // must actually be compiled, so Next has to be told to transpile it.
+  transpilePackages: ['holo'],
   serverExternalPackages: otelExternals,
   async headers() {
     return [

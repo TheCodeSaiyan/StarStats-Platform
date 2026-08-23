@@ -122,7 +122,7 @@ function ActivePanel({ status }: { status: SupporterStatusDto }) {
               style={{
                 color: 'var(--accent)',
                 padding: '2px 8px',
-                borderRadius: 'var(--r-pill)',
+                borderRadius: 0,
                 background: 'color-mix(in oklab, var(--accent) 12%, transparent)',
                 border: '1px solid var(--accent)',
               }}

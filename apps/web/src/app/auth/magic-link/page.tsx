@@ -10,62 +10,6 @@ interface SearchParams {
   error?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
-
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 460,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
-
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
-
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
-
-const iconBubbleStyle: React.CSSProperties = {
-  width: 48,
-  height: 48,
-  borderRadius: 12,
-  background: 'var(--accent-soft)',
-  color: 'var(--accent)',
-  display: 'grid',
-  placeItems: 'center',
-  border: '1px solid color-mix(in oklab, var(--accent) 35%, transparent)',
-  fontSize: 20,
-  fontWeight: 600,
-};
-
-const formStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  margin: 0,
-};
-
-const actionsStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-  marginTop: 4,
-};
-
 /**
  * Magic-link request page.
  *
@@ -92,14 +36,14 @@ export default async function MagicLinkPage(props: {
 
   if (sent === '1') {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
-          <div style={iconBubbleStyle} aria-hidden="true">
+      <div className="hp-authpage">
+        <div className="hp-authcard">
+          <div className="hp-authmark" aria-hidden="true">
             ↗
           </div>
           <span className="ss-eyebrow">One-time link sent</span>
-          <h1 style={titleStyle}>Check your email.</h1>
-          <p style={subtitleStyle}>
+          <h1>Check your email.</h1>
+          <p className="hp-authsub">
             If an account exists for that address, we&apos;ve sent a one-shot
             sign-in link. The link expires in 15 minutes and works exactly
             once.
@@ -115,7 +59,7 @@ export default async function MagicLinkPage(props: {
             </span>
           </div>
 
-          <div style={actionsStyle}>
+          <div className="hp-authactions">
             <Link href="/auth/magic-link" className="ss-btn ss-btn--primary">
               Resend link
             </Link>
@@ -124,16 +68,16 @@ export default async function MagicLinkPage(props: {
             </Link>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         <span className="ss-eyebrow">Magic link</span>
-        <h1 style={titleStyle}>Sign in with a one-time link.</h1>
-        <p style={subtitleStyle}>
+        <h1>Sign in with a one-time link.</h1>
+        <p className="hp-authsub">
           Skip the password — we&apos;ll send a link to your email that
           signs you in for one session.
         </p>
@@ -144,7 +88,7 @@ export default async function MagicLinkPage(props: {
           </div>
         )}
 
-        <form action={action} style={formStyle}>
+        <form action={action} className="hp-authform">
           <label className="ss-label">
             <span className="ss-label-text">Email</span>
             <input
@@ -157,7 +101,7 @@ export default async function MagicLinkPage(props: {
               placeholder="you@example.com"
             />
           </label>
-          <div style={actionsStyle}>
+          <div className="hp-authactions">
             <button type="submit" className="ss-btn ss-btn--primary">
               Send magic link to my email
             </button>
@@ -167,6 +111,6 @@ export default async function MagicLinkPage(props: {
           </div>
         </form>
       </div>
-    </main>
+    </div>
   );
 }

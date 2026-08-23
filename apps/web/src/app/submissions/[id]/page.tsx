@@ -286,7 +286,7 @@ export default async function SubmissionDetailPage(props: {
                 color: 'var(--fg)',
                 background: 'var(--bg)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-md)',
+                borderRadius: 0,
                 padding: '14px 16px',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-all',
@@ -328,7 +328,7 @@ export default async function SubmissionDetailPage(props: {
                 color: 'var(--fg-muted)',
                 background: 'var(--bg)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--r-md)',
+                borderRadius: 0,
                 padding: '14px 16px',
                 whiteSpace: 'pre-wrap',
                 wordBreak: 'break-all',
@@ -413,7 +413,7 @@ export default async function SubmissionDetailPage(props: {
                     borderColor: submission.viewer_voted
                       ? 'var(--accent)'
                       : 'var(--border)',
-                    borderRadius: 'var(--r-md)',
+                    borderRadius: 0,
                     padding: '12px 14px',
                     width: '100%',
                     fontSize: 13,
@@ -453,7 +453,7 @@ export default async function SubmissionDetailPage(props: {
                   padding: '10px 12px',
                   background: 'var(--bg)',
                   border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-sm)',
+                  borderRadius: 0,
                   lineHeight: 1.5,
                   margin: 0,
                 }}
@@ -595,7 +595,7 @@ function FlagDisclosure({
           style={{
             background: 'var(--bg)',
             border: '1px solid var(--border)',
-            borderRadius: 'var(--r-sm)',
+            borderRadius: 0,
             color: 'var(--fg)',
             font: 'inherit',
             fontSize: 13,
@@ -714,7 +714,7 @@ function Lifecycle({ status }: { status: string }) {
             style={{
               width: 10,
               height: 10,
-              borderRadius: 999,
+              borderRadius: 0,
               background:
                 p.state === 'done'
                   ? 'var(--ok)'

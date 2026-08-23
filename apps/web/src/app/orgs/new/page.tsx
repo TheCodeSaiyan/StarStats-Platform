@@ -3,6 +3,11 @@ import { redirect } from 'next/navigation';
 import { ApiCallError, createOrg } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
+import { AppSurface } from '@/components/projection/AppSurface';
+import { getTheme } from '@/lib/theme';
+import { navSections } from '@/lib/nav';
+import { setCalibrationAction } from '@/app/me/_projection/actions';
+import type { Calibration } from 'holo';
 
 export const metadata = { title: "New org" };
 
@@ -64,6 +69,13 @@ export default async function NewOrgPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
   const session = await getSession();
+
+  let calibration: Calibration = 'terra';
+  try {
+    calibration = (await getTheme(session?.token)) as Calibration;
+  } catch {
+    // Preference read failed; the default stands.
+  }
   if (!session) redirect('/auth/login?next=/orgs/new');
 
   const { error } = await props.searchParams;
@@ -104,7 +116,26 @@ export default async function NewOrgPage(props: {
   }
 
   return (
-    <main className="ss-screen-enter" style={mainStyle}>
+    <AppSurface
+      handle={session?.claimedHandle}
+      calibration={calibration}
+      nav={navSections({
+        signedIn: Boolean(session),
+        staffRoles: session?.staffRoles,
+      })}
+      crumb={[
+        { label: 'Projection', href: '/me' },
+        { label: 'Orgs', href: '/orgs' },
+        { label: 'New org' },
+      ]}
+      sections={[
+        {
+          id: 'page',
+          group: 'page',
+          title: 'New org',
+          ctx: 'Register an RSI org',
+          node: (
+    <div className="ss-screen-enter" style={mainStyle}>
       <header>
         <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
           Orgs · new
@@ -154,7 +185,16 @@ export default async function NewOrgPage(props: {
           </div>
         </form>
       </section>
-    </main>
+    </div>
+          ),
+        },
+      ]}
+      notice={null}
+      onCalibrate={async (id: string) => {
+        'use server';
+        await setCalibrationAction(id);
+      }}
+    />
   );
 }
 

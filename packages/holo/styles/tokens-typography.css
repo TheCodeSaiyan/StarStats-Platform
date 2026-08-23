@@ -1,0 +1,39 @@
+/* Type. One face carries the projection: Chakra Petch — a squared technical
+ * sans with tabular figures, used for readouts, labels and prose alike.
+ * Weight does the work Michroma used to: 300 for large values, 500/600 for
+ * tracked micro-labels. Tracking is the loudest signal in the system.
+ */
+[data-cal] {
+  /* `--font-chakra-petch` is set by next/font/google in app/layout.tsx, which
+   * self-hosts the face at build time. The literal name is kept as the next
+   * fallback so this sheet still works in the design system's own static
+   * previews, where the CDN @import supplies it. */
+  --font-sans: var(--font-chakra-petch), 'Chakra Petch', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  /* Figures are the same face — tabular numerals come from
+   * font-feature-settings, not a second family. These two are aliases kept
+   * so component code asking for a display or mono face still lands here. */
+  --font-display: var(--font-sans);
+  --font-mono: var(--font-sans);
+
+  /* Micro-label metrics (the projection's placard) */
+  --placard-size: 9px;        /* @kind font */
+  --placard-tracking: 0.24em;
+
+  /* Readout scale — projection values are large and thin */
+  --fs-micro: 8.5px;
+  --fs-xs: 9.5px;
+  --fs-sm: 11.5px;
+  --fs-base: 12px;
+  --fs-md: 15px;
+  --fs-lg: 19px;
+  --fs-xl: 26px;
+  --fs-2xl: 40px;
+  --fs-3xl: 104px;
+
+  /* Tracking ladder — every uppercase label picks one of these */
+  --tracking-tight: -0.035em;
+  --tracking-wide: 0.1em;
+  --tracking-wider: 0.2em;
+  --tracking-widest: 0.32em;
+  --tracking-unit: 0.44em;
+}

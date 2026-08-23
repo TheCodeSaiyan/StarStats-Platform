@@ -112,15 +112,29 @@ test('admin_user_sees_admin_link_and_landing_page_renders', async ({
     page.getByRole('heading', { name: 'Moderation' }),
   ).toBeVisible();
 
-  // The Admin affordance now lives in the @handle account menu (Plan 4
-  // nav restructure) rather than the left rail. Open the menu and
-  // confirm the staff user sees the Admin item.
-  await page.getByRole('button', { name: /@TheCodeSaiyan/ }).click();
-  await expect(
-    // Account menu is a disclosure (nav of links) since M-W10 — the
-    // Admin affordance is a link, not a role=menuitem.
-    page.getByRole('link', { name: 'Admin' }),
-  ).toBeVisible();
+  // The staff affordance is offered by the NAV MODEL's Operator group, which
+  // `navFor` gates on a staff grant. It used to be asserted through the flat
+  // account menu; `/admin` is the Console now and that chrome is hidden here,
+  // so the same claim is checked against the chrome that is actually on screen.
+  // (`nav.test.ts` covers the gating itself — that a non-staff reader never
+  // gets the group at all, and that a stale grant with no session does not
+  // light it.)
+  //
+  // The Console chrome carries eighteen destinations, so `ChromeBar`'s fit
+  // measurement legitimately collapses the nav behind its toggle at most
+  // widths. "Offered" means reachable, so open it first — and drive that
+  // through `toPass`, because the measurement lands a frame or two after mount
+  // and a click into that window is simply lost.
+  const consoleLink = page.locator('.hp-lk').getByText('Console', {
+    exact: true,
+  });
+  await expect(async () => {
+    const toggle = page.locator('.hp-navtoggle');
+    if (await toggle.isVisible()) await toggle.click();
+    await expect(consoleLink).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 15_000 });
+  // …and it knows it is the page you are on.
+  await expect(consoleLink).toHaveAttribute('aria-current', 'page');
 });
 
 test('moderator_user_can_access_admin_too', async ({ page, request }) => {

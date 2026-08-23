@@ -1,3 +1,5 @@
+import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 
@@ -25,7 +27,18 @@ export const metadata: Metadata = {
  *    0.85 confidence precisely because the branch is gone. */
 export default function TroubleshootingPage() {
   return (
-    <main className="ss-about">
+    <MarketingSurface
+      navId="docs"
+      crumb={[
+        { label: 'Site', href: '/' },
+        { label: 'Docs', href: '/docs' },
+        { label: 'Troubleshooting' },
+      ]}
+      title="Troubleshooting"
+      ctx="Docs · when something is not arriving"
+    >
+      <DocsIndex active="/docs/troubleshooting" />
+    <div className="ss-about">
       <div className="ss-placard" style={{ marginBottom: 'var(--s5)' }}>
         Docs
       </div>
@@ -166,6 +179,7 @@ export default function TroubleshootingPage() {
           <Link href={'/docs' as Route}>the quickstart</Link>.
         </p>
       </section>
-    </main>
+    </div>
+    </MarketingSurface>
   );
 }

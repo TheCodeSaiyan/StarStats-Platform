@@ -76,6 +76,12 @@ export default defineConfig({
         // `page.goto()` calls. Read by `kbCacheOpts()` in
         // `src/lib/reference.ts`. Production keeps the 1h revalidate.
         STARSTATS_DISABLE_FETCH_CACHE: '1',
+        // `/downloads` (the Emitter) reads the tray release feed from GitHub.
+        // It absorbed `/devices`, so the auth and pairing specs land on it —
+        // point the feed at the mock server so no test makes a real,
+        // rate-limited call to api.github.com. Fixture: `GET /gh/releases`
+        // in `scenarioFor`'s base map.
+        STARSTATS_RELEASES_API: `http://localhost:${MOCK_PORT}/gh/releases`,
         // Empty -> instrumentation.ts bails out cleanly. Setting it
         // to anything (including the literal "true" string) keeps
         // Next.js itself happy; the OTel SDK is gated on the

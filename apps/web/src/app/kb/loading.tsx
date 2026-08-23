@@ -8,7 +8,7 @@
 
 export default function Loading() {
   return (
-    <main aria-busy="true" aria-label="Loading knowledge base">
+    <div aria-busy="true" aria-label="Loading knowledge base">
       <div className="skeleton" style={{ height: 32, width: 280, marginBottom: 20 }} />
       <hr className="ss-rule" style={{ margin: '20px 0 16px' }} />
       <div className="skeleton" style={{ height: 16, width: '80%', marginBottom: 8 }} />
@@ -30,6 +30,6 @@ export default function Loading() {
           </div>
         ))}
       </div>
-    </main>
+    </div>
   );
 }

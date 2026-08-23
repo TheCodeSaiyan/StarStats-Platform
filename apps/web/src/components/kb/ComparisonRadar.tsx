@@ -62,7 +62,16 @@ export function ComparisonRadar({
       <div style={{ fontSize: 12, color: 'var(--fg)', lineHeight: 1.9 }}>
         {series.map((s) => (
           <div key={s.slug} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 13, height: 13, borderRadius: 3, background: s.color, display: 'inline-block' }} />
+            {/* A hairline rule in the series colour, not a filled rounded
+                swatch — the shape rules hold inside the series exception. */}
+            <span
+              style={{
+                width: 12,
+                height: 0,
+                borderTop: `2px solid ${s.color}`,
+                display: 'inline-block',
+              }}
+            />
             {s.name}
           </div>
         ))}

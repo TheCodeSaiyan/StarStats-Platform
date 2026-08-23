@@ -63,7 +63,9 @@ async function loadSessions(
 
 function SessionsUnavailable({ handle }: { handle: string }) {
   return (
-    <div role="main" className="ss-screen-enter" style={{ padding: '8px 2px' }}>
+    // No `role="main"`: the segment layout's projection owns the single
+    // landmark on `#hp-content`.
+    <div className="ss-screen-enter" style={{ padding: '8px 2px' }}>
       <h1 style={{ margin: 0, fontSize: 24 }}>Sessions not available</h1>
       <p style={{ margin: '10px 0 0', color: 'var(--fg-muted)' }}>
         <span className="mono">{handle}</span> hasn&apos;t shared their play
@@ -91,7 +93,6 @@ export default async function SessionsIndexPage(props: PageProps) {
 
   return (
     <div
-      role="main"
       className="ss-screen-enter"
       style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
     >
@@ -140,7 +141,7 @@ export default async function SessionsIndexPage(props: PageProps) {
                   color: 'inherit',
                   padding: '8px 10px',
                   border: '1px solid var(--border)',
-                  borderRadius: 'var(--r-sm)',
+                  borderRadius: 0,
                 }}
               >
                 <span>{fmtDate(s.started_at)}</span>

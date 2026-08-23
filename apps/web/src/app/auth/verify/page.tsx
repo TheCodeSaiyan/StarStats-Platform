@@ -8,34 +8,9 @@ interface SearchParams {
   token?: string;
 }
 
-const mainStyle: React.CSSProperties = {
-  maxWidth: 'none',
-  padding: '32px 24px 60px',
-  display: 'grid',
-  placeItems: 'start center',
-};
 
-const cardStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: 440,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
 
-const titleStyle: React.CSSProperties = {
-  margin: '8px 0 0',
-  fontSize: 28,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
 
-const subtitleStyle: React.CSSProperties = {
-  margin: 0,
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
 
 /**
  * Email verification landing page.
@@ -58,11 +33,11 @@ export default async function VerifyEmailPage(props: {
 
   if (!token) {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Verify email</span>
-          <h1 style={titleStyle}>Missing verification token.</h1>
-          <p style={subtitleStyle}>
+          <h1>Missing verification token.</h1>
+          <p className="hp-authsub">
             The verification link is incomplete. Open the email we sent you and
             click the link from there.
           </p>
@@ -70,7 +45,7 @@ export default async function VerifyEmailPage(props: {
             Back to sign in
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -93,11 +68,11 @@ export default async function VerifyEmailPage(props: {
 
   if (outcome === 'verified') {
     return (
-      <main className="auth" style={mainStyle}>
-        <div style={cardStyle}>
+      <div className="hp-authpage">
+        <div className="hp-authcard">
           <span className="ss-eyebrow">Email verified</span>
-          <h1 style={titleStyle}>Email verified.</h1>
-          <p style={subtitleStyle}>
+          <h1>Email verified.</h1>
+          <p className="hp-authsub">
             Welcome aboard{claimedHandle ? `, ${claimedHandle}` : ''}. You can
             now sign in to your account.
           </p>
@@ -108,16 +83,16 @@ export default async function VerifyEmailPage(props: {
             Sign in
           </Link>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="auth" style={mainStyle}>
-      <div style={cardStyle}>
+    <div className="hp-authpage">
+      <div className="hp-authcard">
         <span className="ss-eyebrow">Verify email</span>
-        <h1 style={titleStyle}>Token invalid or expired.</h1>
-        <p style={subtitleStyle}>
+        <h1>Token invalid or expired.</h1>
+        <p className="hp-authsub">
           This verification link is no longer valid. Sign in to request a new
           one.
         </p>
@@ -125,6 +100,6 @@ export default async function VerifyEmailPage(props: {
           Sign in
         </Link>
       </div>
-    </main>
+    </div>
   );
 }

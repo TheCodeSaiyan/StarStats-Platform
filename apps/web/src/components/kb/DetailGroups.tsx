@@ -1,68 +1,40 @@
 import React from 'react';
+import { Plane, HoloKV } from 'holo';
 import type { DetailGroup } from '@/lib/kb-detail';
 
 /**
- * Renders the curated, grouped metadata sections (see `buildDetailGroups`)
- * as a stack of on-brand `.ss-card` sections — each a titled stat grid of
- * label/value pairs. Replaces the old flat metadata dump with a
- * scannable, organised presentation. Renders nothing when there are no
- * groups (so the page collapses cleanly for sparse entries).
+ * The curated, grouped metadata sections, drawn in the projection.
+ *
+ * REDRAWN, not reframed. This used to be a stack of `.ss-card` sections with
+ * inline styles — rounded, filled, its own type scale — and the projection port
+ * left it alone behind a compatibility rule that squared off its corners. That
+ * is how the entity sheet ended up looking like the old page in a new box.
+ *
+ * Each group is now a `Plane` with the group title as its tracked caption, and
+ * the label/value pairs are a `HoloKV` rather than a hand-built `<dl>` grid.
+ * The data, the grouping and the order are untouched: `buildDetailGroups` still
+ * decides what appears and in what sequence.
+ *
+ * The title stays a REAL HEADING inside the caption. `Plane`'s `cap` is a
+ * styled span, so passing a bare string silently drops the group structure out
+ * of the heading outline — which it did, and a spec caught it. The caption's
+ * type is reset for `h2`–`h4` so an actual heading looks identical.
  */
 export function DetailGroups({ groups }: { groups: DetailGroup[] }) {
   if (groups.length === 0) return null;
   return (
     <>
       {groups.map((group) => (
-        <section
+        <Plane
           key={group.title}
-          className="ss-card"
-          style={{ padding: '18px 20px' }}
+          tilt="flat"
+          cap={<h3>{group.title}</h3>}
+          style={{ marginTop: 16 }}
         >
-          <h2
-            style={{
-              margin: '0 0 14px',
-              fontSize: 14,
-              fontWeight: 600,
-              color: 'var(--fg)',
-            }}
-          >
-            {group.title}
-          </h2>
-          <dl
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-              gap: 18,
-              margin: 0,
-            }}
-          >
-            {group.rows.map((row) => (
-              <div key={row.label}>
-                <dt
-                  className="mono"
-                  style={{
-                    color: 'var(--fg-muted)',
-                    fontSize: 11,
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                  }}
-                >
-                  {row.label}
-                </dt>
-                <dd
-                  style={{
-                    margin: '5px 0 0',
-                    fontSize: 16,
-                    color: 'var(--fg)',
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {row.value}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </section>
+          <HoloKV
+            items={group.rows.map((row) => ({ k: row.label, v: row.value }))}
+          />
+        </Plane>
       ))}
     </>
   );

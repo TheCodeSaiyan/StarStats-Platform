@@ -248,7 +248,7 @@ export function LocationChip({
         gap: 8,
         maxWidth: 460,
         padding: '4px 10px',
-        borderRadius: 'var(--r-pill)',
+        borderRadius: 0,
         border: '1px solid color-mix(in oklab, var(--accent) 40%, transparent)',
         background:
           'var(--accent-soft, color-mix(in oklab, var(--accent) 8%, transparent))',

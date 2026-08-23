@@ -114,7 +114,7 @@ export function TypeBreakdown(props: TypeBreakdownProps) {
                 contentStyle={{
                   background: 'var(--surface-2)',
                   border: `1px solid ${theme.border}`,
-                  borderRadius: 8,
+                  borderRadius: 0,
                   color: 'var(--fg)',
                   fontSize: 'var(--fs-sm)',
                 }}

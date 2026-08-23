@@ -14,6 +14,7 @@ import { getSession } from '@/lib/session';
 import { getMyShareScopes, ApiCallError, type WidgetShareScopesApi } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { saveShareScopesAction } from '@/app/_actions/share-scopes';
+import { SHARE_SCOPES, type ShareScopeMeta } from '@/lib/share-scopes';
 
 export const metadata = { title: "Widget sharing" };
 
@@ -60,33 +61,12 @@ const cardFooterStyle: React.CSSProperties = {
 
 // -- Widget metadata -------------------------------------------------------
 
-const WIDGET_LABELS: { key: keyof WidgetShareScopesApi; label: string; description: string }[] = [
-  {
-    key: 'combat_mission',
-    label: 'Combat & Missions',
-    description: 'Player deaths, vehicle losses, and mission start/end counts.',
-  },
-  {
-    key: 'economy',
-    label: 'Economy',
-    description: 'Shop purchases and commodity trade counts.',
-  },
-  {
-    key: 'travel',
-    label: 'Travel',
-    description: 'Quantum jumps, server hops, and other movement events.',
-  },
-  {
-    key: 'records',
-    label: 'Records',
-    description: 'Longest session, busiest session, biggest trade, and survival streak.',
-  },
-  {
-    key: 'recent_activity',
-    label: 'Recent activity',
-    description: 'A live feed of your most recent logged events.',
-  },
-];
+/**
+ * MOVED to `lib/share-scopes.ts`. The public profile states what a pilot
+ * publishes and what they withhold, and needed these same five labels; a
+ * second copy would have drifted from this one the moment it existed.
+ */
+const WIDGET_LABELS: readonly ShareScopeMeta[] = SHARE_SCOPES;
 
 // -- Page component --------------------------------------------------------
 
@@ -263,7 +243,7 @@ export default async function WidgetSharingPage({
           padding: '14px 18px',
           background: 'var(--bg-elev)',
           border: '1px solid var(--border)',
-          borderRadius: 'var(--r-sm)',
+          borderRadius: 0,
           color: 'var(--fg-dim)',
           fontSize: 12,
           lineHeight: 1.5,

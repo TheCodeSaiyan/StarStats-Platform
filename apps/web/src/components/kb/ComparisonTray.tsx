@@ -45,9 +45,10 @@ export function ComparisonTray(props: ComparisonTrayProps) {
   const chipStyle = (anchor: boolean): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12,
     color: anchor ? 'var(--fg)' : 'var(--fg-muted)',
-    background: 'var(--surface-2, #211d2a)',
-    border: `1px solid ${anchor ? 'var(--accent-soft, rgba(232,162,60,.5))' : 'var(--border, rgba(255,255,255,.1))'}`,
-    borderRadius: 999, padding: '5px 11px',
+    // Hairline box, no fill, no radius — the system has no pill.
+    background: 'transparent',
+    border: `1px solid ${anchor ? 'var(--hot)' : 'rgba(var(--bR), var(--bG), var(--bB), 0.28)'}`,
+    padding: '4px 10px',
   });
 
   return (
@@ -55,20 +56,20 @@ export function ComparisonTray(props: ComparisonTrayProps) {
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         {/* anchor chip (pinned) */}
         <span style={chipStyle(true)}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent, #E8A23C)' }} />
+          <span style={{ width: 10, height: 0, borderTop: '2px solid var(--hot)' }} />
           {props.anchorName}
           <span title="anchor (this page)" aria-label="anchor">⚓</span>
         </span>
 
         {props.selected.map((s) => (
           <span key={s.slug} style={chipStyle(false)}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: s.color }} />
+            <span style={{ width: 10, height: 0, borderTop: `2px solid ${s.color}` }} />
             {s.name}
             <button
               type="button"
               aria-label={`Toggle ${s.name} on radar`}
               onClick={() => props.onToggleRadar(s.slug)}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.onRadar ? 'var(--accent)' : 'var(--fg-dim)', fontSize: 11 }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: s.onRadar ? 'var(--hot)' : 'var(--dim)', fontSize: 11 }}
             >
               ◎
             </button>
@@ -94,8 +95,8 @@ export function ComparisonTray(props: ComparisonTrayProps) {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
             style={{
-              fontSize: 12, padding: '6px 12px', borderRadius: 999,
-              background: 'var(--surface, #16131d)', color: 'var(--fg)',
+              fontSize: 12, padding: '6px 12px',
+              background: 'transparent', color: 'var(--beam)',
               border: '1px dashed var(--border, rgba(255,255,255,.18))', minWidth: 160,
             }}
           />
@@ -105,8 +106,8 @@ export function ComparisonTray(props: ComparisonTrayProps) {
               style={{
                 position: 'absolute', top: '110%', left: 0, zIndex: 10, listStyle: 'none',
                 margin: 0, padding: 4, minWidth: 200, maxHeight: 240, overflowY: 'auto',
-                background: 'var(--surface, #16131d)', border: '1px solid var(--border, rgba(255,255,255,.12))',
-                borderRadius: 8,
+                background: 'var(--void)',
+                border: '1px solid rgba(var(--bR), var(--bG), var(--bB), 0.28)',
               }}
             >
               {suggestions.map((c) => (
@@ -123,7 +124,7 @@ export function ComparisonTray(props: ComparisonTrayProps) {
                       setQuery('');
                     }
                   }}
-                  style={{ color: 'var(--fg)', fontSize: 13, padding: '6px 8px', cursor: 'pointer', borderRadius: 6 }}
+                  style={{ color: 'var(--beam)', fontSize: 13, padding: '6px 8px', cursor: 'pointer' }}
                 >
                   {c.display_name}
                 </li>
@@ -142,7 +143,7 @@ export function ComparisonTray(props: ComparisonTrayProps) {
               if (v) props.onAddCohort!(v);
               e.target.value = '';
             }}
-            style={{ fontSize: 12, padding: '6px 10px', borderRadius: 999, background: 'var(--surface, #16131d)', color: 'var(--fg-muted)', border: '1px dashed var(--border, rgba(255,255,255,.18))' }}
+            style={{ fontSize: 12, padding: '6px 10px', background: 'transparent', color: 'var(--dim)', border: '1px dashed rgba(var(--bR), var(--bG), var(--bB), 0.28)' }}
           >
             <option value="">+ Add cohort…</option>
             {props.cohorts.map((c) => (

@@ -22,6 +22,23 @@ const SRC = join(process.cwd(), 'src');
 // (consumed by both apps/web and apps/tray-ui). Include it so tokens defined
 // there still count as defined by this tripwire.
 const SHARED_TOKENS = join(process.cwd(), '..', '..', 'packages', 'design-tokens');
+/**
+ * The PROJECTION's tokens — the beam vocabulary (`--hot`, `--beam`, `--dim`,
+ * `--void`, the `--bR/--bG/--bB` channels) — live in the `holo` package, which
+ * the app now depends on for every surface.
+ *
+ * Added when a component drawn in the beam tripped this test: the tokens were
+ * real and defined, just defined somewhere this tripwire had never been told
+ * about. Leaving it out would have pushed callers into writing fallbacks for
+ * tokens that do not need them, which is exactly the noise this test exists to
+ * prevent.
+ *
+ * NOTE the scoping difference, because it matters for what "defined" means
+ * here: these are declared on `[data-cal]`, not `:root`. A component that uses
+ * them OUTSIDE a projection stage resolves them to nothing. This test proves
+ * they exist; it does not prove the element is inside a stage.
+ */
+const HOLO_TOKENS = join(process.cwd(), '..', '..', 'packages', 'holo', 'styles');
 
 function walk(dir: string, exts: string[]): string[] {
   const out: string[] = [];
@@ -44,7 +61,11 @@ describe('CSS custom-property truth', () => {
   it('every var(--x) used without a fallback is defined in the stylesheets', () => {
     // Defined tokens (any position on a line) across every web stylesheet.
     const defined = new Set<string>();
-    for (const f of [...walk(SRC, ['.css']), ...walk(SHARED_TOKENS, ['.css'])]) {
+    for (const f of [
+      ...walk(SRC, ['.css']),
+      ...walk(SHARED_TOKENS, ['.css']),
+      ...walk(HOLO_TOKENS, ['.css']),
+    ]) {
       for (const m of readFileSync(f, 'utf8').matchAll(/(--[a-z0-9-]+)\s*:/gi)) {
         defined.add(m[1]);
       }
