@@ -174,6 +174,21 @@ spicedb-grpc = "0.1"
 # patches bump MSRV to 1.91. Transitive aws-smithy-* deps drift the
 # same way — the lockfile tracks the working versions; bump rust
 # toolchain in lockstep when upgrading them.
+# TLS: `default-https-client`, NOT `rustls`. The SDK's `rustls` feature maps
+# to `aws-smithy-runtime/tls-rustls`, which is the LEGACY connector — it pulls
+# `legacy-rustls` (rustls 0.21) on top of hyper 0.14, and with it
+# rustls-webpki 0.101, which carries an open advisory. `default-https-client`
+# selects the current connector: rustls 0.23 + hyper-rustls 0.27 +
+# rustls-webpki 0.103, with aws-lc-rs as the crypto provider. After the swap
+# the old versions are absent from the lockfile entirely rather than merely
+# co-existing.
+#
+# Note this needed no version bump. The fix is a feature choice on the SDK we
+# already pin; upgrading aws-sdk-s3 does NOT help, because even 1.143.0 still
+# ships the legacy connector behind its `rustls` feature (and would demand
+# rustc 1.94.1). Do not "restore" the `rustls` feature — it looks like the
+# more explicit choice and is the vulnerable one.
+#
 # `rt-tokio` is required for `behavior-version-latest`'s stalled-stream
 # protection — it provides the default tokio-based async sleep impl that
 # protection needs. Without it `Client::from_conf` panics at runtime with
@@ -183,7 +198,7 @@ spicedb-grpc = "0.1"
 # because the SDK default pulls in the full `aws-config` credential
 # chain (STS / SSO / IMDS) which we deliberately avoid — production
 # uses a static MinIO access key from a Docker secret.
-aws-sdk-s3 = { version = "=1.121.0", default-features = false, features = ["rustls", "behavior-version-latest", "rt-tokio"] }
+aws-sdk-s3 = { version = "=1.121.0", default-features = false, features = ["default-https-client", "behavior-version-latest", "rt-tokio"] }
 aws-credential-types = ">=1.2.8, <1.2.12"
 aws-smithy-runtime-api = ">=1.10, <1.11.4"
 
