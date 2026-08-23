@@ -130,6 +130,41 @@ export interface RemoteSyncConfig {
   max_batch_bytes: number;
 }
 
+/** One event type's local-vs-remote comparison from `check_upload_drift`. */
+export interface DriftRow {
+  event_type: string;
+  /** Rows this client believes it delivered. */
+  local_sent: number;
+  /** Rows the server reports holding, from its rollup. */
+  remote: number;
+  /** local_sent - remote. Positive = server is missing events we sent
+   *  (recoverable). Negative = server holds more, normal with a second
+   *  device and not actionable from here. */
+  missing: number;
+}
+
+/**
+ * Result of an on-demand drift check.
+ *
+ * Nothing polls this. The client marks a row sent on a 2xx and never
+ * revisits it, so if the SERVER loses data the queue reads zero forever
+ * while the events sit unreachable in local SQLite. This is the only thing
+ * that notices.
+ */
+export interface UploadDrift {
+  checked_at: string;
+  local_sent_total: number;
+  remote_total: number;
+  /** Sum of the POSITIVE per-type gaps — what re-uploading would restore.
+   *  Not local-minus-remote, which a type where the server holds more
+   *  would silently offset. */
+  missing_total: number;
+  /** Queue depth, so a drain in progress isn't mistaken for drift. */
+  pending: number;
+  /** Only types where the two sides disagree, biggest gap first. */
+  rows: DriftRow[];
+}
+
 /**
  * Upload-queue snapshot from `get_sync_backlog`. Distinct from
  * `SyncStats`, which is lifetime-of-process worker counters — this is
@@ -773,6 +808,19 @@ export const api = {
    * backlog.
    */
   getSyncBacklog: () => invoke<SyncBacklog>('get_sync_backlog'),
+  /**
+   * Compare local delivered-event counts against the server's, per type.
+   * On-demand only — one rollup-backed GET plus a local grouped query.
+   */
+  checkUploadDrift: () => invoke<UploadDrift>('check_upload_drift'),
+  /**
+   * Put delivered rows of the named types back in the upload queue and wake
+   * the sync worker. Scoped to what the drift check found rather than
+   * everything: re-sending is safe (the server dedupes on idempotency_key)
+   * but pointless traffic for data it already holds.
+   */
+  requeueMissingEvents: (eventTypes: string[]) =>
+    invoke<number>('requeue_missing_events', { event_types: eventTypes }),
   /**
    * Persistent count of rows the sync worker has quarantined (rows
    * whose `sent_at` starts with `__quarantined_`). Distinct from

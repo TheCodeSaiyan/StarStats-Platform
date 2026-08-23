@@ -611,6 +611,8 @@ fn main() {
             commands::refresh_account_info,
             commands::retry_sync_now,
             commands::get_sync_backlog,
+            commands::check_upload_drift,
+            commands::requeue_missing_events,
             commands::count_quarantined,
             commands::release_quarantined,
             commands::refresh_hangar_now,
