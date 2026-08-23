@@ -2217,6 +2217,149 @@ mod sync_backlog_tests {
     }
 }
 
+/// One event type's local-vs-remote comparison.
+#[derive(Debug, Clone, Serialize)]
+pub struct DriftRow {
+    pub event_type: String,
+    /// Rows this client believes it delivered (`sent_at` is a real stamp).
+    pub local_sent: u64,
+    /// Rows the server reports holding, from its rollup.
+    pub remote: u64,
+    /// `local_sent - remote`. Positive means the server is missing events we
+    /// think we sent — the recoverable case. Negative means the server has
+    /// MORE than we sent, which is normal with a second device and is not
+    /// something this machine can or should act on.
+    pub missing: i64,
+}
+
+/// Result of an on-demand drift check.
+#[derive(Debug, Clone, Serialize)]
+pub struct UploadDrift {
+    pub checked_at: String,
+    pub local_sent_total: u64,
+    pub remote_total: u64,
+    /// Sum of the POSITIVE per-type gaps — how many events re-uploading
+    /// would actually restore. Not `local_sent_total - remote_total`, which
+    /// a type where the server holds more would silently offset.
+    pub missing_total: u64,
+    /// Rows still queued. Shown for context so a queue mid-drain is not
+    /// mistaken for drift.
+    pub pending: i64,
+    /// Types where the two sides disagree, largest gap first. Types that
+    /// agree are omitted — on a healthy client this list is empty.
+    pub rows: Vec<DriftRow>,
+}
+
+/// Compare local delivered-event counts against the server's, per type.
+///
+/// Exists because nothing else can notice this. The client marks a row
+/// `sent_at` on a 2xx and never revisits it, so if the SERVER later loses
+/// data — restore from an older backup, a wiped environment — the client
+/// still believes it delivered everything and the upload queue reads zero
+/// forever. The events are sitting in local SQLite, unreachable.
+///
+/// Deliberately on-demand. Nothing calls this on a timer: drift changes on
+/// the timescale of server incidents, and putting it on the status tick
+/// would turn a rare diagnostic into steady background load for both sides.
+///
+/// Cost: one `GET /v1/me/summary`, which the server answers from its
+/// `stat_event_counts` rollup, plus one grouped local query over an indexed
+/// column. The comparison itself is done here on the client.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn check_upload_drift(state: State<'_, AppState>) -> Result<UploadDrift, String> {
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let api_url = cfg
+        .remote_sync
+        .api_url
+        .clone()
+        .filter(|u| !u.is_empty())
+        .ok_or_else(|| "No API URL configured".to_string())?;
+    let token = cfg
+        .remote_sync
+        .access_token
+        .clone()
+        .filter(|t| !t.is_empty())
+        .ok_or_else(|| "This device is not paired — pair it before checking".to_string())?;
+
+    // Local half first, so a server hiccup does not cost us the cheap part.
+    let local: Vec<(String, u64)> = state
+        .storage
+        .sent_counts_by_type()
+        .map_err(|e| e.to_string())?;
+    let pending = state.storage.count_unsent().map_err(|e| e.to_string())?;
+
+    let remote = sync::fetch_summary(&api_url, &token)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            "The server rejected this device's token — re-pair and try again".to_string()
+        })?;
+
+    let remote_by_type: std::collections::HashMap<String, u64> = remote
+        .by_type
+        .into_iter()
+        .map(|t| (t.event_type, t.count))
+        .collect();
+
+    let local_sent_total: u64 = local.iter().map(|(_, n)| *n).sum();
+
+    let mut rows: Vec<DriftRow> = Vec::new();
+    let mut missing_total: u64 = 0;
+    for (event_type, local_sent) in local {
+        let remote_count = remote_by_type.get(&event_type).copied().unwrap_or(0);
+        let missing = local_sent as i64 - remote_count as i64;
+        if missing != 0 {
+            if missing > 0 {
+                missing_total += missing as u64;
+            }
+            rows.push(DriftRow {
+                event_type,
+                local_sent,
+                remote: remote_count,
+                missing,
+            });
+        }
+    }
+    rows.sort_by(|a, b| b.missing.cmp(&a.missing));
+
+    Ok(UploadDrift {
+        checked_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        local_sent_total,
+        remote_total: remote.total,
+        missing_total,
+        pending,
+        rows,
+    })
+}
+
+/// Put delivered rows of the named types back in the upload queue, then wake
+/// the sync worker.
+///
+/// Takes explicit types rather than "re-upload everything" so recovery is
+/// scoped to what the drift check actually found missing. Re-sending is safe
+/// regardless — `/v1/ingest` dedupes on `idempotency_key` — but resending
+/// hundreds of thousands of events the server already holds is pointless
+/// traffic for both sides.
+///
+/// Returns the number of rows re-queued.
+#[tauri::command(rename_all = "snake_case")]
+pub fn requeue_missing_events(
+    state: State<'_, AppState>,
+    event_types: Vec<String>,
+) -> Result<u64, String> {
+    let refs: Vec<&str> = event_types.iter().map(|s| s.as_str()).collect();
+    let n = state
+        .storage
+        .requeue_sent_for_types(&refs)
+        .map_err(|e| e.to_string())?;
+    if n > 0 {
+        // Wake both lanes so the re-queued rows start moving immediately
+        // rather than waiting out the current interval.
+        state.sync_kick.kick_all();
+    }
+    Ok(n)
+}
+
 /// Count rows the sync worker has quarantined (rows whose `sent_at`
 /// starts with `__quarantined_`). Read by the SettingsPane Recovery
 /// affordance to decide whether to surface the "Release N" button.

@@ -8,6 +8,7 @@ import type {
   StatusResponse,
   SyncBacklog,
   SyncStats,
+  UploadDrift,
 } from '../api';
 import { FieldFocusProvider } from '../hooks/useFieldFocus';
 import { formatEta, SettingsPane } from './SettingsPane';
@@ -64,7 +65,11 @@ function makeConfig(overrides: Partial<Config> = {}): Config {
 // these tests. `bearer` sets what the on-mount `get_org_bearer_status`
 // probe resolves to (default: not configured).
 function stubInvoke(
-  opts: { bearer?: OrgBearerStatus; backlog?: SyncBacklog } = {},
+  opts: {
+    bearer?: OrgBearerStatus;
+    backlog?: SyncBacklog;
+    drift?: UploadDrift;
+  } = {},
 ) {
   const bearer: OrgBearerStatus = opts.bearer ?? {
     configured: false,
@@ -86,6 +91,12 @@ function stubInvoke(
       );
     }
     if (cmd === 'retry_sync_now') return Promise.resolve(undefined);
+    if (cmd === 'check_upload_drift') {
+      return opts.drift
+        ? Promise.resolve(opts.drift)
+        : Promise.reject(new Error('no drift fixture'));
+    }
+    if (cmd === 'requeue_missing_events') return Promise.resolve(1);
     if (cmd === 'get_rsi_cookie_status') return Promise.resolve({ configured: false, preview: null });
     if (cmd === 'get_org_bearer_status') return Promise.resolve(bearer);
     if (cmd === 'set_org_bearer') return Promise.resolve({ configured: true, preview: '…3456' });
@@ -990,5 +1001,200 @@ describe('formatEta', () => {
     // the number that prompted this whole change.
     expect(formatEta(25 * 3600)).toBe('about 1 day');
     expect(formatEta(72 * 3600)).toBe('about 3 days');
+  });
+});
+
+describe('SettingsPane upload drift', () => {
+  function makeDrift(over: Partial<UploadDrift> = {}): UploadDrift {
+    return {
+      checked_at: '2026-08-23T00:00:00Z',
+      local_sent_total: 0,
+      remote_total: 0,
+      missing_total: 0,
+      pending: 0,
+      rows: [],
+      ...over,
+    };
+  }
+
+  function pairedConfig(): Config {
+    return makeConfig({
+      remote_sync: {
+        enabled: true,
+        api_url: 'https://api.example.test',
+        access_token: 'tok',
+        claimed_handle: 'Tester',
+        priority_interval_secs: 5,
+        interval_secs: 60,
+        batch_size: 200,
+        priority_event_types: [],
+        catch_up_enabled: true,
+        catch_up_batch_size: 2000,
+        max_batch_bytes: 3 * 1024 * 1024,
+      },
+    });
+  }
+
+  beforeEach(() => {
+    mockedInvoke.mockReset();
+    (listen as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      Promise.resolve(() => undefined),
+    );
+  });
+
+  it('does not contact the server until asked', async () => {
+    // The whole point of on-demand: mounting must not cost a request.
+    stubInvoke({});
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await screen.findByTestId('upload-drift');
+    expect(
+      mockedInvoke.mock.calls.some(([cmd]) => cmd === 'check_upload_drift'),
+    ).toBe(false);
+  });
+
+  it('reports agreement clearly', async () => {
+    stubInvoke({
+      drift: makeDrift({ local_sent_total: 1000, remote_total: 1000 }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
+    });
+    const card = await screen.findByTestId('upload-drift');
+    expect(within(card).getByText(/server has everything/i)).toBeTruthy();
+    expect(
+      within(card).queryByRole('button', { name: /again/i }),
+    ).toBeNull();
+  });
+
+  it('surfaces missing events per type and offers to resend them', async () => {
+    stubInvoke({
+      drift: makeDrift({
+        local_sent_total: 313314,
+        remote_total: 40000,
+        missing_total: 273314,
+        rows: [
+          {
+            event_type: 'location_changed',
+            local_sent: 200000,
+            remote: 20000,
+            missing: 180000,
+          },
+          {
+            event_type: 'player_death',
+            local_sent: 113314,
+            remote: 20000,
+            missing: 93314,
+          },
+        ],
+      }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
+    });
+    const card = await screen.findByTestId('upload-drift');
+    expect(within(card).getByText(/273,314 events are missing/i)).toBeTruthy();
+    expect(within(card).getByText('location_changed')).toBeTruthy();
+    expect(within(card).getByText('player_death')).toBeTruthy();
+    expect(
+      within(card).getByRole('button', { name: /Send 273,314 again/i }),
+    ).toBeTruthy();
+  });
+
+  it('resends only the types that are actually short', async () => {
+    // A type where the server holds MORE must not be dragged into the
+    // requeue - this device has nothing to contribute there.
+    stubInvoke({
+      drift: makeDrift({
+        local_sent_total: 300,
+        remote_total: 250,
+        missing_total: 100,
+        rows: [
+          {
+            event_type: 'player_death',
+            local_sent: 200,
+            remote: 100,
+            missing: 100,
+          },
+          {
+            event_type: 'from_other_device',
+            local_sent: 100,
+            remote: 150,
+            missing: -50,
+          },
+        ],
+      }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
+    });
+    await act(async () => {
+      fireEvent.click(
+        await screen.findByRole('button', { name: /Send 100 again/i }),
+      );
+    });
+    const call = mockedInvoke.mock.calls.find(
+      ([cmd]) => cmd === 'requeue_missing_events',
+    );
+    expect(call).toBeTruthy();
+    const args = call ? (call[1] as { event_types: string[] }) : undefined;
+    expect(args?.event_types).toEqual(['player_death']);
+  });
+
+  it('explains a server surplus instead of presenting it as a problem', async () => {
+    stubInvoke({
+      drift: makeDrift({
+        local_sent_total: 100,
+        remote_total: 150,
+        rows: [
+          {
+            event_type: 'from_other_device',
+            local_sent: 100,
+            remote: 150,
+            missing: -50,
+          },
+        ],
+      }),
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
+    });
+    const card = await screen.findByTestId('upload-drift');
+    expect(within(card).getByText(/server holds more/i)).toBeTruthy();
+    expect(within(card).queryByRole('button', { name: /again/i })).toBeNull();
+  });
+
+  it('shows the failure rather than a misleading clean result', async () => {
+    mockedInvoke.mockImplementation((cmd: string) => {
+      if (cmd === 'check_upload_drift')
+        return Promise.reject(new Error('not paired'));
+      if (cmd === 'get_rsi_cookie_status')
+        return Promise.resolve({ configured: false, preview: null });
+      if (cmd === 'get_org_bearer_status')
+        return Promise.resolve({ configured: false, preview: null });
+      if (cmd === 'get_app_version') return Promise.resolve('0.0.0-test');
+      if (cmd === 'get_build_release_channel') return Promise.resolve('live');
+      if (cmd === 'get_autostart_enabled') return Promise.resolve(false);
+      if (cmd === 'get_sync_backlog')
+        return Promise.resolve({
+          pending: 0,
+          quarantined: 0,
+          game_running: false,
+          catching_up: false,
+          effective_batch_size: 200,
+          eta_secs: null,
+        });
+      return Promise.reject(new Error('unexpected invoke: ' + cmd));
+    });
+    wrap(<SettingsPane config={pairedConfig()} onSave={vi.fn()} />);
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /Check now/i }));
+    });
+    const card = await screen.findByTestId('upload-drift');
+    expect(within(card).queryByText(/server has everything/i)).toBeNull();
+    expect(within(card).getByText(/not paired/i)).toBeTruthy();
   });
 });

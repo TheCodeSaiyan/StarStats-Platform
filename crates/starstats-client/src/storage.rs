@@ -573,6 +573,76 @@ impl Storage {
         Ok(())
     }
 
+    /// Per-type counts of rows this client believes it has DELIVERED —
+    /// `sent_at` holds a real timestamp.
+    ///
+    /// This is the local half of drift detection. It is deliberately NOT
+    /// [`Storage::event_counts`], which caps at 50 types and counts rows in
+    /// every state: a truncated list would report "no drift" for any type
+    /// outside the top 50, and counting queued rows would flag events that
+    /// are simply waiting their turn.
+    ///
+    /// Quarantined rows are excluded. The server rejected those and never
+    /// will accept them, so counting them as missing would produce drift
+    /// that can never be cleared.
+    pub fn sent_counts_by_type(&self) -> Result<Vec<(String, u64)>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            r"SELECT type, COUNT(*) FROM events
+              WHERE sent_at IS NOT NULL
+                AND sent_at NOT LIKE '\_\_quarantined\_%' ESCAPE '\'
+              GROUP BY type",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?.max(0) as u64,
+            ))
+        })?;
+        Ok(rows.filter_map(|r| r.ok()).collect())
+    }
+
+    /// Put delivered rows of the given types back in the drain queue by
+    /// clearing their `sent_at`.
+    ///
+    /// Used to recover when the SERVER has lost events this client already
+    /// uploaded — nothing else un-marks a delivered row, so without this the
+    /// data is unrecoverable from the client even though it is sitting right
+    /// there in SQLite.
+    ///
+    /// Safe to run: `/v1/ingest` dedupes on `idempotency_key`, so anything
+    /// the server still holds comes back as `duplicate` rather than being
+    /// stored twice.
+    ///
+    /// Quarantined rows are left alone — they have their own release path
+    /// (`release_quarantined`) and re-sending content the server actively
+    /// rejected would just re-quarantine it.
+    ///
+    /// Returns the number of rows re-queued.
+    pub fn requeue_sent_for_types(&self, types: &[&str]) -> Result<u64> {
+        if types.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut total = 0u64;
+        // Chunked to stay under SQLITE_MAX_VARIABLE_NUMBER, same as mark_sent.
+        for chunk in types.chunks(500) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                r"UPDATE events SET sent_at = NULL
+                  WHERE sent_at IS NOT NULL
+                    AND sent_at NOT LIKE '\_\_quarantined\_%' ESCAPE '\'
+                    AND type IN ({placeholders})"
+            );
+            let params_dyn: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|t| t as &dyn rusqlite::ToSql).collect();
+            total += conn.execute(&sql, rusqlite::params_from_iter(params_dyn))? as u64;
+        }
+        Ok(total)
+    }
+
     /// Count rows still waiting in the drain queue (`sent_at IS NULL`).
     /// Quarantined rows carry a `__quarantined_*` sentinel rather than
     /// NULL, so they are excluded here and counted separately by
@@ -1897,6 +1967,92 @@ mod tests {
             3,
             "MAX() upsert must not let a lower commit rewind the counter"
         );
+    }
+
+    #[test]
+    fn sent_counts_by_type_counts_only_delivered_rows() {
+        let (storage, _tmp) = fresh_storage();
+        let a = insert_with_type(&storage, "player_death", 1);
+        let b = insert_with_type(&storage, "player_death", 2);
+        let c = insert_with_type(&storage, "location_changed", 3);
+        let _queued = insert_with_type(&storage, "player_death", 4);
+        let quar = insert_with_type(&storage, "location_changed", 5);
+
+        storage.mark_sent(&[a, b, c]).expect("mark sent");
+        storage.mark_quarantined(&[quar]).expect("quarantine");
+
+        let counts: std::collections::HashMap<String, u64> =
+            storage.sent_counts_by_type().unwrap().into_iter().collect();
+
+        // Delivered only: the still-queued player_death is excluded, as is
+        // the quarantined location_changed. Counting either would invent
+        // drift that can never be cleared.
+        assert_eq!(counts.get("player_death"), Some(&2));
+        assert_eq!(counts.get("location_changed"), Some(&1));
+    }
+
+    #[test]
+    fn sent_counts_by_type_is_not_truncated_like_event_counts() {
+        // event_counts() caps at 50 types. Drift detection must not, or a
+        // type outside the top 50 silently reports "no drift" forever.
+        let (storage, _tmp) = fresh_storage();
+        let mut ids = Vec::new();
+        for i in 0..60 {
+            ids.push(insert_with_type(
+                &storage,
+                &format!("type_{i:02}"),
+                i as u64 + 1,
+            ));
+        }
+        storage.mark_sent(&ids).expect("mark sent");
+        assert_eq!(storage.sent_counts_by_type().unwrap().len(), 60);
+        assert_eq!(storage.event_counts().unwrap().len(), 50, "the capped one");
+    }
+
+    #[test]
+    fn requeue_sent_for_types_returns_rows_to_the_queue() {
+        let (storage, _tmp) = fresh_storage();
+        let a = insert_with_type(&storage, "player_death", 1);
+        let b = insert_with_type(&storage, "location_changed", 2);
+        storage.mark_sent(&[a, b]).expect("mark sent");
+        assert_eq!(storage.count_unsent().unwrap(), 0);
+
+        let n = storage.requeue_sent_for_types(&["player_death"]).unwrap();
+        assert_eq!(n, 1, "only the requested type");
+        assert_eq!(storage.count_unsent().unwrap(), 1);
+
+        // The untouched type is still delivered.
+        let counts: std::collections::HashMap<String, u64> =
+            storage.sent_counts_by_type().unwrap().into_iter().collect();
+        assert_eq!(counts.get("location_changed"), Some(&1));
+        assert_eq!(counts.get("player_death"), None);
+    }
+
+    #[test]
+    fn requeue_sent_for_types_leaves_quarantined_rows_alone() {
+        // Quarantined content was actively rejected by the server. Re-queuing
+        // it would just get it re-quarantined; it has its own release path.
+        let (storage, _tmp) = fresh_storage();
+        let sent = insert_with_type(&storage, "player_death", 1);
+        let quar = insert_with_type(&storage, "player_death", 2);
+        storage.mark_sent(&[sent]).expect("mark sent");
+        storage.mark_quarantined(&[quar]).expect("quarantine");
+
+        let n = storage.requeue_sent_for_types(&["player_death"]).unwrap();
+        assert_eq!(n, 1, "the delivered row only");
+        assert_eq!(storage.count_quarantined().unwrap(), 1, "still quarantined");
+        assert_eq!(storage.count_unsent().unwrap(), 1);
+    }
+
+    #[test]
+    fn requeue_sent_for_types_is_a_no_op_for_empty_or_unknown_types() {
+        let (storage, _tmp) = fresh_storage();
+        let a = insert_with_type(&storage, "player_death", 1);
+        storage.mark_sent(&[a]).expect("mark sent");
+
+        assert_eq!(storage.requeue_sent_for_types(&[]).unwrap(), 0);
+        assert_eq!(storage.requeue_sent_for_types(&["never_seen"]).unwrap(), 0);
+        assert_eq!(storage.count_unsent().unwrap(), 0, "nothing disturbed");
     }
 
     #[test]
