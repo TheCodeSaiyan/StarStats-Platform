@@ -174,9 +174,13 @@ jobs:
     # config, so an empty/missing secret cannot trigger a signtool
     # call with `identity ""`. Signing only activates when the
     # secret is populated.
-    # --- Signing path B: self-signed certificate (fallback) ---
+    # --- Signing path B: self-signed certificate ---
+    # Runs for every pre-release, and for any build where Artifact Signing
+    # is unconfigured (the one-command rollback). Pre-release installers
+    # therefore show "Unknown publisher" again — acceptable for alphas, and
+    # the reason the live gate above exists.
     - name: Import Windows code-signing cert
-      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT == ''
+      if: matrix.os == 'windows-latest' && (env.ARTIFACT_SIGNING_ACCOUNT == '' || needs.validate-tag.outputs.channel != 'live')
       shell: pwsh
       env:
         WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
@@ -228,7 +232,7 @@ jobs:
     # The second `tauri build` re-uses this compilation — cargo sees the
     # binary is current — so it goes almost straight to bundling.
     - name: Compile client (before auth, so the token stays fresh)
-      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != '' && needs.validate-tag.outputs.channel == 'live'
       timeout-minutes: 45
       shell: bash
       run: |
@@ -236,13 +240,24 @@ jobs:
         pnpm exec tauri build --no-bundle --no-sign
 
     # --- Signing path A: Azure Artifact Signing (CA-issued, public trust) ---
+    # LIVE TAGS ONLY. Trusted Signing is metered per month and one build
+    # signs eleven artefacts (the app exe twice, both installers, and the
+    # Wix/NSIS helper DLLs), so signing every auto-alpha would spend the
+    # month's allowance on builds nobody installs. Alphas, betas and RCs
+    # fall through to the self-signed path below, which costs nothing.
+    #
+    # The gate reads `needs.validate-tag.outputs.channel`, which that job
+    # derives from the version part AFTER stripping the `tray-` prefix.
+    # Deliberately not `contains(ref_name, '-')`: that idiom silently broke
+    # when tags gained the prefix, since `tray-v1.8.8` contains a hyphen
+    # unrelated to the channel.
     # Runs only once ARTIFACT_SIGNING_ACCOUNT is set, which cannot happen
     # until org identity validation completes. Auth is OIDC — no long-lived
     # secret to rot. Instead of a thumbprint, Tauri is handed a signCommand
     # so the bundler shells out to signtool with Microsoft's dlib; the key
     # never exists on the runner.
     - name: Azure login (Artifact Signing)
-      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != '' && needs.validate-tag.outputs.channel == 'live'
       uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -250,7 +265,7 @@ jobs:
         subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
     - name: Configure Artifact Signing
-      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      if: matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != '' && needs.validate-tag.outputs.channel == 'live'
       shell: pwsh
       env:
         ARTIFACT_SIGNING_ENDPOINT: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
@@ -377,7 +392,7 @@ jobs:
     # output is needed. Never fails the job itself: this is diagnostics, and
     # a missing log must not mask the real error above.
     - name: Signing log
-      if: always() && matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != ''
+      if: always() && matrix.os == 'windows-latest' && env.ARTIFACT_SIGNING_ACCOUNT != '' && needs.validate-tag.outputs.channel == 'live'
       shell: pwsh
       continue-on-error: true
       run: |
