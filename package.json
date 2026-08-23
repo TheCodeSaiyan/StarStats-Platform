@@ -2,7 +2,7 @@
   "name": "starstats-monorepo",
   "private": true,
   "version": "1.0.0",
-  "description": "StarStats — EAC-safe personal Star Citizen metrics platform",
+  "description": "StarStats \u2014 EAC-safe personal Star Citizen metrics platform",
   "license": "MPL-2.0",
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -27,12 +27,16 @@
   },
   "pnpm": {
     "overrides": {
-      "postcss@<8.5.10": ">=8.5.10",
       "protobufjs@>=7 <7.5.8": ">=7.5.8 <8",
       "protobufjs@>=8 <8.0.2": ">=8.0.2",
       "vite@<6.4.2": ">=6.4.2",
       "esbuild@<0.25.0": ">=0.25.0",
-      "brace-expansion@>=5.0.0 <5.0.6": ">=5.0.6"
+      "brace-expansion@>=5.0.0 <5.0.6": ">=5.0.6",
+      "postcss@<8.5.23": ">=8.5.23",
+      "nanoid@<3.3.18": ">=3.3.18",
+      "js-yaml@<4.3.1": ">=4.3.1",
+      "sharp@<0.35.0": ">=0.35.0",
+      "@babel/core@<=7.29.0": ">=7.29.6"
     }
   }
 }
