@@ -156,8 +156,13 @@ test('ranked rows resolve their identifiers and link to the catalogue', async ({
   await loginAs(page, { handle: 'TestPilot' });
   await page.goto('/me');
   await expect(page.locator('.hp-core')).toBeVisible();
-  await page.locator('.hp-lens button', { hasText: 'Travel' }).click();
-  await expect(page.locator('.hp-rw').first()).toBeVisible();
+  // Retried: the lens control is server-rendered, so a single click can land
+  // before React attaches to it, and the default lens draws no ranked planes —
+  // the symptom is then "no rows at all" rather than anything about rows.
+  await expect(async () => {
+    await page.locator('.hp-lens button', { hasText: 'Travel' }).click();
+    await expect(page.locator('.hp-rw').first()).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 40_000 });
 
   const names = await page.locator('.hp-rw .nm').allTextContents();
   expect(names.length).toBeGreaterThan(0);
@@ -169,7 +174,14 @@ test('ranked rows resolve their identifiers and link to the catalogue', async ({
   }
 
   // And the row is a destination, not a dead end.
-  const links = page.locator('.hp-rw a');
+  //
+  // `a.hp-rw`, not `.hp-rw a`. This asserted the nested form until the row hit
+  // area was measured: the anchor wrapped only the label and covered 3-10% of
+  // the row, so the row is now ITSELF the anchor. The old selector is not a
+  // weaker version of this one — it would pass on the structure that made the
+  // rows unclickable. `e2e/projection-rows.spec.ts` holds the hit-area and
+  // affordance assertions.
+  const links = page.locator('a.hp-rw');
   expect(await links.count()).toBeGreaterThan(0);
   const href = await links.first().getAttribute('href');
   expect(href).toMatch(/^\/kb\//);

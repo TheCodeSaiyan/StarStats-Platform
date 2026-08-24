@@ -344,6 +344,122 @@ failures immediately:
 
 ---
 
+## Ranked rows: the affordance did not match the target
+
+Reported as "still not all the items in lists are clickable and the clickable
+parts are not working properly". Measured on a rendered `/me` under the Travel
+lens, every row and its anchor:
+
+| row | anchor href | anchor width | share of row area | cursor |
+| --- | --- | --- | --- | --- |
+| Avenger Stalker | `/kb/vehicle/avenger-stalker` | 91px of 529 | 10% | pointer |
+| 300i | `/kb/vehicle/300i` | 26px of 529 | 3% | pointer |
+| Totally Unknown Hull | *(none)* | 0px | 0% | pointer |
+| ArcCorp | `/kb/location/arccorp` | 47px of 530 | 5% | pointer |
+| Crusader | `/kb/location/crusader` | 53px of 530 | 6% | pointer |
+
+Two faults, one visible symptom. The anchor wrapped only the LABEL, so 90-97%
+of every row was dead space. And `cursor: pointer` plus the hover highlight
+were on `.hp-rw` unconditionally, so a row with no link at all still advertised
+itself as a target.
+
+**A stretched link does not work here, and it was tried first.** `EntityLink`
+gained a `stretch` prop emitting an `inset: 0` `::after`; the build was clean,
+the class was correct, and a click at the row's far edge still did nothing. Two
+reasons, both structural: `.nm` is `overflow: hidden`, which clips the overlay
+back to the label, and `EntityLink`'s own wrapper is `position: relative`, so
+`inset: 0` fills the label rather than the row. That prop has been removed.
+
+**What shipped instead:** `MeterRow` takes an `href` and renders the ROW as the
+anchor — an anchor takes `display: grid` perfectly well, so the whole row is
+one hit target with one accessible name. It takes the link component through a
+`linkAs` prop rather than the `renderLink` CALLBACK `ChromeBar` uses, because
+the planes are built in a server module and a function prop cannot cross the
+RSC boundary while a client-component reference can (`_projection/RowLink.tsx`).
+`cursor`, the hover lift and the focus ring are now scoped to `.hp-rw--link`
+and `.hp-rw[role="button"]`, so a row that leads nowhere looks like one.
+
+**The cost, stated plainly:** these rows lose the `EntityHoverCard`. Keeping it
+would nest an interactive element inside a link — invalid markup and a
+confusing tab order. On a list whose purpose is to be clicked through, a row
+that reliably navigates is worth more than a preview. Hover cards are unchanged
+everywhere else.
+
+### Three more faults found while wiring the same rows
+
+1. **The loadout plane's data shape was fabricated.** It declared
+   `{ label?, name?, count? }`; the widget returns `{ class, label, category,
+   slug }`. So `count` was always undefined and every row rendered an EMPTY
+   value column — and the `slug` the widget had ALREADY resolved went unused,
+   which is why loadout rows linked nowhere. Same root cause as the
+   `by_kind.map` crash on beta: the `as (d: never)` casts in `BUILDERS` erase
+   the widget-to-builder type relationship, so a local interface that disagrees
+   with its source compiles cleanly and fails only on screen.
+2. **The entities plane could never render.** `buildElements` bailed on
+   `!def.load`, and the `entities` widget is a nav card with no loader. It now
+   builds from the reference bundle's own per-category counts, with each row
+   linking to that category's KB listing. Counts come from `bundle.counts`,
+   never `catalog.size` — the catalogue is dual-keyed under `class_name` AND
+   `display_name`, so its size roughly doubles the entry count.
+3. **Hangar rows now link.** A pledge name is a display name, not a class id,
+   and the catalogue's dual-keying resolves it — so "Avenger Titan" reaches
+   `/kb/vehicle/…` through exactly the same lookup as `AEGS_Avenger_Titan`.
+
+**Deliberately still not links,** because the target would have to be guessed:
+corridor rows (`A ⇄ B` is two places, not one), docking kinds (Hangar / Pad /
+Other are berth types, not entities), records and combat rows (labels for
+figures), and org rows — `/orgs/{slug}` is a StarStats-native org keyed by an
+app slug, while the hangar snapshot carries an RSI `sid`. Linking those would
+produce dead URLs. They now render with no pointer and no hover lift, which is
+the honest signal.
+
+### And a fourth, found because rows changed tag
+
+`.hp-rw:first-of-type .rk { color: var(--hot) }` lit the leading rank. Once a
+row became an `<a>` when it links and a `<div>` when it does not, that selector
+had to be re-read — and re-reading it exposed a fault that was already there:
+`:first-of-type` matches the first element of each TAG among its siblings, and
+a plane's `.cap` is itself a `<div>`. So in any plane whose rows are ALL
+unlinked — *Where you dock*, *Records*, *Orgs*, *Combat & contracts* — the cap
+took the first-div slot and **no row was lit at all**, while a plane starting
+with a link looked perfectly correct. Nothing pointed at it because the two
+kinds of plane were never compared.
+
+It is now `.hp-rw .rk { --hot }` plus `.hp-rw ~ .hp-rw .rk { --label }`: "every
+row after a row recedes", which is tag-blind and therefore cannot drift again
+when a row's element changes. `:first-child` would not do — the rows are not
+the first child of the plane.
+
+### Guard
+
+`apps/web/e2e/projection-rows.spec.ts`. It clicks 30px in from the row's RIGHT
+edge — the part the old anchor never covered — and reads the cursor on a row
+that leads nowhere. Both assertions were run against the reverted code first
+and both failed, along with the sweep that forbids a nested anchor inside a
+row; "the link is visible" and "the link has the right href" both PASS on the
+broken build, because the anchor was present, visible, correctly addressed and
+3% of the row.
+
+The rank sweep needed two corrections before it measured anything. Checking a
+single plane passed against the broken selector, because the plane it checked
+began with a link; it now sweeps EVERY plane. And its docking fixture used
+`total` where the API field is `total_stows`, so the widget bailed, the plane
+never rendered, and the sweep quietly lost the only case it existed to cover —
+a green test measuring nothing. With both corrected it fails on the old
+selector, naming *Where you dock*.
+
+The loadout fix has its own test in the same file, asserting the value column
+is not blank — which is the whole difference, since every structural gate
+passed on the broken version: the rows were present, correctly shaped,
+correctly classed and correctly counted. It fails on the old interface.
+
+The file also carries a note worth reading if it ever goes flaky: the lens
+control is server-rendered, so a single click can land before React attaches.
+The default lens draws no ranked planes, so the symptom is "no rows at all"
+rather than anything about rows. The click is wrapped in `expect(...).toPass()`.
+
+---
+
 ## Open items for your review
 
 1. **`--fs-sm` moved 11.5 → 12px and `--fs-micro` 8.5 → 10px.** Everything
@@ -359,4 +475,14 @@ failures immediately:
 4. **Admin is not written in the system's components** (see Phase 4).
 5. `docs/plans/` is gitignored now, so the projection port's working plan lives
    outside the repo.
+6. **The remaining `BUILDERS` interfaces are unverified.** Three of them have
+   now been caught disagreeing with their widget (`docking`, `locations`,
+   `loadout`), each found by a reader or a crash rather than by a gate. The
+   `as (d: never)` cast is what allows it. Replacing those casts with the
+   widget's real return type would turn this whole class of fault into a
+   compile error; it is a contained change and I did not do it because it
+   reaches outside the port's scope.
+7. **`/me` under the default "All" lens draws no ranked planes at all** — only
+   callouts and the trace. That is the lens preference behaving as written, not
+   a fault, but it means the first thing a reader sees has no lists in it.
 

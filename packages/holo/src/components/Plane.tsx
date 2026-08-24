@@ -83,6 +83,30 @@ export interface MeterRowProps {
    * lives on the Plane's `trailing` slot instead.
    */
   onClick?: () => void;
+  /**
+   * Make the WHOLE ROW a link.
+   *
+   * Rows that lead somewhere used to carry the anchor around the label only —
+   * measured at 3-10% of the row's area — so a reader aiming at a row that
+   * showed a pointer cursor and a hover highlight hit nothing nine times out
+   * of ten. Wrapping the label more tightly is not fixable from outside:
+   * `.nm` is `overflow: hidden`, which clips any stretched overlay, and the
+   * label's own wrapper is positioned, so `inset: 0` fills the label rather
+   * than the row.
+   *
+   * `linkAs` exists because this package must not depend on a router — the
+   * host passes its own link component. It is a COMPONENT rather than the
+   * `renderLink` CALLBACK `ChromeBar` takes, and deliberately so: the ranked
+   * planes are built in a server module, and a function prop cannot cross the
+   * RSC boundary while a client-component reference can. Without one, a plain
+   * `<a>` still works — it is a real URL either way.
+   */
+  href?: string;
+  linkAs?: React.ElementType<{
+    href: string;
+    className?: string;
+    children?: React.ReactNode;
+  }>;
 }
 
 /** Rank / name / share meter / value. The dense ranked row. */
@@ -93,10 +117,43 @@ export function MeterRow({
   value,
   valueText = false,
   onClick,
+  href,
+  linkAs,
 }: MeterRowProps) {
+  const cls =
+    (valueText ? 'hp-rw hp-rw--text' : 'hp-rw') + (href ? ' hp-rw--link' : '');
+  const inner = (
+    <>
+      <span className="rk">
+        {typeof rank === 'number' ? String(rank).padStart(2, '0') : rank}
+      </span>
+      <span className="nm">{name}</span>
+      <span className="mt">
+        <i style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+      </span>
+      <span className="vv">{value}</span>
+    </>
+  );
+
+  // The row IS the link when it has one, rather than an anchor around the
+  // label or a stretched overlay inside it. Both alternatives were tried and
+  // both fail here: `.nm` is `overflow: hidden`, so an `inset: 0` overlay is
+  // clipped back to the label, and `display: contents` on an inner anchor has
+  // a history of dropping the link out of the accessibility tree. An anchor
+  // takes `display: grid` perfectly well, so the whole row becomes one hit
+  // target with one accessible name.
+  if (href) {
+    const A = linkAs ?? 'a';
+    return (
+      <A href={href} className={cls}>
+        {inner}
+      </A>
+    );
+  }
+
   return (
     <div
-      className={valueText ? 'hp-rw hp-rw--text' : 'hp-rw'}
+      className={cls}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
@@ -111,14 +168,7 @@ export function MeterRow({
           : undefined
       }
     >
-      <span className="rk">
-        {typeof rank === 'number' ? String(rank).padStart(2, '0') : rank}
-      </span>
-      <span className="nm">{name}</span>
-      <span className="mt">
-        <i style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
-      </span>
-      <span className="vv">{value}</span>
+      {inner}
     </div>
   );
 }
