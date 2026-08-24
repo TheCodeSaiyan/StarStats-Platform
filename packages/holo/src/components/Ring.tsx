@@ -218,6 +218,11 @@ export function Ring({
                 style={{
                   fill: 'color-mix(in oklab, var(--dim) 55%, var(--beam))',
                 }}
+                // The label is a SIBLING of the hit band, not inside it, so a
+                // tap that lands on the word does nothing at all — and the word
+                // is the obvious thing to aim at. Passing it through puts those
+                // taps on the band underneath.
+                pointerEvents="none"
                 fontSize="9"
                 letterSpacing="2.4"
                 textAnchor="middle"

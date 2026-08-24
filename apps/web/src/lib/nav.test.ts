@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { SITE_NAV, navFor, navSections } from './nav';
+import { SITE_NAV, navFor, navSections, isPrimaryNav } from './nav';
 
 /**
  * The nav model had NO test until this file, which is how it managed to be
@@ -134,5 +134,70 @@ describe('navSections', () => {
   it('omits the operator group entirely for a non-staff reader', () => {
     const titles = navSections({ signedIn: true }).map((s) => s.title);
     expect(titles).not.toContain('Operator');
+  });
+});
+
+
+describe('the inline row', () => {
+  /**
+   * The bar and the menu are two different questions.
+   *
+   * A signed-in reader's bar carried all seventeen destinations, nine of them
+   * public pages they were not working in, and `ChromeBar`'s fit measurement is
+   * all-or-nothing — so the whole set went behind a hamburger at every viewport
+   * below 2560px. These assert the SPLIT, not the widths: what belongs in the
+   * row is a product decision and testable here in milliseconds, while what
+   * fits is a measurement and lives in the e2e sweep.
+   */
+  const primaryIds = (signedIn: boolean, staffRoles?: string[]) =>
+    navFor({ signedIn, staffRoles })
+      .filter((n) => isPrimaryNav(n, signedIn))
+      .map((n) => n.id);
+
+  it('offers a signed-in reader their own pages and a way home', () => {
+    const ids = primaryIds(true);
+    expect(ids).toContain('home');
+    // Every `user` destination, none of the other public ones.
+    const userIds = SITE_NAV.filter((n) => n.access === 'user').map((n) => n.id);
+    for (const id of userIds) expect(ids).toContain(id);
+    for (const id of ['features', 'docs', 'guides', 'trust', 'privacy', 'terms']) {
+      expect(ids, `${id} is marketing, not a working destination`).not.toContain(id);
+    }
+  });
+
+  it('keeps the console in the row for staff and out of it for everyone else', () => {
+    expect(primaryIds(true, ['admin'])).toContain('admin');
+    expect(primaryIds(true)).not.toContain('admin');
+  });
+
+  it('gives a signed-out visitor the public set, which is the whole point', () => {
+    const ids = primaryIds(false);
+    expect(ids).toContain('features');
+    expect(ids).toContain('home');
+    // And still no labels for pages they cannot open — `navFor` gates that, but
+    // asserting it here means a change to `isPrimaryNav` alone cannot leak one.
+    expect(ids).not.toContain('me');
+    expect(ids).not.toContain('admin');
+  });
+
+  it('never drops a destination — the menu keeps everything', () => {
+    // The split moves destinations; it must not remove any. If this fails, a
+    // page has become unreachable from the chrome rather than demoted in it.
+    for (const signedIn of [true, false]) {
+      const all = navFor({ signedIn, staffRoles: ['admin'] }).map((n) => n.id);
+      const inMenu = navSections({ signedIn, staffRoles: ['admin'] }).flatMap(
+        (s) => s.items.map((i) => i.id),
+      );
+      expect(inMenu.sort()).toEqual(all.sort());
+    }
+  });
+
+  it('marks the row membership on the section model', () => {
+    // `ChromeBar` reads this flag and nothing else; if it stops being set the
+    // component falls back to "everything is inline" and the bar regresses
+    // silently to the seventeen-link row.
+    const items = navSections({ signedIn: true }).flatMap((s) => s.items);
+    expect(items.some((i) => i.primary)).toBe(true);
+    expect(items.some((i) => !i.primary)).toBe(true);
   });
 });

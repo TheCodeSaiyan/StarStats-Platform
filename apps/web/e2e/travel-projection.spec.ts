@@ -200,8 +200,13 @@ test('a place opens its own record, and the level list descends into it', async 
   await expect(page.locator('.hp-settings')).toBeVisible();
   await openGroup(page, 'Trail');
 
-  const row = page.locator('.hp-rw a').first();
-  const name = (await row.innerText()).trim();
+  // `a.hp-rw`, not `.hp-rw a`. The row IS the anchor now — wrapping the label
+  // instead left a target a few dozen pixels wide in a full-width row, which
+  // is the fault this branch fixed on every ranked list. The name has to come
+  // from `.nm` for the same reason: the anchor's own text is the whole row,
+  // rank and value included.
+  const row = page.locator('a.hp-rw').first();
+  const name = (await row.locator('.nm').innerText()).trim();
   await row.click();
 
   // URL state, not client state: a place has to be shareable and the back
@@ -250,7 +255,7 @@ test('the place record shows real dwell, and only where it exists', async ({
   await page.goto('/me/travel?level=city');
   await expect(page.locator('.hp-settings')).toBeVisible();
   await openGroup(page, 'Trail');
-  await page.locator('.hp-rw a').first().click();
+  await page.locator('a.hp-rw').first().click();
 
   const detail = page.locator('.hp-journeydetail');
   await expect(detail).toBeVisible();
@@ -261,7 +266,7 @@ test('the place record shows real dwell, and only where it exists', async ({
   // A site is below the breakdown's deepest aggregate.
   await page.goto('/me/travel?level=site');
   await openGroup(page, 'Trail');
-  await page.locator('.hp-rw a').first().click();
+  await page.locator('a.hp-rw').first().click();
   const siteDetail = page.locator('.hp-journeydetail');
   await expect(siteDetail).toBeVisible();
   await expect(siteDetail.locator('.hp-subs')).toContainText('Sighting span');

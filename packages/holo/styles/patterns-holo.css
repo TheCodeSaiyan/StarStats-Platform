@@ -35,7 +35,27 @@
 
 /* Parallax depth layers. `data-depth` is the px travel per unit of cursor
  * offset — the component writes the transform. */
-.hp-layer { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; transition: transform 380ms var(--ease-out); }
+/* THE LAYER IS A COORDINATE SPACE, NOT A SURFACE.
+ *
+ * Every depth layer is `inset: 0`, so each one covers the whole stage, and the
+ * deepest in DOM order (callouts/panes, depth 54) sat on top of everything
+ * painted before it. Measured on /me by sampling 400 points around the ring at
+ * both 1440px and 390px: every single one returned `DIV.hp-layer` and NONE
+ * returned a ring segment. The ring is the projection's primary navigation and
+ * it was completely unclickable — on desktop as well as on touch.
+ *
+ * Nothing pointed at it. The segments are `role="button"` with `tabIndex={0}`
+ * and real handlers, so they tab and activate by keyboard, and the a11y sweep
+ * that checks focusability passed the whole time.
+ *
+ * So the layers pass clicks through and their CONTENT takes them back. The
+ * children are positioned boxes (the ring, the core, the panes), not full-bleed
+ * sheets, so this restores exactly the hit areas the layout draws. */
+.hp-layer { position: absolute; inset: 0; transform-style: preserve-3d; will-change: transform; transition: transform 380ms var(--ease-out); pointer-events: none; }
+.hp-layer > * { pointer-events: auto; }
+/* …except the built-in decoration, which IS full-bleed. `.hp-hex` covers the
+ * stage and `.hp-floor` is 1100x620 of grid lines; both are backdrop. */
+.hp-layer > .hp-hex, .hp-layer > .hp-floor, .hp-emit { pointer-events: none; }
 .hp-hex { position: absolute; inset: 0; opacity: .3; background-image: radial-gradient(circle, rgba(var(--bR),var(--bG),var(--bB),.16) .7px, transparent .7px); background-size: 19px 19px; }
 .hp-floor { position: absolute; left: 50%; top: 56%; width: 1100px; height: 620px; margin-left: -550px; transform: rotateX(66deg); opacity: .42; }
 .hp-floor div { position: absolute; inset: 0; border: 1px solid rgba(var(--bR),var(--bG),var(--bB),.13); }
@@ -312,15 +332,52 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  *   data-dense="2" → compact (measured)
  *   data-dense="1" → handle
  *   data-dense="0" → handle + emitter */
+/* THE DENSITY LADDER, least useful first. ChromeBar walks these WITH the nav
+ * still inline and only collapses the nav once step 3 has not been enough —
+ * navigation is the last thing given up, not the first.
+ *
+ *   0  everything
+ *   1  drop the emitter id — a readout nobody navigates by
+ *   2  drop the citizen line, and the "Calibration" caption from the pips.
+ *      The pips keep their per-pip aria-labels, so the control is still named
+ *      where it counts; the caption is a caption.
+ *   3  drop the "Projection live" WORDING (the pulsing dot survives and is
+ *      what carries the state) and the lifetime identity readouts. Those are
+ *      passive figures a reader can still get by looking at the page; a bar
+ *      with no links is not something a reader can navigate by looking. */
 .hp-top > .who, .hp-top > .emit { flex: none; display: none; }
 .hp-top[data-dense="1"] > .who,
 .hp-top[data-dense="0"] > .who,
 .hp-top[data-dense="0"] > .emit { display: block; }
+.hp-top[data-dense="2"] .hp-cal .cl,
+.hp-top[data-dense="3"] .hp-cal .cl { display: none; }
+.hp-top[data-dense="3"] > .hp-idstats { display: none; }
+/* The range tabs' own caption — "All = 365 days" annotates the control, it is
+ * not one of the tabs, and `RangeTabs` renders it by DEFAULT (`note = true`),
+ * so it is on every ranged surface without any caller asking for it. Measured
+ * at 390px it drew at x=521 on a 390px viewport: present, costed, and entirely
+ * off-screen. Dropped at the same step as the pips' caption. */
+.hp-top[data-dense="3"] .hp-rng .rq { display: none; }
+/* The dot alone, at its natural size — not a squeezed label. `width` on the
+ * flex item plus `overflow: hidden` keeps the pulsing indicator and clips the
+ * words, which is the same technique the phone breakpoint already uses. */
+.hp-top[data-dense="3"] > .live { width: 6px; overflow: hidden; }
 .hp-top .id { font-size: var(--fs-md); font-weight: 600; letter-spacing: var(--tracking-widest); color: var(--beam); }
 .hp-top .live { color: var(--hot); display: inline-flex; align-items: center; gap: 7px; }
 .hp-top .live i { width: 6px; height: 6px; background: var(--hot); border-radius: 50%; box-shadow: 0 0 9px var(--hot); animation: hpPulse 1.9s ease-in-out infinite; }
 @keyframes hpPulse { 50% { opacity: .2; box-shadow: none; } }
-.hp-top a { color: var(--dim); text-decoration: none; }
+/* `--label`, not `--dim`. The chrome row is `--fs-xs` (9.5px) uppercase at
+ * placard tracking, and the palette's own rule is that anything under 12px or
+ * uppercase-at-wide-tracking belongs to the label tier — `--dim` measures
+ * 5.4-5.6:1 against the void, under the 7:1 this project holds small text to.
+ *
+ * It had always been wrong and had never been SEEN: the inline row was
+ * collapsed at every viewport the contrast sweep tests, so these links were
+ * `display: none` and never sampled. Splitting the row made it fit, and the
+ * sweep found them immediately. The `--dim`-on-small-text unit guard misses
+ * this shape too — it only inspects rules that set a font-size in the SAME
+ * body, and this one inherits its size from `.hp-top`. */
+.hp-top a { color: var(--label); text-decoration: none; }
 .hp-top a:hover { color: var(--hot); text-decoration: none; }
 
 /* Site nav — collapses by measurement (see ChromeBar). Three states:
@@ -337,23 +394,36 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  * identity block to an ellipsis instead of reporting overflow. */
 .hp-top[data-measuring] > * { flex: none !important; overflow: visible !important; text-overflow: clip !important; }
 .hp-top[data-measuring] > .sp { flex: 0 0 0 !important; }
-.hp-top[data-nav="collapsed"] .hp-navtoggle { display: inline-flex; }
+.hp-top[data-nav="collapsed"] .hp-navtoggle,
+/* Persists through an inline row when the row is only part of the site — see
+ * ChromeBar's split. Without this the rest of the destinations are stranded at
+ * exactly the widths where the row fits. */
+.hp-navtoggle[data-persist] { display: inline-flex; }
 /* Opaque, and clear of .hp-crumb (top: 58px, same origin) — a translucent
  * panel over the breadcrumb makes both unreadable. */
 .hp-navwrap { position: relative; display: inline-flex; flex: none; }
-.hp-top[data-nav="collapsed"] .hp-lk[data-open="true"] .grp { display: flex; flex-direction: column; gap: 8px; }
-.hp-top .hp-lk .ttl { font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase;
-  color: var(--label); padding-bottom: 2px; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.18); }
-.hp-top .hp-lk a[aria-current="page"] { color: var(--hot); }
-.hp-top[data-nav="collapsed"] .hp-lk[data-open="true"] {
+/* The disclosure panel — its OWN element, not the inline row wearing a second
+ * hat. It has to be, now the row can fit and still be a subset: one node
+ * cannot be a nowrap row and an open column at the same width. Keyed on
+ * `data-open` alone, so the panel works whether or not the row is inline. */
+.hp-navmenu { display: none; }
+.hp-navmenu[data-open="true"] {
   display: flex; position: absolute; top: calc(100% + 42px); left: 0;
-  flex-direction: column; align-items: flex-start; gap: 12px; z-index: 34;
+  flex-direction: column; align-items: flex-start; z-index: 34;
   padding: 17px 22px; background: var(--void); gap: 18px;
   border-left: 1px solid var(--beam); box-shadow: 0 0 30px rgba(var(--bR),var(--bG),var(--bB),.2);
   max-height: 70vh; overflow-y: auto;
+  font-size: var(--fs-xs); letter-spacing: var(--placard-tracking); text-transform: uppercase;
 }
+.hp-navmenu .grp { display: flex; flex-direction: column; gap: 8px; }
+.hp-navmenu a { color: var(--label); text-decoration: none; letter-spacing: var(--placard-tracking); }
+.hp-navmenu a:hover { color: var(--hot); }
+.hp-navmenu a[aria-current="page"] { color: var(--hot); }
+.hp-navmenu .ttl { font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase;
+  color: var(--label); padding-bottom: 2px; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.18); }
+.hp-top .hp-lk a[aria-current="page"] { color: var(--hot); }
 /* Belt and braces: the crumb steps aside while the panel is open. */
-.hp-top[data-nav="collapsed"]:has(.hp-lk[data-open="true"]) ~ .hp-crumb,
+.hp-top:has(.hp-navmenu[data-open="true"]) ~ .hp-crumb,
 .hp-stage[data-nav="open"] .hp-crumb { opacity: 0; pointer-events: none; }
 .hp-top .hp-lk a { letter-spacing: var(--placard-tracking); }
 /* Below a phone-ish width even the ellipsised detail is noise; the pips and
@@ -516,6 +586,20 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-cell b.w { color: var(--warn); }
 .hp-cell b.g { color: var(--good); }
 @media (max-width: 560px) { .hp-cells { grid-template-columns: repeat(2, 1fr); } }
+/* PHONE ONLY, and only where a control is competing for the room.
+ *
+ * Every other item in the chrome row is `flex: none` by the time the layout
+ * reaches a phone, so the range strip absorbs the whole deficit on its own —
+ * measured at 390px it was handed an 84px box for 226px of tabs. The wordmark
+ * is 84px of that row and is a plain `<span>`: not a link, not a control, and
+ * the product is already named in the document title and by the page itself.
+ *
+ * So on a phone the label yields to the control. Tablets and up keep it. If
+ * this reads as too much to give up, the one-line revert is here rather than
+ * anywhere else. */
+@media (max-width: 560px) {
+  .hp-top:has(.hp-rng) > .id { display: none; }
+}
 
 /* Raw log line — the Review pane's unknown shapes. */
 .hp-raw { margin: 0; padding: 8px 10px; font-size: 10.5px; line-height: 1.55; color: var(--beam); background: rgba(var(--bR),var(--bG),var(--bB),.05); border-left: 1px solid var(--beam); white-space: pre-wrap; word-break: break-all; }
@@ -577,16 +661,52 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
     top: 92px; width: 86%; opacity: 1;
     transform: translate(-50%, 0) translateY(calc(var(--hp-ring) / 2 - 50%)) scale(.92);
   }
-  /* Chrome sheds to the wordmark, a state dot, the disclosure and the pips —
-   * the pips are the control, so they are the last thing standing. */
+  /* Chrome sheds to the wordmark, a state dot, the disclosure and the ACCOUNT.
+   *
+   * It used to shed to the pips instead — "the pips are the control, so they
+   * are the last thing standing" — and that ordering did not survive being
+   * measured on a device. `.hp-top` is `nowrap`, and under `pointer: coarse`
+   * each pip grows to a 44px target, so the calibration control alone costs
+   * 188px of the 358px a 390px phone has. Measured on an emulated iPhone: the
+   * account control drew from x=493 to x=503 — off the right edge, on every
+   * signed-in surface. Sign out, Calibrate and Sharing all live in that menu,
+   * so the phone chrome was shipping a colour picker instead of the way out.
+   *
+   * The pips are a preference and `/settings` carries the full control
+   * (`slot: 'calibration'`), which is two taps away in the disclosure. The
+   * account menu has no second home. So the pips go and the account stays. */
   .hp-top { top: 14px; left: 16px; right: 16px; gap: 10px; }
+  .hp-top > .hp-cal { display: none; }
+  /* The range control SCROLLS rather than being crushed.
+   *
+   * `.hp-top` is nowrap and over-full on a phone, so every shrinkable child
+   * gets squeezed proportionally — `.hp-rng` was given an 84px box for 250px
+   * of tabs, and because its overflow was visible the buttons simply drew past
+   * it: measured at 390px, "All" ended at x=441 on a 390px screen. The range
+   * was on the page, costed, painted, and untappable.
+   *
+   * Five tabs plus their gaps want ~230px and the row has ~190 to give after
+   * the disclosure and the account menu, both of which have no second home.
+   * So the strip takes the slack it can get and scrolls the rest. The mask is
+   * the affordance: a hard clip at the edge looks like the end of the list. */
+  .hp-top > .hp-rng {
+    flex: 1 1 auto; min-width: 0; gap: 10px; margin-left: 0;
+    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
+    mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
+  }
+  .hp-top > .hp-rng::-webkit-scrollbar { display: none; }
+  /* The emitter glow is a fixed 820px ellipse centred on the stage, so a phone
+   * saw only the flat middle of the gradient — a band, not a lens, and 215px
+   * of it hung off each edge. Proportional to the viewport instead. */
+  .hp-emit { width: 150vw; margin-left: -75vw; }
   .hp-top > .id { font-size: var(--fs-sm); letter-spacing: var(--tracking-wider); }
   .hp-top > .clock { display: none; }
   .hp-top > .live { width: 6px; overflow: hidden; }
   .hp-top > .held { display: none; }
   .hp-top .hp-cal { gap: 9px; }
   .hp-top .hp-cal .cl { display: none; }
-  .hp-top .hp-lk[data-open="true"] { left: 0; right: 0; }
+  .hp-navmenu[data-open="true"] { left: 0; right: 0; }
   .hp-crumb { top: 42px; left: 16px; font-size: var(--fs-micro); }
   .hp-pane,
   .hp-stage[data-mode="inspect"] .hp-pane[data-pane="inspect"] {
@@ -659,6 +779,13 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 @media (pointer: coarse) {
   /* Hover-only reveals become permanent — there is no hover to trigger them. */
   .hp-seg { stroke-width: 11; opacity: .85; }
+  /* The ring segments' hit band. `.hp-seghit` carries `stroke-width="34"` as an
+   * SVG ATTRIBUTE, which is in viewBox units — 34 of 560, and the ring is
+   * 240px on a phone, so the band a finger actually gets is 34 x 240/560 = 15
+   * CSS px. Measured at 13. The ring is the projection's primary navigation,
+   * so that is the most important target on the screen and the smallest.
+   * A CSS `stroke-width` overrides the attribute; 56 units puts it at ~24. */
+  .hp-seghit { stroke-width: 56; }
   .hp-mapnode circle { fill: rgba(var(--bR),var(--bG),var(--bB),.4); }
   .hp-rw .nm { color: var(--beam); }
 
@@ -671,6 +798,31 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   .hp-lens button { padding: 14px 6px; }
   .hp-rng button { padding: 13px 8px; }
   .hp-crumb button { padding: 12px 0; }
+
+  /* The rest of the targets, measured on an emulated phone rather than
+   * assumed. WCAG 2.5.8 (AA) asks for 24x24 CSS px; the rules above already
+   * take the chrome to 44, and these bring the content controls to at least
+   * that floor. Every one is PADDING around an unchanged visual, so nothing
+   * gets bigger on screen — the hit area does.
+   *
+   *   .hp-cattab      18px tall  (KB category tabs — real navigation)
+   *   .hp-catchip     23px       (facet chips)
+   *   .hp-tip__t      20px       (InfoTip triggers)
+   *   .hp-legal a     12-13px    (footer and legal links, the smallest on the
+   *                               page and on every surface)
+   *   summary         13px       (disclosures, e.g. on /downloads)
+   *   input/select    26-31px
+   *   .hp-skip        30px       (focus-only, but it is the first thing a
+   *                               keyboard-and-touch reader lands on) */
+  /* `.hp-cattab`, `.hp-catchip`, `.hp-tip__t` and `.hp-select` are declared in
+   * additions.css, which is imported AFTER this file — a rule for them here
+   * loses on source order no matter what the media query says. Their touch
+   * sizing lives beside their own declarations instead. */
+  .hp-legal .lk a, .hp-legal__more { padding: 12px 0; display: inline-block; }
+  .hp-legal .lk { align-items: center; }
+  .hp-skip { padding: 13px 16px; }
+  summary { padding: 10px 0; }
+  .hp-input { min-height: 44px; }
   .hp-tray__tabs button { padding: 14px 4px; }
   .hp-btn { padding: 14px 22px; }
   .hp-el button { width: 38px; height: 38px; }
@@ -682,9 +834,11 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   .hp-rw { padding: 11px 0; }
   .hp-lg { padding: 9px 0; }
   .hp-tbl td { padding: 11px 10px 11px 0; }
-  /* Nav panel links need spacing, not just tracking. */
-  .hp-top .hp-lk[data-open="true"] { gap: 4px; padding: 12px 18px; }
-  .hp-top .hp-lk[data-open="true"] a { padding: 11px 0; }
+  /* Nav panel links need spacing, not just tracking: a 44px target comes from
+   * padding around an 11px cap-height line, never from the text itself. */
+  .hp-navmenu[data-open="true"] { gap: 4px; padding: 12px 18px; }
+  .hp-navmenu[data-open="true"] .grp { gap: 0; }
+  .hp-navmenu[data-open="true"] a { padding: 11px 0; }
 }
 
 /* ── Brand hero ───────────────────────────────────────────────────────

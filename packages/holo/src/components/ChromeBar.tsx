@@ -71,6 +71,18 @@ export interface NavItem {
   label: string;
   active?: boolean;
   /**
+   * Offered in the INLINE row as well as in the disclosure menu.
+   *
+   * The bar and the menu answer two different questions, and this component
+   * used to answer only one: every destination went into both, and the fit
+   * measurement below is all-or-nothing, so one long set meant a hamburger at
+   * every width. When any item carries this flag the inline row draws only the
+   * flagged ones and the disclosure keeps the whole set — so a destination is
+   * moved rather than hidden. When NO item carries it every item is inline,
+   * which is what a caller that has not opted in gets.
+   */
+  primary?: boolean;
+  /**
    * Real destination. When present the item renders as a plain anchor to it
    * rather than calling `onNavigate` — which is what the web app wants, so the
    * browser gets a real URL, middle-click and prefetch.
@@ -204,6 +216,31 @@ export function ChromeBar({
   const flat = React.Children.toArray(links);
   const hasNav = grouped || flat.length > 0;
 
+  /**
+   * THE SPLIT. When any item is marked `primary` the inline row carries only
+   * those, and the disclosure carries everything.
+   *
+   * `hasSplit` is what decides whether the toggle survives an inline row: with
+   * no split, inline means every destination is on screen and a disclosure
+   * would open a duplicate of what is already visible. With one, the rest of
+   * the site lives ONLY behind the toggle, so hiding it would strand it.
+   */
+  const inlineSections = React.useMemo(() => {
+    if (!grouped) return sections;
+    const anyPrimary = sections!.some((sec) =>
+      sec.items.some((it) => it.primary),
+    );
+    if (!anyPrimary) return sections;
+    return sections!
+      .map((sec) => ({ ...sec, items: sec.items.filter((it) => it.primary) }))
+      .filter((sec) => sec.items.length > 0);
+  }, [grouped, sections]);
+  const hasSplit =
+    grouped &&
+    inlineSections !== sections &&
+    (inlineSections ?? []).reduce((n, s) => n + s.items.length, 0) <
+      sections!.reduce((n, s) => n + s.items.length, 0);
+
   React.useLayoutEffect(() => {
     const row = rowRef.current;
     if (!row) return;
@@ -213,18 +250,31 @@ export function ChromeBar({
       const prevDense = row.getAttribute('data-dense');
       row.setAttribute('data-measuring', '');
       const fits = () => row.scrollWidth <= row.clientWidth;
+      /**
+       * THE ORDER IS THE POINT: ornament is given up before navigation.
+       *
+       * This used to try `['inline','0']` and then go straight to
+       * `['collapsed','0']`, so the very first thing sacrificed was the whole
+       * nav — the most drastic reduction available — while the calibration
+       * caption, the "Projection live" wording and the lifetime readouts all
+       * kept their full width. Measured on `/me`: the inline row wanted
+       * 1953px, of which the nav was 687 and the rest was chrome, and the bar
+       * collapsed at every viewport below 2560.
+       *
+       * Now the density ladder is walked WITH the nav inline first, and only
+       * when nothing is left to give does the nav collapse. What each density
+       * step drops is in patterns-holo.css beside the rules that do it; the
+       * order there is least-useful-first, ending at the identity readouts,
+       * which are passive figures — a reader can still read them by looking,
+       * but cannot navigate by looking at a bar with no links.
+       */
+      const DENSITIES = ['0', '1', '2', '3'];
       const steps: [string, string][] = hasNav
         ? [
-            ['inline', '0'],
-            ['collapsed', '0'],
-            ['collapsed', '1'],
-            ['collapsed', '2'],
+            ...DENSITIES.map((d) => ['inline', d] as [string, string]),
+            ...DENSITIES.map((d) => ['collapsed', d] as [string, string]),
           ]
-        : [
-            ['collapsed', '0'],
-            ['collapsed', '1'],
-            ['collapsed', '2'],
-          ];
+        : DENSITIES.map((d) => ['collapsed', d] as [string, string]);
       let chosen = steps[steps.length - 1];
       for (const [nav, dense] of steps) {
         row.setAttribute('data-nav', nav);
@@ -254,11 +304,14 @@ export function ChromeBar({
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [hasNav, flat.length, grouped, handle, citizen, emitter, clock]);
+  }, [hasNav, flat.length, grouped, inlineSections, handle, citizen, emitter, clock]);
 
   React.useEffect(() => {
-    if (fit.nav === 'inline') setNavOpen(false);
-  }, [fit.nav]);
+    // With a split the inline row is not the whole set, so an open disclosure
+    // is still showing destinations the bar does not — closing it would take
+    // them away mid-reach.
+    if (fit.nav === 'inline' && !hasSplit) setNavOpen(false);
+  }, [fit.nav, hasSplit]);
 
   const go = (id: string) => (e: React.MouseEvent) => {
     e.preventDefault();
@@ -290,6 +343,41 @@ export function ChromeBar({
     );
   };
 
+  /**
+   * One renderer for both nav sites.
+   *
+   * `withTitles` is the only difference: the disclosure is a MENU, where the
+   * group headings are what tell a reader that "Trust" is a public page and
+   * "Sharing" is their own data. The inline row is a row of links, and a
+   * heading in it reads as another link.
+   */
+  const navGroups = (secs: NavSection[], withTitles: boolean) =>
+    secs.map((sec) => (
+      <span className="grp" key={sec.title}>
+        {withTitles ? <span className="ttl">{sec.title}</span> : null}
+        {sec.items.map((it) =>
+          it.href ? (
+            link({
+              key: it.id,
+              href: it.href,
+              'aria-current': it.active ? 'page' : undefined,
+              onClick: close,
+              children: it.label,
+            })
+          ) : (
+            <a
+              key={it.id}
+              href={'#' + it.id}
+              aria-current={it.active ? 'page' : undefined}
+              onClick={go(it.id)}
+            >
+              {it.label}
+            </a>
+          ),
+        )}
+      </span>
+    ));
+
   /** Total of every account item's badge — the inbound-share count today. */
   const acctBadge = (account || []).reduce((n, a) => n + (a.badge ?? 0), 0);
 
@@ -315,6 +403,9 @@ export function ChromeBar({
           <button
             type="button"
             className="hp-navtoggle"
+            // Kept mounted when the row fits but does not carry everything —
+            // with a split, the rest of the site lives only behind this.
+            data-persist={hasSplit ? 'true' : undefined}
             aria-expanded={navOpen}
             aria-label={navOpen ? 'Close navigation' : 'Open navigation'}
             onClick={() => {
@@ -334,38 +425,19 @@ export function ChromeBar({
               />
             </svg>
           </button>
+          <nav className="hp-lk" aria-label="Site">
+            {grouped ? navGroups(inlineSections!, false) : flat}
+          </nav>
+          {/* The disclosure holds the WHOLE site, always — it is not a
+              small-screen fallback for the row above it. With a split the row
+              carries the reader's working set and everything else lives only
+              here, so this panel is reachable at every width. */}
           <nav
-            className="hp-lk"
+            className="hp-navmenu"
             data-open={navOpen ? 'true' : undefined}
-            aria-label="Site"
+            aria-label="All destinations"
           >
-            {grouped
-              ? sections!.map((s) => (
-                  <span className="grp" key={s.title}>
-                    <span className="ttl">{s.title}</span>
-                    {s.items.map((it) =>
-                      it.href ? (
-                        link({
-                          key: it.id,
-                          href: it.href,
-                          'aria-current': it.active ? 'page' : undefined,
-                          onClick: close,
-                          children: it.label,
-                        })
-                      ) : (
-                        <a
-                          key={it.id}
-                          href={'#' + it.id}
-                          aria-current={it.active ? 'page' : undefined}
-                          onClick={go(it.id)}
-                        >
-                          {it.label}
-                        </a>
-                      ),
-                    )}
-                  </span>
-                ))
-              : flat}
+            {grouped ? navGroups(sections!, true) : flat}
           </nav>
         </span>
       ) : null}

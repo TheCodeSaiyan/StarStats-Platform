@@ -8,6 +8,7 @@ import {
 } from '@/components/journey/trail-utils';
 import type { TaxonomyLevel } from './TaxonomyStrip';
 import { dwellAvailableAt, totalDwellAt, type DwellIndex } from './dwell';
+import { RowLink } from '@/app/me/_projection/RowLink';
 
 /**
  * One place, in depth — Journey's detail state.
@@ -205,15 +206,12 @@ export function PlaceDetail({
               <MeterRow
                 key={c.name}
                 rank={i + 1}
-                name={
-                  next ? (
-                    <Link href={buildChildHref(next, c.name) as Route}>
-                      {c.name}
-                    </Link>
-                  ) : (
-                    c.name
-                  )
-                }
+                // The ROW carries the href, so the whole row is the target.
+                // Wrapping the label instead left a 33-58px anchor in a
+                // full-width row — the fault reported on /me's planes.
+                name={c.name}
+                href={next ? buildChildHref(next, c.name) : undefined}
+                linkAs={RowLink}
                 pct={peak > 0 ? (c.count / peak) * 100 : 0}
                 value={`${c.count}`}
               />
