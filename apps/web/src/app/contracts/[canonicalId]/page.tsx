@@ -233,9 +233,9 @@ export default async function ContractDetailPage(props: PageProps) {
         <section>
           <SectionHeading>Warnings</SectionHeading>
           <ul style={listStyle}>
-            {c.failure_penalty && <li style={warnItemStyle}>{c.failure_penalty}</li>}
-            {c.cargo_loss_penalty && <li style={warnItemStyle}>{c.cargo_loss_penalty}</li>}
-            {c.rep_loss_warning && <li style={warnItemStyle}>{c.rep_loss_warning}</li>}
+            {c.failure_penalty && <li className="hp-warnitem">{c.failure_penalty}</li>}
+            {c.cargo_loss_penalty && <li className="hp-warnitem">{c.cargo_loss_penalty}</li>}
+            {c.rep_loss_warning && <li className="hp-warnitem">{c.rep_loss_warning}</li>}
           </ul>
         </section>
       )}
@@ -259,8 +259,8 @@ export default async function ContractDetailPage(props: PageProps) {
           <dl style={identityGridStyle}>
             {c.attributes.map((attr, i) => (
               <div key={i}>
-                <dt style={dtStyle}>{attr.label ?? '—'}</dt>
-                <dd style={ddStyle}>
+                <dt className="hp-kvlabel">{attr.label ?? '—'}</dt>
+                <dd className="hp-kvvalue">
                   {isLocationLabel(attr.label) && attr.value ? (
                     // Displayed text is always the verbatim value; the
                     // link is added only where the entity resolved.
@@ -445,8 +445,8 @@ function Field({ label, value }: { label: string; value?: string | null }) {
   if (!value) return null;
   return (
     <div>
-      <dt style={dtStyle}>{label}</dt>
-      <dd style={ddStyle}>{value}</dd>
+      <dt className="hp-kvlabel">{label}</dt>
+      <dd className="hp-kvvalue">{value}</dd>
     </div>
   );
 }
@@ -511,18 +511,6 @@ const identityGridStyle: React.CSSProperties = {
   margin: 0,
 };
 
-const dtStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: 'var(--fg-dim)',
-  letterSpacing: '0.03em',
-};
-
-const ddStyle: React.CSSProperties = {
-  fontSize: 13,
-  color: 'var(--fg)',
-  margin: '2px 0 0',
-};
-
 const listStyle: React.CSSProperties = {
   margin: 0,
   paddingLeft: 18,
@@ -531,8 +519,3 @@ const listStyle: React.CSSProperties = {
   gap: 4,
 };
 
-const warnItemStyle: React.CSSProperties = {
-  fontSize: 'var(--fs-base)',
-  lineHeight: 1.6,
-  color: 'var(--warn)',
-};

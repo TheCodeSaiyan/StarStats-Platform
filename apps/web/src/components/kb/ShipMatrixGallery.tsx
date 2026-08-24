@@ -147,7 +147,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
                 type="button"
                 onClick={(e) => { e.stopPropagation(); close(); }}
                 aria-label="Close"
-                style={lightboxBtn}
+                className="hp-lightboxbtn"
               >
                 ✕
               </button>
@@ -177,7 +177,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); step(-1); }}
                   aria-label="Previous image"
-                  style={lightboxBtn}
+                  className="hp-lightboxbtn"
                 >
                   ‹ Prev
                 </button>
@@ -185,7 +185,7 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
                   type="button"
                   onClick={(e) => { e.stopPropagation(); step(1); }}
                   aria-label="Next image"
-                  style={lightboxBtn}
+                  className="hp-lightboxbtn"
                 >
                   Next ›
                 </button>
@@ -198,12 +198,3 @@ export function ShipMatrixGallery({ mediaUrls }: { mediaUrls: string[] }) {
   );
 }
 
-const lightboxBtn: React.CSSProperties = {
-  fontSize: 13,
-  padding: '6px 12px',
-  borderRadius: 0,
-  cursor: 'pointer',
-  color: 'var(--fg)',
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.16)',
-};

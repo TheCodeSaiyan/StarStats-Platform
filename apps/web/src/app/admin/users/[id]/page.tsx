@@ -391,7 +391,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
           <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
             Devices
           </div>
-          <h2 style={sectionHeadingStyle}>Paired devices</h2>
+          <h2 className="hp-sectiontitle">Paired devices</h2>
         </div>
         <AdminTable
           columns={DEVICE_COLUMNS}
@@ -408,7 +408,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
           <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
             Activity
           </div>
-          <h2 style={sectionHeadingStyle}>Entries by event type</h2>
+          <h2 className="hp-sectiontitle">Entries by event type</h2>
         </div>
         <AdminTable
           columns={EVENT_TYPE_COLUMNS}
@@ -425,7 +425,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Data
         </div>
-        <h2 style={sectionHeadingStyle}>Retention</h2>
+        <h2 className="hp-sectiontitle">Retention</h2>
         <dl
           style={{
             display: 'grid',
@@ -852,13 +852,6 @@ function RoleControl({
     </div>
   );
 }
-
-const sectionHeadingStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 17,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-};
 
 /**
  * A revoked device is shown, not filtered out. An operator debugging

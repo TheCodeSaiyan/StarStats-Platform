@@ -29,20 +29,6 @@ const pageStyle: React.CSSProperties = {
   padding: '8px 0 60px',
 };
 
-const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 32,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
-
-const subtitleStyle: React.CSSProperties = {
-  margin: '6px 0 0',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-  lineHeight: 1.55,
-};
-
 const cardHeaderStyle: React.CSSProperties = {
   padding: '20px 24px 0',
 };
@@ -132,8 +118,8 @@ export default async function WidgetSharingPage({
         <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
           Sharing settings
         </div>
-        <h1 style={titleStyle}>Widget visibility</h1>
-        <p style={subtitleStyle}>
+        <h1 className="hp-pagetitle">Widget visibility</h1>
+        <p className="hp-recsub">
           Choose which widgets visitors can see on your profile. All widgets
           default to private — toggle one on to share it.
         </p>

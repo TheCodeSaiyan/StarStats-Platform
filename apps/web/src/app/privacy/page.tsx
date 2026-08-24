@@ -56,28 +56,10 @@ function PolicySection({
   );
 }
 
-const subHeading: React.CSSProperties = {
-  marginTop: 'var(--s4)',
-  marginBottom: 'var(--s2)',
-  fontSize: 'var(--fs-base)',
-  fontWeight: 600,
-  color: 'var(--fg-muted)',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-};
-
 const listStyle: React.CSSProperties = {
   paddingLeft: 'var(--s5)',
   marginTop: 'var(--s2)',
   marginBottom: 0,
-};
-
-const codeStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-  fontSize: '0.92em',
-  background: 'var(--bg-elev)',
-  padding: '1px 6px',
-  borderRadius: 0,
 };
 
 export default function PrivacyPage() {
@@ -147,7 +129,7 @@ export default function PrivacyPage() {
           analytics platforms.
         </p>
 
-        <h3 style={subHeading}>2.1 When you sign up</h3>
+        <h3 className="hp-subheading">2.1 When you sign up</h3>
         <ul style={listStyle}>
           <li>
             <strong>Email address.</strong> Used as your login
@@ -186,14 +168,14 @@ export default function PrivacyPage() {
           <li>
             <strong>RSI handle (Star Citizen username).</strong> The
             handle that appears in your{' '}
-            <code style={codeStyle}>Game.log</code>. Used to tag the
+            <code className="hp-code">Game.log</code>. Used to tag the
             events you ingest so we can show <em>your</em> stats and
             not someone else&apos;s. Lawful basis: contract
             performance.
           </li>
         </ul>
 
-        <h3 style={subHeading}>
+        <h3 className="hp-subheading">
           2.2 When the desktop client uploads game events
         </h3>
         <ul style={listStyle}>
@@ -220,11 +202,11 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
-        <h3 style={subHeading}>2.3 When you use the website</h3>
+        <h3 className="hp-subheading">2.3 When you use the website</h3>
         <ul style={listStyle}>
           <li>
             <strong>Session cookie</strong> (
-            <code style={codeStyle}>starstats_session</code>):
+            <code className="hp-code">starstats_session</code>):
             HttpOnly, Secure (in production), SameSite=Lax, 1-hour
             TTL. Holds your authentication token. Strictly necessary;
             cannot be disabled while you are signed in. No consent
@@ -240,7 +222,7 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
-        <h3 style={subHeading}>2.4 When something goes wrong</h3>
+        <h3 className="hp-subheading">2.4 When something goes wrong</h3>
         <ul style={listStyle}>
           <li>
             <strong>Error reports</strong> are sent to an
@@ -300,12 +282,12 @@ export default function PrivacyPage() {
             When you start the RSI handle verification flow we issue
             you a short code, and when you ask us to check your bio
             we make a single HTTP{' '}
-            <code style={codeStyle}>GET</code> against{' '}
-            <code style={codeStyle}>
+            <code className="hp-code">GET</code> against{' '}
+            <code className="hp-code">
               https://robertsspaceindustries.com/citizens/&lt;your-handle&gt;
             </code>{' '}
             to look for that code in the public bio. We send only a
-            generic <code style={codeStyle}>User-Agent</code>{' '}
+            generic <code className="hp-code">User-Agent</code>{' '}
             identifying StarStats and the page version; no cookie,
             no session token, no account email. Once we confirm
             the code is in your bio we delete it from our row, and
@@ -320,11 +302,11 @@ export default function PrivacyPage() {
             user-initiated, on-demand fetch — never a continuous
             background poll — and is rate-limited to one fetch per
             hour per user. The request goes to the same URL (
-            <code style={codeStyle}>
+            <code className="hp-code">
               https://robertsspaceindustries.com/citizens/&lt;your-handle&gt;
             </code>
             ) with the same generic{' '}
-            <code style={codeStyle}>User-Agent</code>; no cookie, no
+            <code className="hp-code">User-Agent</code>; no cookie, no
             session token, no account email. From the page we
             extract your display name, enlistment date, primary
             location (city / region / country, as RSI displays it),
@@ -343,19 +325,19 @@ export default function PrivacyPage() {
               Star Citizen Wiki API (ship and vehicle reference data).
             </strong>{' '}
             The Star Citizen Wiki API at{' '}
-            <code style={codeStyle}>https://api.star-citizen.wiki</code>{' '}
+            <code className="hp-code">https://api.star-citizen.wiki</code>{' '}
             is a community-run, MIT-licensed reference for in-game
             ship and vehicle metadata — it is not operated by
             Roberts Space Industries. We use it to translate the
             internal class names that appear in your{' '}
-            <code style={codeStyle}>Game.log</code> (e.g.{' '}
-            <code style={codeStyle}>AEGS_Avenger_Stalker</code>) into
+            <code className="hp-code">Game.log</code> (e.g.{' '}
+            <code className="hp-code">AEGS_Avenger_Stalker</code>) into
             player-facing names (&quot;Aegis Avenger Stalker&quot;)
             so the dashboard can display events legibly. The
             exchange is server-to-server and one-directional: a
             scheduled task on the StarStats server fetches the
             reference catalogue once a day, sending only a generic{' '}
-            <code style={codeStyle}>User-Agent</code> identifying
+            <code className="hp-code">User-Agent</code> identifying
             StarStats — no user data, no email, no RSI handle,
             no event payload, and no IP-on-behalf-of-the-user. The
             request is never made from your browser. The cached

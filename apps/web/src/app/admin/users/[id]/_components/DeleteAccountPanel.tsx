@@ -21,19 +21,6 @@
 import React from 'react';
 import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 
-const labelStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  alignItems: 'flex-start',
-  fontSize: 13,
-};
-
-const hintStyle: React.CSSProperties = {
-  color: 'var(--fg-dim)',
-  fontSize: 12,
-  display: 'block',
-};
-
 export function DeleteAccountPanel({
   handle,
   deleteAction,
@@ -97,7 +84,7 @@ export function DeleteAccountPanel({
               What happens to their data
             </legend>
 
-            <label style={labelStyle}>
+            <label className="hp-kvvalue">
               <input
                 type="radio"
                 name="mode"
@@ -106,7 +93,7 @@ export function DeleteAccountPanel({
               />
               <span>
                 Pseudonymise
-                <span style={hintStyle}>
+                <span className="hp-fine">
                   Same as the user deleting themselves. Account, devices
                   and shares are removed; event rows are kept but
                   unlinked from them, so people they shared with keep a
@@ -115,11 +102,11 @@ export function DeleteAccountPanel({
               </span>
             </label>
 
-            <label style={labelStyle}>
+            <label className="hp-kvvalue">
               <input type="radio" name="mode" value="purge" />
               <span>
                 Purge
-                <span style={hintStyle}>
+                <span className="hp-fine">
                   Everything above, and deletes their events outright.
                   Permanent. Anyone they shared with loses those rows
                   from their own timelines.

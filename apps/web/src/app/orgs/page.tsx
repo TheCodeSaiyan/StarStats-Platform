@@ -90,35 +90,10 @@ const orgCardHeadStyle: React.CSSProperties = {
   gap: 12,
 };
 
-const orgNameStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 16,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-};
-
-const orgSlugStyle: React.CSSProperties = {
-  color: 'var(--fg-dim)',
-  fontSize: 12,
-};
-
 const orgFootStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-};
-
-const emptyStyle: React.CSSProperties = {
-  textAlign: 'center',
-  padding: '40px 20px',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-};
-
-const emptyTitleStyle: React.CSSProperties = {
-  fontSize: 16,
-  color: 'var(--fg)',
-  marginBottom: 6,
 };
 
 export default async function OrgsPage(props: {
@@ -192,15 +167,15 @@ export default async function OrgsPage(props: {
 
       {degraded ? (
         <section className="ss-card ss-card-pad">
-          <div style={emptyStyle}>
-            <div style={emptyTitleStyle}>Comms down.</div>
+          <div className="hp-recempty">
+            <div className="hp-recempty__t">Comms down.</div>
             <div>Organizations are temporarily unavailable. Try again shortly.</div>
           </div>
         </section>
       ) : orgs.orgs.length === 0 ? (
         <section className="ss-card ss-card-pad">
-          <div style={emptyStyle}>
-            <div style={emptyTitleStyle}>No orgs yet</div>
+          <div className="hp-recempty">
+            <div className="hp-recempty__t">No orgs yet</div>
             <div>
               You don&apos;t own any orgs yet. Create one to share your
               manifest with a group.
@@ -247,8 +222,8 @@ export default async function OrgsPage(props: {
             <div key={o.id} className="hud-tile" style={orgCardStyle}>
               <div style={orgCardHeadStyle}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  <h3 style={orgNameStyle}>{o.name}</h3>
-                  <span className="mono" style={orgSlugStyle}>
+                  <h3 className="hp-sectiontitle">{o.name}</h3>
+                  <span className="mono hp-fine">
                     /orgs/{o.slug}
                   </span>
                 </div>

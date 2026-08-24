@@ -63,14 +63,6 @@ const listStyle: React.CSSProperties = {
   marginBottom: 0,
 };
 
-const codeStyle: React.CSSProperties = {
-  fontFamily: 'var(--font-mono)',
-  fontSize: '0.92em',
-  background: 'var(--bg-elev)',
-  padding: '1px 6px',
-  borderRadius: 0,
-};
-
 export default function TermsPage() {
   return (
     <MarketingSurface
@@ -216,7 +208,7 @@ export default function TermsPage() {
         <p style={{ marginBottom: 0 }}>
           Worth knowing, because it makes the above less alarming than it
           sounds: your events are derived from{' '}
-          <code style={codeStyle}>Game.log</code> on your own machine. If the
+          <code className="hp-code">Game.log</code> on your own machine. If the
           server ever lost data, the desktop client can re-parse and re-upload
           from your local logs — as far back as your own log history goes.
           The server is a convenience and a viewer, not the origin of your

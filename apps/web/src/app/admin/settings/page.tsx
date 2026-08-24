@@ -39,20 +39,6 @@ import { SmtpForm, type ActionResult as SmtpActionResult } from './_components/S
 
 export const metadata = { title: 'Settings' };
 
-const sectionTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 17,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
-};
-
-const sectionNoteStyle: React.CSSProperties = {
-  margin: '6px 0 0',
-  color: 'var(--fg-muted)',
-  fontSize: 13,
-  lineHeight: 1.55,
-};
-
 export default async function AdminSettingsPage() {
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/admin/settings');
@@ -178,8 +164,8 @@ export default async function AdminSettingsPage() {
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         <header>
-          <h2 style={sectionTitleStyle}>SMTP configuration</h2>
-          <p style={sectionNoteStyle}>
+          <h2 className="hp-sectiontitle">SMTP configuration</h2>
+          <p className="hp-fine">
             The mailer hot-reloads as soon as you save — no API restart
             needed. The password is encrypted at rest using the server&apos;s
             KEK and never returned to the browser; leave the field blank to
@@ -205,8 +191,8 @@ export default async function AdminSettingsPage() {
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         <header>
-          <h2 style={sectionTitleStyle}>Appearance defaults</h2>
-          <p style={sectionNoteStyle}>
+          <h2 className="hp-sectiontitle">Appearance defaults</h2>
+          <p className="hp-fine">
             Sitewide defaults for appearance knobs that apply until a
             signed-in user sets a personal override in their own Settings.
           </p>
@@ -223,8 +209,8 @@ export default async function AdminSettingsPage() {
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
         <header>
-          <h2 style={sectionTitleStyle}>Ship Matrix enrichment</h2>
-          <p style={sectionNoteStyle}>
+          <h2 className="hp-sectiontitle">Ship Matrix enrichment</h2>
+          <p className="hp-fine">
             Vehicle specs and descriptions from RSI&apos;s official Ship
             Matrix always populate. This toggle controls whether the official
             ship <strong>images</strong> are surfaced — a comply-on-request
