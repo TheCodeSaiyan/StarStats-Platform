@@ -111,7 +111,13 @@ test.describe('keyboard', () => {
     const failures: string[] = [];
     await loginAs(page, { handle: 'TestPilot' });
     for (const r of ROUTES) {
-      await page.goto(r.url, { waitUntil: 'domcontentloaded' });
+      // A generous goto budget, for a reason specific to these sweeps: this one
+    // test visits every surface in the app, so most of its navigations are to
+    // a route no other test has compiled yet. The config's 10s navigation
+    // budget is sized for a warm route, and under full-suite parallelism a
+    // cold one exceeded it — the sweep then failed on the harness rather than
+    // on anything it measures. Nothing about what is asserted changes.
+      await page.goto(r.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
       await page.waitForLoadState('networkidle').catch(() => {});
       await page.waitForTimeout(300);
       const stops = await tabStops(page, 22);
@@ -130,7 +136,13 @@ test.describe('keyboard', () => {
     const failures: string[] = [];
     await loginAs(page, { handle: 'TestPilot' });
     for (const r of ROUTES) {
-      await page.goto(r.url, { waitUntil: 'domcontentloaded' });
+      // A generous goto budget, for a reason specific to these sweeps: this one
+    // test visits every surface in the app, so most of its navigations are to
+    // a route no other test has compiled yet. The config's 10s navigation
+    // budget is sized for a warm route, and under full-suite parallelism a
+    // cold one exceeded it — the sweep then failed on the harness rather than
+    // on anything it measures. Nothing about what is asserted changes.
+      await page.goto(r.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
       await page.waitForLoadState('networkidle').catch(() => {});
       await page.waitForTimeout(300);
       const nameless = await page.evaluate(() => {

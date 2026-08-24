@@ -111,7 +111,13 @@ const ROUTES: { url: string; auth: boolean; label: string }[] = [
 ];
 
 async function worstOn(page: Page, url: string, cal: string) {
-  await page.goto(url, { waitUntil: 'domcontentloaded' });
+  // A generous goto budget, for a reason specific to these sweeps: this one
+    // test visits every surface in the app, so most of its navigations are to
+    // a route no other test has compiled yet. The config's 10s navigation
+    // budget is sized for a warm route, and under full-suite parallelism a
+    // cold one exceeded it — the sweep then failed on the harness rather than
+    // on anything it measures. Nothing about what is asserted changes.
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
   // Some routes redirect client-side (`/uploads`, an unauthenticated `/me`).
   // Evaluating during that tears the execution context down mid-probe, which
   // reads as a harness failure rather than a contrast one.
