@@ -194,4 +194,81 @@ name with the reason, not because it was inconvenient.
 
 ---
 
-*(Phases 4–5 continue below as they complete.)*
+## Phase 4 — spec fidelity, re-read
+
+### Method, and a correction to it
+
+I first compared each kit screen's **component vocabulary** against its route's
+and got a long list of apparent gaps — `/contracts` "uses no system components",
+auth "does not use BeamInput". Both were false. `/contracts` uses the system's
+CSS classes (`hp-plane flat`, `hp-catchip`, `hp-kvlabel`) rather than the React
+components, which renders identically, and auth's `.ss-input` is redrawn by the
+bridge into the same lit underline `BeamInput` produces. **Using the class is
+equivalent to using the component**, so a JSX-name scan measures nothing.
+
+The measure that does work is what the browser paints. `e2e/idiom.spec.ts`
+walks every element inside a projection on 8 surfaces and checks computed
+style: no rounded corners beyond a 50% dot or 1–2px optical rounding, no opaque
+fills. Exemptions are named individually with the reason — the void ground, the
+skip link, a sticky pane header, data marks whose fill IS the value, the QR's
+white — so the list cannot quietly become a way to pass.
+
+### What it found
+
+1. **The activity heatmap ignored the calibration entirely.** `.ss-heatcell`
+   colours come from `--grid-1..4`, and those were missing from the alias block
+   I added in Phase 1 — so every heatmap rendered in the flat teal `#4FB8A1` on
+   all four beams. The most prominent element on a profile, drawn in the old
+   system's accent. Now aliased onto the beam ramp.
+2. **Rounded corners on the flat chip and the heat cell** — 4px and 3px. A grid
+   of rounded cells reads as the previous design however the colours are set.
+3. **The range selector filled its selected option** with `var(--accent)` and
+   void-coloured text — the flat "filled pill", the one idiom the projection
+   does not have. Inline-styled in `RangeBar.tsx`, so no stylesheet could reach
+   it. Now `.hp-rangebar__opt`, marking current with a lit edge like every other
+   current control in the system.
+4. One more `.hp-stage`-scoped rule (`select option`) re-scoped to the
+   projection root, for the same reason as the 38 in Phase 1.
+
+### Where the port genuinely departs from the kit, and why
+
+Recorded here rather than fixed, because each is a considered decision:
+
+- **`/u/[handle]` is a volume with a docked pane**, not the kit's single stage.
+  `.hp-pane` is `opacity: 0` outside detail mode and this screen has no in-page
+  lens to open, so a pane inside the volume renders invisible and inert.
+- **The public ring shows event types, not lenses.** The kit gives one equal
+  segment per published lens; equal segments draw a distribution that does not
+  exist.
+- **Docs, legal and marketing routes are prose**, and use prose classes through
+  the bridge rather than panes and planes. That is the right shape for reading
+  copy and is not a fidelity gap.
+- **Admin is 94% flat classes by count**, entirely through the bridge. It
+  passes both the contrast and idiom sweeps, so it renders correctly; it is
+  simply not written in the system's own components. Converting ~20 admin pages
+  is real work with no visible outcome, so it is listed, not done.
+
+---
+
+## Phase 5 — verification
+
+Final gate on the branch: typecheck, lint (17 pre-existing warnings, none new),
+production build, unit suite, full Playwright suite, and a beta image built from
+the branch.
+
+## Open items for your review
+
+1. **`--fs-sm` moved 11.5 → 12px and `--fs-micro` 8.5 → 10px.** Everything
+   reflows slightly. The widget row unit was scaled to match, but the per-widget
+   ROW COUNTS are tuned to old metrics and persisted per reader — worth a look
+   on a real account with a full layout.
+2. **The two `--beam` values changed** (pyro, nyx). They are more legible but
+   visibly lighter; if you dislike them, the constraint to preserve is
+   `--label < --beam` with real separation.
+3. **`HierarchicalBucketList` is still dead code** — a two-level system → body →
+   place roll-up with no equivalent on any current page. It is the one orphaned
+   Journey component with no replacement.
+4. **Admin is not written in the system's components** (see Phase 4).
+5. `docs/plans/` is gitignored now, so the projection port's working plan lives
+   outside the repo.
+

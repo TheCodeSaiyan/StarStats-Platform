@@ -1762,6 +1762,24 @@
   --danger: var(--bad);
   --warn: var(--warn);
   --info: var(--beam);
+  /* The heatmap's density ramp. Missing from the first version of this block,
+     which is why every activity heatmap rendered in the FLAT teal `#4FB8A1`
+     and ignored the calibration completely — the most prominent element on the
+     profile, drawn in the old system's accent on all four beams. */
+  --grid-empty: rgba(var(--bR), var(--bG), var(--bB), 0.07);
+  --grid-1: rgba(var(--bR), var(--bG), var(--bB), 0.22);
+  --grid-2: rgba(var(--bR), var(--bG), var(--bB), 0.42);
+  --grid-3: rgba(var(--bR), var(--bG), var(--bB), 0.66);
+  --grid-4: rgba(var(--hR), var(--hG), var(--hB), 0.92);
+}
+
+/* Square corners on the flat chip and the heat cell. The system has none, and
+   a 3-4px radius on a small element is precisely where the old idiom is most
+   visible — a grid of rounded cells reads as the previous design however the
+   colours are set. */
+.ss-projection-root .hud-chip,
+.ss-projection-root .ss-heatcell {
+  border-radius: 0;
 }
 
 /* SCOPED TO `.ss-projection-root`, NOT `.hp-stage`.
@@ -2742,7 +2760,7 @@
 }
 
 /* A native select still needs its own popup readable against the page. */
-.hp-stage select option {
+.ss-projection-root select option {
   background: var(--void);
   color: var(--beam);
 }
@@ -3091,3 +3109,27 @@ html[data-wave-speed='off'] .hp-stage::after {
 .hp-subheading { font-size: var(--fs-base); font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
 .hp-adminfield { background: none; color: var(--fg); font-size: var(--fs-sm); border: 0; border-bottom: 1px solid color-mix(in oklab, var(--beam) 34%, transparent); padding: 6px 2px; }
 .hp-lightboxbtn { font-size: var(--fs-sm); color: var(--fg); background: none; border: 1px solid color-mix(in oklab, var(--beam) 40%, transparent); padding: 6px 12px; cursor: pointer; }
+
+/* Range selector (`RangeBar`) — the same shape as `.hp-rng`, which is the
+   projection's own range control. Current is a LIT EDGE, never a fill. */
+.hp-rangebar__opt {
+  padding: 4px 10px;
+  font-size: var(--fs-sm);
+  border-radius: 0;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+  color: var(--label);
+  background: none;
+  border: 1px solid color-mix(in oklab, var(--beam) 22%, transparent);
+  transition: color 160ms, border-color 160ms;
+}
+
+.hp-rangebar__opt:hover {
+  color: var(--beam);
+  border-color: color-mix(in oklab, var(--beam) 45%, transparent);
+}
+
+.hp-rangebar__opt[aria-current='page'] {
+  color: var(--hot);
+  border-color: var(--hot);
+}
