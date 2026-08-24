@@ -38,6 +38,7 @@ import { widgetMatchesLens, type Lens } from '@/lib/lens';
 import { RAIL_LENSES } from './rail';
 import type { RangeId } from '@/lib/range';
 import type { WidgetId } from '@/app/_components/widgets/types';
+import { fmtNum } from '@/app/_components/widgets/kit/format';
 import type { CalloutVM } from './elements';
 import { PROJECTION_CATALOGUE } from './catalogue';
 
@@ -281,6 +282,34 @@ export function MeProjection({
     return null;
   }, [activeLens, callouts]);
 
+  /**
+   * The lens's own figures, at the top of its pane.
+   *
+   * `Holotable.jsx` opens every lens pane with `<SubStats items={L.subs} />`
+   * and this screen rendered none. The consequence was not cosmetic: a lens
+   * whose enabled widgets are all CALLOUTS had an empty pane and a "Nothing
+   * under Commerce in this window" flatline, while the figure it was asking
+   * for sat in a callout the detail view hides. Measured before this: Commerce
+   * 0 planes + 1 flatline, Combat 1 plane with its three callouts (kills and
+   * deaths, objectives, contracts) nowhere on screen.
+   *
+   * The callouts are the right source for the same reason they drive the core
+   * readout — they are this lens's headline figures, already built, already
+   * mapped by `WIDGET_LENSES`. The alternative was a second set of per-lens
+   * summaries that could disagree with the callout beside them.
+   */
+  const lensSubs = React.useMemo(() => {
+    if (activeLens == null) return [];
+    return callouts
+      .filter((c) => layout.has(c.id) && widgetMatchesLens(c.id, activeLens))
+      .map((c) => ({
+        k: c.label,
+        v: c.value,
+        u: c.unit,
+        tone: c.tone,
+      }));
+  }, [activeLens, callouts, layout]);
+
   const lensPlanes = planes.filter(
     (p) => layout.has(p.id) && activeLens != null && widgetMatchesLens(p.id, activeLens),
   );
@@ -491,14 +520,35 @@ export function MeProjection({
 
         {activeLabel ? (
           <Pane pane="detail" title={activeLabel}>
+            {lensSubs.length > 0 ? <SubStats items={lensSubs} /> : null}
             {lensPlanes.length > 0 ? (
               lensPlanes.map((p) => (
                 <React.Fragment key={p.id}>{p.node}</React.Fragment>
               ))
-            ) : (
+            ) : lensSubs.length > 0 ? null : (
+              /* AN EMPTY LENS IS USUALLY A WINDOW, NOT AN ABSENCE.
+                 `/me` defaults to 7 days while the figure at the centre of the
+                 volume is a LIFETIME total, so a reader who has not played
+                 this week meets "nothing under Combat" on an account with
+                 years behind it — which reads as lost data rather than as a
+                 range. The widest range is one click away and was not offered.
+                 Suppressed on `all`, where widening is not a suggestion any
+                 more, it is a dead end. */
               <Flatline
                 title={`Nothing under ${activeLabel} in this window`}
                 reason="no-data"
+                hint={
+                  range === 'all'
+                    ? undefined
+                    : 'This lens is scoped to the range above. The centre figure is lifetime.'
+                }
+                action={
+                  range === 'all' ? undefined : (
+                    <Link href={'/me?range=all' as Route} scroll={false}>
+                      Widen to all time &rarr;
+                    </Link>
+                  )
+                }
               />
             )}
             {/* The trace `Holotable.jsx` puts under every lens, and which this
@@ -511,8 +561,19 @@ export function MeProjection({
                 is no series, rather than a flat line that reads as "no
                 activity" when it means "no data". */}
             {traceValues.length > 0 ? (
+              /* THE CAPTION CARRIES THE SCALE.
+                 The trace is drawn from real daily counts, normalised to its
+                 own peak — which is right for a sparkline and leaves the chart
+                 with no y-axis at all, so a steady account draws a near-flat
+                 line near the top and reads as decoration. Naming the peak and
+                 the total makes it self-evidently the reader's own history and
+                 gives the shape a scale to be read against. */
               <Trace
-                cap={`Activity · last ${Math.round(traceDays / 7)} weeks`}
+                cap={`Activity · last ${Math.round(traceDays / 7)} weeks · peak ${fmtNum(
+                  Math.max(...traceValues),
+                )}/day · ${fmtNum(
+                  traceValues.reduce((a, b) => a + b, 0),
+                )} events`}
                 mode="wave"
                 values={traceValues}
               />
