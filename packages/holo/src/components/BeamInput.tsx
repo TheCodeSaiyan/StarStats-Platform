@@ -34,17 +34,11 @@ export function BeamInput({
     <label className="hp-field" htmlFor={id}>
       <span>{label}</span>
       {field}
-      {hint ? (
-        <span
-          style={{
-            letterSpacing: '.1em',
-            textTransform: 'none',
-            opacity: 0.8,
-          }}
-        >
-          {hint}
-        </span>
-      ) : null}
+      {/* A CLASS, not inline styles. The hint carried `opacity: 0.8` inline,
+          which put it at 5.01:1 on a 10px line and could not be corrected from
+          any stylesheet — CSS cannot override an inline declaration. Recede
+          with the colour token, which is measurable. */}
+      {hint ? <span className="hp-field__hint">{hint}</span> : null}
     </label>
   );
 }
@@ -103,17 +97,11 @@ export function BeamSelect({
     <label className="hp-field" htmlFor={id}>
       <span>{label}</span>
       {field}
-      {hint ? (
-        <span
-          style={{
-            letterSpacing: '.1em',
-            textTransform: 'none',
-            opacity: 0.8,
-          }}
-        >
-          {hint}
-        </span>
-      ) : null}
+      {/* A CLASS, not inline styles. The hint carried `opacity: 0.8` inline,
+          which put it at 5.01:1 on a 10px line and could not be corrected from
+          any stylesheet — CSS cannot override an inline declaration. Recede
+          with the colour token, which is measurable. */}
+      {hint ? <span className="hp-field__hint">{hint}</span> : null}
     </label>
   );
 }

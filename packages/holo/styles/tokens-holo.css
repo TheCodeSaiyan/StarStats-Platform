@@ -10,7 +10,11 @@
  */
 @property --beam{syntax:'<color>';inherits:true;initial-value:#7FE4FF}
 @property --hot{syntax:'<color>';inherits:true;initial-value:#E8FBFF}
-@property --dim{syntax:'<color>';inherits:true;initial-value:#3E7F96}
+@property --dim{syntax:'<color>';inherits:true;initial-value:#528EA3}
+/* `--label` needs its own @property for the same reason as the rest: without
+ * one it CUTS on a calibration change while every colour beside it
+ * interpolates, so the labels flick a frame ahead of the surface they sit on. */
+@property --label{syntax:'<color>';inherits:true;initial-value:#73A6B7}
 @property --fringe{syntax:'<color>';inherits:true;initial-value:#FF5FA2}
 @property --bR{syntax:'<number>';inherits:true;initial-value:127}
 @property --bG{syntax:'<number>';inherits:true;initial-value:228}
@@ -28,8 +32,26 @@
   --good: #7CFFB2;        /* @kind color */
   --bad: #FF6B6B;         /* @kind color */
 
+  /* `--label` is the MICRO-CAPS tier: 10px uppercase at wide tracking — pane
+   * context lines, plane caps, stat labels, eyebrows, the crumb. It exists
+   * because `--dim` was carrying both that AND 12-14px secondary prose, and
+   * the two want different contrast.
+   *
+   * MEASURED, not chosen by eye. Against `--void`, `--dim` scored 4.52 on
+   * terra, 4.11 on amber, 3.19 on ember and 3.10 on violet — so on three of
+   * the four calibrations every label on every screen failed WCAG AA, and the
+   * one that passed did so at a size the 4.5 threshold does not cover (it
+   * assumes ~16px body text; this tier is 10px with 0.18em tracking, where
+   * 7:1 is the honest target).
+   *
+   * Each value is `--dim` mixed toward that calibration's own `--hot`, far
+   * enough to clear 7:1 and no further. Mixing toward `--beam` also reaches
+   * 7:1, but on ember and violet it lands within a hair of `--beam` itself and
+   * the two tiers stop being distinguishable — a label must stay quieter than
+   * the value it labels. */
+
   /* Terra calibration — the default beam. */
-  --beam: #7FE4FF; --hot: #E8FBFF; --dim: #3E7F96; --fringe: #FF5FA2;
+  --beam: #7FE4FF; --hot: #E8FBFF; --dim: #528EA3; --fringe: #FF5FA2; --label: #73A6B7;
   --bR: 127; /* @kind other */ --bG: 228; /* @kind other */ --bB: 255; /* @kind other */
   --hR: 232; /* @kind other */ --hG: 251; /* @kind other */ --hB: 255; /* @kind other */
   --fR: 255; /* @kind other */ --fG: 95; /* @kind other */  --fB: 162; /* @kind other */
@@ -87,20 +109,20 @@
 /* Bare attribute selectors so a calibration can be set on :root OR on a
  * single embedded projection. */
 [data-cal="terra"] {
-  --beam: #7FE4FF; --hot: #E8FBFF; --dim: #3E7F96; --fringe: #FF5FA2;
+  --beam: #7FE4FF; --hot: #E8FBFF; --dim: #528EA3; --fringe: #FF5FA2; --label: #73A6B7;
   --bR: 127; /* @kind other */ --bG: 228; /* @kind other */ --bB: 255; /* @kind other */ --hR: 232; /* @kind other */ --hG: 251; /* @kind other */ --hB: 255; /* @kind other */ --fR: 255; /* @kind other */ --fG: 95; /* @kind other */ --fB: 162; /* @kind other */
 }
 [data-cal="stanton"] {
-  --beam: #FFAE3B; --hot: #FFF3DE; --dim: #97662E; --fringe: #FF5F8A;
+  --beam: #FFAE3B; --hot: #FFF3DE; --dim: #A97E4C; --fringe: #FF5F8A; --label: #BC986C;
   --bR: 255; /* @kind other */ --bG: 174; /* @kind other */ --bB: 59; /* @kind other */ --hR: 255; /* @kind other */ --hG: 243; /* @kind other */ --hB: 222; /* @kind other */ --fR: 255; /* @kind other */ --fG: 95; /* @kind other */ --fB: 138; /* @kind other */
 }
 [data-cal="pyro"] {
-  --beam: #FF6B4A; --hot: #FFE8E0; --dim: #9A4632; --fringe: #FFC24D;
-  --bR: 255; /* @kind other */ --bG: 107; /* @kind other */ --bB: 74; /* @kind other */ --hR: 255; /* @kind other */ --hG: 232; /* @kind other */ --hB: 224; /* @kind other */ --fR: 255; /* @kind other */ --fG: 194; /* @kind other */ --fB: 77; /* @kind other */
+  --beam: #FF8E74; --hot: #FFE8E0; --dim: #B77564; --fringe: #FFC24D; --label: #C88F81;
+  --bR: 255; /* @kind other */ --bG: 142; /* @kind other */ --bB: 116; /* @kind other */ --hR: 255; /* @kind other */ --hG: 232; /* @kind other */ --hB: 224; /* @kind other */ --fR: 255; /* @kind other */ --fG: 194; /* @kind other */ --fB: 77; /* @kind other */
 }
 [data-cal="nyx"] {
-  --beam: #B78BFF; --hot: #F2E9FF; --dim: #6B4E9E; --fringe: #5FFFD0;
-  --bR: 183; /* @kind other */ --bG: 139; /* @kind other */ --bB: 255; /* @kind other */ --hR: 242; /* @kind other */ --hG: 233; /* @kind other */ --hB: 255; /* @kind other */ --fR: 95; /* @kind other */ --fG: 255; /* @kind other */ --fB: 208; /* @kind other */
+  --beam: #C19BFF; --hot: #F2E9FF; --dim: #927BBA; --fringe: #5FFFD0; --label: #A894CA;
+  --bR: 193; /* @kind other */ --bG: 155; /* @kind other */ --bB: 255; /* @kind other */ --hR: 242; /* @kind other */ --hG: 233; /* @kind other */ --hB: 255; /* @kind other */ --fR: 95; /* @kind other */ --fG: 255; /* @kind other */ --fB: 208; /* @kind other */
 }
 
 /* Surface scope: a signed-out brand page needs a larger ring than a
