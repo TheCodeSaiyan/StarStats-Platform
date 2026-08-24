@@ -81,6 +81,13 @@ const SCENARIO = {
       },
     } as Record<string, unknown>;
 
+const COMMERCE = {
+  'GET /v1/me/commerce/recent': { status: 200, body: { transactions: [
+    { occurred_at: '2026-08-01T00:00:00Z', amount: 1200, kind: 'purchase', item: 'Ballista' } ] } },
+  'GET /v1/me/stats/spend': { status: 200, body: {
+    lifetime: { purchases: 84, total: 1200000 }, window: { purchases: 3, total: 4200 }, by_category: [] } },
+};
+
 const PLANES = {
   'GET /v1/me/stats/fleet': { status: 200, body: { ships: [
     { vehicle_class: 'AEGS_Avenger_Stalker', trip_count: 12 },
@@ -166,4 +173,70 @@ test('ranked rows resolve their identifiers and link to the catalogue', async ({
   expect(await links.count()).toBeGreaterThan(0);
   const href = await links.first().getAttribute('href');
   expect(href).toMatch(/^\/kb\//);
+});
+
+
+test('a lens whose figures are callouts is not reported as empty', async ({ page, request }) => {
+  // Commerce's only enabled widget is a CALLOUT, and callouts do not appear in
+  // a lens pane — the detail view hides the callout field. So the pane was
+  // empty and drew "Nothing under Commerce in this window" over an account
+  // that had commerce data. Measured before: 0 planes, 0 subs, 1 flatline.
+  //
+  // The lens pane now opens with its own figures, as `Holotable.jsx` does with
+  // `L.subs`, and the flatline is suppressed when there are any.
+  await setScenario(request, scenarioFor('lens-subs', { ...SCENARIO, ...COMMERCE }));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+  await expect(page.locator('.hp-core')).toBeVisible();
+  await page.locator('.hp-lens button', { hasText: 'Commerce' }).click();
+  await page.waitForTimeout(400);
+
+  const pane = page.locator('.hp-pane[data-pane="detail"]');
+  await expect(pane.locator('.hp-subs > div')).not.toHaveCount(0);
+  await expect(pane.locator('.hp-nosig')).toHaveCount(0);
+});
+
+test('an empty lens offers the range that would hold the data', async ({ page, request }) => {
+  // `/me` defaults to 7 days while the figure at the centre is a LIFETIME
+  // total, so a reader who has not played this week meets "nothing under
+  // Combat" on an account with years behind it. That reads as lost data rather
+  // than as a window, and the widest range was one click away and not offered.
+  await setScenario(request, scenarioFor('lens-empty'));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+  await expect(page.locator('.hp-core')).toBeVisible();
+  await page.locator('.hp-lens button', { hasText: 'Commerce' }).click();
+  await page.waitForTimeout(400);
+
+  const flat = page.locator('.hp-pane[data-pane="detail"] .hp-nosig');
+  await expect(flat).toHaveCount(1);
+  const widen = flat.getByRole('link');
+  await expect(widen).toHaveAttribute('href', /range=all/);
+});
+
+test('the trace names its own scale, so it reads as data', async ({ page, request }) => {
+  // The trace is drawn from real daily counts normalised to its own peak,
+  // which leaves it with no y-axis: a steady account draws a near-flat line
+  // near the top and reads as decoration. The caption carries the scale.
+  await setScenario(request, scenarioFor('lens-trace', {
+    ...SCENARIO,
+    'GET /v1/me/timeline': { status: 200, body: { days: 5, buckets: [
+      { date: '2026-08-01', count: 4 }, { date: '2026-08-02', count: 90 },
+      { date: '2026-08-03', count: 12 }, { date: '2026-08-04', count: 7 },
+      { date: '2026-08-05', count: 39 } ] } },
+  }));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+  await expect(page.locator('.hp-core')).toBeVisible();
+  await page.locator('.hp-lens button', { hasText: 'All' }).click();
+  const cap = page.locator('.hp-grafcap');
+  await expect(cap).toContainText('peak 90/day');
+  await expect(cap).toContainText('152 events');
+
+  // And the line follows the series rather than being a fixed shape.
+  const spread = await page.locator('.hp-graf path').first().evaluate((p) => {
+    const ys = [...(p.getAttribute('d') ?? '').matchAll(/L[\d.]+ ([\d.]+)/g)].map((m) => parseFloat(m[1]));
+    return new Set(ys.map((y) => y.toFixed(1))).size;
+  });
+  expect(spread, 'a trace of varying counts must not be one flat line').toBeGreaterThan(2);
 });
