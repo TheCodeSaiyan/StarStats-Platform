@@ -8,6 +8,12 @@ import { WIDGETS_BY_ID } from '@/app/_components/widgets/registry';
 import type { ViewerCtx, WidgetId } from '@/app/_components/widgets/types';
 import { logger } from '@/lib/logger';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
+import { EntityLink } from '@/components/kb/EntityLink';
+import { loadAllReferenceBundles } from '@/lib/reference';
+import type { ReferenceCatalog, ReferenceCatalogs } from '@/lib/reference-types';
+
+/** The catalogues the ranked planes resolve their raw identifiers against. */
+type Catalogs = ReferenceCatalogs;
 
 /**
  * Projection bodies for the /me elements.
@@ -210,6 +216,45 @@ interface RankedRow {
 }
 
 /**
+ * A row built from a catalogued entity.
+ *
+ * Two faults this fixes at once, and they share a cause — the planes were
+ * rendering the RAW value the API returns:
+ *
+ *   - The name was an engine identifier. "Ships you fly" listed
+ *     `AEGS_Avenger_Stalker`, "Places visited" and "Where you dock" listed raw
+ *     location keys. The catalogue that resolves those has been loaded on this
+ *     page all along, for the hover cards.
+ *   - The row went nowhere. `MeterRow` takes an `onClick` and this module never
+ *     passed one — it CANNOT, being a server module, since a handler does not
+ *     cross the RSC boundary. `rankedPlane`'s own docstring claimed "rows open
+ *     the in-volume inspector"; nothing was ever wired.
+ *
+ * `EntityLink` answers both: it resolves the display name from the catalogue
+ * and renders a real `<Link>` to `/kb/{category}/{slug}`. A link is also the
+ * better answer than a click handler — it is shareable, it survives the back
+ * button, and it works before hydration.
+ *
+ * No catalogue match means no link and no rewrite: `EntityLink` falls through
+ * to plain text, so a row is never worse off than it was.
+ */
+function entityRow(
+  category: 'vehicle' | 'location' | 'weapon' | 'item',
+  classKey: string,
+  catalog: ReferenceCatalog | undefined,
+  value: string,
+  pct: number,
+): RankedRow {
+  return {
+    name: (
+      <EntityLink category={category} classKey={classKey} catalog={catalog} />
+    ),
+    value,
+    pct,
+  };
+}
+
+/**
  * The ranked Plane — the shape `RankedList` had in the flat kit.
  *
  * `trailing` is the real route out (gap A7): rows open the in-volume inspector,
@@ -252,16 +297,22 @@ interface RoutesData {
   routes: ReadonlyArray<{ destination: string; count: number }>;
 }
 
-function routesPlane(d: RoutesData): React.ReactNode {
+function routesPlane(d: RoutesData, cat?: Catalogs): React.ReactNode {
   const max = Math.max(...d.routes.map((r) => r.count), 0);
   return rankedPlane(
     'Top routes',
-    d.routes.slice(0, 6).map((r) => ({
-      name: r.destination,
-      value: fmtNum(r.count),
-      pct: pctOf(r.count, max),
-    })),
-    { href: '/me/travel' as Route },
+    d.routes
+      .slice(0, 6)
+      .map((r) =>
+        entityRow(
+          'location',
+          r.destination,
+          cat?.locations,
+          fmtNum(r.count),
+          pctOf(r.count, max),
+        ),
+      ),
+    { href: '/me/travel' as Route, hint: 'select a destination →' },
   );
 }
 
@@ -297,15 +348,22 @@ interface FleetData {
   ships: ReadonlyArray<{ vehicle_class: string; trip_count: number }>;
 }
 
-function fleetPlane(d: FleetData): React.ReactNode {
+function fleetPlane(d: FleetData, cat?: Catalogs): React.ReactNode {
   const max = Math.max(...d.ships.map((s) => s.trip_count), 0);
   return rankedPlane(
     'Ships you fly',
-    d.ships.slice(0, 6).map((s) => ({
-      name: s.vehicle_class,
-      value: fmtNum(s.trip_count),
-      pct: pctOf(s.trip_count, max),
-    })),
+    d.ships
+      .slice(0, 6)
+      .map((s) =>
+        entityRow(
+          'vehicle',
+          s.vehicle_class,
+          cat?.vehicles,
+          fmtNum(s.trip_count),
+          pctOf(s.trip_count, max),
+        ),
+      ),
+    { href: '/kb/vehicle' as Route, hint: 'select a ship →' },
   );
 }
 
@@ -314,15 +372,21 @@ interface DockingData {
   total: number;
 }
 
-function dockingPlane(d: DockingData): React.ReactNode {
+function dockingPlane(d: DockingData, cat?: Catalogs): React.ReactNode {
   const max = Math.max(...d.by_kind.map((k) => k.count), 0);
   return rankedPlane(
     'Where you dock',
-    d.by_kind.slice(0, 6).map((k) => ({
-      name: k.key,
-      value: fmtNum(k.count),
-      pct: pctOf(k.count, max),
-    })),
+    d.by_kind
+      .slice(0, 6)
+      .map((k) =>
+        entityRow(
+          'location',
+          k.key,
+          cat?.locations,
+          fmtNum(k.count),
+          pctOf(k.count, max),
+        ),
+      ),
     { hint: `${fmtNum(d.total)} total` },
   );
 }
@@ -331,16 +395,23 @@ interface LocationsData {
   top_locations?: ReadonlyArray<{ key: string; count: number }>;
 }
 
-function locationsPlane(d: LocationsData): React.ReactNode {
+function locationsPlane(d: LocationsData, cat?: Catalogs): React.ReactNode {
   const rows = d.top_locations ?? [];
   const max = Math.max(...rows.map((r) => r.count), 0);
   return rankedPlane(
     'Places visited',
-    rows.slice(0, 6).map((r) => ({
-      name: r.key,
-      value: fmtNum(r.count),
-      pct: pctOf(r.count, max),
-    })),
+    rows
+      .slice(0, 6)
+      .map((r) =>
+        entityRow(
+          'location',
+          r.key,
+          cat?.locations,
+          fmtNum(r.count),
+          pctOf(r.count, max),
+        ),
+      ),
+    { href: '/me/travel' as Route, hint: 'select a place →' },
   );
 }
 
@@ -659,7 +730,10 @@ function entitiesPlane(d: EntitiesData): React.ReactNode {
 
 type Builder =
   | { kind: 'callout'; build: (data: never) => CalloutVM }
-  | { kind: 'plane'; build: (data: never) => React.ReactNode };
+  // Plane builders take the catalogues as a second argument so a row can
+  // resolve a raw engine identifier to its catalogued name and link to it.
+  // Optional, so the builders that have no entities in them ignore it.
+  | { kind: 'plane'; build: (data: never, cat?: Catalogs) => React.ReactNode };
 
 const BUILDERS: Partial<Record<WidgetId, Builder>> = {
   lives: { kind: 'callout', build: livesCallout as (d: never) => CalloutVM },
@@ -707,6 +781,18 @@ export async function buildElements(
 ): Promise<BuiltElements> {
   const wanted = enabledIds.filter((id) => BUILDERS[id as WidgetId]);
 
+  // The catalogues resolve raw identifiers into names and KB links. Built at
+  // BUILD time from the static reference snapshot (`lib/reference.ts`), so this
+  // is a memory read, not a fetch — and it is already loaded on this request by
+  // the hover cards. Degrades to undefined, which `EntityLink` renders as plain
+  // text: a row is never worse off than the raw value it showed before.
+  let catalogs: Catalogs | undefined;
+  try {
+    catalogs = (await loadAllReferenceBundles()).catalogs;
+  } catch (err) {
+    logger.warn({ err, call: 'projection.catalogs' }, 'catalogue load failed');
+  }
+
   const settled = await Promise.allSettled(
     wanted.map(async (id) => {
       const def = WIDGETS_BY_ID.get(id as WidgetId);
@@ -726,7 +812,9 @@ export async function buildElements(
         kind: 'plane' as const,
         vm: {
           id: id as WidgetId,
-          node: (builder.build as (d: unknown) => React.ReactNode)(data),
+          node: (
+            builder.build as (d: unknown, c?: Catalogs) => React.ReactNode
+          )(data, catalogs),
         },
       };
     }),

@@ -242,6 +242,45 @@ export function MeProjection({
    *
    * Membership comes from `widgetMatchesLens`, the product's own map, NOT from
    * a copy in the catalogue. The copy drifted the moment it existed. */
+  /**
+   * THE CENTRE FOLLOWS THE LENS.
+   *
+   * `Holotable.jsx` is explicit about this — `const core = L ? L : OV` — so the
+   * figure at the centre of the volume is the OPEN LENS's headline, and the
+   * lifetime anchor only when nothing is open. This screen showed logged flight
+   * time no matter which lens you opened, which makes the ring look like
+   * decoration: you select Combat and the middle of the screen keeps reporting
+   * hours flown.
+   *
+   * Sourced from the CALLOUTS, which are already the per-widget headline
+   * figures, already built for this render, and already mapped to lenses by
+   * `WIDGET_LENSES`. No new fetch, and no second definition of "the headline
+   * for Combat" that could disagree with the callout beside it.
+   *
+   * The order within a lens is a preference, not a ranking: the first enabled
+   * callout wins, so a reader who has turned their K/D callout off still gets a
+   * Combat centre from whatever they kept.
+   */
+  const LENS_CORE_PREFERENCE: Partial<Record<Lens, WidgetId[]>> = {
+    activity: ['sessions', 'heatmap'],
+    travel: ['travel', 'routes'],
+    combat: ['lives', 'contracts', 'objectives'],
+    commerce: ['spend', 'economy'],
+    loadout: ['loadout', 'hangar'],
+  };
+
+  const lensCore = React.useMemo(() => {
+    if (activeLens == null || activeLens === 'all') return null;
+    const order = LENS_CORE_PREFERENCE[activeLens] ?? [];
+    for (const id of order) {
+      const c = callouts.find((x) => x.id === id);
+      if (c) return c;
+    }
+    // A lens whose callouts are all switched off keeps the lifetime anchor
+    // rather than inventing a figure or showing an empty centre.
+    return null;
+  }, [activeLens, callouts]);
+
   const lensPlanes = planes.filter(
     (p) => layout.has(p.id) && activeLens != null && widgetMatchesLens(p.id, activeLens),
   );
@@ -404,13 +443,23 @@ export function MeProjection({
             invented chrome: the handle is already on screen in the chrome bar,
             it simply is not a heading there. */}
         <h1 className="sr-only">@{handle}</h1>
-        {/* The one range-INDEPENDENT figure in the volume: the reader's own
-            anchor. Everything else here follows the range control. */}
-        <CoreReadout
-          value={lifetime.playtime}
-          label="Logged flight time"
-          detail={`${lifetime.events} events · ${lifetime.locations} places`}
-        />
+        {/* The lens's headline when one is open, the reader's lifetime anchor
+            otherwise. The anchor is the only range-INDEPENDENT figure here;
+            a lens core follows the range control like everything beside it. */}
+        {lensCore ? (
+          <CoreReadout
+            value={lensCore.value}
+            unit={lensCore.unit}
+            label={lensCore.label}
+            detail={lensCore.sub}
+          />
+        ) : (
+          <CoreReadout
+            value={lifetime.playtime}
+            label="Logged flight time"
+            detail={`${lifetime.events} events · ${lifetime.locations} places`}
+          />
+        )}
       </Depth>
 
       <Depth depth={54}>
