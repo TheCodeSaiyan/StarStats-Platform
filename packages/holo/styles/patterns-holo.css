@@ -132,8 +132,33 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-stage[data-mode="detail"] .hp-pane[data-pane="detail"],
 .hp-stage[data-mode="inspect"] .hp-pane[data-pane="inspect"] { opacity: 1; pointer-events: auto; transform: none; }
 .hp-stage[data-mode="inspect"] .hp-pane[data-pane="inspect"] { top: 88px; width: 614px; }
-/* Static (non-projection) pages use the same pane language, docked. */
-.hp-pane--static { position: static; right: auto; top: auto; width: auto; opacity: 1; pointer-events: auto; transform: none; }
+/* Static (non-projection) pages use the same pane language, docked.
+ *
+ * A DOCKED PANE IS NOT A SCROLL CONTAINER, and must undo every part of the
+ * floating pane's containment — not just its position.
+ *
+ * `.hp-pane` is `max-height: calc(100% - 176px); overflow-y: auto;
+ * overscroll-behavior: contain` because a floating pane holds a long log
+ * inside a fixed volume. Docked, all three are wrong:
+ *
+ *   - `overscroll-behavior: contain` BLOCKS SCROLL CHAINING. A container that
+ *     cannot scroll still swallows the wheel rather than passing it to the
+ *     page, so pointing at a pane froze the page and moving the pointer off it
+ *     un-froze it. Measured: wheel over a pane moved the page scroller 0px,
+ *     the same wheel over the margin moved it 359px, on a pane whose own
+ *     scrollHeight equalled its clientHeight — there was nothing for it to
+ *     scroll and it consumed the event anyway.
+ *   - `max-height` truncates a docked pane into its own inner scrollbar
+ *     halfway down the page.
+ *   - `overflow-y: auto` makes the pane header sticky to the PANE. Visible
+ *     lets it stick to the page scroller instead, which is what a docked
+ *     header should do.
+ */
+.hp-pane--static {
+  position: static; right: auto; top: auto; width: auto;
+  opacity: 1; pointer-events: auto; transform: none;
+  max-height: none; overflow: visible; overscroll-behavior: auto;
+}
 
 .hp-pane::-webkit-scrollbar { width: 5px; }
 .hp-pane::-webkit-scrollbar-thumb { background: rgba(var(--bR),var(--bG),var(--bB),.3); }
