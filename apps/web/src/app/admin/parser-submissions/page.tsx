@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Parser shapes moderation queue (W6).
  *
@@ -220,7 +221,7 @@ export default async function AdminParserSubmissionsPage(props: {
       {view === 'grouped' ? (
         <GroupedView clusters={clusters} />
       ) : (
-        <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <Plane tilt="flat">
           {listing.submissions.length === 0 ? (
             <p
               style={{
@@ -255,7 +256,7 @@ export default async function AdminParserSubmissionsPage(props: {
               </tbody>
             </table>
           )}
-        </section>
+        </Plane>
       )}
 
       <nav
@@ -268,12 +269,12 @@ export default async function AdminParserSubmissionsPage(props: {
         }}
       >
         {olderHref ? (
-          <Link href={olderHref} className="ss-btn ss-btn--ghost">
+          <Link href={olderHref} className="hp-btn hp-btn--ghost">
             Load more →
           </Link>
         ) : (
           <span
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             aria-disabled="true"
             style={{ opacity: 0.4, pointerEvents: 'none' }}
           >
@@ -296,7 +297,7 @@ export default async function AdminParserSubmissionsPage(props: {
 function GroupedView({ clusters }: { clusters: Cluster[] }) {
   if (clusters.length === 0) {
     return (
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         <p
           style={{
             margin: 0,
@@ -308,7 +309,7 @@ function GroupedView({ clusters }: { clusters: Cluster[] }) {
         >
           No submissions in this bucket.
         </p>
-      </section>
+      </Plane>
     );
   }
 

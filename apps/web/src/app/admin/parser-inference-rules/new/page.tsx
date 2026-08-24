@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · author a new inference rule (Task 6).
  *
@@ -110,19 +111,19 @@ export default async function NewInferenceRulePage(props: PageProps) {
       {publishError && (
         <div
           role="status"
-          className="ss-badge ss-badge--danger"
+          className="hp-chip bad"
           style={{ alignSelf: 'flex-start' }}
         >
           Publish failed: {publishError}
         </div>
       )}
 
-      <div className="ss-card" style={{ padding: 16, maxWidth: 720 }}>
+      <Plane tilt="flat">
         <InferenceRuleForm
           eventTypes={eventTypes}
           action={publishInferenceRuleAction}
         />
-      </div>
+      </Plane>
     </div>
   );
 }

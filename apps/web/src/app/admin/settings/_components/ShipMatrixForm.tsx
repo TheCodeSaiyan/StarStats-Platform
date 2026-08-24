@@ -87,7 +87,7 @@ export function ShipMatrixForm({
           <span style={{ fontWeight: 600, fontSize: 15 }}>
             Surface RSI ship images
           </span>
-          <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+          <span className="hp-fine">
             When on, vehicle KB pages render the official Ship Matrix
             image gallery through the server proxy. When off, images are
             hidden (the proxy 404s); specs and descriptions are
@@ -99,7 +99,7 @@ export function ShipMatrixForm({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <button
           type="button"
-          className="ss-btn ss-btn--primary"
+          className="hp-btn hp-btn--primary"
           onClick={onSave}
           disabled={pending || !dirty}
         >

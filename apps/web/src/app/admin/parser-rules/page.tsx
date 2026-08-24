@@ -127,7 +127,7 @@ export default async function AdminParserRulesPage() {
                           ? 'Retract this rule from all collectors?'
                           : 'Re-enable this rule?'
                       }
-                      className="ss-btn ss-btn--ghost"
+                      className="hp-btn hp-btn--ghost"
                       pendingLabel="…"
                     >
                       {r.enabled ? 'Retract' : 'Enable'}

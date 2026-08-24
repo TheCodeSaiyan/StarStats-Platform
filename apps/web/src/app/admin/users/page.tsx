@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Users.
  *
@@ -105,13 +106,13 @@ export default async function AdminUsersPage(props: {
             color: 'var(--fg)',
           }}
         />
-        <button type="submit" className="ss-btn ss-btn--primary">
+        <button type="submit" className="hp-btn hp-btn--primary">
           Search
         </button>
         {q && (
           <Link
             href={'/admin/users' as Route}
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{ textDecoration: 'none' }}
           >
             Clear
@@ -119,14 +120,14 @@ export default async function AdminUsersPage(props: {
         )}
       </form>
 
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         <AdminTable
           columns={USER_COLUMNS}
           rows={result.users}
           rowKey={(u) => u.id}
           empty="No users match this search."
         />
-      </section>
+      </Plane>
 
       <nav
         style={{
@@ -136,7 +137,7 @@ export default async function AdminUsersPage(props: {
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+        <span className="hp-fine">
           {result.users.length === 0
             ? 'Nothing on this page'
             : `Showing ${result.users.length} users`}
@@ -145,13 +146,13 @@ export default async function AdminUsersPage(props: {
           {offset > 0 ? (
             <Link
               href={buildHref(Math.max(0, offset - PAGE_SIZE))}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               ← Newer
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
               ← Newer
@@ -160,13 +161,13 @@ export default async function AdminUsersPage(props: {
           {result.has_more ? (
             <Link
               href={buildHref(offset + PAGE_SIZE)}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               Older →
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
               Older →
@@ -215,8 +216,7 @@ const USER_COLUMNS: readonly AdminTableColumn<AdminUserDto>[] = [
     header: 'Joined',
     cell: (user) => (
       <span
-        className="mono"
-        style={{ color: 'var(--fg-muted)', fontSize: 12 }}
+        className="mono hp-kvlabel"
       >
         {new Date(user.created_at).toISOString().slice(0, 10)}
       </span>
@@ -229,7 +229,7 @@ const USER_COLUMNS: readonly AdminTableColumn<AdminUserDto>[] = [
         <StatusChip ok={user.email_verified} label="email" />
         <StatusChip ok={user.rsi_verified} label="RSI" />
         {user.totp_enabled && (
-          <span className="ss-badge ss-badge--ok" style={{ fontSize: 10 }}>
+          <span className="hp-chip good" style={{ fontSize: 10 }}>
             2FA
           </span>
         )}
@@ -271,7 +271,7 @@ const USER_COLUMNS: readonly AdminTableColumn<AdminUserDto>[] = [
           {user.staff_roles.map((r) => (
             <span
               key={r}
-              className="ss-badge"
+              className="hp-chip"
               style={{
                 fontSize: 10,
                 color: 'var(--accent)',
@@ -289,7 +289,7 @@ const USER_COLUMNS: readonly AdminTableColumn<AdminUserDto>[] = [
 function StatusChip({ ok, label }: { ok: boolean; label: string }) {
   return (
     <span
-      className={ok ? 'ss-badge ss-badge--ok' : 'ss-badge'}
+      className={ok ? 'hp-chip good' : 'hp-chip'}
       style={{
         fontSize: 10,
         color: ok ? undefined : 'var(--fg-dim)',

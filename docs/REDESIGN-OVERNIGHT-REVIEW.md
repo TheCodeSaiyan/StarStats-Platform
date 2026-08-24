@@ -243,10 +243,8 @@ Recorded here rather than fixed, because each is a considered decision:
 - **Docs, legal and marketing routes are prose**, and use prose classes through
   the bridge rather than panes and planes. That is the right shape for reading
   copy and is not a fidelity gap.
-- **Admin is 94% flat classes by count**, entirely through the bridge. It
-  passes both the contrast and idiom sweeps, so it renders correctly; it is
-  simply not written in the system's own components. Converting ~20 admin pages
-  is real work with no visible outcome, so it is listed, not done.
+- **Admin was 94% flat classes by count** — now converted; see the section
+  below.
 
 ---
 
@@ -284,6 +282,67 @@ fixed at the cause rather than retried:
 b1e0045  fix: docked panes swallowing the scroll wheel
 39ab3dc  feat: port every surface onto the projection system
 ```
+
+## Admin console — converted
+
+Done on request after the overnight pass. The admin surface went from **249
+flat-class uses to 48**, and the 48 that remain are there deliberately.
+
+### What moved
+
+| | before | after |
+|---|---|---|
+| `ss-card` | 37 | 7 |
+| `ss-btn` (+ variants) | 131 | 0 |
+| `ss-badge` (+ variants) | 36 | 0 |
+| `ss-alert` | 6 | 0 |
+| inline type literals | 173 | 135 |
+
+- **`AdminTable`** now emits `hp-tbl` markup — the same structure and classes
+  `HoloTable` produces — so all seven admin listings are drawn by the system's
+  rules in one change. Its API stays `columns` with cell *render functions*,
+  because every listing puts chips, links and forms inside cells, and because
+  `HoloTable` is `'use client'` while admin listings are server-rendered.
+  Its empty state is now `Flatline`.
+- **`AdminPageHeader`** takes `.hp-pagetitle`. It was inline `32px / 600 /
+  -0.02em` — the flat voice, tight and semibold — for all 17 pages.
+- **30 `ss-card` containers → `Plane`**, matched by walking the element tree
+  rather than by regex so nested sections closed correctly.
+- **Buttons and badges → `hp-btn` / `hp-chip`** at the call sites. The
+  *elements* were deliberately not replaced with `BeamButton`: 13 of them are
+  `ConfirmSubmitButton`, which the project's own rules require for destructive
+  server actions (it composes `useFormStatus` against double-submit). Swapping
+  the class gets the system's drawing without touching a form contract.
+- **SMTP banners → `BeamAlert`.**
+
+### What the conversion exposed
+
+**The contrast sweep had never visited admin.** Adding `/admin`,
+`/admin/users`, `/admin/settings` and `/admin/audit` to both sweeps found real
+failures immediately:
+
+- SMTP form hints at **5.56:1 on 11px** — a shared `Field` helper with inline
+  `fontSize: 11`.
+- `.hud-tile__sub` at **5.56:1 on 9px** on `/admin`: the bridge rule was
+  `.hud-tile .hud-tile__sub`, and `InstrumentStrip` renders the same trio
+  *without* a `.hud-tile` ancestor, so the rule missed. Six rules widened — the
+  classes name a role, not a container.
+- A **bare `<input>`** (no `type` attribute) painting Chrome's own grey field,
+  `rgb(59,59,59)`, inside the volume. The redraw listed input *types*; several
+  admin forms write `<input>` with none. Listing types was the mistake.
+
+### What is deliberately still flat
+
+- **`ss-eyebrow` (26)** — a sanctioned use per CLAUDE.md: a section category
+  label above a heading. The bridge already redraws it.
+- **`ss-placard` (4)** — the other sanctioned use, a stat-tile caption.
+- **`ss-card` (7)** — `<details>`, `<p role="alert">` and card-shaped `<Link>`s.
+  A disclosure and a link are not Planes.
+- **135 inline style literals** that mix type with layout in one object.
+  They now render correctly (both sweeps pass on all four admin routes), and
+  unpicking them is mechanical churn with real regression risk on forms.
+
+---
 
 ## Open items for your review
 

@@ -123,7 +123,7 @@ export default async function AdminParserInferenceRulesPage(
         </div>
         <Link
           href={'/admin/parser-inference-rules/new' as Route}
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
         >
           New inference rule
         </Link>
@@ -132,7 +132,7 @@ export default async function AdminParserInferenceRulesPage(
       {published && (
         <div
           role="status"
-          className="ss-badge ss-badge--ok"
+          className="hp-chip good"
           style={{ alignSelf: 'flex-start' }}
         >
           Published {published}
@@ -141,7 +141,7 @@ export default async function AdminParserInferenceRulesPage(
       {toggleError && (
         <div
           role="status"
-          className="ss-badge ss-badge--danger"
+          className="hp-chip bad"
           style={{ alignSelf: 'flex-start' }}
         >
           Action failed: {toggleError}
@@ -201,7 +201,7 @@ export default async function AdminParserInferenceRulesPage(
                           ? 'Retract this inference rule from all collectors?'
                           : 'Re-enable this inference rule?'
                       }
-                      className="ss-btn ss-btn--ghost"
+                      className="hp-btn hp-btn--ghost"
                       pendingLabel="…"
                     >
                       {r.enabled ? 'Retract' : 'Enable'}

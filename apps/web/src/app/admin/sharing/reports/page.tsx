@@ -239,12 +239,12 @@ function ReportRow({ row }: { row: ShareReportRowDto }) {
           <strong style={{ fontSize: 14 }}>
             {row.owner_handle} → {row.recipient_handle}
           </strong>
-          <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+          <span className="hp-kvlabel">
             Reported by {row.reporter_handle} · {formatReason(row.reason)}
           </span>
         </div>
         <span
-          className="ss-badge"
+          className="hp-chip"
           data-status={row.status}
           style={{ fontSize: 11 }}
         >
@@ -336,7 +336,7 @@ function ReportRow({ row }: { row: ShareReportRowDto }) {
             <ConfirmSubmitButton
               name="outcome"
               value="dismissed"
-              className="ss-btn"
+              className="hp-btn"
               pendingLabel="Working…"
             >
               Dismiss
@@ -344,7 +344,7 @@ function ReportRow({ row }: { row: ShareReportRowDto }) {
             <ConfirmSubmitButton
               name="outcome"
               value="share_revoked"
-              className="ss-btn"
+              className="hp-btn"
               confirm="Revoke this share? The recipient will lose access immediately."
               pendingLabel="Working…"
             >
@@ -353,7 +353,7 @@ function ReportRow({ row }: { row: ShareReportRowDto }) {
             <ConfirmSubmitButton
               name="outcome"
               value="user_suspended"
-              className="ss-btn ss-btn--danger"
+              className="hp-btn hp-btn--danger"
               confirm="Suspend this owner? Every capability is blocked - ingest, sharing, public profile and submissions - and all of their existing shares are revoked. Revoked shares are NOT restored if you reinstate them later."
               pendingLabel="Working…"
             >

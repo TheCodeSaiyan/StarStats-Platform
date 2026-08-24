@@ -19,6 +19,7 @@
 // Explicit React import: this repo's vitest uses the classic JSX
 // runtime, so a JSX-rendering component ReferenceErrors without it.
 import React from 'react';
+import { Plane } from 'holo';
 import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 
 export function DeleteAccountPanel({
@@ -31,10 +32,7 @@ export function DeleteAccountPanel({
   isAdmin: boolean;
 }) {
   return (
-    <section
-      className="ss-card"
-      style={{ padding: '20px 24px', borderColor: 'var(--danger)' }}
-    >
+    <Plane tilt="flat">
       <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
         Danger zone
       </div>
@@ -80,7 +78,7 @@ export function DeleteAccountPanel({
               gap: 10,
             }}
           >
-            <legend style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+            <legend className="hp-kvlabel">
               What happens to their data
             </legend>
 
@@ -143,7 +141,7 @@ export function DeleteAccountPanel({
           </label>
 
           <ConfirmSubmitButton
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
             confirm={`Delete ${handle}? This cannot be undone. If you chose Purge, their events are deleted outright and anyone they shared with loses those rows.`}
           >
@@ -151,6 +149,6 @@ export function DeleteAccountPanel({
           </ConfirmSubmitButton>
         </form>
       )}
-    </section>
+    </Plane>
   );
 }

@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Orgs.
  *
@@ -101,13 +102,13 @@ export default async function AdminOrgsPage(props: {
             color: 'var(--fg)',
           }}
         />
-        <button type="submit" className="ss-btn ss-btn--primary">
+        <button type="submit" className="hp-btn hp-btn--primary">
           Search
         </button>
         {q && (
           <Link
             href={'/admin/orgs' as Route}
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{ textDecoration: 'none' }}
           >
             Clear
@@ -115,7 +116,7 @@ export default async function AdminOrgsPage(props: {
         )}
       </form>
 
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         {result.orgs.length === 0 ? (
           <p
             style={{
@@ -147,7 +148,7 @@ export default async function AdminOrgsPage(props: {
             </tbody>
           </table>
         )}
-      </section>
+      </Plane>
 
       <nav
         style={{
@@ -157,7 +158,7 @@ export default async function AdminOrgsPage(props: {
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+        <span className="hp-fine">
           {result.orgs.length === 0
             ? 'Nothing on this page'
             : `Showing ${result.orgs.length} orgs`}
@@ -166,13 +167,13 @@ export default async function AdminOrgsPage(props: {
           {offset > 0 ? (
             <Link
               href={buildHref(Math.max(0, offset - PAGE_SIZE))}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               ← Newer
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
               ← Newer
@@ -181,13 +182,13 @@ export default async function AdminOrgsPage(props: {
           {result.has_more ? (
             <Link
               href={buildHref(offset + PAGE_SIZE)}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               Older →
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
               Older →
@@ -245,15 +246,14 @@ function OrgRow({ org }: { org: AdminOrgDto }) {
       </td>
       <td style={{ padding: '10px 14px' }}>
         <span
-          className="mono"
-          style={{ fontSize: 12, color: 'var(--fg-muted)' }}
+          className="mono hp-kvlabel"
         >
           {joined}
         </span>
       </td>
       <td style={{ padding: '10px 14px' }}>
         <span
-          className="ss-badge"
+          className="hp-chip"
           style={{
             fontSize: 11,
             color: org.member_count === 0 ? 'var(--fg-dim)' : 'var(--fg)',

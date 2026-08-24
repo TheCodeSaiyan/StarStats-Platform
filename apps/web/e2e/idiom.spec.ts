@@ -27,13 +27,16 @@ const ROUTES = [
   { url: '/contracts', auth: false },
   { url: '/downloads', auth: false },
   { url: '/orgs', auth: true },
+  { url: '/admin', auth: true },
+  { url: '/admin/users', auth: true },
+  { url: '/admin/settings', auth: true },
 ];
 
 test('nothing inside a projection is a filled or rounded box', async ({ page, request }) => {
   test.slow();
   await resetScenario(request);
   await setScenario(request, scenarioFor('idiom'));
-  await loginAs(page, { handle: 'TestPilot' });
+  await loginAs(page, { handle: 'TestPilot', staffRoles: ['admin'] });
 
   const failures: string[] = [];
   for (const r of ROUTES) {

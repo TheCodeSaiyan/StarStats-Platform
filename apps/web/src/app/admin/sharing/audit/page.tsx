@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Sharing audit log.
  *
@@ -230,7 +231,7 @@ export default async function AdminSharingAuditPage(props: {
       >
         <Link
           href={'/admin/sharing' as Route}
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           style={{ textDecoration: 'none' }}
         >
           ← Overview
@@ -246,7 +247,7 @@ export default async function AdminSharingAuditPage(props: {
 
       {(badRequestError || sinceDropped || untilDropped) && (
         <div
-          className="ss-badge"
+          className="hp-chip"
           style={{
             alignSelf: 'flex-start',
             borderColor: 'var(--danger)',
@@ -270,7 +271,7 @@ export default async function AdminSharingAuditPage(props: {
 
       {approxPagination && (
         <div
-          className="ss-badge"
+          className="hp-chip"
           style={{
             alignSelf: 'flex-start',
             fontSize: 11,
@@ -286,10 +287,7 @@ export default async function AdminSharingAuditPage(props: {
         </div>
       )}
 
-      <section
-        className="ss-card"
-        style={{ padding: 0, overflow: 'hidden' }}
-      >
+      <Plane tilt="flat">
         {result.entries.length === 0 ? (
           <p
             style={{
@@ -328,7 +326,7 @@ export default async function AdminSharingAuditPage(props: {
             </tbody>
           </table>
         )}
-      </section>
+      </Plane>
 
       <nav
         aria-label="Sharing-audit pagination"
@@ -340,7 +338,7 @@ export default async function AdminSharingAuditPage(props: {
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+        <span className="hp-fine">
           {result.entries.length === 0
             ? 'Nothing on this page'
             : `Showing seqs ${
@@ -351,13 +349,13 @@ export default async function AdminSharingAuditPage(props: {
           {hasNewer ? (
             <Link
               href={buildHref(newerOffset)}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               ← Newer
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               aria-disabled="true"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
@@ -367,13 +365,13 @@ export default async function AdminSharingAuditPage(props: {
           {result.has_more ? (
             <Link
               href={buildHref(olderOffset)}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               Older →
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               aria-disabled="true"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
@@ -558,12 +556,12 @@ function FilterBar({
         type="datetime-local"
       />
       <div style={{ display: 'flex', gap: 8 }}>
-        <button type="submit" className="ss-btn ss-btn--primary">
+        <button type="submit" className="hp-btn hp-btn--primary">
           Apply filters
         </button>
         <Link
           href={'/admin/sharing/audit' as Route}
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           style={{ textDecoration: 'none' }}
         >
           Reset

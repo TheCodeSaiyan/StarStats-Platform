@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Org detail.
  *
@@ -122,7 +123,7 @@ export default async function AdminOrgDetailPage(props: PageProps) {
 
       {errorCode && (
         <div
-          className="ss-badge"
+          className="hp-chip"
           style={{
             alignSelf: 'flex-start',
             borderColor: 'var(--danger)',
@@ -133,7 +134,7 @@ export default async function AdminOrgDetailPage(props: PageProps) {
         </div>
       )}
 
-      <section className="ss-card" style={{ padding: '20px 24px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Org info
         </div>
@@ -165,17 +166,14 @@ export default async function AdminOrgDetailPage(props: PageProps) {
           <Dt>Members</Dt>
           <Dd>{org.member_count}</Dd>
         </dl>
-      </section>
+      </Plane>
 
       {/* Audit v2.1 §C — per-org sharing context. Aggregate counts
           per member + reports involving members; drilldown to the
           per-user page for full edge detail. */}
       <SharingContext context={sharing} />
 
-      <section
-        className="ss-card"
-        style={{ padding: '20px 24px', borderColor: 'var(--danger)' }}
-      >
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Danger zone
         </div>
@@ -205,7 +203,7 @@ export default async function AdminOrgDetailPage(props: PageProps) {
           into the field below.
         </p>
         {!isAdmin ? (
-          <p style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+          <p className="hp-fine">
             Admin role required.
           </p>
         ) : (
@@ -232,14 +230,14 @@ export default async function AdminOrgDetailPage(props: PageProps) {
             />
             <button
               type="submit"
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
             >
               Delete org
             </button>
           </form>
         )}
-      </section>
+      </Plane>
     </div>
   );
 }
