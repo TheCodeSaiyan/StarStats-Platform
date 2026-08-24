@@ -460,6 +460,174 @@ rather than anything about rows. The click is wrapped in `expect(...).toPass()`.
 
 ---
 
+## The chrome bar: split, and re-ordered
+
+**The ask:** signed-in readers should get the pages they have permission to plus
+a way home, with the rest hidden, so the bar stops collapsing so easily.
+
+**What was measured first.** A signed-in reader's bar carried **17 links**, and
+`data-nav` was `collapsed` at 360, 390, 414, 768, 1024, 1280, 1440, 1600 and
+1920 — inline only at 2560. Breaking the inline row down on `/me`:
+
+| part | width |
+| --- | --- |
+| wordmark | 121px |
+| "Projection live" | 124px |
+| nav (17 links) | 687px |
+| lifetime readouts | 233px |
+| range tabs | 360px |
+| calibration pips | 199px |
+| account | 90px |
+| gaps (7 × 20) | 140px |
+| **total** | **1953px**, against 1372 available at 1440 |
+
+Two separate faults, and the second is the bigger one:
+
+1. **The bar and the menu asked the same question.** Every destination a session
+   could reach went into both. Nine of a signed-in reader's seventeen were
+   public pages they were not working in.
+2. **The fit ladder gave up navigation FIRST.** It tried `['inline','0']` and
+   then went straight to `['collapsed','0']` — so the very first thing
+   sacrificed was the entire nav, the most drastic reduction available, while
+   the calibration caption, the "Projection live" wording and the lifetime
+   readouts all kept their full width. A caption outranked the links.
+
+**What shipped.**
+
+`isPrimaryNav` in `lib/nav.ts` marks the inline set: home always, the reader's
+own `user` / `admin` pages always, everything else inline only while signed out.
+`ChromeBar` draws the flagged items in the row and keeps the FULL grouped set in
+the disclosure — which now survives an inline row, because with a split the rest
+of the site lives only behind it. **Nothing became unreachable; destinations
+moved rather than disappeared,** and a unit test asserts exactly that by
+comparing the menu against `navFor`.
+
+The disclosure is also now its own element (`.hp-navmenu`). It has to be: one
+node cannot be a nowrap row and an open column at the same width, which is what
+it was being asked to be as soon as the row could fit and still be a subset.
+
+The density ladder is now walked WITH the nav inline, and only then does the nav
+collapse. What each step drops, least useful first: the emitter id, then the
+citizen line and the pips' caption, then the "Projection live" wording (the
+pulsing dot carries the state) and the lifetime readouts. Those are passive
+figures a reader can still get by looking; a bar with no links is not something
+a reader can navigate by looking.
+
+**Measured result** — the width at which the row goes inline:
+
+| surface | before | after |
+| --- | --- | --- |
+| `/settings`, `/kb`, `/discover`, `/sharing` | never below 2560 | **1280** |
+| `/me`, `/me/travel` | never below 2560 | **1600** |
+| signed-out `/` | never below 2560 | **1280** |
+
+`/me` is the heaviest surface in the product — it carries the range tabs (360px)
+and the lifetime readouts on top of everything else — so 1600 is where it lands
+once ornament has been spent. A 1440 laptop still collapses it. The remaining
+cost is the range control, and moving that out of the chrome row is the next
+thing to try; it is noted below rather than attempted, because it would push the
+crumb and the stage layout down and that is a bigger change than this ask.
+
+## Mobile: measured on a phone, which changed the answer
+
+The first audit resized a desktop browser to 390px. That was wrong, and wrong in
+the direction that hides bugs: `pointer: coarse` gates every 44px target rule in
+the stylesheet and is driven by `hasTouch`, so a narrow desktop window reads the
+MOUSE rules. It reported tap targets that do not exist on a device, and it
+missed what the touch rules do to the chrome — under coarse the pips grow to
+44px each and the row gets wider, not narrower.
+
+Re-measured on an emulated iPhone at 390×844:
+
+**The account control was off the screen.** It drew from x=493 to x=503 on a
+390px viewport, on every signed-in surface. Sign out, Calibrate and Sharing all
+live in that menu. The cause: `.hp-top` is `nowrap`, and the calibration pips at
+44px each cost 188px of the 358px available. The pips have a full control on
+`/settings`; the account menu has no second home. The pips now go on phones.
+
+**The range tabs were painted, costed and untappable.** Every other item in the
+row is `flex: none` by the time the layout reaches a phone, so the range strip
+absorbed the whole deficit alone: an 84px box for 226px of tabs, with "All"
+drawn at x=441. It now scrolls, with a mask at the edge so a hard clip does not
+read as the end of the list — and the wordmark, a plain `<span>` and the only
+non-interactive item competing for that room, yields on phones so the strip gets
+178px instead of 84.
+
+**Tap targets.** Brought to the WCAG 2.5.8 (AA) 24px floor, measured rather than
+assumed: category tabs were 18px, facet chips 23, InfoTip triggers 20, footer
+and legal links 12–13, disclosures 13, inputs and selects 26–31. Every fix is
+padding around an unchanged visual. Links inline in a sentence are deliberately
+left alone — that is the standard's own exception, and padding them would break
+the line box.
+
+**A CSS-ordering trap worth knowing.** Half those rules did nothing at first.
+`additions.css` is imported AFTER `patterns-holo.css`, so a rule in patterns for
+a class DECLARED in additions loses on source order no matter what the media
+query says. `.hp-cattab`, `.hp-catchip`, `.hp-tip__t` and `.hp-select` now carry
+their touch sizing in additions.css beside their own declarations.
+
+## The ring was not clickable. At all. On any device.
+
+Found while chasing a 13px tap target, and much worse than the thing being
+chased.
+
+Every `.hp-layer` is `position: absolute; inset: 0`, so each depth layer covers
+the whole stage and the last in DOM order — callouts and panes, depth 54 — sat
+on top of the ring (20) and the core (36). Sampling 400 points around the ring
+at 1440px and again at 390px: **every single one returned `DIV.hp-layer` and
+none returned a segment.** Clicking a segment left `data-mode` on `overview`.
+
+The ring is the projection's primary navigation. It has been dead to a pointer
+for the whole of this branch, on desktop as much as on touch.
+
+**Nothing caught it, and the reason is instructive.** The segments are
+`role="button"` with `tabIndex={0}` and real key handlers, so they take a tab
+stop and activate from the keyboard — the a11y sweep that walks every tab stop
+passed throughout. Only a pointer ever met the layer.
+
+The fix: a depth layer is a coordinate space, not a surface. `.hp-layer` passes
+clicks through and `.hp-layer > *` takes them back, with the two genuinely
+full-bleed decorations (`.hp-hex`, `.hp-floor`) and the emitter glow excluded.
+The segment LABEL also passes its clicks through now — it was a sibling of the
+hit band rather than inside it, so a tap on the word did nothing, and the word
+is the obvious thing to aim at.
+
+**A measurement trap this exposed:** `getBoundingClientRect` on an SVG path
+returns the GEOMETRY box and excludes the stroke — and for a transparent hit
+path the stroke IS the target. The ring's hit band reads 13px that way and is
+24px in practice. Both the guard and the mobile audit hit-test with
+`getPointAtLength` + `elementFromPoint` instead of trusting the box.
+
+## More rows that were not the row
+
+The `/me` row fix was not the whole story. Three more surfaces wrapped the
+anchor around the label only, and all three are now row-as-link: `/kb`'s
+category list (measured at 33–58px wide in a full-width row on a phone),
+`PlaceDetail`'s child places and `TaxonomyStrip`'s places.
+
+## Guards
+
+- `apps/web/src/lib/nav.test.ts` — membership: what the row offers signed in and
+  signed out, that staff keep the console and nobody else gains it, and that the
+  menu still contains every destination `navFor` returns.
+- `apps/web/e2e/chrome-nav.spec.ts` — behaviour: the row is a subset, the menu
+  is the site, the disclosure survives an inline row and opens at both widths,
+  ornament is spent before links, and a signed-out visitor is never offered a
+  gated label.
+- `apps/web/e2e/mobile.spec.ts` — in a real touch context: the account control
+  is on screen on every signed-in surface, every range tab is reachable, no page
+  scrolls sideways, and tap targets clear 24px with the inline-sentence
+  exception detected structurally.
+- `apps/web/e2e/ring-hit.spec.ts` — a pointer reaches the segments rather than
+  the layer, and clicking one changes `data-mode`.
+
+Every one was run against the reverted code first and seen to fail. Two needed
+correcting before they measured anything: `chrome-nav` read `data-nav` before
+the fit measurement had settled and reported "collapsed" on a surface that
+settles inline, and the phone suite needed the touch context described above.
+
+---
+
 ## Open items for your review
 
 1. **`--fs-sm` moved 11.5 → 12px and `--fs-micro` 8.5 → 10px.** Everything
@@ -482,7 +650,19 @@ rather than anything about rows. The click is wrapped in `expect(...).toPass()`.
    widget's real return type would turn this whole class of fault into a
    compile error; it is a contained change and I did not do it because it
    reaches outside the port's scope.
-7. **`/me` under the default "All" lens draws no ranked planes at all** — only
+7. **The range control still costs `/me` its inline row at 1440.** Everything
+   else has been spent; the tabs are 360px in the chrome's trailing slot. Moving
+   them out of the chrome at narrow widths is the next step and would need the
+   crumb and the stage layout to move with them — bigger than this ask, so
+   noted rather than done.
+8. **The wordmark is hidden on phones (<=560px) on surfaces with a range
+   control.** It is a plain `<span>`, not a link, and it was the only
+   non-interactive item competing with the range strip for room — the strip went
+   from 84px to 178px. If that is too much to give up, the revert is one rule in
+   `patterns-holo.css` and the strip goes back to showing two tabs of five.
+9. **The calibration pips are gone from the phone chrome.** `/settings` carries
+   the full control, and keeping them cost the account menu its place on screen.
+10. **`/me` under the default "All" lens draws no ranked planes at all** — only
    callouts and the trace. That is the lens preference behaving as written, not
    a fault, but it means the first thing a reader sees has no lists in it.
 

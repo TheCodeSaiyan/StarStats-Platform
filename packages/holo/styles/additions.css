@@ -3161,3 +3161,37 @@ html[data-wave-speed='off'] .hp-stage::after {
   line-height: 1.55;
   color: var(--dim);
 }
+
+
+/* ── Touch targets ────────────────────────────────────────────────────
+ * The controls declared in THIS file, brought to the 24px WCAG 2.5.8 floor
+ * on a coarse pointer. They have to be here rather than beside the rest of
+ * the touch rules in patterns-holo.css: this file is imported after that one,
+ * so its own base padding wins on source order and an override there does
+ * nothing at all. Measured on an emulated phone — category tabs came in at
+ * 18px, facet chips at 23, InfoTip triggers at 20 and the select at 26.
+ *
+ * Padding around an unchanged visual, so nothing grows on screen. */
+@media (pointer: coarse) {
+  .hp-cattab { padding: 13px 0; }
+  .hp-catchip { padding: 11px 12px; }
+  /* Already `position: absolute; inset: 0` over its anchor, so it is sized by
+   * that anchor — the negative margin is what pushes the hit area past a
+   * short one instead of scaling the glyph. */
+  .hp-tip__t { inset: -12px; }
+  .hp-select { min-height: 44px; }
+  /* The auth and org forms still carry the flat `.ss-input`, which this file
+   * already re-skins for the projection a few hundred lines up. Its height
+   * comes from that skin, not from a missing rule — measured at 31px. */
+  .ss-projection-root .ss-input { min-height: 44px; }
+  /* "Forgot your password" and "Create an account" — standalone links stacked
+   * under the sign-in form, 17px tall. Not inline in a sentence, so the WCAG
+   * inline exception does not cover them. */
+  .hp-authlinks { gap: 0; }
+  .hp-authlinks a { padding: 12px 0; display: inline-block; }
+  /* A link that is the ONLY thing in its paragraph is a standalone action, not
+   * a link inside a sentence — so the WCAG inline exception does not cover it
+   * and its height is its own to set. "All releases on GitHub →" at the foot
+   * of /downloads is the one this was measured on. */
+  .hp-prose > a:only-child { padding: 12px 0; display: inline-block; }
+}

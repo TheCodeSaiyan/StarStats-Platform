@@ -95,6 +95,39 @@ export interface NavOpts {
   staffRoles?: readonly string[];
 }
 
+/**
+ * Which entries the chrome offers in its INLINE row, as opposed to only inside
+ * its disclosure menu.
+ *
+ * The bar and the menu are two different questions and this file used to answer
+ * only one. Every destination a session could reach went into both, so a
+ * signed-in reader's bar carried seventeen links — nine of them public pages
+ * they were not working in — and `ChromeBar`'s fit measurement, which is
+ * all-or-nothing, put the whole set behind a hamburger at every viewport up to
+ * 2560px. Measured, not guessed: on `/me` the inline row wanted 1953px of which
+ * the nav was 687, so a reader on a large desktop navigated by opening a menu.
+ *
+ * The rule, in the order it is read:
+ *
+ *   - HOME is always offered. A way back to the front of the site is not a
+ *     marketing link, and it is the one public destination a signed-in reader
+ *     is known to want.
+ *   - A reader's OWN pages are always offered. `user` and `admin` entries only
+ *     survive `navFor` when the session may reach them, so this cannot leak a
+ *     label to someone who cannot open the page.
+ *   - Everything else — features, docs, guides, legal — is offered inline only
+ *     while SIGNED OUT, where it is the whole point of the page.
+ *
+ * Nothing becomes unreachable: the disclosure keeps the full grouped set and
+ * stays available even when the inline row fits. That is the difference between
+ * hiding a destination and moving it.
+ */
+export function isPrimaryNav(n: NavDestination, signedIn: boolean): boolean {
+  if (n.id === 'home') return true;
+  if (n.access !== 'public') return true;
+  return !signedIn;
+}
+
 /** Which nav entries a session may see. Signed out gets public only. */
 export function navFor({ signedIn, staffRoles }: NavOpts): NavDestination[] {
   const isStaff = (staffRoles ?? []).some(
@@ -116,7 +149,14 @@ const NAV_GROUPS: Record<NavAccess, string> = {
 
 export interface NavSectionModel {
   title: string;
-  items: { id: string; label: string; href: string; active?: boolean }[];
+  items: {
+    id: string;
+    label: string;
+    href: string;
+    active?: boolean;
+    /** Offered in the chrome's inline row. See `isPrimaryNav`. */
+    primary?: boolean;
+  }[];
 }
 
 /**
@@ -140,6 +180,7 @@ export function navSections(
       label: n.label,
       href: n.href,
       active: n.id === activeId,
+      primary: isPrimaryNav(n, opts.signedIn),
     });
   }
   return out;

@@ -120,14 +120,23 @@ test('admin_user_sees_admin_link_and_landing_page_renders', async ({
   // gets the group at all, and that a stale grant with no session does not
   // light it.)
   //
-  // The Console chrome carries eighteen destinations, so `ChromeBar`'s fit
-  // measurement legitimately collapses the nav behind its toggle at most
-  // widths. "Offered" means reachable, so open it first — and drive that
-  // through `toPass`, because the measurement lands a frame or two after mount
-  // and a click into that window is simply lost.
-  const consoleLink = page.locator('.hp-lk').getByText('Console', {
-    exact: true,
-  });
+  // "Offered" means reachable, and there are now two places it can be reached
+  // from: the inline row (`.hp-lk`) carries the reader's own destinations, and
+  // the disclosure (`.hp-navmenu`) carries the whole site. Console is a staff
+  // destination so it belongs in both — this asserts it is reachable, not
+  // which of the two it came from, because that is a width decision.
+  //
+  // Opened through `toPass`, because the fit measurement lands a frame or two
+  // after mount and a click into that window is simply lost.
+  //
+  // Scoped to whichever container is SHOWING. Both hold a Console link, and a
+  // plain `.first()` picks the inline row's copy in DOM order — which is
+  // `display: none` while the row is collapsed, so the assertion fails on a
+  // link that is reachable two pixels away.
+  const consoleLink = page
+    .locator('.hp-lk:visible, .hp-navmenu:visible')
+    .getByText('Console', { exact: true })
+    .first();
   await expect(async () => {
     const toggle = page.locator('.hp-navtoggle');
     if (await toggle.isVisible()) await toggle.click();

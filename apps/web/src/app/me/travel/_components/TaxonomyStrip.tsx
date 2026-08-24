@@ -4,6 +4,7 @@ import type { Route } from 'next';
 import { Plane, MeterRow, Flatline } from 'holo';
 import { formatDwell, type DistinctStop } from '@/components/journey/trail-utils';
 import { dwellAvailableAt, type DwellIndex } from './dwell';
+import { RowLink } from '@/app/me/_projection/RowLink';
 
 /**
  * Where you have been, by taxonomy level.
@@ -152,13 +153,11 @@ export function TaxonomyStrip({
               <MeterRow
                 key={r.name}
                 rank={i + 1}
-                name={
-                  buildPlaceHref ? (
-                    <Link href={buildPlaceHref(r.name) as Route}>{r.name}</Link>
-                  ) : (
-                    r.name
-                  )
-                }
+                // Row-as-link, for the same reason as everywhere else: the
+                // label is a fraction of the row a reader aims at.
+                name={r.name}
+                href={buildPlaceHref ? buildPlaceHref(r.name) : undefined}
+                linkAs={RowLink}
                 pct={
                   peak > 0
                     ? ((usableDwell ? r.dwellSeconds : r.count) / peak) * 100

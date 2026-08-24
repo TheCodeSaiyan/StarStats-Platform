@@ -22,6 +22,7 @@ import { getTheme } from '@/lib/theme';
 import { navSections } from '@/lib/nav';
 import { setCalibrationAction } from '@/app/me/_projection/actions';
 import { KbProjection, type KbSection } from './_projection/KbProjection';
+import { RowLink } from '@/app/me/_projection/RowLink';
 import {
   CatalogueHeader,
   type CatalogueCategory,
@@ -127,11 +128,14 @@ export default async function KbLandingPage() {
               <MeterRow
                 key={t.category}
                 rank={i + 1}
-                name={
-                  <Link href={`/kb/${t.category}` as Route} prefetch={false}>
-                    {t.label}
-                  </Link>
-                }
+                // The ROW is the link, not the label inside it. Measured on a
+                // phone these anchors were 33-58px wide and 16px tall in a
+                // full-width row — the same fault reported on /me's ranked
+                // planes, and the same fix: `MeterRow` renders itself as the
+                // anchor when it has an href.
+                name={t.label}
+                href={`/kb/${t.category}`}
+                linkAs={RowLink}
                 // The blurb earns its place now that the counts live in the
                 // header: the list answers "what is in here", not "how many".
                 value={t.blurb}
