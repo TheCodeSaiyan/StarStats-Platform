@@ -274,3 +274,51 @@ test('a lens shows every figure the widget holds, not just its headline', async 
   expect(text).toMatch(/Deaths/i);
   expect(text).toMatch(/Mean life/i);
 });
+
+test('the core figure keeps its chromatic fringe when the unit is a word', async ({
+  page,
+  request,
+}) => {
+  /**
+   * The fringe is `content: attr(data-v)` drawn twice, offset a couple of
+   * pixels either side of the figure. It used to hang off `.n` — the row that
+   * holds the value AND the unit — stretched across it with both `left` and
+   * `right` set, so the ghost text centred over value+unit while the real
+   * value sits to the LEFT of the unit. The two drifted apart by about half
+   * the unit's width.
+   *
+   * Invisible with no unit, which is why most lenses looked right; measured at
+   * 59px on this page the moment a WORD unit is present, which is what Travel
+   * ("44 jumps") renders and what was reported as "way off compared to the
+   * others".
+   *
+   * Asserted by APPENDING a unit and checking the value's box does not move:
+   * the fringe is anchored to that box, so if it cannot move, the ghost
+   * cannot drift. Asserting the offset directly is not possible — a
+   * pseudo-element has no box to read.
+   */
+  await setScenario(request, scenarioFor('lens-fringe', SCENARIO));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+  await expect(page.locator('.hp-core .n')).toBeVisible();
+
+  // The ghost source must not live on the row — that is the bug, expressed
+  // structurally, and it survives any change to the value or the unit.
+  await expect(page.locator('.hp-core .n')).not.toHaveAttribute('data-v', /./);
+  const value = page.locator('.hp-core .n .v');
+  await expect(value).toHaveAttribute('data-v', /./);
+
+  const drift = await page.evaluate(() => {
+    const n = document.querySelector('.hp-core .n') as HTMLElement;
+    const v = n.querySelector('.v') as HTMLElement;
+    const before = v.getBoundingClientRect();
+    const em = document.createElement('em');
+    em.textContent = 'jumps';
+    n.appendChild(em);
+    const after = v.getBoundingClientRect();
+    em.remove();
+    return { dx: Math.round(after.left - before.left), dw: Math.round(after.width - before.width) };
+  });
+  expect(drift.dx, 'a unit must not move the figure the fringe tracks').toBe(0);
+  expect(drift.dw).toBe(0);
+});

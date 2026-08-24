@@ -102,9 +102,22 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   letter-spacing: var(--tracking-tight);
   text-shadow: 0 0 18px rgba(var(--bR),var(--bG),var(--bB),.9), 0 0 var(--hp-glow-far) rgba(var(--bR),var(--bG),var(--bB),.45), 0 0 130px rgba(var(--bR),var(--bG),var(--bB),.2);
 }
-/* Chromatic fringe — the value is split, never simply coloured. */
-.hp-core .n::before { content: attr(data-v); position: absolute; left: -2.5px; top: 0; right: 0; color: var(--fringe); opacity: .38; z-index: -1; pointer-events: none; }
-.hp-core .n::after { content: attr(data-v); position: absolute; left: 2.5px; top: 0; right: 0; color: var(--beam); opacity: .38; z-index: -1; pointer-events: none; }
+/* Chromatic fringe — the value is split, never simply coloured.
+ *
+ * Anchored to `.v`, the value's OWN span, and sized by its own text rather
+ * than stretched across the row. It used to sit on `.n`, which also holds the
+ * unit, with both `left` and `right` set — so the ghost centred over
+ * value+unit and drifted from the figure by about half the unit's width. A
+ * short unit hid it; a word did not. */
+.hp-core .n .v { position: relative; display: inline-block; font: inherit; letter-spacing: inherit; }
+.hp-core .n .v::before,
+.hp-core .n .v::after {
+  content: attr(data-v); position: absolute; top: 0; left: 0;
+  opacity: .38; z-index: -1; pointer-events: none;
+  font: inherit; letter-spacing: inherit; white-space: pre;
+}
+.hp-core .n .v::before { transform: translateX(-2.5px); color: var(--fringe); }
+.hp-core .n .v::after { transform: translateX(2.5px); color: var(--beam); }
 /* A thin space before the unit. Without it a WORD unit runs into the figure —
    "184sessions" — which is what a lens headline produces the moment its unit is
    not a single symbol. A symbol reads correctly either way, and SI style puts a
@@ -148,7 +161,14 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   position: absolute; right: 46px; top: 100px; width: 582px; z-index: 18;
   /* Content-bounded, never volume-bounded: a long log scrolls in place
    * instead of stretching the pane past the stage floor. */
-  max-height: calc(100% - 176px); overflow-y: auto; overscroll-behavior: contain;
+  /* `overflow-x: hidden` is NOT redundant beside `overflow-y: auto`.
+   * Per CSS overflow, when one axis is not `visible` the other's `visible`
+   * COMPUTES to `auto` — so a pane that only ever wanted to scroll vertically
+   * silently became horizontally scrollable too, and any hairline overflow
+   * (a glow, a sub-pixel rounding, a wide chip) painted a horizontal bar
+   * nobody asked for. Stated on both axes so each says what it means. */
+  max-height: calc(100% - 176px); overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain;
   scrollbar-width: thin; scrollbar-color: rgba(var(--bR),var(--bG),var(--bB),.35) transparent;
   opacity: 0; pointer-events: none; transform: translateX(38px);
   transition: opacity 400ms 100ms, transform 520ms 100ms var(--ease-out);
@@ -412,7 +432,10 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   flex-direction: column; align-items: flex-start; z-index: 34;
   padding: 17px 22px; background: var(--void); gap: 18px;
   border-left: 1px solid var(--beam); box-shadow: 0 0 30px rgba(var(--bR),var(--bG),var(--bB),.2);
-  max-height: 70vh; overflow-y: auto;
+  /* Both axes stated — see `.hp-pane`. A vertical-only scroller that leaves
+   * `overflow-x` unset gets `auto` by computation and a spurious bar with it. */
+  max-height: 70vh; overflow-y: auto; overflow-x: hidden;
+  scrollbar-width: thin; scrollbar-color: rgba(var(--bR),var(--bG),var(--bB),.35) transparent;
   font-size: var(--fs-xs); letter-spacing: var(--placard-tracking); text-transform: uppercase;
 }
 .hp-navmenu .grp { display: flex; flex-direction: column; gap: 8px; }
@@ -568,7 +591,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-tray__tabs button[aria-current="page"]::after { width: 100%; margin-left: -50%; }
 .hp-tray__badge { display: inline-block; margin-left: 6px; padding: 1px 5px; font-size: 9px; line-height: 1.3; color: var(--void); background: var(--hot); box-shadow: 0 0 8px rgba(var(--hR),var(--hG),var(--hB),.6); }
 
-.hp-tray__main { flex: 1; min-height: 0; overflow-y: auto; width: 100%; max-width: 720px; margin: 0 auto; padding: 12px 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+.hp-tray__main { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; width: 100%; max-width: 720px; margin: 0 auto; padding: 12px 14px 18px; display: flex; flex-direction: column; gap: 10px; }
 .hp-tray__main::-webkit-scrollbar { width: 6px; }
 .hp-tray__main::-webkit-scrollbar-thumb { background: rgba(var(--bR),var(--bG),var(--bB),.22); }
 /* Tray density: planes never tilt and sit tighter. */
@@ -640,7 +663,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   }
   .hp-stage[data-mode="detail"] .hp-pane[data-pane="detail"],
   .hp-stage[data-mode="inspect"] .hp-pane[data-pane="inspect"] { transform: translateY(0); }
-  .hp-layout { left: auto; right: 30px; top: auto; bottom: 82px; max-height: 46%; overflow-y: auto; }
+  .hp-layout { left: auto; right: 30px; top: auto; bottom: 82px; max-height: 46%; overflow-y: auto; overflow-x: hidden; }
 }
 
 /* ════ PHONE ═════════════════════════════════════════════════════════
@@ -691,7 +714,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
    * the affordance: a hard clip at the edge looks like the end of the list. */
   .hp-top > .hp-rng {
     flex: 1 1 auto; min-width: 0; gap: 10px; margin-left: 0;
-    overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+    overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
     -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
     mask-image: linear-gradient(to right, black calc(100% - 20px), transparent);
   }
@@ -715,7 +738,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   }
   .hp-lens { bottom: 15px; gap: 15px; max-width: calc(100% - 24px); }
   .hp-hint { display: none; }
-  .hp-layout { left: 12px; right: 12px; width: auto; top: auto; bottom: 74px; max-height: 60%; overflow-y: auto; }
+  .hp-layout { left: 12px; right: 12px; width: auto; top: auto; bottom: 74px; max-height: 60%; overflow-y: auto; overflow-x: hidden; }
   /* Dense content reflows rather than clipping. */
   .hp-subs { grid-template-columns: repeat(2, 1fr); row-gap: 12px; }
   .hp-kv { grid-template-columns: 1fr; gap: 2px 0; }
@@ -894,7 +917,9 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  * reading affordance; at eight hours a day it is noise. Everything that
  * moves or glows for atmosphere is removed — the beam, the planes and the
  * type stay, so it is unmistakably the same system. */
-.hp-stage[data-surface="console"] { perspective: none; background: var(--void); overflow-y: auto; }
+/* The console scrolls vertically; naming the other axis keeps a stray wide
+ * table from adding a horizontal bar to the whole surface. */
+.hp-stage[data-surface="console"] { perspective: none; background: var(--void); overflow-y: auto; overflow-x: hidden; }
 .hp-stage[data-surface="console"]::after,
 .hp-stage[data-surface="console"]::before { display: none; }
 .hp-stage[data-surface="console"] .hp-emit,
@@ -912,7 +937,9 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 
 /* Console shell: fixed index rail + scrolling work area. */
 .hp-console { position: relative; z-index: 20; display: grid; grid-template-columns: 218px minmax(0, 1fr); gap: 26px; align-items: start; padding: 92px 30px 40px; min-height: 100%; }
-.hp-cnav { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 1px; max-height: calc(100vh - 120px); overflow-y: auto; scrollbar-width: thin; }
+/* Vertical-only at desktop; the phone rule below deliberately flips it to a
+ * horizontal strip and overrides both axes there. */
+.hp-cnav { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 1px; max-height: calc(100vh - 120px); overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; }
 .hp-cnav .grp { padding: 14px 10px 5px; font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); }
 .hp-cnav .grp:first-child { padding-top: 0; }
 .hp-cnav a { display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; font-size: var(--fs-sm); letter-spacing: .04em; color: var(--beam); text-decoration: none; border-left: 1px solid transparent; }
@@ -924,7 +951,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-cwork > .hp-ungrounded { margin-bottom: 0; }
 @media (max-width: 900px) {
   .hp-console { grid-template-columns: 1fr; gap: 16px; padding: 84px 16px 32px; }
-  .hp-cnav { position: static; flex-direction: row; overflow-x: auto; max-height: none; padding-bottom: 8px; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.18); }
+  .hp-cnav { position: static; flex-direction: row; overflow-x: auto; overflow-y: hidden; max-height: none; padding-bottom: 8px; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.18); }
   .hp-cnav .grp { display: none; }
   .hp-cnav a { flex: 0 0 auto; border-left: 0; border-bottom: 1px solid transparent; }
   .hp-cnav a[aria-current="page"] { border-left: 0; border-bottom-color: var(--hot); }
