@@ -20,9 +20,19 @@
   --placard-tracking: 0.24em;
 
   /* Readout scale — projection values are large and thin */
-  --fs-micro: 8.5px;
+  /* 10px, not 8.5px. This tier is uppercase at wide tracking, which is the
+   * least legible shape small text can take — contrast was only half the
+   * problem, stroke weight was the other half. Paired with `--label` and a
+   * slightly eased tracking on the same rules. */
+  --fs-micro: 10px;
   --fs-xs: 9.5px;
-  --fs-sm: 11.5px;
+  /* 12px, not 11.5px. The project's contrast rule treats anything under 12px
+   * as the high-contrast tier, and `--fs-sm` is the SECONDARY PROSE size — so
+   * at 11.5px it fell on the wrong side of a line drawn for it, and every rule
+   * using it (20 of them) silently needed 7:1 while carrying a 5.5:1 token.
+   * Moving the size is the honest fix; pushing 20 prose rules up to `--label`
+   * would have made ordinary body copy shout. */
+  --fs-sm: 12px;
   --fs-base: 12px;
   --fs-md: 15px;
   --fs-lg: 19px;

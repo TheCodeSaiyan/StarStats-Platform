@@ -1,3 +1,19 @@
+/* THE GROUND UNDER A PROJECTION IS THE VOID, not the flat background.
+ *
+ * `globals.css` paints `body { background: var(--bg) }`, and `--bg` resolves
+ * at the BODY — outside `.ss-projection-root`, where the flat palette still
+ * owns the name. So every projection page sat on `#0B1014` while its palette
+ * was designed against `#03060B`. Measured: a widget tile's own 3.5% tint
+ * composited to `rgb(15, 23, 28)`, which cost roughly 0.8 of contrast on every
+ * label in the tile and was the entire residual gap after the token work.
+ *
+ * `:has()` rather than a class on `body`: the shell decides per route whether
+ * a projection mounts, and the ground should follow the content rather than
+ * needing a second flag kept in sync with it. */
+body:has(.ss-projection-root) {
+  background: var(--void);
+}
+
 /* What is LEFT of the flat app shell.
  *
  * This file existed to hide the flat chrome — `TopBar`, `LeftRail`, the two

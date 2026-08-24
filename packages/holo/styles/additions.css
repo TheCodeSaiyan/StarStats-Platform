@@ -36,7 +36,6 @@
   border: 0;
   padding: 0;
   cursor: pointer;
-  opacity: 0.75;
   transition: color var(--t-fast) var(--ease-out), opacity var(--t-fast) var(--ease-out);
 }
 .hp-plane .cap .tr a:hover,
@@ -53,7 +52,7 @@
   align-items: center;
   min-height: 34px;
   padding: 2px 0;
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
 }
@@ -96,8 +95,7 @@
   top: 50%;
   transform: translate(-50%, -50%);
   width: max(100%, 44px);
-  height: 44px;
-}
+  height: 44px; pointer-events: none; }
 .hp-tip__rule {
   position: absolute;
   left: 0;
@@ -141,7 +139,7 @@
     inset 0 1px 0 rgba(var(--hR), var(--hG), var(--hB), 0.14);
   backdrop-filter: blur(6px);
   padding: 10px 12px;
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
   font-size: var(--fs-xs);
   line-height: 1.55;
   letter-spacing: var(--tracking-wide);
@@ -183,7 +181,7 @@
 .hp-fact__d {
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
 }
 
 /* ── Activity calendar (bespoke element) ───────────────────────────────────
@@ -227,7 +225,7 @@
   gap: 5px;
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
   white-space: nowrap;
 }
 .hp-idstats b {
@@ -265,7 +263,7 @@
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wider);
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   text-decoration: none;
   padding: 13px 8px;
   position: relative;
@@ -492,9 +490,7 @@
   font-weight: 500;
   letter-spacing: 0.2em;
   color: var(--beam);
-  opacity: 0.8;
-  font-variant-numeric: tabular-nums;
-}
+  font-variant-numeric: tabular-nums; pointer-events: none; }
 .hp-steps a {
   color: var(--beam);
 }
@@ -549,9 +545,9 @@
 .hp-fieldlabel {
   font-size: var(--fs-micro);
   font-weight: 500;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   margin-bottom: 6px;
 }
 
@@ -617,8 +613,7 @@
   position: absolute;
   width: 11px;
   height: 11px;
-  border: 1px solid var(--beam);
-}
+  border: 1px solid var(--beam); pointer-events: none; }
 .hp-qr::before {
   top: -1px;
   left: -1px;
@@ -702,7 +697,19 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
+}
+
+/* The SELECTED calibration lights its own label.
+   Two reasons, and the design one came first: an active choice marked only by
+   a border and a 7% tint is the weakest affordance on the page, and the
+   system's own idiom for a pressed control is `--hot` (see
+   `.hp-cmp-bar .modes button[aria-pressed]`). It also happens to be the fix
+   for the last contrast failure on this sweep — that tile's heavier tint put
+   `--label` at 6.88:1, and the active state is exactly the one that should not
+   be the quietest thing in the row. */
+.hp-calchoice button[data-active='true'] .ch {
+  color: var(--hot);
 }
 @media (max-width: 700px) {
   .hp-calchoice {
@@ -752,13 +759,13 @@
 .hp-grant__note {
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
 }
 .hp-grant__act {
   font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 .hp-grant__act-btns {
   display: flex;
@@ -794,7 +801,7 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   padding: 4px 0;
   list-style: none;
 }
@@ -844,7 +851,7 @@
   padding: 5px 11px;
   border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.22);
   background: none;
-  color: var(--dim);
+  color: var(--label);
   cursor: pointer;
   transition: color var(--t-fast) var(--ease-out), border-color var(--t-fast) var(--ease-out);
 }
@@ -927,7 +934,7 @@
   padding: 9px 2px;
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: var(--dim);
+  color: var(--label);
 }
 .hp-devtabs a:hover {
   color: var(--beam);
@@ -1021,9 +1028,9 @@
   padding: 0;
   font-size: var(--fs-micro);
   font-weight: 500;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 .hp-checkrow {
   display: flex;
@@ -1092,9 +1099,9 @@
 .hp-slot__label {
   font-size: var(--fs-micro);
   font-weight: 500;
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 /* An empty slot is a HAIRLINE OUTLINE, not a dashed grey box: the gap is
  * meaningful, so it is drawn as absence rather than as a broken tile. */
@@ -1133,7 +1140,7 @@
   font-size: var(--fs-xs);
   line-height: 1.35;
   letter-spacing: var(--tracking-wide);
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
   word-break: break-word;
 }
 .hp-kit__name a {
@@ -1191,7 +1198,7 @@
 .hp-sortrow a {
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: var(--dim);
+  color: var(--label);
   padding: 3px 0;
   position: relative;
 }
@@ -1253,13 +1260,13 @@
 .hp-kbcard__cls {
   font-size: var(--fs-micro);
   letter-spacing: 0.08em;
-  color: var(--dim);
+  color: var(--label);
   word-break: break-word;
 }
 .hp-kbcard__fact {
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
 }
 .hp-kbcard__fact i {
   font-style: normal;
@@ -1276,7 +1283,7 @@
   margin-top: 22px;
   font-size: var(--fs-xs);
   letter-spacing: var(--tracking-wide);
-  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  color: color-mix(in oklab, var(--label) 55%, var(--beam));
 }
 .hp-pager__btns {
   display: flex;
@@ -1350,9 +1357,9 @@
 .hp-disclose > summary {
   cursor: pointer;
   font-size: var(--fs-micro);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   list-style: none;
 }
 
@@ -1429,7 +1436,7 @@
 .hp-dirrow__name {
   font-size: var(--fs-micro);
   letter-spacing: 0.06em;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-dirmore {
@@ -1523,7 +1530,7 @@
    The radius came out right only by accident — `var(--r-sm)` is one of the
    tokens NOT aliased onto the beam, so the declaration was invalid and
    dropped. That is not something to rely on; it is set explicitly here. */
-.hp-stage .skeleton {
+.ss-projection-root .skeleton {
   background: color-mix(in oklab, var(--beam) 7%, transparent);
   border: 1px solid color-mix(in oklab, var(--beam) 22%, transparent);
   border-radius: 0;
@@ -1531,29 +1538,29 @@
 
 /* The eyebrow above each admin page's h1. Sanctioned use (a section category
    label), so it stays — in the projection's tracked-caption idiom. */
-.hp-stage .ss-eyebrow {
+.ss-projection-root .ss-eyebrow {
   font-size: var(--fs-micro);
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
 /* Admin tables: hairline rules, tracked uppercase heads, tabular figures. The
    markup is `AdminTable`'s inline-styled <table>, which the flat semantic
    tokens already colour correctly — this is the geometry those tokens do not
    carry. */
-.hp-stage table th {
+.ss-projection-root table th {
   font-weight: 400 !important;
   letter-spacing: 0.18em !important;
-  color: var(--dim) !important;
+  color: var(--label) !important;
 }
 
-.hp-stage table td,
-.hp-stage table th {
+.ss-projection-root table td,
+.ss-projection-root table th {
   border-color: rgba(var(--bR), var(--bG), var(--bB), 0.16) !important;
 }
 
-.hp-stage table thead tr {
+.ss-projection-root table thead tr {
   background: rgba(var(--bR), var(--bG), var(--bB), 0.04) !important;
 }
 
@@ -1642,28 +1649,28 @@
 
 /* The eyebrow above each page's h1 — the sanctioned section-label use, in the
    projection's tracked-caption idiom. */
-.hp-stage .ss-placard {
+.ss-projection-root .ss-placard {
   font-size: var(--fs-micro);
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
-.hp-stage .ss-lede {
+.ss-projection-root .ss-lede {
   color: var(--dim);
 }
 
 /* Rules and section dividers become hairlines on the beam. */
-.hp-stage hr.ss-rule,
-.hp-stage .ss-about-section {
+.ss-projection-root hr.ss-rule,
+.ss-projection-root .ss-about-section {
   border-color: rgba(var(--bR), var(--bG), var(--bB), 0.16);
 }
 
-.hp-stage .ss-about-section-eyebrow {
+.ss-projection-root .ss-about-section-eyebrow {
   font-size: var(--fs-micro);
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
 /* The pages that carried their own footer are now inside a pane that ends
@@ -1718,6 +1725,55 @@
   }
 }
 
+/* ---- flat semantic tokens, re-aliased inside the projection ---------------
+   `tokens-holo.css` maps `--fg-dim`, `--fg-muted` and friends onto the beam in
+   its `:root` block, and `packages/design-tokens/starstats-tokens.css` sets the
+   same names to the FLAT palette. Both match `html`, so the winner is whichever
+   stylesheet loads later — and it was the flat one. Measured inside a
+   projection, `--fg-dim` resolved to `#717F86`, not `var(--dim)`: every flat
+   component rendering through the bridge was drawing in flat colours while the
+   beam sat unused beside it.
+
+   DECLARED ON `.ss-projection-root`, which settles it without a specificity
+   fight. Custom properties inherit from the NEAREST declaring ancestor, and
+   for anything inside a projection that is this element, not `html`.
+
+   THE TIER MAPPING LOOKS INVERTED AND IS NOT. In the flat palette `--fg-dim`
+   is quieter than `--fg-muted`. In the beam system the tier a token belongs to
+   is decided by SIZE: `--fg-dim` marks the smallest, least prominent text,
+   which is exactly the text that needs 7:1. So it maps to `--label` (the
+   brighter tier) and `--fg-muted`, used at prose sizes, maps to `--dim`. */
+.ss-projection-root {
+  --fg: var(--hot);
+  --fg-muted: var(--dim);
+  --fg-dim: var(--label);
+  --bg: var(--void);
+  --bg-elev: rgba(var(--bR), var(--bG), var(--bB), 0.045);
+  --surface: rgba(var(--bR), var(--bG), var(--bB), 0.06);
+  --surface-2: rgba(var(--bR), var(--bG), var(--bB), 0.1);
+  --surface-3: rgba(var(--bR), var(--bG), var(--bB), 0.15);
+  --border: rgba(var(--bR), var(--bG), var(--bB), 0.16);
+  --border-strong: rgba(var(--bR), var(--bG), var(--bB), 0.3);
+  --accent: var(--beam);
+  --accent-soft: rgba(var(--bR), var(--bG), var(--bB), 0.12);
+  --accent-glow: rgba(var(--bR), var(--bG), var(--bB), 0.55);
+  --accent-fg: var(--void);
+  --ok: var(--good);
+  --danger: var(--bad);
+  --warn: var(--warn);
+  --info: var(--beam);
+}
+
+/* SCOPED TO `.ss-projection-root`, NOT `.hp-stage`.
+   The flat-primitive bridge was written when every ported body rendered inside
+   the stage. `/u/[handle]` now docks its pane BELOW the volume — necessarily,
+   because `.hp-pane` is invisible outside detail mode — which puts it outside
+   `.hp-stage` and outside every one of these rules. The widget canvas there
+   fell back to the flat palette and measured 4.63:1 on its labels.
+   `.ss-projection-root` wraps the stage AND anything docked beside it, at the
+   same specificity, so this widens the bridge without moving any rule that
+   already worked. */
+
 /* ---- catalogue shell -------------------------------------------------------
    The header `CatalogueLayout.jsx` calls fixed: counts, then categories as
    tabs. The tab treatment is the spec's own — tracked caps on a hairline
@@ -1737,9 +1793,9 @@
 
 .hp-cattab {
   font-size: var(--fs-micro);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   text-decoration: none;
   padding: 2px 0;
   border-bottom: 1px solid transparent;
@@ -2076,7 +2132,15 @@
 /* The ways in, above whichever step you are on. Sits clear of the form rather
    than reading as part of it — a reader scanning for the passphrase field
    should not have to parse four links first. */
-.hp-authsteps {
+/* Index strips — the ways in above a segment's content.
+   `.hp-catstrip` gives them their shape; these three add the separation from
+   the content below, and exist as named hooks so a strip is identifiable in
+   the DOM and in a test. They were previously classNames with no rule at all,
+   which is the failure mode `web-testing.md` records: a className'd element
+   with no CSS passes every gate, because nothing asserts computed style. */
+.hp-authsteps,
+.hp-recindex,
+.hp-legalindex {
   margin-bottom: 26px;
 }
 
@@ -2125,7 +2189,7 @@
   font-style: normal;
   font-size: var(--fs-micro);
   letter-spacing: 0.06em;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-subs b.b {
@@ -2155,7 +2219,7 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-statbar__value {
@@ -2199,7 +2263,7 @@
   margin-top: 6px;
   font-size: var(--fs-micro);
   letter-spacing: 0.06em;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-statbar__band.good {
@@ -2250,7 +2314,7 @@
 .hp-conlist__row .dt {
   font-size: var(--fs-micro);
   letter-spacing: 0.06em;
-  color: var(--dim);
+  color: var(--label);
 }
 
 /* ==========================================================================
@@ -2299,7 +2363,7 @@
   gap: 6px;
   font-size: var(--fs-micro);
   letter-spacing: 0.06em;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-series-key i {
@@ -2351,7 +2415,7 @@
   font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-sortbtn:hover,
@@ -2376,7 +2440,7 @@
   border-right: 1px solid var(--hot);
 }
 
-.hp-stage table td .lead {
+.ss-projection-root table td .lead {
   color: var(--hot);
 }
 
@@ -2392,44 +2456,44 @@
    the mobile type rules key on `:not(.hud-tile__title)`, and the audit spec
    measures through them.
    -------------------------------------------------------------------------- */
-.hp-stage .hud-tile {
+.ss-projection-root .hud-tile {
   background: rgba(var(--bR), var(--bG), var(--bB), 0.035);
   border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
   border-radius: 0;
   box-shadow: none;
 }
 
-.hp-stage .hud-tile .hud-tile__hd {
+.ss-projection-root .hud-tile .hud-tile__hd {
   display: flex;
   align-items: baseline;
   gap: 8px;
   border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
 }
 
-.hp-stage .hud-tile .hud-tile__eyebrow,
-.hp-stage .hud-tile .hud-tile__title {
+.ss-projection-root .hud-tile .hud-tile__eyebrow,
+.ss-projection-root .hud-tile .hud-tile__title {
   font-size: var(--fs-micro);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   font-weight: 400;
 }
 
 /* The title is the tile's name, so it takes the beam; the eyebrow stays
    structure. Only figures glow — a tile title is a label, not a figure, so it
    is lifted rather than lit. */
-.hp-stage .hud-tile .hud-tile__title {
+.ss-projection-root .hud-tile .hud-tile__title {
   color: var(--beam);
 }
 
-.hp-stage .hud-tile .hud-tile__sub {
+.ss-projection-root .hud-tile .hud-tile__sub {
   margin-left: auto;
   font-size: var(--fs-micro);
   letter-spacing: 0.14em;
-  color: var(--dim);
+  color: var(--label);
 }
 
-.hp-stage .hud-tile .hud-tile__empty {
+.ss-projection-root .hud-tile .hud-tile__empty {
   margin: 0;
   padding: 10px 0 2px;
   font-size: var(--fs-base);
@@ -2460,8 +2524,8 @@
    -------------------------------------------------------------------------- */
 
 /* --- Sheets ------------------------------------------------------------- */
-.hp-stage .ss-card,
-.hp-stage .ss-card--elev {
+.ss-projection-root .ss-card,
+.ss-projection-root .ss-card--elev {
   background: rgba(var(--bR), var(--bG), var(--bB), 0.035);
   border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
   border-radius: 0;
@@ -2469,15 +2533,15 @@
   padding: 16px 18px;
 }
 
-.hp-stage .ss-card--elev {
+.ss-projection-root .ss-card--elev {
   background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
   border-color: rgba(var(--bR), var(--bG), var(--bB), 0.24);
 }
 
 /* A card's leading heading becomes the sheet's tracked caption. */
-.hp-stage .ss-card > h2:first-child,
-.hp-stage .ss-card > h3:first-child,
-.hp-stage .ss-card > header:first-child > h2:first-child {
+.ss-projection-root .ss-card > h2:first-child,
+.ss-projection-root .ss-card > h3:first-child,
+.ss-projection-root .ss-card > header:first-child > h2:first-child {
   margin: 0 0 12px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
@@ -2491,7 +2555,7 @@
 /* --- Controls ----------------------------------------------------------- */
 /* Never filled, never rounded. The primary reads hotter, not heavier — the
    system's whole button vocabulary is one lit box at two brightnesses. */
-.hp-stage .ss-btn {
+.ss-projection-root .ss-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2515,52 +2579,52 @@
     background 0.16s ease;
 }
 
-.hp-stage .ss-btn:hover {
+.ss-projection-root .ss-btn:hover {
   color: var(--hot);
   border-color: var(--hot);
   background: rgba(var(--bR), var(--bG), var(--bB), 0.06);
 }
 
-.hp-stage .ss-btn:active {
+.ss-projection-root .ss-btn:active {
   transform: none;
 }
 
-.hp-stage .ss-btn--primary {
+.ss-projection-root .ss-btn--primary {
   color: var(--hot);
   border-color: var(--hot);
   background: transparent;
   box-shadow: none;
 }
 
-.hp-stage .ss-btn--primary:hover {
+.ss-projection-root .ss-btn--primary:hover {
   background: rgba(var(--bR), var(--bG), var(--bB), 0.1);
   box-shadow: none;
 }
 
-.hp-stage .ss-btn--ghost {
+.ss-projection-root .ss-btn--ghost {
   color: var(--dim);
   border-color: rgba(var(--bR), var(--bG), var(--bB), 0.22);
 }
 
-.hp-stage .ss-btn--danger {
+.ss-projection-root .ss-btn--danger {
   color: var(--bad);
   border-color: color-mix(in oklab, var(--bad) 55%, transparent);
 }
 
-.hp-stage .ss-btn--danger:hover {
+.ss-projection-root .ss-btn--danger:hover {
   color: var(--bad);
   border-color: var(--bad);
   background: color-mix(in oklab, var(--bad) 10%, transparent);
 }
 
-.hp-stage .ss-btn[disabled],
-.hp-stage .ss-btn[aria-disabled='true'] {
+.ss-projection-root .ss-btn[disabled],
+.ss-projection-root .ss-btn[aria-disabled='true'] {
   color: var(--dim);
   border-color: rgba(var(--bR), var(--bG), var(--bB), 0.12);
   cursor: default;
 }
 
-.hp-stage .ss-btn:focus-visible {
+.ss-projection-root .ss-btn:focus-visible {
   outline: 1px solid var(--hot);
   outline-offset: 2px;
   border-radius: 0;
@@ -2568,7 +2632,7 @@
 
 /* --- Notices ------------------------------------------------------------ */
 /* A left-edge lit rule, matching `BeamAlert` — not a filled tinted box. */
-.hp-stage .ss-alert {
+.ss-projection-root .ss-alert {
   border: 0;
   border-left: 2px solid var(--beam);
   border-radius: 0;
@@ -2579,23 +2643,23 @@
   letter-spacing: 0.04em;
 }
 
-.hp-stage .ss-alert--danger {
+.ss-projection-root .ss-alert--danger {
   border-left-color: var(--bad);
   color: var(--bad);
 }
 
-.hp-stage .ss-alert--ok {
+.ss-projection-root .ss-alert--ok {
   border-left-color: var(--ok);
   color: var(--ok);
 }
 
-.hp-stage .ss-alert--warn {
+.ss-projection-root .ss-alert--warn {
   border-left-color: var(--warn);
   color: var(--warn);
 }
 
 /* --- Chips -------------------------------------------------------------- */
-.hp-stage .ss-badge {
+.ss-projection-root .ss-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2603,23 +2667,23 @@
   border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.28);
   border-radius: 0;
   background: transparent;
-  color: var(--dim);
+  color: var(--label);
   font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.hp-stage .ss-badge--accent {
+.ss-projection-root .ss-badge--accent {
   color: var(--hot);
   border-color: var(--hot);
 }
 
-.hp-stage .ss-badge--danger {
+.ss-projection-root .ss-badge--danger {
   color: var(--bad);
   border-color: color-mix(in oklab, var(--bad) 50%, transparent);
 }
 
-.hp-stage .ss-badge-dot {
+.ss-projection-root .ss-badge-dot {
   width: 5px;
   height: 5px;
   border-radius: 50%;
@@ -2629,36 +2693,36 @@
 /* --- Type --------------------------------------------------------------- */
 /* `.ss-placard` is Michroma in the flat system. The projection has ONE face —
    Chakra Petch — so the placard becomes a tracked caption instead. */
-.hp-stage .ss-placard {
+.ss-projection-root .ss-placard {
   font-family: inherit;
   font-size: var(--fs-micro);
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
-.hp-stage .ss-lede {
+.ss-projection-root .ss-lede {
   color: var(--dim);
   font-size: var(--fs-md);
   line-height: 1.6;
 }
 
-.hp-stage hr.ss-rule {
+.ss-projection-root hr.ss-rule {
   border: 0;
   border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.16);
 }
 
 /* --- Inputs ------------------------------------------------------------- */
 /* Never a boxed field: a lit underline, like `BeamInput`. */
-.hp-stage .ss-input,
-.hp-stage input[type='text'],
-.hp-stage input[type='email'],
-.hp-stage input[type='password'],
-.hp-stage input[type='search'],
-.hp-stage input[type='number'],
-.hp-stage input[type='datetime-local'],
-.hp-stage textarea,
-.hp-stage select {
+.ss-projection-root .ss-input,
+.ss-projection-root input[type='text'],
+.ss-projection-root input[type='email'],
+.ss-projection-root input[type='password'],
+.ss-projection-root input[type='search'],
+.ss-projection-root input[type='number'],
+.ss-projection-root input[type='datetime-local'],
+.ss-projection-root textarea,
+.ss-projection-root select {
   border: 0;
   border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.32);
   border-radius: 0;
@@ -2669,10 +2733,10 @@
   padding: 6px 2px;
 }
 
-.hp-stage .ss-input:focus,
-.hp-stage input:focus,
-.hp-stage textarea:focus,
-.hp-stage select:focus {
+.ss-projection-root .ss-input:focus,
+.ss-projection-root input:focus,
+.ss-projection-root textarea:focus,
+.ss-projection-root select:focus {
   outline: none;
   border-bottom-color: var(--hot);
 }
@@ -2697,7 +2761,7 @@
   padding: 4px 10px;
   background: none;
   border: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.28);
-  color: var(--dim);
+  color: var(--label);
   font-size: var(--fs-micro);
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -2723,9 +2787,9 @@
 
 .hp-catlabel {
   font-size: var(--fs-micro);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
   margin-bottom: 8px;
 }
 
@@ -2760,7 +2824,7 @@
 .hp-catcard__cls {
   display: block;
   font-size: 11px;
-  color: var(--dim);
+  color: var(--label);
   word-break: break-word;
   margin-top: 3px;
 }
@@ -2772,9 +2836,13 @@
   margin-top: 2px;
 }
 
+/* Inherits 11px from `.hp-catcard__fact`, so this rule carries no font-size of
+   its own and neither size sweep could see it — measured 5.56:1 on 11px text.
+   Same shape as the legal-plate links: the tier is decided by what a rule
+   RENDERS as, not by what it declares. */
 .hp-catcard__fact i {
   font-style: normal;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-catpager {
@@ -2785,7 +2853,7 @@
   flex-wrap: wrap;
   align-items: center;
   font-size: var(--fs-xs);
-  color: var(--dim);
+  color: var(--label);
   letter-spacing: 0.1em;
 }
 
@@ -2823,9 +2891,9 @@
   width: 76px;
   flex: none;
   font-size: var(--fs-micro);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
 .hp-docsindex__lk {
@@ -2881,9 +2949,9 @@ html[data-wave-speed='off'] .hp-stage::after {
   margin: 0 0 10px;
   font-size: var(--fs-micro);
   font-weight: 400;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--dim);
+  color: var(--label);
 }
 
 /* A count carried inside a catalogue chip — the taxonomy strip's "Systems 2".
@@ -2907,4 +2975,56 @@ html[data-wave-speed='off'] .hp-stage::after {
    face rather than guessing a pixel width for it. */
 .hp-marketing :is(p, li) {
   max-width: 68ch;
+}
+
+/* Field hint under a `BeamInput` / `BeamSelect`. Was inline-styled in the
+   component with `opacity: .8`; see `BeamInput.tsx`. */
+.hp-field__hint {
+  letter-spacing: 0.1em;
+  text-transform: none;
+  color: var(--label);
+}
+
+/* Flat HUD primitives that render SMALL. They take `--fg-muted`, which maps to
+   the prose tier `--dim` — right for prose, and 1.4 short of what 9.5-11px
+   needs. The tier a rule belongs to is decided by the size it renders at, so
+   these join the label tier explicitly rather than by moving the alias, which
+   would make every flat muted paragraph shout. */
+.ss-projection-root .hud-nosignal__title,
+.ss-projection-root .hud-chip,
+.ss-projection-root .hud-note {
+  color: var(--label);
+}
+
+/* ---- HUD row unit, inside the projection ----------------------------------
+   The widget grid sizes tiles in fixed rows (`--hud-row`, 22px) and
+   `grid-layout.ts` records that the per-widget row counts "are chosen to FIT
+   each widget's bounded summary content EXACTLY — a tile never scrolls". Zero
+   slack, by design.
+
+   Raising the micro tier from 8.5px to 10px for legibility spends slack that
+   was not there. Measured on `/u/[handle]`: a compact travel tile came out
+   52px tall with 57px of content and its `.hud-tile__body` collapsed to
+   clientHeight 0 — the body content, and the InfoTip control inside it, were
+   present in the DOM and clipped to nothing.
+
+   The row unit scales with the type rather than the row COUNTS changing:
+   counts are persisted in every reader's saved layout, so re-tuning them would
+   silently move everyone's tiles. 22 -> 24 is the same ~9% the micro tier
+   grew, so every widget keeps exactly the proportion it was tuned with. */
+.ss-projection-root {
+  --hud-row: 24px;
+}
+
+/* A TILE BODY NEVER COLLAPSES TO NOTHING.
+   `hud.css` gives the body `flex: 1; min-height: 0`, which lets it shrink to
+   zero when the header takes the whole tile — and the header grew with the
+   micro tier. Measured: clientHeight 0 against 16px of content, so the body
+   and every control in it (the InfoTip button among them) were in the DOM and
+   clipped out of existence.
+   `min-height` of one line means the body always renders something and the
+   tile scrolls instead, which is the behaviour `hud-tile__body`'s own
+   `overflow-y: auto` was already written for. */
+.ss-projection-root .hud-tile__body {
+  min-height: 1.6em;
 }
