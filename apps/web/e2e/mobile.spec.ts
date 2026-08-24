@@ -111,6 +111,21 @@ test.describe('phone', () => {
           .forEach((el) => {
             const cs = getComputedStyle(el);
             if (cs.display === 'none' || cs.visibility === 'hidden') return;
+            // `checkVisibility`, not a rect test. A closed <details> hides its
+            // contents with `content-visibility: hidden`, which leaves
+            // `display` alone and still reports a full-size
+            // `getBoundingClientRect` — so /downloads' collapsed disclosures
+            // were being measured as visible tap targets and reported as
+            // failures. This is the only API that answers the question asked.
+            if (
+              !el.checkVisibility({
+                checkVisibilityCSS: true,
+                contentVisibilityAuto: true,
+                opacityProperty: true,
+              } as CheckVisibilityOptions)
+            ) {
+              return;
+            }
             const b = el.getBoundingClientRect();
             if (b.width === 0 || b.height === 0) return;
             if (b.height >= 24 && b.width >= 24) return;
