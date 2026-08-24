@@ -220,17 +220,37 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-plane .cap i { margin-left: auto; font-style: normal; color: var(--label); }
 
 /* Meter row — rank / name / share bar / value */
-.hp-rw { display: grid; grid-template-columns: 20px 1fr 88px 58px; align-items: center; gap: 11px; padding: 5.5px 0; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.1); font-size: var(--fs-base); cursor: pointer; transition: background 160ms; }
+/* NO `cursor: pointer` here: the base row is not a control. Every row used to
+ * advertise itself as clickable — pointer cursor plus a hover highlight —
+ * while only the rows whose identifier matched the catalogue went anywhere,
+ * and even those were clickable across 3-10% of their width. Aiming at a row
+ * and hitting nothing is worse than a row that never claimed to be a target. */
+.hp-rw { display: grid; grid-template-columns: 20px 1fr 88px 58px; align-items: center; gap: 11px; padding: 5.5px 0; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.1); font-size: var(--fs-base); transition: background 160ms; }
+/* The affordance belongs to rows that ARE targets: a row rendered as a link
+ * (`hp-rw--link`), or an onClick row, which `MeterRow` marks role="button".
+ * Scoped, because a plain ranked row is not a target and must not offer a
+ * pointer and a hover highlight to a reader who then clicks nothing. */
+.hp-rw--link, .hp-rw[role="button"] { cursor: pointer; }
+/* When the row IS the anchor it inherits the browser's link styling, which the
+ * per-cell rules below would otherwise have to fight. */
+.hp-rw--link { text-decoration: none; color: inherit; }
 .hp-rw:last-child { border-bottom: 0; }
 /* The value slot is 58px of tabular figures. A row whose value is words needs
  * the room, and drops the meter — a share bar means nothing beside a state. */
 .hp-rw--text { grid-template-columns: 20px 1fr auto; }
 .hp-rw--text .mt { display: none; }
 .hp-rw--text .vv { font-size: var(--fs-micro); letter-spacing: .18em; text-transform: uppercase; color: var(--label); white-space: nowrap; }
-.hp-rw:hover { background: rgba(var(--bR),var(--bG),var(--bB),.07); }
-.hp-rw:hover .nm { color: var(--hot); }
-.hp-rw .rk { font-size: 10px; color: var(--label); font-variant-numeric: tabular-nums; }
-.hp-rw:first-of-type .rk { color: var(--hot); }
+.hp-rw--link:hover,
+.hp-rw[role="button"]:hover { background: rgba(var(--bR),var(--bG),var(--bB),.07); }
+.hp-rw--link:hover .nm, .hp-rw[role="button"]:hover .nm { color: var(--hot); }
+/* The leading rank is lit; the rest recede. Expressed as "every row AFTER a row"
+ * rather than `:first-of-type`, because a row is an <a> when it links and a
+ * <div> when it does not — so a list of two links followed by an unlinked row
+ * has TWO first-of-types, and the unlinked one lit its rank as though it led
+ * the list. `:first-child` is no good either: the rows are not the first child
+ * of the plane. This form is tag-blind, which is the property that matters. */
+.hp-rw .rk { font-size: 10px; color: var(--hot); font-variant-numeric: tabular-nums; }
+.hp-rw ~ .hp-rw .rk { color: var(--label); }
 .hp-rw .nm { color: var(--beam); letter-spacing: .04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 160ms; }
 .hp-rw .mt { height: 2px; background: rgba(var(--bR),var(--bG),var(--bB),.14); position: relative; }
 .hp-rw .mt i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--beam); box-shadow: 0 0 6px rgba(var(--bR),var(--bG),var(--bB),.7); transition: width 520ms var(--ease-out); }
@@ -610,6 +630,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-mapnode:focus-visible circle { fill: rgba(var(--hR),var(--hG),var(--hB),.5); }
 .hp-mapnode:focus-visible text { fill: var(--hot); }
 /* Rows are clickable, so they must be reachable and show where you are. */
+.hp-rw--link:focus-visible,
 .hp-rw[role="button"]:focus-visible, .hp-tbl tbody tr[tabindex]:focus-visible {
   outline: 1px solid var(--hot); outline-offset: -1px;
 }

@@ -8,13 +8,32 @@ import { WIDGETS_BY_ID } from '@/app/_components/widgets/registry';
 import type { ViewerCtx, WidgetId } from '@/app/_components/widgets/types';
 import { logger } from '@/lib/logger';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
-import { EntityLink } from '@/components/kb/EntityLink';
 import type { DockingResponse, StatsBucket } from '@/lib/api';
 import { loadAllReferenceBundles } from '@/lib/reference';
-import type { ReferenceCatalog, ReferenceCatalogs } from '@/lib/reference-types';
+import type {
+  ReferenceCatalog,
+  ReferenceCatalogs,
+  ReferenceCategory,
+} from '@/lib/reference-types';
+import { CATEGORIES, resolveReferenceEntry } from '@/lib/reference-types';
+import { toFriendlyName } from '@/lib/heuristic-name';
+import { RowLink } from './RowLink';
 
 /** The catalogues the ranked planes resolve their raw identifiers against. */
 type Catalogs = ReferenceCatalogs;
+
+/**
+ * What a plane builder gets alongside its widget data.
+ *
+ * `catalogs` resolves raw engine identifiers to catalogued names and KB slugs.
+ * `counts` is the per-category entry count and must come from the bundle, NOT
+ * from `catalog.size` — the catalogue is dual-keyed under both `class_name`
+ * and `display_name`, so its size is roughly double the number of entries.
+ */
+interface ProjectionRefs {
+  catalogs?: Catalogs;
+  counts?: Record<ReferenceCategory, number>;
+}
 
 /**
  * Projection bodies for the /me elements.
@@ -260,6 +279,8 @@ interface RankedRow {
   name: React.ReactNode;
   value: string;
   pct: number;
+  /** Set when the entity resolved to a KB page; makes the whole row the link. */
+  href?: string;
 }
 
 /**
@@ -277,13 +298,26 @@ interface RankedRow {
  *     cross the RSC boundary. `rankedPlane`'s own docstring claimed "rows open
  *     the in-volume inspector"; nothing was ever wired.
  *
- * `EntityLink` answers both: it resolves the display name from the catalogue
- * and renders a real `<Link>` to `/kb/{category}/{slug}`. A link is also the
- * better answer than a click handler — it is shareable, it survives the back
- * button, and it works before hydration.
+ * Resolving here rather than delegating to `EntityLink` answers both, and
+ * answers a third fault that the first attempt at this did not:
  *
- * No catalogue match means no link and no rewrite: `EntityLink` falls through
- * to plain text, so a row is never worse off than it was.
+ *   - `EntityLink` wraps the anchor around the LABEL. Measured on a rendered
+ *     `/me`, that anchor covered 3-10% of its row — 26px of a 529px row for
+ *     "300i" — while the row itself showed a pointer cursor and a hover
+ *     highlight. So the row advertised itself as a target and then swallowed
+ *     nine clicks in ten. Stretching the anchor from inside cannot fix it:
+ *     `.nm` is `overflow: hidden`, which clips the overlay back to the label.
+ *
+ * So the row carries the href and `MeterRow` renders the ROW as the anchor.
+ * The cost is the hover card, which needs a client component around the label
+ * and would nest an interactive element inside a link — invalid markup and a
+ * confusing tab order. The whole row being reliably clickable is worth more
+ * than a preview on a list that exists to be clicked through.
+ *
+ * No catalogue match still means no link and no rewrite: the label falls back
+ * to the same heuristic prettifier `EntityLink` uses, and the row renders as
+ * plain text with no pointer and no hover lift, so it never claims to be a
+ * target it is not.
  */
 function entityRow(
   category: 'vehicle' | 'location' | 'weapon' | 'item',
@@ -292,12 +326,14 @@ function entityRow(
   value: string,
   pct: number,
 ): RankedRow {
+  const entry = resolveReferenceEntry(category, classKey, catalog);
   return {
-    name: (
-      <EntityLink category={category} classKey={classKey} catalog={catalog} />
-    ),
+    name: entry?.display_name ?? toFriendlyName(classKey),
     value,
     pct,
+    href: entry?.slug
+      ? `/kb/${category}/${encodeURIComponent(entry.slug)}`
+      : undefined,
   };
 }
 
@@ -329,6 +365,8 @@ function rankedPlane(
           name={r.name}
           value={r.value}
           pct={r.pct}
+          href={r.href}
+          linkAs={RowLink}
         />
       ))}
     </Plane>
@@ -344,7 +382,7 @@ interface RoutesData {
   routes: ReadonlyArray<{ destination: string; count: number }>;
 }
 
-function routesPlane(d: RoutesData, cat?: Catalogs): React.ReactNode {
+function routesPlane(d: RoutesData, refs?: ProjectionRefs): React.ReactNode {
   const max = Math.max(...d.routes.map((r) => r.count), 0);
   return rankedPlane(
     'Top routes',
@@ -354,7 +392,7 @@ function routesPlane(d: RoutesData, cat?: Catalogs): React.ReactNode {
         entityRow(
           'location',
           r.destination,
-          cat?.locations,
+          refs?.catalogs?.locations,
           fmtNum(r.count),
           pctOf(r.count, max),
         ),
@@ -395,7 +433,7 @@ interface FleetData {
   ships: ReadonlyArray<{ vehicle_class: string; trip_count: number }>;
 }
 
-function fleetPlane(d: FleetData, cat?: Catalogs): React.ReactNode {
+function fleetPlane(d: FleetData, refs?: ProjectionRefs): React.ReactNode {
   const max = Math.max(...d.ships.map((s) => s.trip_count), 0);
   return rankedPlane(
     'Ships you fly',
@@ -405,7 +443,7 @@ function fleetPlane(d: FleetData, cat?: Catalogs): React.ReactNode {
         entityRow(
           'vehicle',
           s.vehicle_class,
-          cat?.vehicles,
+          refs?.catalogs?.vehicles,
           fmtNum(s.trip_count),
           pctOf(s.trip_count, max),
         ),
@@ -472,7 +510,7 @@ interface LocationsData {
   locations?: ReferenceCatalog;
 }
 
-function locationsPlane(d: LocationsData, cat?: Catalogs): React.ReactNode {
+function locationsPlane(d: LocationsData, refs?: ProjectionRefs): React.ReactNode {
   const rows = d.top ?? [];
   const max = Math.max(...rows.map((r) => r.count), 0);
   return rankedPlane(
@@ -483,7 +521,7 @@ function locationsPlane(d: LocationsData, cat?: Catalogs): React.ReactNode {
         entityRow(
           'location',
           r.value,
-          d.locations ?? cat?.locations,
+          d.locations ?? refs?.catalogs?.locations,
           fmtNum(r.count),
           pctOf(r.count, max),
         ),
@@ -723,7 +761,7 @@ interface HangarData {
   ships: ReadonlyArray<{ name: string; manufacturer?: string | null; kind?: string | null }>;
 }
 
-function hangarPlane(d: HangarData): React.ReactNode {
+function hangarPlane(d: HangarData, refs?: ProjectionRefs): React.ReactNode {
   return (
     <Plane
       tilt="flat"
@@ -735,23 +773,50 @@ function hangarPlane(d: HangarData): React.ReactNode {
       trailing={<Link href={'/downloads' as Route}>via tray →</Link>}
       empty={<span className="hp-empty">{MISSING} no hangar snapshot yet</span>}
     >
-      {d.ships.slice(0, 8).map((sh, i) => (
-        <MeterRow
-          key={`${sh.name}-${i}`}
-          rank={i + 1}
-          name={sh.name}
-          value={sh.manufacturer ?? sh.kind ?? ''}
-          valueText
-        />
-      ))}
+      {d.ships.slice(0, 8).map((sh, i) => {
+        // A pledge name is a DISPLAY name ("Avenger Titan"), not an engine
+        // class id — and the catalogue is keyed under both, so the same
+        // lookup that resolves `AEGS_Avenger_Titan` resolves this too. That
+        // dual-keying is the only reason a hangar row can link at all.
+        const entry = resolveReferenceEntry(
+          'vehicle',
+          sh.name,
+          refs?.catalogs?.vehicles,
+        );
+        return (
+          <MeterRow
+            key={`${sh.name}-${i}`}
+            rank={i + 1}
+            name={sh.name}
+            value={sh.manufacturer ?? sh.kind ?? ''}
+            valueText
+            href={
+              entry?.slug
+                ? `/kb/vehicle/${encodeURIComponent(entry.slug)}`
+                : undefined
+            }
+            linkAs={RowLink}
+          />
+        );
+      })}
     </Plane>
   );
 }
 
+/**
+ * WRONG SHAPE, CORRECTED. This declared `{ label?, name?, count? }` and the
+ * loadout widget returns `{ class, label, category, slug }` — so `count` was
+ * always undefined and every row rendered an EMPTY value column, while the
+ * `slug` the widget had already resolved went unused and the rows linked
+ * nowhere. Nothing caught it: the `as (d: never)` cast in `BUILDERS` erases
+ * the widget-to-builder relationship, so a local interface that disagrees with
+ * its source compiles cleanly and only fails on screen.
+ */
 interface LoadoutPreviewItem {
-  label?: string;
-  name?: string;
-  count?: number;
+  class: string;
+  label: string;
+  category: ReferenceCategory;
+  slug: string | null;
 }
 interface LoadoutViewData {
   count: number;
@@ -772,36 +837,75 @@ function loadoutPlane(d: LoadoutViewData): React.ReactNode {
     >
       {d.preview.slice(0, 8).map((it, i) => (
         <MeterRow
-          key={i}
+          key={it.class ?? i}
           rank={i + 1}
-          name={it.label ?? it.name ?? MISSING}
-          value={it.count != null ? fmtNum(it.count) : ''}
+          name={it.label || MISSING}
+          // The kind of thing it is — the widget's own resolved category, and
+          // the only fact available per item. There is no count: a loadout
+          // preview lists distinct classes, one row each.
+          value={it.category}
           valueText
+          href={
+            it.slug
+              ? `/kb/${it.category}/${encodeURIComponent(it.slug)}`
+              : undefined
+          }
+          linkAs={RowLink}
         />
       ))}
     </Plane>
   );
 }
 
-interface EntitiesData {
-  counts?: Record<string, number>;
-}
-
-function entitiesPlane(d: EntitiesData): React.ReactNode {
-  const entries = Object.entries(d.counts ?? {});
+/**
+ * The catalogue rollup.
+ *
+ * The `entities` widget carries NO `load` — it is a nav card whose whole body
+ * is a link. In the projection that would be a plane with nothing in it, so
+ * this one is built from the reference bundle's own per-category counts and
+ * every row goes to that category's KB listing. Counts come from
+ * `bundle.counts`, never from `catalog.size`: the catalogue is dual-keyed
+ * under `class_name` AND `display_name`, so its size roughly doubles the
+ * entry count.
+ */
+function entitiesPlane(
+  _d: unknown,
+  refs?: ProjectionRefs,
+): React.ReactNode {
+  const counts = refs?.counts;
+  const max = counts ? Math.max(...CATEGORIES.map((c) => counts[c] ?? 0), 0) : 0;
   return (
     <Plane
       tilt="flat"
       cap="Entities"
+      hint="catalogued"
       trailing={<Link href={'/kb' as Route}>catalogue →</Link>}
       empty={<span className="hp-empty">{MISSING} nothing catalogued yet</span>}
     >
-      {entries.map(([k, v], i) => (
-        <MeterRow key={k} rank={i + 1} name={k} value={fmtNum(v)} valueText />
-      ))}
+      {counts
+        ? CATEGORIES.map((c, i) => (
+            <MeterRow
+              key={c}
+              rank={i + 1}
+              name={CATEGORY_LABEL[c]}
+              value={fmtNum(counts[c] ?? 0)}
+              pct={pctOf(counts[c] ?? 0, max)}
+              href={`/kb/${c}`}
+              linkAs={RowLink}
+            />
+          ))
+        : []}
     </Plane>
   );
 }
+
+/** Plural, reader-facing names for the four catalogue categories. */
+const CATEGORY_LABEL: Record<ReferenceCategory, string> = {
+  vehicle: 'Ships',
+  weapon: 'Weapons',
+  item: 'Items',
+  location: 'Places',
+};
 
 // ── Dispatch ──────────────────────────────────────────────────────────────
 
@@ -810,7 +914,7 @@ type Builder =
   // Plane builders take the catalogues as a second argument so a row can
   // resolve a raw engine identifier to its catalogued name and link to it.
   // Optional, so the builders that have no entities in them ignore it.
-  | { kind: 'plane'; build: (data: never, cat?: Catalogs) => React.ReactNode };
+  | { kind: 'plane'; build: (data: never, refs?: ProjectionRefs) => React.ReactNode };
 
 const BUILDERS: Partial<Record<WidgetId, Builder>> = {
   lives: { kind: 'callout', build: livesCallout as (d: never) => CalloutVM },
@@ -861,11 +965,12 @@ export async function buildElements(
   // The catalogues resolve raw identifiers into names and KB links. Built at
   // BUILD time from the static reference snapshot (`lib/reference.ts`), so this
   // is a memory read, not a fetch — and it is already loaded on this request by
-  // the hover cards. Degrades to undefined, which `EntityLink` renders as plain
+  // the hover cards. Degrades to undefined, which `entityRow` renders as plain
   // text: a row is never worse off than the raw value it showed before.
-  let catalogs: Catalogs | undefined;
+  let refs: ProjectionRefs | undefined;
   try {
-    catalogs = (await loadAllReferenceBundles()).catalogs;
+    const bundle = await loadAllReferenceBundles();
+    refs = { catalogs: bundle.catalogs, counts: bundle.counts };
   } catch (err) {
     logger.warn({ err, call: 'projection.catalogs' }, 'catalogue load failed');
   }
@@ -873,11 +978,15 @@ export async function buildElements(
   const settled = await Promise.allSettled(
     wanted.map(async (id) => {
       const def = WIDGETS_BY_ID.get(id as WidgetId);
-      if (!def?.load) return null;
+      if (!def) return null;
       if (!(await def.isAvailable(ctx))) return null;
-      const data = await def.load(ctx);
+      // A widget with no `load` is a nav card — `entities` is the one, and its
+      // whole body is a link. Bailing on a missing loader (which this did)
+      // meant its plane could never render at all. Build it with no data; a
+      // load-less builder takes its content from the reference bundle.
+      const data = def.load ? await def.load(ctx) : undefined;
       // `null` is the widget contract for "no data / error" — not an error.
-      if (data == null) return null;
+      if (def.load && data == null) return null;
       const builder = BUILDERS[id as WidgetId]!;
       if (builder.kind === 'callout') {
         return {
@@ -890,8 +999,8 @@ export async function buildElements(
         vm: {
           id: id as WidgetId,
           node: (
-            builder.build as (d: unknown, c?: Catalogs) => React.ReactNode
-          )(data, catalogs),
+            builder.build as (d: unknown, r?: ProjectionRefs) => React.ReactNode
+          )(data, refs),
         },
       };
     }),
