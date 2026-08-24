@@ -85,7 +85,11 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 /* Chromatic fringe — the value is split, never simply coloured. */
 .hp-core .n::before { content: attr(data-v); position: absolute; left: -2.5px; top: 0; right: 0; color: var(--fringe); opacity: .38; z-index: -1; pointer-events: none; }
 .hp-core .n::after { content: attr(data-v); position: absolute; left: 2.5px; top: 0; right: 0; color: var(--beam); opacity: .38; z-index: -1; pointer-events: none; }
-.hp-core .n em { font-style: normal; font-size: var(--fs-2xl); font-weight: 300; color: var(--beam); letter-spacing: .02em; }
+/* A thin space before the unit. Without it a WORD unit runs into the figure —
+   "184sessions" — which is what a lens headline produces the moment its unit is
+   not a single symbol. A symbol reads correctly either way, and SI style puts a
+   thin space there regardless, so this is right for both. */
+.hp-core .n em { font-style: normal; font-size: var(--fs-2xl); font-weight: 300; color: var(--beam); letter-spacing: .02em; margin-left: .14em; }
 .hp-core .u { font-size: 10.5px; font-weight: 500; letter-spacing: var(--tracking-unit); text-transform: uppercase; color: var(--label); margin-top: 15px; }
 .hp-core .d { font-size: var(--fs-base); letter-spacing: var(--tracking-wide); color: var(--dim); margin-top: 5px; }
 
@@ -93,7 +97,7 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-co { position: absolute; z-index: 16; transition: opacity 340ms, transform 480ms var(--ease-out); }
 .hp-co .lb { font-size: 9px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); white-space: nowrap; }
 .hp-co .vl { font-size: var(--fs-xl); font-weight: 400; line-height: 1.06; color: var(--hot); text-shadow: 0 0 var(--hp-glow-near) rgba(var(--bR),var(--bG),var(--bB),.65); white-space: nowrap; }
-.hp-co .vl small { font-size: 12.5px; font-weight: 300; color: var(--beam); letter-spacing: .05em; }
+.hp-co .vl small { font-size: 12.5px; font-weight: 300; color: var(--beam); letter-spacing: .05em; margin-left: .14em; }
 .hp-co .sub { font-size: var(--fs-xs); letter-spacing: var(--tracking-wide); color: var(--label); margin-top: 2px; white-space: nowrap; }
 .hp-co.warn .vl { color: var(--warn); text-shadow: 0 0 var(--hp-glow-near) rgba(255,194,77,.55); }
 .hp-co.good .vl { color: var(--good); text-shadow: 0 0 var(--hp-glow-near) rgba(124,255,178,.5); }
