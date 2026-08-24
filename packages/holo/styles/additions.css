@@ -3028,3 +3028,66 @@ html[data-wave-speed='off'] .hp-stage::after {
 .ss-projection-root .hud-tile__body {
   min-height: 1.6em;
 }
+
+/* ---- shared page text classes ---------------------------------------------
+   The last pocket of inline `React.CSSProperties` in the app — 26 blocks over
+   13 files — set TYPE, and always in the flat voice: `fontWeight: 600` with
+   NEGATIVE letter-spacing. The beam voice is the opposite (thin, positively
+   tracked), so those headings rendered in the old system's accent inside the
+   new frame, and no stylesheet could correct them because CSS cannot override
+   an inline declaration.
+
+   One set of classes, reused across orgs, contracts, admin, settings and the
+   legal pages, so the same role looks the same everywhere — which is the whole
+   point of having a system. */
+.hp-pagetitle {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 300;
+  letter-spacing: 0.01em;
+  color: var(--fg);
+}
+
+.hp-sectiontitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--fg);
+}
+
+/* Key/value pairs in a record. The label is the micro tier by size, so it
+   takes `--label`; the value is content and takes the reading colour. */
+.hp-kvlabel {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--label);
+}
+
+.hp-kvvalue {
+  font-size: var(--fs-sm);
+  color: var(--fg);
+}
+
+/* Secondary note under a control or a section heading. */
+.hp-fine {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--dim);
+}
+
+/* Inline code inside prose. A hairline box, never a filled chip. */
+.hp-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.92em;
+  padding: 1px 5px;
+  border: 1px solid color-mix(in oklab, var(--beam) 22%, transparent);
+  background: none;
+}
+.hp-warnitem { font-size: var(--fs-base); color: var(--warn); }
+.hp-subheading { font-size: var(--fs-base); font-weight: 400; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
+.hp-adminfield { background: none; color: var(--fg); font-size: var(--fs-sm); border: 0; border-bottom: 1px solid color-mix(in oklab, var(--beam) 34%, transparent); padding: 6px 2px; }
+.hp-lightboxbtn { font-size: var(--fs-sm); color: var(--fg); background: none; border: 1px solid color-mix(in oklab, var(--beam) 40%, transparent); padding: 6px 12px; cursor: pointer; }

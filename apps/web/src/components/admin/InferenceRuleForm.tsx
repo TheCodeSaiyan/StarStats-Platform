@@ -23,31 +23,6 @@ import React, { useState } from 'react';
 import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 import { assembleRule, type FormState, type KV, type PatternState } from './inference-rule';
 
-const inputStyle: React.CSSProperties = {
-  padding: '8px 10px',
-  borderRadius: 0,
-  border: '1px solid var(--border)',
-  background: 'var(--bg-elev)',
-  color: 'var(--fg)',
-  fontSize: 13,
-};
-
-const monoInputStyle: React.CSSProperties = {
-  ...inputStyle,
-  fontFamily: 'var(--font-mono, ui-monospace, SFMono-Regular, monospace)',
-};
-
-const labelStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-};
-
-const labelTextStyle: React.CSSProperties = {
-  fontSize: 12,
-  color: 'var(--fg-muted)',
-};
-
 function emptyPattern(): PatternState {
   return { event_type: '', field_equals: [] };
 }
@@ -91,7 +66,7 @@ function KvRows({
             value={row.key}
             placeholder="field"
             data-testid={`${testIdPrefix}-key-${i}`}
-            style={{ ...monoInputStyle, flex: 1 }}
+            className="hp-adminfield mono" style={{ flex: 1 }}
             onChange={(e) =>
               onChange(replaceAt(rows, i, { ...row, key: e.target.value }))
             }
@@ -101,7 +76,7 @@ function KvRows({
             value={row.value}
             placeholder="value"
             data-testid={`${testIdPrefix}-value-${i}`}
-            style={{ ...monoInputStyle, flex: 1 }}
+            className="hp-adminfield mono" style={{ flex: 1 }}
             onChange={(e) =>
               onChange(replaceAt(rows, i, { ...row, value: e.target.value }))
             }
@@ -163,7 +138,7 @@ function EventTypeSelect({
       value={value}
       required
       data-testid={testId}
-      style={inputStyle}
+      className="hp-adminfield"
       onChange={(e) => onChange(e.target.value)}
     >
       <option value="">— select event type —</option>
@@ -203,8 +178,8 @@ function PatternEditor({
       <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>
         {title}
       </span>
-      <label style={labelStyle}>
-        <span style={labelTextStyle}>event_type</span>
+      <label className="hp-kvvalue">
+        <span className="hp-kvlabel">event_type</span>
         <EventTypeSelect
           value={pattern.event_type}
           eventTypes={eventTypes}
@@ -212,8 +187,8 @@ function PatternEditor({
           onChange={(event_type) => onChange({ ...pattern, event_type })}
         />
       </label>
-      <label style={labelStyle}>
-        <span style={labelTextStyle}>field_equals</span>
+      <label className="hp-kvvalue">
+        <span className="hp-kvlabel">field_equals</span>
         <KvRows
           rows={pattern.field_equals}
           testIdPrefix={`${testIdPrefix}-field-equals`}
@@ -244,8 +219,8 @@ export function InferenceRuleForm({
       <input type="hidden" name="definition" value={definition} />
 
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <label style={{ ...labelStyle, flex: '1 1 220px' }}>
-          <span style={labelTextStyle}>id</span>
+        <label className="hp-kvvalue" style={{ flex: '1 1 220px' }}>
+          <span className="hp-kvlabel">id</span>
           <input
             type="text"
             required
@@ -253,12 +228,12 @@ export function InferenceRuleForm({
             value={state.id}
             placeholder="e.g. combat.kill_streak"
             data-testid="inference-rule-id-input"
-            style={monoInputStyle}
+            className="hp-adminfield mono"
             onChange={(e) => setState({ ...state, id: e.target.value })}
           />
         </label>
-        <label style={{ ...labelStyle, flex: '0 1 140px' }}>
-          <span style={labelTextStyle}>confidence</span>
+        <label className="hp-kvvalue" style={{ flex: '0 1 140px' }}>
+          <span className="hp-kvlabel">confidence</span>
           <input
             type="number"
             step="0.01"
@@ -267,12 +242,12 @@ export function InferenceRuleForm({
             required
             value={state.confidence}
             data-testid="inference-rule-confidence-input"
-            style={inputStyle}
+            className="hp-adminfield"
             onChange={(e) => setState({ ...state, confidence: e.target.value })}
           />
         </label>
-        <label style={{ ...labelStyle, flex: '0 1 140px' }}>
-          <span style={labelTextStyle}>window_secs</span>
+        <label className="hp-kvvalue" style={{ flex: '0 1 140px' }}>
+          <span className="hp-kvlabel">window_secs</span>
           <input
             type="number"
             step="1"
@@ -280,7 +255,7 @@ export function InferenceRuleForm({
             required
             value={state.window_secs}
             data-testid="inference-rule-window-secs-input"
-            style={inputStyle}
+            className="hp-adminfield"
             onChange={(e) => setState({ ...state, window_secs: e.target.value })}
           />
         </label>
@@ -372,8 +347,8 @@ export function InferenceRuleForm({
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--fg)' }}>
           Emit
         </span>
-        <label style={labelStyle}>
-          <span style={labelTextStyle}>event_type</span>
+        <label className="hp-kvvalue">
+          <span className="hp-kvlabel">event_type</span>
           <EventTypeSelect
             value={state.emit.event_type}
             eventTypes={eventTypes}
@@ -383,8 +358,8 @@ export function InferenceRuleForm({
             }
           />
         </label>
-        <label style={labelStyle}>
-          <span style={labelTextStyle}>
+        <label className="hp-kvvalue">
+          <span className="hp-kvlabel">
             fields (values may reference{' '}
             <code>{'${trigger.<field>}'}</code> /{' '}
             <code>{'${followups.<n>.<field>}'}</code>)

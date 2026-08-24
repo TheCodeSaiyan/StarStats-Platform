@@ -205,7 +205,7 @@ export default async function ContractsPage(props: PageProps) {
 
         {/* Sort */}
         <div style={rowStyle} aria-label="Sort contracts">
-          <span style={rowLabelStyle}>Sort</span>
+          <span className="hp-kvlabel">Sort</span>
           {SORTS.map((s) => (
             <ChipLink
               key={s.key}
@@ -310,7 +310,7 @@ function FacetRow({
   if (values.length < 2) return null; // nothing to choose between
   return (
     <div style={rowStyle} aria-label={`Filter by ${label.toLowerCase()}`}>
-      <span style={rowLabelStyle}>{label}</span>
+      <span className="hp-kvlabel">{label}</span>
       {values.map((v) => {
         const isActive = active.toLowerCase() === v.toLowerCase();
         return (
@@ -463,9 +463,3 @@ const rowStyle: React.CSSProperties = {
   marginTop: 12,
 };
 
-const rowLabelStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: 'var(--fg-dim)',
-  letterSpacing: '0.04em',
-  minWidth: 52,
-};

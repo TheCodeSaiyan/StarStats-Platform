@@ -24,31 +24,11 @@ const mainStyle: React.CSSProperties = {
   gap: 20,
 };
 
-const headerTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 32,
-  fontWeight: 600,
-  letterSpacing: '-0.02em',
-};
-
-const headerSubtitleStyle: React.CSSProperties = {
-  margin: '6px 0 0',
-  color: 'var(--fg-muted)',
-  fontSize: 14,
-};
-
 const cardHeaderStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 4,
   marginBottom: 16,
-};
-
-const cardTitleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 600,
-  letterSpacing: '-0.01em',
 };
 
 const formStyle: React.CSSProperties = {
@@ -140,8 +120,8 @@ export default async function NewOrgPage(props: {
         <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
           Orgs · new
         </div>
-        <h1 style={headerTitleStyle}>New org</h1>
-        <p style={headerSubtitleStyle}>
+        <h1 className="hp-pagetitle">New org</h1>
+        <p className="hp-recsub">
           Pick a display name. The URL slug is generated automatically and
           can&apos;t be changed later.
         </p>
@@ -156,7 +136,7 @@ export default async function NewOrgPage(props: {
       <section className="ss-card ss-card-pad">
         <div style={cardHeaderStyle}>
           <span className="ss-eyebrow">Identity</span>
-          <h2 style={cardTitleStyle}>Name your org</h2>
+          <h2 className="hp-sectiontitle">Name your org</h2>
         </div>
         <form action={createAction} style={formStyle}>
           <label className="ss-label">

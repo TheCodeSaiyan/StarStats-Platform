@@ -136,4 +136,62 @@ compositing note in the spec exists so the next person does not chase it.
 
 ---
 
-*(Phases 2–5 continue below as they complete.)*
+## Phase 2 — design-system adherence
+
+### Inline type: the last pocket the port could not reach
+
+26 `React.CSSProperties` blocks across 13 files still set **type**, and always
+in the flat voice — `fontWeight: 600` with **negative** letter-spacing, where
+the beam voice is thin and positively tracked. Those headings rendered in the
+old system's accent inside the new frame, and no stylesheet could correct them
+because CSS cannot override an inline declaration.
+
+Files: `orgs/page`, `orgs/new`, `contracts/page`, `contracts/[canonicalId]`,
+`admin/settings`, `admin/users/[id]` (+ its Delete and Restriction panels),
+`privacy`, `terms`, `settings/widget-sharing`, `InferenceRuleForm`,
+`ShipMatrixGallery`.
+
+All 26 are now shared classes — `.hp-pagetitle`, `.hp-sectiontitle`,
+`.hp-kvlabel`, `.hp-kvvalue`, `.hp-fine`, `.hp-code`, plus four specific ones —
+so the same role looks the same on every page, which is the point of having a
+system. The legal pages' `codeStyle` became `.hp-code`; **no legal text
+changed**, and `legal-text.test.ts` still passes against its committed baseline.
+
+### Clean on inspection
+
+- **Raw colour**: none outside the token file. The series palette is the
+  sanctioned exception you approved; the QR code's white is documented and a
+  camera has to read it.
+- **Rounded boxes**: every `border-radius` is `0`, `50%` (dots) or 1–2px
+  optical rounding on a hairline.
+- **Orphan classes**: three found and given real rules (`.hp-authsteps`,
+  `.hp-recindex`, `.hp-legalindex` — index strips that were classNames with no
+  CSS at all). `hp-slot--*` are DOM hooks with no styling by design and
+  `hp-content` is an id; both are legitimate and are excluded by name.
+
+`src/styles/adherence-system.test.ts` guards all four, verified failing against
+a reintroduced inline block.
+
+---
+
+## Phase 3 — accessibility beyond colour
+
+`e2e/a11y-focus.spec.ts` operates the keyboard rather than inspecting markup:
+8 routes, 22 tab stops each.
+
+- **Every tab stop is visible and shows focus.** Measured as a computed-style
+  fingerprint (outline, box-shadow, border, background, colour, underline)
+  taken with and without focus on the same element — so "there is a
+  `:focus-visible` rule somewhere" is not enough; it has to take effect on that
+  element. Verified failing with the focus rules stripped.
+- **Every control has an accessible name.** Icon-only buttons included.
+- **No invisible tab stops.** A control clipped to zero size still takes a stop
+  and a reader tabs into nothing.
+
+**Result: clean on the first run.** The single failure was `<nextjs-portal>`,
+the dev-mode error overlay, which is not in the production bundle — excluded by
+name with the reason, not because it was inconvenient.
+
+---
+
+*(Phases 4–5 continue below as they complete.)*

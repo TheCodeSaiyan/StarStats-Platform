@@ -48,19 +48,6 @@ const CAPABILITIES: ReadonlyArray<{
   },
 ];
 
-const labelStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 8,
-  alignItems: 'flex-start',
-  fontSize: 13,
-};
-
-const hintStyle: React.CSSProperties = {
-  color: 'var(--fg-dim)',
-  fontSize: 12,
-  display: 'block',
-};
-
 export function RestrictionPanel({
   current,
   restrictAction,
@@ -187,7 +174,7 @@ export function RestrictionPanel({
                 Capabilities to block
               </legend>
               {CAPABILITIES.map((c) => (
-                <label key={c.name} style={labelStyle}>
+                <label key={c.name} className="hp-kvvalue">
                   <input
                     type="checkbox"
                     name={c.name}
@@ -198,7 +185,7 @@ export function RestrictionPanel({
                   />
                   <span>
                     {c.label}
-                    <span style={hintStyle}>{c.hint}</span>
+                    <span className="hp-fine">{c.hint}</span>
                   </span>
                 </label>
               ))}
