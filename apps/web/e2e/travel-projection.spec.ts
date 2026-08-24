@@ -206,7 +206,13 @@ test('a place opens its own record, and the level list descends into it', async 
 
   // URL state, not client state: a place has to be shareable and the back
   // button has to climb out of it.
-  await expect(page).toHaveURL(/place=/);
+  //
+  // `waitForURL`, not a bare `toHaveURL`. The assertion is identical — the
+  // click must navigate — but `expect` defaults to 5s while the config allows
+  // 10s for a navigation, so under full-suite load a cold route compile failed
+  // here and passed in isolation. Three tests flaked this way before I stopped
+  // treating it as noise; the shape is always click-then-assert-URL.
+  await page.waitForURL(/place=/, { timeout: 15_000 });
 
   const detail = page.locator('.hp-journeydetail');
   await expect(detail).toBeVisible();

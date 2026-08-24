@@ -55,17 +55,15 @@ export function RangeBar({
             key={r.id}
             href={buildHref(r.id)}
             aria-current={isActive ? 'page' : undefined}
-            className="mono"
-            style={{
-              padding: '4px 10px',
-              fontSize: 12,
-              borderRadius: 0,
-              textDecoration: 'none',
-              color: isActive ? 'var(--bg)' : 'var(--fg-muted)',
-              background: isActive ? 'var(--accent)' : 'transparent',
-              border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-              letterSpacing: '0.02em',
-            }}
+            /* A CLASS, and no filled active state.
+               This was inline-styled with `background: var(--accent)` on the
+               selected range, which is the flat system's filled pill — the one
+               idiom the projection does not have. Inside a projection it drew a
+               solid beam block with void-coloured text. The system marks a
+               current control with a lit edge and lit text, which is what
+               `.hp-rangebar` does; inline it could not be corrected from any
+               stylesheet. */
+            className="mono hp-rangebar__opt"
           >
             {r.label}
           </Link>
