@@ -240,3 +240,25 @@ test('the trace names its own scale, so it reads as data', async ({ page, reques
   });
   expect(spread, 'a trace of varying counts must not be one flat line').toBeGreaterThan(2);
 });
+
+
+test('a lens shows every figure the widget holds, not just its headline', async ({ page, request }) => {
+  // A callout carries ONE figure because that is all a leader line has room
+  // for. The widget behind it holds three to five — `lives` knows total lives,
+  // deaths and mean life — and none of that had anywhere to go in the
+  // projection, so opening a lens showed strictly LESS than the flat widget it
+  // replaced. The pane now renders the widget's own set.
+  await setScenario(request, scenarioFor('lens-fullstats', SCENARIO));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+  await expect(page.locator('.hp-core')).toBeVisible();
+  await page.locator('.hp-lens button', { hasText: 'Combat' }).click();
+  await page.waitForTimeout(400);
+
+  const subs = page.locator('.hp-pane[data-pane="detail"] .hp-subs > div');
+  // The lives callout alone contributes four: longest, mean, lives, deaths.
+  expect(await subs.count()).toBeGreaterThanOrEqual(4);
+  const text = await page.locator('.hp-pane[data-pane="detail"] .hp-subs').innerText();
+  expect(text).toMatch(/Deaths/i);
+  expect(text).toMatch(/Mean life/i);
+});

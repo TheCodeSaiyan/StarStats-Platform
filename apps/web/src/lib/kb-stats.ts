@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import 'server-only';
 import { apiBase } from './api';
 import { kbCacheOpts } from './reference';
@@ -20,7 +21,12 @@ const STATS_FETCH_TIMEOUT_MS = 8_000;
  * reference reads. Degrades to empty stats on any failure — the page
  * still renders, just without peer context.
  */
-export async function getCategoryStats(
+/** Request-deduped for the same reason as `getEntityDetail`: the stats payload
+ *  for the large categories is `no-store`, so repeat calls in one render are
+ *  repeat upstream requests against a per-IP limit. */
+export const getCategoryStats = cache(_getCategoryStats);
+
+async function _getCategoryStats(
   category: ReferenceCategory,
 ): Promise<CategoryStats> {
   try {

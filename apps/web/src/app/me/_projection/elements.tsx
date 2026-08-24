@@ -9,6 +9,7 @@ import type { ViewerCtx, WidgetId } from '@/app/_components/widgets/types';
 import { logger } from '@/lib/logger';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
 import { EntityLink } from '@/components/kb/EntityLink';
+import type { DockingResponse, StatsBucket } from '@/lib/api';
 import { loadAllReferenceBundles } from '@/lib/reference';
 import type { ReferenceCatalog, ReferenceCatalogs } from '@/lib/reference-types';
 
@@ -34,6 +35,20 @@ type Catalogs = ReferenceCatalogs;
  *  from the reader's layout order, so it cannot be pre-rendered server-side. */
 export interface CalloutVM {
   id: WidgetId;
+  /**
+   * The widget's OTHER figures, for the lens pane.
+   *
+   * A callout is one figure by design — it hangs in the volume on a leader
+   * line and there is room for a value and a line of arithmetic. The widget
+   * behind it usually holds three to five: `lives` knows total lives, deaths
+   * and mean life; `combat_mission` knows deaths, vehicle losses and mission
+   * completion. None of that had anywhere to go in the projection, so opening
+   * a lens showed strictly less than the flat widget it replaced.
+   *
+   * The lens pane renders these as its `SubStats` row. Absent means "the
+   * headline is all there is", and the pane falls back to the callout itself.
+   */
+  stats?: { k: string; v: string; u?: string; tone?: 'warn' | 'good' | 'bad' }[];
   label: string;
   value: string;
   unit?: string;
@@ -92,6 +107,12 @@ function livesCallout(d: LivesData): CalloutVM {
         ? `mean ${fmtDuration(d.mean_life_secs)}`
         : `${fmtNum(d.total_lives)} lives`,
     tone: 'good',
+    stats: [
+      { k: 'Longest life', v: d.longest_life_secs != null ? fmtDuration(d.longest_life_secs) : MISSING },
+      { k: 'Mean life', v: d.mean_life_secs != null ? fmtDuration(d.mean_life_secs) : MISSING },
+      { k: 'Lives', v: fmtNum(d.total_lives) },
+      { k: 'Deaths', v: fmtNum(d.deaths), tone: 'warn' },
+    ],
     // Deaths are partly reconstructed, and a life LENGTH is bounded by the
     // deaths that end it — so the caveat travels with this figure too.
     note:
@@ -110,6 +131,11 @@ interface ContractsData {
 function contractsCallout(d: ContractsData): CalloutVM {
   return {
     id: 'contracts',
+    stats: [
+      { k: 'Completed', v: fmtNum(d.completed) },
+      { k: 'Resolved', v: fmtNum(d.resolved) },
+      { k: 'Rate', v: d.resolved > 0 && d.pct != null ? fmtPct(d.pct, true) : MISSING },
+    ],
     label: 'Contracts',
     value: fmtNum(d.completed),
     // The denominator is RESOLVED, not started — an in-progress contract has
@@ -130,6 +156,11 @@ interface ObjectivesData {
 function objectivesCallout(d: ObjectivesData): CalloutVM {
   return {
     id: 'objectives',
+    stats: [
+      { k: 'Completion', v: d.resolved > 0 && d.pct != null ? fmtPct(d.pct, true) : MISSING },
+      { k: 'Completed', v: fmtNum(d.completed) },
+      { k: 'Resolved', v: fmtNum(d.resolved) },
+    ],
     label: 'Objectives',
     value: d.resolved > 0 ? fmtPct(d.pct, true) : MISSING,
     sub:
@@ -148,6 +179,11 @@ interface SpendData {
 function spendCallout(d: SpendData): CalloutVM {
   return {
     id: 'spend',
+    stats: [
+      { k: 'Spent', v: fmtNum(d.total_auec), u: 'aUEC' },
+      { k: 'Purchases', v: fmtNum(d.purchases) },
+      ...(d.top_shop ? [{ k: 'Top shop', v: d.top_shop }] : []),
+    ],
     label: 'Spending',
     value: fmtNum(d.total_auec),
     unit: 'aUEC',
@@ -167,6 +203,12 @@ interface EconomyData {
 function economyCallout(d: EconomyData): CalloutVM {
   return {
     id: 'economy',
+    stats: [
+      { k: 'Orders', v: fmtNum(d.buys + d.sells) },
+      { k: 'Buys', v: fmtNum(d.buys) },
+      { k: 'Sells', v: fmtNum(d.sells) },
+      ...(d.pending > 0 ? [{ k: 'Pending', v: fmtNum(d.pending), tone: 'warn' as const }] : []),
+    ],
     label: 'Orders',
     value: fmtNum(d.buys + d.sells),
     sub: `${fmtNum(d.buys)} buys · ${fmtNum(d.sells)} sells`,
@@ -197,6 +239,11 @@ interface TravelData {
 function travelCallout(d: TravelData): CalloutVM {
   return {
     id: 'travel',
+    stats: [
+      { k: 'Quantum', v: fmtNum(d.quantums) },
+      { k: 'Server hops', v: fmtNum(d.serverHops) },
+      { k: 'Planets', v: fmtNum(d.planets) },
+    ],
     label: 'Quantum transits',
     value: fmtNum(d.quantums),
     unit: 'jumps',
@@ -367,36 +414,66 @@ function fleetPlane(d: FleetData, cat?: Catalogs): React.ReactNode {
   );
 }
 
+/**
+ * THE REAL SHAPE, taken from the widget rather than assumed.
+ *
+ * This was declared as `by_kind: ReadonlyArray<{key, count}>` and the endpoint
+ * returns an OBJECT — `{ hangar, pad, other }`. So the plane threw
+ * `by_kind.map is not a function` on every real render, and had done since it
+ * was written: `/me` logged `projection element failed` and dropped the plane
+ * silently, because a failed element is caught per-element by design.
+ *
+ * TypeScript could not see it. `BUILDERS` casts every builder through
+ * `as (d: never) => React.ReactNode`, which erases the relationship between
+ * what a widget LOADS and what its builder CLAIMS to receive — so a local
+ * interface that disagrees with the API compiles cleanly and fails only in
+ * production. Sourcing the type from `DockingResponse` is what makes the
+ * compiler check it.
+ */
 interface DockingData {
-  by_kind: ReadonlyArray<{ key: string; count: number }>;
+  by_kind: DockingResponse['by_kind'];
   total: number;
 }
 
-function dockingPlane(d: DockingData, cat?: Catalogs): React.ReactNode {
-  const max = Math.max(...d.by_kind.map((k) => k.count), 0);
+function dockingPlane(d: DockingData): React.ReactNode {
+  // Kinds of berth, not places — so these rows are labels, not catalogued
+  // entities, and they do not link anywhere.
+  const kinds: { name: string; count: number }[] = [
+    { name: 'Hangar', count: d.by_kind.hangar },
+    { name: 'Pad', count: d.by_kind.pad },
+    { name: 'Other', count: d.by_kind.other },
+  ].filter((k) => k.count > 0);
+  const max = Math.max(...kinds.map((k) => k.count), 0);
   return rankedPlane(
     'Where you dock',
-    d.by_kind
-      .slice(0, 6)
-      .map((k) =>
-        entityRow(
-          'location',
-          k.key,
-          cat?.locations,
-          fmtNum(k.count),
-          pctOf(k.count, max),
-        ),
-      ),
+    kinds.map((k) => ({
+      name: k.name,
+      value: fmtNum(k.count),
+      pct: pctOf(k.count, max),
+    })),
     { hint: `${fmtNum(d.total)} total` },
   );
 }
 
+/**
+ * SILENT VERSION OF THE SAME FAULT as `DockingData`.
+ *
+ * This declared `top_locations?` and the widget returns `top` — so the optional
+ * chain resolved to `undefined`, the rows were `[]`, and "Places visited"
+ * rendered as an empty plane on every account with locations. No crash, no log
+ * entry: it looked exactly like a reader who had been nowhere.
+ *
+ * The widget also hands back the catalogue it already loaded, so the names
+ * resolve from that rather than from a second load in this module.
+ */
 interface LocationsData {
-  top_locations?: ReadonlyArray<{ key: string; count: number }>;
+  top: ReadonlyArray<StatsBucket>;
+  unique: number;
+  locations?: ReferenceCatalog;
 }
 
 function locationsPlane(d: LocationsData, cat?: Catalogs): React.ReactNode {
-  const rows = d.top_locations ?? [];
+  const rows = d.top ?? [];
   const max = Math.max(...rows.map((r) => r.count), 0);
   return rankedPlane(
     'Places visited',
@@ -405,8 +482,8 @@ function locationsPlane(d: LocationsData, cat?: Catalogs): React.ReactNode {
       .map((r) =>
         entityRow(
           'location',
-          r.key,
-          cat?.locations,
+          r.value,
+          d.locations ?? cat?.locations,
           fmtNum(r.count),
           pctOf(r.count, max),
         ),

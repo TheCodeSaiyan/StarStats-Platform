@@ -31,6 +31,7 @@
  */
 
 import 'server-only';
+import { cache } from 'react';
 import {
   loadConsolidatedCatalog,
   type ConsolidatedEntry,
@@ -212,7 +213,20 @@ export async function getCategoryBundle(
  * — collapsing both to null causes transient outages to render a
  * misleading permanent 404.
  */
-export async function getEntityDetail(
+/**
+ * REQUEST-DEDUPED. `generateMetadata` and the page body both need the entry,
+ * and each was a separate upstream call — with `cache: 'no-store'` (which the
+ * large categories and the e2e env both force) there is no fetch cache to
+ * collapse them. Combined with the 429 retry below, one page view could fire
+ * SIX requests at a per-IP-limited API that sees the whole web container as one
+ * IP. Beta's logs showed every slug fetched exactly twice, which is this.
+ *
+ * `cache()` is request-scoped, so it dedupes within a render and never leaks
+ * between readers.
+ */
+export const getEntityDetail = cache(_getEntityDetail);
+
+async function _getEntityDetail(
   category: ReferenceCategory,
   slug: string,
 ): Promise<EntityDetailOutcome> {
