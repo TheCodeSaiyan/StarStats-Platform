@@ -302,12 +302,15 @@ export function MeProjection({
     if (activeLens == null) return [];
     return callouts
       .filter((c) => layout.has(c.id) && widgetMatchesLens(c.id, activeLens))
-      .map((c) => ({
-        k: c.label,
-        v: c.value,
-        u: c.unit,
-        tone: c.tone,
-      }));
+      .flatMap((c) =>
+        // The widget's full figure set when it has one. A callout carries a
+        // single figure because that is all a leader line has room for; the
+        // widget behind it usually knows three to five, and in the pane there
+        // is room to say them. Falls back to the headline alone.
+        c.stats && c.stats.length > 0
+          ? c.stats
+          : [{ k: c.label, v: c.value, u: c.unit, tone: c.tone }],
+      );
   }, [activeLens, callouts, layout]);
 
   const lensPlanes = planes.filter(
