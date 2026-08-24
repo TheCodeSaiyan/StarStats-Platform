@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Parser shapes detail + moderation form (W6).
  *
@@ -272,7 +273,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
       {published && (
         <div
           role="status"
-          className="ss-badge ss-badge--ok"
+          className="hp-chip good"
           style={{ alignSelf: 'flex-start' }}
         >
           Published rule {published} — submission linked + marked rule
@@ -280,14 +281,14 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
         </div>
       )}
       {publishError && (
-        <div role="status" className="ss-badge ss-badge--danger" style={{ alignSelf: 'flex-start' }}>
+        <div role="status" className="hp-chip bad" style={{ alignSelf: 'flex-start' }}>
           Publish failed: {publishError}
         </div>
       )}
       {community && (
         <div
           role="status"
-          className="ss-badge ss-badge--ok"
+          className="hp-chip good"
           style={{ alignSelf: 'flex-start' }}
         >
           Published to community —{' '}
@@ -413,7 +414,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
             style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
           >
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 Status
               </span>
               <select
@@ -437,7 +438,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 Reviewer notes
               </span>
               <textarea
@@ -458,7 +459,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 Manifest rule id
               </span>
               <input
@@ -482,7 +483,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
             <button
               type="submit"
               data-testid="parser-submission-save"
-              className="ss-btn"
+              className="hp-btn"
               style={{
                 padding: '8px 16px',
                 borderRadius: 0,
@@ -513,7 +514,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
             style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
           >
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 rule_id
               </span>
               <input
@@ -537,7 +538,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 event_name
               </span>
               <input
@@ -556,7 +557,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 match_kind
               </span>
               <select
@@ -577,7 +578,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               </select>
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 body_regex
               </span>
               <input
@@ -598,7 +599,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               />
             </label>
             <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <span className="hp-kvlabel">
                 fields (comma / newline separated)
               </span>
               <textarea
@@ -621,7 +622,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               confirm="Publish this rule to all collectors?"
               pendingLabel="Publishing…"
               data-testid="parser-submission-publish-submit"
-              className="ss-btn ss-btn--primary"
+              className="hp-btn hp-btn--primary"
               style={{
                 padding: '8px 16px',
                 borderRadius: 0,
@@ -667,7 +668,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
           {detail.community_submission_id ? (
             <div
               role="status"
-              className="ss-badge ss-badge--ok"
+              className="hp-chip good"
               style={{ alignSelf: 'flex-start' }}
             >
               Published to community —{' '}
@@ -685,7 +686,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
               style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
             >
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                <span className="hp-kvlabel">
                   proposed_label
                 </span>
                 <input
@@ -708,7 +709,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                <span className="hp-kvlabel">
                   pattern
                 </span>
                 <input
@@ -731,7 +732,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                <span className="hp-kvlabel">
                   description
                 </span>
                 <textarea
@@ -768,7 +769,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                     Publish anonymously — overrides the submitter&apos;s
                     attribution
                   </span>
-                  <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+                  <span className="hp-kvlabel">
                     Attributed submissions show the submitter&apos;s handle;
                     anonymous ones show @community.
                   </span>
@@ -778,7 +779,7 @@ export default async function AdminParserSubmissionDetailPage(props: PageProps) 
                 confirm="Publish this shape to the public community queue?"
                 pendingLabel="Publishing…"
                 data-testid="parser-submission-community-submit"
-                className="ss-btn ss-btn--primary"
+                className="hp-btn hp-btn--primary"
                 style={{
                   padding: '8px 16px',
                   borderRadius: 0,
@@ -803,13 +804,10 @@ function PayloadSection({
   children: React.ReactNode;
 }) {
   return (
-    <section
-      className="ss-card"
-      style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
-    >
+    <Plane tilt="flat">
       <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600 }}>{title}</h2>
       {children}
-    </section>
+    </Plane>
   );
 }
 

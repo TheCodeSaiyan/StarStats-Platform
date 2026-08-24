@@ -49,7 +49,7 @@ export function SyncChip({ state }: { state: string }) {
 
   return (
     <span
-      className="ss-badge"
+      className="hp-chip"
       title={hint}
       style={{ fontSize: 10, color, borderColor: color }}
     >

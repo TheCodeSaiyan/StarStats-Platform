@@ -188,7 +188,7 @@ function RunBanner({
       <strong style={{ fontSize: 13 }}>
         {healthy ? 'Detector healthy' : 'Detector needs attention'}
       </strong>
-      <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+      <span className="hp-fine">
         {copy[staleness.state]}
       </span>
     </div>
@@ -263,7 +263,7 @@ function FindingsTable({
                           aria-label={`Note for ${d.event_type}`}
                           style={{ marginRight: 6, fontSize: 12 }}
                         />
-                        <ConfirmSubmitButton className="ss-btn">
+                        <ConfirmSubmitButton className="hp-btn">
                           Acknowledge
                         </ConfirmSubmitButton>
                       </form>
@@ -271,7 +271,7 @@ function FindingsTable({
                     <form action={resolveAction}>
                       <input type="hidden" name="event_type" value={d.event_type} />
                       <ConfirmSubmitButton
-                        className="ss-btn"
+                        className="hp-btn"
                         confirm={`Mark ${d.event_type} resolved?`}
                       >
                         Resolve
@@ -284,7 +284,7 @@ function FindingsTable({
             {f.candidates.length > 0 && (
               <tr>
                 <td colSpan={6} style={{ padding: '0 8px 8px' }}>
-                  <div style={{ color: 'var(--fg-muted)', fontSize: 12 }}>
+                  <div className="hp-kvlabel">
                     Log tags first seen around{' '}
                     {d.last_event_at
                       ? new Date(d.last_event_at).toISOString().slice(0, 10)

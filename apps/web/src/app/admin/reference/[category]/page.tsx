@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Reference entries within one category.
  *
@@ -121,13 +122,13 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
             color: 'var(--fg)',
           }}
         />
-        <button type="submit" className="ss-btn ss-btn--primary">
+        <button type="submit" className="hp-btn hp-btn--primary">
           Search
         </button>
         {q && (
           <Link
             href={(`/admin/reference/${encodeURIComponent(category)}`) as Route}
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{ textDecoration: 'none' }}
           >
             Clear
@@ -135,7 +136,7 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
         )}
       </form>
 
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         {data.entries.length === 0 ? (
           <p
             style={{
@@ -166,7 +167,7 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
             </tbody>
           </table>
         )}
-      </section>
+      </Plane>
 
       <nav
         style={{
@@ -176,7 +177,7 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
           flexWrap: 'wrap',
         }}
       >
-        <span style={{ color: 'var(--fg-muted)', fontSize: 13 }}>
+        <span className="hp-fine">
           {data.entries.length === 0
             ? 'Nothing on this page'
             : `Showing ${offset + 1}–${offset + data.entries.length} of ${data.total.toLocaleString()}`}
@@ -185,13 +186,13 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
           {offset > 0 ? (
             <Link
               href={buildHref(Math.max(0, offset - PAGE_SIZE))}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               ← Prev
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
               ← Prev
@@ -200,13 +201,13 @@ export default async function AdminReferenceCategoryPage(props: PageProps) {
           {offset + data.entries.length < data.total ? (
             <Link
               href={buildHref(offset + PAGE_SIZE)}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               Next →
             </Link>
           ) : (
             <span
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
               style={{ opacity: 0.4, pointerEvents: 'none' }}
             >
               Next →

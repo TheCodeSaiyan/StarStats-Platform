@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin landing page — moderator-facing dashboard.
  *
@@ -114,7 +115,7 @@ export default async function AdminLandingPage() {
         />
       </div>
 
-      <section className="ss-card" style={{ padding: '11px 16px 14px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Recent admin actions
         </div>
@@ -141,12 +142,12 @@ export default async function AdminLandingPage() {
         </p>
         <Link
           href={'/admin/audit' as Route}
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           style={{ textDecoration: 'none' }}
         >
           Audit log →
         </Link>
-      </section>
+      </Plane>
     </div>
   );
 }

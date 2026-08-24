@@ -24,6 +24,7 @@
 // defined" under test without it (the prod Next build uses the
 // automatic runtime and doesn't need it).
 import React from 'react';
+import { Plane } from 'holo';
 import { redirect } from 'next/navigation';
 import {
   ApiCallError,
@@ -68,7 +69,7 @@ export default async function ContractGapsPage() {
         }
       />
 
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         {gaps.length === 0 ? (
           <p
             style={{
@@ -106,7 +107,7 @@ export default async function ContractGapsPage() {
             </tbody>
           </table>
         )}
-      </section>
+      </Plane>
     </div>
   );
 }

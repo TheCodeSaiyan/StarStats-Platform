@@ -108,6 +108,13 @@ const ROUTES: { url: string; auth: boolean; label: string }[] = [
   { url: '/settings', auth: true, label: 'calibrate' },
   { url: '/sharing', auth: true, label: 'sharing' },
   { url: '/u/TestPilot', auth: true, label: 'public profile' },
+  // The admin console. Its own surface (`surface="console"`), its own header
+  // component and its own tables — and it was absent from the first version of
+  // this sweep, so 17 pages of the product were never measured.
+  { url: '/admin', auth: true, label: 'console' },
+  { url: '/admin/users', auth: true, label: 'console listing' },
+  { url: '/admin/settings', auth: true, label: 'console forms' },
+  { url: '/admin/audit', auth: true, label: 'console audit' },
 ];
 
 async function worstOn(page: Page, url: string, cal: string) {
@@ -142,7 +149,7 @@ test.describe('contrast', () => {
   for (const cal of CALS) {
     test(`every surface is readable on the ${cal} calibration`, async ({ page }) => {
       test.slow();
-      await loginAs(page, { handle: 'TestPilot' });
+      await loginAs(page, { handle: 'TestPilot', staffRoles: ['admin'] });
       const failures: string[] = [];
       for (const r of ROUTES) {
         const bad = await worstOn(page, r.url, cal);

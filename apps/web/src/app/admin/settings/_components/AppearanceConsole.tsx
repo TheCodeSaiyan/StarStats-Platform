@@ -2,6 +2,7 @@
 
 // Classic-JSX-runtime vitest needs the explicit React import.
 import React, { useState } from 'react';
+import { Plane } from 'holo';
 import type { AppearanceConfigApi } from '@/lib/api';
 import { saveAppearanceConfigAction } from '@/app/_actions/appearance-admin';
 import { WAVE_SPEEDS, type WaveSpeed } from '@/lib/wave-speed';
@@ -50,10 +51,7 @@ export function AppearanceConsole({ config }: { config: AppearanceConfigApi }) {
   }
 
   return (
-    <section
-      className="ss-card"
-      style={{ padding: 'var(--s5) var(--s6)', marginTop: 'var(--s5)' }}
-    >
+    <Plane tilt="flat">
       <div className="ss-placard" style={{ marginBottom: 'var(--s2)' }}>
         Theme-switch wave speed
       </div>
@@ -74,7 +72,7 @@ export function AppearanceConsole({ config }: { config: AppearanceConfigApi }) {
             <button
               key={s}
               type="button"
-              className="ss-btn"
+              className="hp-btn"
               disabled={busy}
               aria-pressed={isActive}
               data-active={isActive ? 'true' : undefined}
@@ -91,6 +89,6 @@ export function AppearanceConsole({ config }: { config: AppearanceConfigApi }) {
           {notice}
         </p>
       ) : null}
-    </section>
+    </Plane>
   );
 }

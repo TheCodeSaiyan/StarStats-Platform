@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { Plane } from 'holo';
 import type { WaitlistConfigApi, WaitlistEntryApi } from '@/lib/api';
 import {
   admitWaitlistAction,
@@ -217,10 +218,7 @@ export function WaitlistConsole({
 
   return (
     <>
-      <section
-        className="ss-card"
-        style={{ padding: 'var(--s5) var(--s6)', marginTop: 'var(--s5)' }}
-      >
+      <Plane tilt="flat">
         <div className="ss-placard" style={{ marginBottom: 'var(--s2)' }}>
           Gate
         </div>
@@ -292,14 +290,14 @@ export function WaitlistConsole({
           </label>
           <button
             type="button"
-            className="ss-btn"
+            className="hp-btn"
             onClick={saveConfig}
             disabled={busy}
           >
             {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
-      </section>
+      </Plane>
 
       {notice ? (
         <p role="status" style={{ marginTop: 'var(--s4)' }}>
@@ -307,10 +305,7 @@ export function WaitlistConsole({
         </p>
       ) : null}
 
-      <section
-        className="ss-card"
-        style={{ padding: 'var(--s5) var(--s6)', marginTop: 'var(--s5)' }}
-      >
+      <Plane tilt="flat">
         <div className="ss-placard" style={{ marginBottom: 'var(--s2)' }}>
           Queue · {queued.length}
         </div>
@@ -361,7 +356,7 @@ export function WaitlistConsole({
             </div>
             <button
               type="button"
-              className="ss-btn"
+              className="hp-btn"
               onClick={admit}
               disabled={busy || selected.size === 0}
               style={{ marginTop: 'var(--s4)' }}
@@ -372,7 +367,7 @@ export function WaitlistConsole({
             </button>
             <button
               type="button"
-              className="ss-btn ss-btn--danger"
+              className="hp-btn hp-btn--danger"
               onClick={() => remove(selected, () => setSelected(new Set()))}
               disabled={busy || selected.size === 0}
               style={{ marginTop: 'var(--s4)', marginLeft: 'var(--s3)' }}
@@ -383,12 +378,9 @@ export function WaitlistConsole({
             </button>
           </>
         )}
-      </section>
+      </Plane>
 
-      <section
-        className="ss-card"
-        style={{ padding: 'var(--s5) var(--s6)', marginTop: 'var(--s5)' }}
-      >
+      <Plane tilt="flat">
         <div className="ss-placard" style={{ marginBottom: 'var(--s2)' }}>
           Admitted · {admitted.length}
         </div>
@@ -455,7 +447,7 @@ export function WaitlistConsole({
                           {e.email}
                           {redeemed ? (
                             <span
-                              className="ss-badge ss-badge--ok"
+                              className="hp-chip good"
                               style={{ marginLeft: 'var(--s2)' }}
                               title="An account already exists for this invite"
                             >
@@ -479,7 +471,7 @@ export function WaitlistConsole({
             </div>
             <button
               type="button"
-              className="ss-btn"
+              className="hp-btn"
               onClick={resend}
               disabled={busy || resendSelected.size === 0}
               style={{ marginTop: 'var(--s4)' }}
@@ -490,7 +482,7 @@ export function WaitlistConsole({
             </button>
             <button
               type="button"
-              className="ss-btn ss-btn--danger"
+              className="hp-btn hp-btn--danger"
               onClick={() =>
                 remove(resendSelected, () => setResendSelected(new Set()))
               }
@@ -503,7 +495,7 @@ export function WaitlistConsole({
             </button>
           </>
         )}
-      </section>
+      </Plane>
     </>
   );
 }

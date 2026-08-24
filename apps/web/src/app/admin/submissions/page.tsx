@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin moderation queue.
  *
@@ -239,7 +240,7 @@ export default async function AdminSubmissionsPage(props: {
       </nav>
 
       {items.length === 0 ? (
-        <section className="ss-card" style={{ padding: '40px 24px' }}>
+        <Plane tilt="flat">
           <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
             Empty queue
           </div>
@@ -253,7 +254,7 @@ export default async function AdminSubmissionsPage(props: {
           >
             Nothing waiting in this bucket.
           </h2>
-        </section>
+        </Plane>
       ) : (
         <ul
           style={{
@@ -295,7 +296,7 @@ export default async function AdminSubmissionsPage(props: {
                 filter,
                 offset: Math.max(0, offset - PAGE_LIMIT),
               })}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               ← Newer
             </Link>
@@ -305,7 +306,7 @@ export default async function AdminSubmissionsPage(props: {
           {showOlder ? (
             <Link
               href={buildHref({ filter, offset: offset + PAGE_LIMIT })}
-              className="ss-btn ss-btn--ghost"
+              className="hp-btn hp-btn--ghost"
             >
               Older →
             </Link>
@@ -332,15 +333,7 @@ function ModerationRow({
   dismissAction: (formData: FormData) => Promise<void>;
 }) {
   return (
-    <article
-      className="ss-card"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12,
-        padding: '16px 18px',
-      }}
-    >
+    <Plane tilt="flat">
       <div
         style={{
           display: 'flex',
@@ -350,14 +343,13 @@ function ModerationRow({
         }}
       >
         <span
-          className="mono"
-          style={{ fontSize: 11, color: 'var(--fg-dim)' }}
+          className="mono hp-field__hint"
         >
           {shortId(submission.id)}
         </span>
         <StatusPill status={submission.status} />
         {submission.flag_count > 0 && (
-          <span className="ss-badge ss-badge--warn">
+          <span className="hp-chip warn">
             {submission.flag_count}{' '}
             {submission.flag_count === 1 ? 'flag' : 'flags'}
           </span>
@@ -429,7 +421,7 @@ function ModerationRow({
           dismissAction={dismissAction}
         />
       </div>
-    </article>
+    </Plane>
   );
 }
 
@@ -452,8 +444,7 @@ function FieldRow({
       }}
     >
       <div
-        className="ss-eyebrow"
-        style={{ fontSize: 10, color: 'var(--fg-dim)' }}
+        className="ss-eyebrow hp-field__hint"
       >
         {label}
       </div>

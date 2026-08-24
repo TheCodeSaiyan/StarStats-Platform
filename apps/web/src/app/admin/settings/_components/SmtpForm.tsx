@@ -13,6 +13,7 @@
  *   - non-empty input                       → send the typed value
  */
 
+import { BeamAlert } from 'holo';
 import { useState, useTransition } from 'react';
 
 /** Local mirror of the API types — duplicated here so this client
@@ -298,7 +299,7 @@ export function SmtpForm({
       >
         <button
           type="submit"
-          className="ss-btn ss-btn--primary"
+          className="hp-btn hp-btn--primary"
           disabled={pending}
         >
           {pending ? 'Working…' : 'Save'}
@@ -325,7 +326,7 @@ export function SmtpForm({
         />
         <button
           type="button"
-          className="ss-btn"
+          className="hp-btn"
           onClick={handleTest}
           disabled={!enabled || pending}
           title={
@@ -340,7 +341,7 @@ export function SmtpForm({
         </button>
         <button
           type="button"
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           onClick={handleReload}
           disabled={pending}
         >
@@ -349,20 +350,20 @@ export function SmtpForm({
       </div>
 
       {banner.kind === 'saved' && (
-        <div role="status" className="ss-alert ss-alert--ok">
+        <BeamAlert tone="good" role="status">
           Saved. Mailer reloaded — any new emails use the updated
           settings immediately.
-        </div>
+        </BeamAlert>
       )}
       {banner.kind === 'sent' && (
-        <div role="status" className="ss-alert ss-alert--ok">
+        <BeamAlert tone="good" role="status">
           Test email sent to <strong>{banner.to}</strong>.
-        </div>
+        </BeamAlert>
       )}
       {banner.kind === 'error' && (
-        <div role="alert" className="ss-alert ss-alert--danger">
+        <BeamAlert tone="bad" role="alert">
           {banner.message}
-        </div>
+        </BeamAlert>
       )}
     </form>
   );
@@ -379,10 +380,10 @@ function Field({
 }) {
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={{ fontSize: 12, color: 'var(--fg-muted)' }}>{label}</span>
+      <span className="hp-kvlabel">{label}</span>
       {children}
       {hint && (
-        <span style={{ fontSize: 11, color: 'var(--fg-dim)' }}>{hint}</span>
+        <span className="hp-field__hint">{hint}</span>
       )}
     </label>
   );

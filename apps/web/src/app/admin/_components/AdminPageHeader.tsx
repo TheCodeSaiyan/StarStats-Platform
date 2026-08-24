@@ -1,14 +1,17 @@
 /**
  * Shared header for /admin pages: eyebrow, h1, optional lede.
  *
- * Every admin page used to hand-roll this block. The values here are
- * copied verbatim from those pages so the extraction is visually inert
- * — with one deliberate normalisation: pages varied between
- * `maxWidth: 640` and `720` on the lede, and this settles on 720.
+ * Every admin page used to hand-roll this block; this owns it for all 17.
  *
- * 32px is the sanctioned top-level opt-in above the 28px `main h1`
- * baseline; the mobile shrink in starstats-tokens.css applies because
- * this is a bare h1 (no `hud-tile__title` class).
+ * DRAWN BY THE SYSTEM NOW. The title was inline `32px / 600 / -0.02em` — the
+ * flat voice, tight and semibold, where the beam voice is thin and positively
+ * tracked — and inline meant no stylesheet could correct it. It takes
+ * `.hp-pagetitle` instead, the same class every other page title in the app
+ * uses, so an admin page reads like the rest of the product.
+ *
+ * The eyebrow keeps `ss-eyebrow`: it is one of the two sanctioned uses (a
+ * section category label above a heading) and the bridge already redraws it
+ * into the projection's tracked-caption idiom.
  */
 
 // Explicit React import: this repo's vitest uses the classic JSX
@@ -34,34 +37,16 @@ export function AdminPageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <header>
-      <div className="ss-eyebrow" style={{ marginBottom: 8 }}>
-        {eyebrow}
-      </div>
+    <header className="hp-adminhead">
+      <div className="ss-eyebrow hp-adminhead__eyebrow">{eyebrow}</div>
       <h1
-        className={titleClassName}
-        style={{
-          margin: 0,
-          fontSize: 32,
-          fontWeight: 600,
-          letterSpacing: '-0.02em',
-        }}
+        className={
+          titleClassName ? `hp-pagetitle ${titleClassName}` : 'hp-pagetitle'
+        }
       >
         {title}
       </h1>
-      {lede !== undefined && (
-        <p
-          style={{
-            margin: '6px 0 0',
-            color: 'var(--fg-muted)',
-            fontSize: 14,
-            maxWidth: 720,
-            lineHeight: 1.55,
-          }}
-        >
-          {lede}
-        </p>
-      )}
+      {lede !== undefined && <p className="hp-adminhead__lede">{lede}</p>}
       {children}
     </header>
   );

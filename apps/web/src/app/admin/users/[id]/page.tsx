@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · User detail.
  *
@@ -307,13 +308,13 @@ export default async function AdminUserDetailPage(props: PageProps) {
       />
 
       {status && STATUS_MESSAGES[status] && (
-        <div className="ss-badge ss-badge--ok" style={{ alignSelf: 'flex-start' }}>
+        <div className="hp-chip good" style={{ alignSelf: 'flex-start' }}>
           {STATUS_MESSAGES[status]}
         </div>
       )}
       {errorCode && (
         <div
-          className="ss-badge"
+          className="hp-chip"
           style={{
             alignSelf: 'flex-start',
             borderColor: 'var(--danger)',
@@ -324,7 +325,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
         </div>
       )}
 
-      <section className="ss-card" style={{ padding: '20px 24px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Account
         </div>
@@ -366,7 +367,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
           <Dt>Last activity</Dt>
           <Dd>{relativeTime(user.last_activity_at)}</Dd>
         </dl>
-      </section>
+      </Plane>
 
       <RestrictionPanel
         current={detail.restriction ?? null}
@@ -386,7 +387,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
       {/* Devices — the per-device breakdown behind the aggregate chip
           above. Both are computed from the SAME rows server-side, so
           the chip can't disagree with the table under it. */}
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         <div style={{ padding: '20px 24px 12px' }}>
           <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
             Devices
@@ -399,11 +400,11 @@ export default async function AdminUserDetailPage(props: PageProps) {
           rowKey={(d) => `${d.label}-${d.last_seen_at ?? 'never'}`}
           empty="No devices have ever been paired for this account."
         />
-      </section>
+      </Plane>
 
       {/* Activity by type — straight from the stat_event_counts
           rollup, so this is a cheap read rather than a scan. */}
-      <section className="ss-card" style={{ padding: 0, overflow: 'hidden' }}>
+      <Plane tilt="flat">
         <div style={{ padding: '20px 24px 12px' }}>
           <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
             Activity
@@ -416,12 +417,12 @@ export default async function AdminUserDetailPage(props: PageProps) {
           rowKey={(c) => c.event_type}
           empty="This account has never sent an event."
         />
-      </section>
+      </Plane>
 
       {/* Data & retention. Deliberately shows no "swept by retention"
           figure: sweep totals are aggregate and transient, never
           persisted per user, so any number here would be invented. */}
-      <section className="ss-card" style={{ padding: '20px 24px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Data
         </div>
@@ -478,9 +479,9 @@ export default async function AdminUserDetailPage(props: PageProps) {
             )}
           </Dd>
         </dl>
-      </section>
+      </Plane>
 
-      <section className="ss-card" style={{ padding: '20px 24px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Staff roles
         </div>
@@ -534,7 +535,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
             />
           </div>
         )}
-      </section>
+      </Plane>
 
       {/* Audit v2.1 §C — sharing context sub-tab. Read-only for now;
           one-click admin revoke is in the reports queue. */}
@@ -797,7 +798,7 @@ function RoleControl({
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
         <span style={{ fontWeight: 600, fontSize: 14 }}>{role}</span>
-        <span style={{ color: 'var(--fg-muted)', fontSize: 12 }}>
+        <span className="hp-kvlabel">
           {active ? 'Active grant' : 'Not granted'}
         </span>
       </div>
@@ -817,7 +818,7 @@ function RoleControl({
           <input type="hidden" name="role" value={role} />
           <button
             type="submit"
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{ color: 'var(--danger)' }}
           >
             Revoke {role}
@@ -844,7 +845,7 @@ function RoleControl({
               minWidth: 200,
             }}
           />
-          <button type="submit" className="ss-btn ss-btn--primary">
+          <button type="submit" className="hp-btn hp-btn--primary">
             Grant {role}
           </button>
         </form>
@@ -867,13 +868,12 @@ const DEVICE_COLUMNS: readonly AdminTableColumn<AdminUserDeviceDto>[] = [
     header: 'Sync',
     cell: (d) =>
       d.sync_enabled ? (
-        <span className="ss-badge ss-badge--ok" style={{ fontSize: 10 }}>
+        <span className="hp-chip good" style={{ fontSize: 10 }}>
           on
         </span>
       ) : (
         <span
-          className="ss-badge"
-          style={{ fontSize: 10, color: 'var(--fg-dim)' }}
+          className="hp-chip hp-field__hint"
         >
           off
         </span>
@@ -900,7 +900,7 @@ const DEVICE_COLUMNS: readonly AdminTableColumn<AdminUserDeviceDto>[] = [
           revoked {d.revoked_at.slice(0, 10)}
         </span>
       ) : (
-        <span style={{ color: 'var(--fg-muted)', fontSize: 12 }}>active</span>
+        <span className="hp-kvlabel">active</span>
       ),
   },
 ];
@@ -920,7 +920,7 @@ const EVENT_TYPE_COLUMNS: readonly AdminTableColumn<AdminUserEventTypeCountDto>[
     {
       header: 'First seen',
       cell: (c) => (
-        <span style={{ color: 'var(--fg-muted)', fontSize: 12 }}>
+        <span className="hp-kvlabel">
           {c.first_seen_at ? c.first_seen_at.slice(0, 10) : '—'}
         </span>
       ),
@@ -928,7 +928,7 @@ const EVENT_TYPE_COLUMNS: readonly AdminTableColumn<AdminUserEventTypeCountDto>[
     {
       header: 'Last seen',
       cell: (c) => (
-        <span style={{ color: 'var(--fg-muted)', fontSize: 12 }}>
+        <span className="hp-kvlabel">
           {relativeTime(c.last_seen_at)}
         </span>
       ),

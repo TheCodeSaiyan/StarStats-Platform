@@ -1,3 +1,4 @@
+import { Plane } from 'holo';
 /**
  * Admin · Sharing overview.
  *
@@ -162,7 +163,7 @@ export default async function AdminSharingOverviewPage() {
         />
       </section>
 
-      <section className="ss-card" style={{ padding: '20px 24px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Top granters
         </div>
@@ -246,14 +247,14 @@ export default async function AdminSharingOverviewPage() {
             </tbody>
           </table>
         )}
-      </section>
+      </Plane>
       </>
       )}
 
       {histogram === null ? (
         <SectionUnavailable title="Scope distribution" />
       ) : (
-      <section className="ss-card" style={{ padding: '20px 24px' }}>
+      <Plane tilt="flat">
         <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
           Scope distribution
         </div>
@@ -361,7 +362,7 @@ export default async function AdminSharingOverviewPage() {
             </table>
           </div>
         )}
-      </section>
+      </Plane>
       )}
 
       <nav
@@ -374,14 +375,14 @@ export default async function AdminSharingOverviewPage() {
       >
         <Link
           href={'/admin/sharing/audit' as Route}
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           style={{ textDecoration: 'none' }}
         >
           Sharing audit log →
         </Link>
         <Link
           href={'/admin/sharing/reports' as Route}
-          className="ss-btn ss-btn--ghost"
+          className="hp-btn hp-btn--ghost"
           style={{ textDecoration: 'none' }}
         >
           Reports queue →
@@ -396,7 +397,7 @@ export default async function AdminSharingOverviewPage() {
  *  each call independently rather than failing the page. */
 function SectionUnavailable({ title }: { title: string }) {
   return (
-    <section className="ss-card" style={{ padding: '20px 24px' }}>
+    <Plane tilt="flat">
       <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
         {title}
       </div>
@@ -411,7 +412,7 @@ function SectionUnavailable({ title }: { title: string }) {
         Temporarily unavailable — this section failed to load. The rest of
         the page is unaffected; refresh to retry.
       </p>
-    </section>
+    </Plane>
   );
 }
 
@@ -435,15 +436,7 @@ function StatCard({
         ? 'var(--accent)'
         : 'var(--fg)';
   return (
-    <div
-      className="ss-card"
-      style={{
-        padding: '16px 18px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-      }}
-    >
+    <Plane tilt="flat">
       <div className="ss-eyebrow">{eyebrow}</div>
       <div
         style={{
@@ -456,8 +449,7 @@ function StatCard({
         {value.toLocaleString()}
       </div>
       <div
-        className="mono"
-        style={{ color: 'var(--fg-dim)', fontSize: 11 }}
+        className="mono hp-field__hint"
       >
         {label}
       </div>
@@ -473,7 +465,7 @@ function StatCard({
           {hint}
         </div>
       )}
-    </div>
+    </Plane>
   );
 }
 
@@ -504,8 +496,7 @@ function ScopeBucket({
       }}
     >
       <div
-        className="mono"
-        style={{ color: 'var(--fg-dim)', fontSize: 11 }}
+        className="mono hp-field__hint"
       >
         {label}
       </div>
@@ -518,7 +509,7 @@ function ScopeBucket({
       >
         {value.toLocaleString()}
       </div>
-      <div style={{ color: 'var(--fg-muted)', fontSize: 11 }}>
+      <div className="hp-field__hint">
         {pct}% of active
       </div>
     </div>

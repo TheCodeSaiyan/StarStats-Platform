@@ -118,7 +118,7 @@ export default async function AdminReferencePage(props: PageProps) {
         }
       >
         <form action={startSync} style={{ marginTop: 12 }}>
-          <button type="submit" className="ss-btn">
+          <button type="submit" className="hp-btn">
             Sync now
           </button>
         </form>
@@ -198,7 +198,7 @@ function CategoryCard({ category }: { category: AdminReferenceCategoryDto }) {
           {category.entry_count.toLocaleString()}
         </span>
         <span
-          className="ss-badge"
+          className="hp-chip"
           style={{
             fontSize: 11,
             color: isStale ? 'var(--danger)' : 'var(--fg-muted)',

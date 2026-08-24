@@ -2481,15 +2481,15 @@
   box-shadow: none;
 }
 
-.ss-projection-root .hud-tile .hud-tile__hd {
+.ss-projection-root .hud-tile__hd {
   display: flex;
   align-items: baseline;
   gap: 8px;
   border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.14);
 }
 
-.ss-projection-root .hud-tile .hud-tile__eyebrow,
-.ss-projection-root .hud-tile .hud-tile__title {
+.ss-projection-root .hud-tile__eyebrow,
+.ss-projection-root .hud-tile__title {
   font-size: var(--fs-micro);
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -2500,18 +2500,18 @@
 /* The title is the tile's name, so it takes the beam; the eyebrow stays
    structure. Only figures glow — a tile title is a label, not a figure, so it
    is lifted rather than lit. */
-.ss-projection-root .hud-tile .hud-tile__title {
+.ss-projection-root .hud-tile__title {
   color: var(--beam);
 }
 
-.ss-projection-root .hud-tile .hud-tile__sub {
+.ss-projection-root .hud-tile__sub {
   margin-left: auto;
   font-size: var(--fs-micro);
   letter-spacing: 0.14em;
   color: var(--label);
 }
 
-.ss-projection-root .hud-tile .hud-tile__empty {
+.ss-projection-root .hud-tile__empty {
   margin: 0;
   padding: 10px 0 2px;
   font-size: var(--fs-base);
@@ -2733,6 +2733,11 @@
 /* --- Inputs ------------------------------------------------------------- */
 /* Never a boxed field: a lit underline, like `BeamInput`. */
 .ss-projection-root .ss-input,
+/* A bare `<input>` defaults to text but matches no `[type=...]` selector, and
+   several admin forms write them that way — under `color-scheme: dark` Chrome
+   then paints its own grey field (measured rgb(59,59,59)) inside the volume.
+   Listing types was the mistake; the element is what matters. */
+.ss-projection-root input:not([type='hidden']):not([type='checkbox']):not([type='radio']):not([type='file']):not([type='range']):not([type='color']):not([type='submit']):not([type='button']),
 .ss-projection-root input[type='text'],
 .ss-projection-root input[type='email'],
 .ss-projection-root input[type='password'],
@@ -3132,4 +3137,27 @@ html[data-wave-speed='off'] .hp-stage::after {
 .hp-rangebar__opt[aria-current='page'] {
   color: var(--hot);
   border-color: var(--hot);
+}
+
+/* ---- admin console page chrome --------------------------------------------
+   `AdminPageHeader` owns the header for all 17 admin pages. It was inline
+   `32px / 600 / -0.02em` on the title — the flat voice — which is why the
+   console read as a different product from the rest of the app even after the
+   Console shell was ported. */
+.hp-adminhead {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hp-adminhead__eyebrow {
+  margin-bottom: 2px;
+}
+
+.hp-adminhead__lede {
+  margin: 0;
+  max-width: 72ch;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--dim);
 }

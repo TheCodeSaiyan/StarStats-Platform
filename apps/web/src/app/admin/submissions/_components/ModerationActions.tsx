@@ -67,7 +67,7 @@ export function ModerationActions({
           <input type="hidden" name="id" value={submissionId} />
           <button
             type="submit"
-            className="ss-btn ss-btn--primary"
+            className="hp-btn hp-btn--primary"
             style={{ fontSize: 12, padding: '6px 12px' }}
           >
             Accept
@@ -78,7 +78,7 @@ export function ModerationActions({
       {showReject && (
         <details style={{ position: 'relative' }}>
           <summary
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{
               fontSize: 12,
               padding: '6px 12px',
@@ -133,7 +133,7 @@ export function ModerationActions({
             />
             <button
               type="submit"
-              className="ss-btn ss-btn--danger"
+              className="hp-btn hp-btn--danger"
               style={{
                 fontSize: 12,
                 padding: '6px 12px',
@@ -151,7 +151,7 @@ export function ModerationActions({
           <input type="hidden" name="id" value={submissionId} />
           <button
             type="submit"
-            className="ss-btn ss-btn--ghost"
+            className="hp-btn hp-btn--ghost"
             style={{ fontSize: 12, padding: '6px 12px' }}
           >
             Dismiss flag

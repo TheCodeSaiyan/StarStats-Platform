@@ -18,6 +18,7 @@
 // Explicit React import: this repo's vitest uses the classic JSX
 // runtime, so a JSX-rendering component ReferenceErrors without it.
 import React from 'react';
+import { Plane } from 'holo';
 import type { AdminRestrictionDto } from '@/lib/api';
 import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 
@@ -60,7 +61,7 @@ export function RestrictionPanel({
   canModerate: boolean;
 }) {
   return (
-    <section className="ss-card" style={{ padding: '20px 24px' }}>
+    <Plane tilt="flat">
       <div className="ss-eyebrow" style={{ marginBottom: 6 }}>
         Moderation
       </div>
@@ -77,7 +78,7 @@ export function RestrictionPanel({
 
       {current ? (
         <div
-          className="ss-badge"
+          className="hp-chip"
           style={{
             display: 'inline-block',
             margin: '12px 0 0',
@@ -170,7 +171,7 @@ export function RestrictionPanel({
                 gap: 10,
               }}
             >
-              <legend style={{ fontSize: 12, color: 'var(--fg-muted)' }}>
+              <legend className="hp-kvlabel">
                 Capabilities to block
               </legend>
               {CAPABILITIES.map((c) => (
@@ -232,13 +233,13 @@ export function RestrictionPanel({
             </label>
 
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <ConfirmSubmitButton className="ss-btn ss-btn--primary">
+              <ConfirmSubmitButton className="hp-btn hp-btn--primary">
                 Apply restrictions
               </ConfirmSubmitButton>
               <ConfirmSubmitButton
                 name="suspend_all"
                 value="1"
-                className="ss-btn ss-btn--danger"
+                className="hp-btn hp-btn--danger"
                 confirm="Suspend this account? All four capabilities are blocked and every existing share is revoked. Revoked shares are NOT restored if you reinstate them later."
               >
                 Suspend (all capabilities)
@@ -249,7 +250,7 @@ export function RestrictionPanel({
           {current && (
             <form action={reinstateAction} style={{ margin: '14px 0 0' }}>
               <ConfirmSubmitButton
-                className="ss-btn ss-btn--ghost"
+                className="hp-btn hp-btn--ghost"
                 confirm="Lift all restrictions on this account? Revoked shares are NOT restored — the user has to create them again."
               >
                 Reinstate
@@ -270,6 +271,6 @@ export function RestrictionPanel({
           )}
         </>
       )}
-    </section>
+    </Plane>
   );
 }
