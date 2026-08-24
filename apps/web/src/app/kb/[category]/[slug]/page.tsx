@@ -53,8 +53,10 @@ import { listContractsByEntity } from '@/lib/contracts';
 import { RelatedContracts } from './_components/RelatedContracts';
 import {
   getEntityDetail,
+  findEntryBySlug,
   getCategoryBundle,
   type ReferenceCategory,
+  type ReferenceEntryDetail,
   type Summary,
   tierLabel,
   subtypeLabel,
@@ -96,10 +98,23 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const { category, slug } = await props.params;
   if (!isCategory(category)) return { title: 'Knowledge base' };
   const outcome = await getEntityDetail(category, slug);
-  if (outcome.kind !== 'ok') return { title: 'Not found — Knowledge base' };
-  return {
-    title: `${outcome.entry.display_name} — ${CATEGORY_LABELS[category]}`,
-  };
+  if (outcome.kind === 'ok') {
+    return {
+      title: `${outcome.entry.display_name} — ${CATEGORY_LABELS[category]}`,
+    };
+  }
+  // A rate limit is not a 404 and must not be titled like one — the snapshot
+  // knows this entry's name without touching the network.
+  if (outcome.kind === 'rate_limited') {
+    const fallback = await findEntryBySlug(category, slug);
+    if (fallback) {
+      return {
+        title: `${fallback.display_name} — ${CATEGORY_LABELS[category]}`,
+      };
+    }
+    return { title: `${CATEGORY_LABELS[category]} — Knowledge base` };
+  }
+  return { title: 'Not found — Knowledge base' };
 }
 
 export default async function KbDetailPage(props: PageProps) {
@@ -118,7 +133,40 @@ export default async function KbDetailPage(props: PageProps) {
       `Failed to load ${category}/${slug}: ${outcome.reason}`,
     );
   }
-  const entry = outcome.entry;
+
+  /**
+   * A RATE LIMIT IS NOT AN ERROR, and this page used to treat it as one.
+   *
+   * The reference API is per-IP rate limited and the web container is a
+   * single IP fronting every SSR render, so a busy moment 429s legitimate
+   * navigations. Those fell into the `error` branch above, threw, and gave
+   * the reader an error boundary — for an entry that exists and is already
+   * compiled into the image. Beta's log was a wall of exactly that.
+   *
+   * So it renders from the shipped snapshot instead. `ReferenceEntryDetail`
+   * is `ReferenceEntry` plus `metadata`, so a catalogue entry with an empty
+   * blob IS a valid detail: the name, slug and curated summary are all real,
+   * and the live-only sections (ship matrix, media, peer stats) degrade to
+   * nothing on their own because they already handle a missing blob.
+   *
+   * Only when the snapshot has no such slug either is there nothing to draw —
+   * and even then it is a "come back shortly" page, never a crash, because
+   * the entry may well exist and simply be unreachable this second.
+   */
+  let staleNotice = false;
+  let entry: ReferenceEntryDetail;
+  if (outcome.kind === 'rate_limited') {
+    const fallback = await findEntryBySlug(category, slug);
+    if (!fallback) {
+      return (
+        <KbRateLimited category={category} label={CATEGORY_LABELS[category]} />
+      );
+    }
+    entry = { ...fallback, metadata: {} };
+    staleNotice = true;
+  } else {
+    entry = outcome.entry;
+  }
 
   const summaryFields = summaryAtGlanceFields(entry.summary);
 
@@ -286,7 +334,18 @@ export default async function KbDetailPage(props: PageProps) {
         { label: entry.display_name },
       ]}
       sections={sections}
-      notice={null}
+      notice={
+        staleNotice
+          ? {
+              tone: 'warn',
+              message:
+                'The live catalogue is busy, so this entry is drawn from the ' +
+                'catalogue snapshot shipped with the site. Names and ' +
+                'classification are current as of the last sync; live detail ' +
+                'such as the ship matrix and images will return on a reload.',
+            }
+          : null
+      }
       onCalibrate={async (id: string) => {
         'use server';
         await setCalibrationAction(id);
@@ -343,4 +402,59 @@ function summaryAtGlanceFields(summary: Summary): Array<[string, string]> {
       break;
   }
   return out;
+}
+
+/**
+ * The one case with nothing to draw: rate limited AND no snapshot entry.
+ *
+ * Still not a throw. The entry may well exist — the snapshot is a point-in-time
+ * copy and the catalogue grows — so the honest statement is "busy, try again",
+ * not "broken" and not "missing". A reload is the whole remedy, which is why
+ * the way out is a link back to the category rather than a retry button that
+ * would need client state to mean anything.
+ */
+function KbRateLimited({
+  category,
+  label,
+}: {
+  category: ReferenceCategory;
+  label: string;
+}) {
+  return (
+    <KbProjection
+      handle={undefined}
+      calibration={'terra' as Calibration}
+      nav={navSections({ signedIn: false }, 'kb')}
+      crumb={[
+        { label: 'Knowledge base', href: '/kb' },
+        { label, href: `/kb/${category}` },
+        { label: 'Busy' },
+      ]}
+      notice={{
+        tone: 'warn',
+        message:
+          'The catalogue is rate limiting right now. This entry could not be ' +
+          'loaded — it has not gone away, the service is just busy. Reload in ' +
+          'a moment.',
+      }}
+      sections={[
+        {
+          id: 'busy',
+          group: 'kb',
+          title: 'Temporarily unavailable',
+          node: (
+            <Plane tilt="flat" cap="Catalogue busy">
+              <p className="hp-prose">
+                Reload to try again, or{' '}
+                <a href={`/kb/${category}`}>browse {label.toLowerCase()}</a>.
+              </p>
+            </Plane>
+          ),
+        },
+      ]}
+      onCalibrate={async () => {
+        'use server';
+      }}
+    />
+  );
 }

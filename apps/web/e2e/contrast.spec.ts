@@ -149,6 +149,12 @@ test.describe('contrast', () => {
   for (const cal of CALS) {
     test(`every surface is readable on the ${cal} calibration`, async ({ page }) => {
       test.slow();
+      // `test.slow()` triples the 30s default to 90s, and that is not enough
+      // for this one late in a serial run: measured at 45-60s in ISOLATION,
+      // so a dev server several hundred tests deep exceeds it and the sweep
+      // fails on the clock rather than on anything it measures. Stated
+      // explicitly rather than left to a multiplier.
+      test.setTimeout(180_000);
       await loginAs(page, { handle: 'TestPilot', staffRoles: ['admin'] });
       const failures: string[] = [];
       for (const r of ROUTES) {

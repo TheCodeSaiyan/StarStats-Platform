@@ -217,3 +217,45 @@ test('kb_detail_renders_not_found_page_when_endpoint_returns_404', async ({
     page.getByRole('heading', { name: 'Page not found', level: 1 }),
   ).toBeVisible();
 });
+
+test('kb_detail_rate_limited_renders_from_snapshot_instead_of_crashing', async ({
+  page,
+  request,
+}) => {
+  /**
+   * A 429 IS NOT AN ERROR, and treating it as one crashed the page.
+   *
+   * The reference API is per-IP rate limited and the web container is one IP
+   * fronting every SSR render, so a busy moment 429s legitimate navigations.
+   * The detail page threw on any non-404 failure, so those readers got an
+   * error boundary for entries that exist — beta's log was a wall of
+   * `Failed to load item/…: 429 Too Many Requests`, one line per crash.
+   *
+   * The slug here is a REAL entry in the shipped `reference-data` snapshot,
+   * because that is the point: the catalogue is compiled into the image, so a
+   * rate-limited render still has the name, slug and classification in memory
+   * and only the live-only blob (ship matrix, media) is missing.
+   */
+  await setScenario(request, {
+    __id: 'kb_detail_429',
+    routes: {
+      'GET /v1/reference/vehicle/slug/avenger-stalker': {
+        status: 429,
+        body: { error: 'rate_limited' },
+      },
+    },
+  });
+
+  await page.goto('/kb/vehicle/avenger-stalker');
+
+  // Not the error boundary. This is the assertion that fails on the old
+  // behaviour — everything else about the page was already fine.
+  await expect(page.locator('text=Something went wrong')).toHaveCount(0);
+  // The entry still renders, from the snapshot.
+  await expect(
+    page.getByRole('heading', { name: /Avenger Stalker/i }).first(),
+  ).toBeVisible();
+  // And it says so, rather than quietly serving possibly-stale detail as
+  // though it were live.
+  await expect(page.locator('text=catalogue snapshot').first()).toBeVisible();
+});

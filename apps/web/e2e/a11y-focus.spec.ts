@@ -128,6 +128,10 @@ test.describe('keyboard', () => {
 
   test('every tab stop is visible and shows focus', async ({ page }) => {
     test.slow();
+    // 90s (test.slow's tripling) is not enough for a sweep of every surface
+    // late in a serial run — measured well under it in isolation, over it
+    // after a few hundred tests. A clock failure is not a finding.
+    test.setTimeout(180_000);
     const failures: string[] = [];
     await loginAs(page, { handle: 'TestPilot' });
     for (const r of ROUTES) {
@@ -154,6 +158,10 @@ test.describe('keyboard', () => {
 
   test('every control has an accessible name', async ({ page }) => {
     test.slow();
+    // 90s (test.slow's tripling) is not enough for a sweep of every surface
+    // late in a serial run — measured well under it in isolation, over it
+    // after a few hundred tests. A clock failure is not a finding.
+    test.setTimeout(180_000);
     const failures: string[] = [];
     await loginAs(page, { handle: 'TestPilot' });
     for (const r of ROUTES) {

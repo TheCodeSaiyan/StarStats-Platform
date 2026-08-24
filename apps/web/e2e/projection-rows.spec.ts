@@ -29,6 +29,21 @@ import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-
  * reads the cursor on a row that leads nowhere.
  */
 const SCENARIO: Record<string, unknown> = {
+  // `locations` is `enabled: false` in DEFAULT_LAYOUT, so "Places visited"
+  // does not render without an explicit layout — the reader in the report has
+  // it switched on. The other three are the planes the rest of this file
+  // measures, and naming all four keeps them in one declared order.
+  'GET /v1/users/me/profile-layout': {
+    status: 200,
+    body: {
+      layout: [
+        { id: 'fleet', enabled: true, size: 'compact' },
+        { id: 'docking', enabled: true, size: 'compact' },
+        { id: 'routes', enabled: true, size: 'compact' },
+        { id: 'locations', enabled: true, size: 'compact' },
+      ],
+    },
+  },
   'GET /v1/me/stats/fleet': {
     status: 200,
     body: {
@@ -63,14 +78,20 @@ const SCENARIO: Record<string, unknown> = {
       ],
     },
   },
+  // THE RAW SHAPE THE API ACTUALLY RETURNS: `system|planet|city`, with empty
+  // segments where the reader never got that specific. Taken verbatim from a
+  // real account's Travel lens, where these rendered on screen as
+  // `Stanton|clio|`, `Stanton|microTech|New Babbage` and a bare `||`.
   'GET /v1/me/stats/locations': {
     status: 200,
     body: {
       hours: 8760,
-      unique_locations: 4,
+      unique_locations: 5,
       top_locations: [
-        { value: 'Orison', count: 20 },
-        { value: 'Area18', count: 11 },
+        { value: 'Stanton|clio|', count: 128 },
+        { value: 'Stanton|microTech|New Babbage', count: 27 },
+        { value: 'Rr||mic Leo', count: 10 },
+        { value: '||', count: 3 },
       ],
     },
   },
@@ -177,6 +198,38 @@ test.describe('projection rows', () => {
         first,
       );
     }
+  });
+
+  test('a place row reads as a place, and goes to it', async ({ page }) => {
+    /**
+     * `top_locations[].value` is a `system|planet|city` key, not a name. The
+     * plane rendered it raw, so the Travel lens listed `Stanton|clio|`,
+     * `Stanton|microTech|New Babbage` and a bare `||` — and since a composite
+     * key matches nothing in a catalogue keyed by class and display name, not
+     * one of those rows could link either. Reported as "the items in the
+     * lists aren't clickable"; the labels were the other half of it.
+     *
+     * The resolution is `aggregateLocationBuckets`, which the flat widgets
+     * already ran. This asserts the projection runs it too.
+     */
+    await loginAs(page, { handle: 'TestPilot' });
+    await openTravelLens(page);
+
+    const places = page.locator('.hp-plane', { hasText: 'Places visited' });
+    await expect(places).toBeVisible();
+
+    // No pipe survives to the screen.
+    await expect(places).not.toContainText('|');
+    // The composite keys became the places they name.
+    await expect(places).toContainText('Clio');
+    await expect(places).toContainText('New Babbage');
+    // An empty key is named, not blank.
+    await expect(places).toContainText('Unknown');
+
+    // And a real place is now a destination, because the resolved label is
+    // what the catalogue is keyed by.
+    const clio = places.locator('.hp-rw').filter({ hasText: 'Clio' }).first();
+    await expect(clio).toHaveAttribute('href', '/kb/location/clio');
   });
 
   test('every row with a link is itself the link', async ({ page }) => {
