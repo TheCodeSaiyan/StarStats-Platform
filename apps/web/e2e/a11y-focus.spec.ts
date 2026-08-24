@@ -41,6 +41,26 @@ const FOCUS_FINGERPRINT = `(el) => {
           cs.borderColor, cs.backgroundColor, cs.color, cs.textDecorationLine].join('|');
 }`;
 
+/**
+ * Transitions off, for the duration of the measurement.
+ *
+ * The focus check reads computed style with focus and again without it, on the
+ * same element, microseconds apart. Controls animate their focus state over
+ * 200ms, and computed style DURING a transition is the interpolated value — so
+ * the "blurred" read comes back still mostly focused and the two look
+ * identical. `.hp-input` failed exactly this way while its `:focus` rule was
+ * perfectly correct.
+ *
+ * Disabling transitions makes the comparison measure the rule instead of the
+ * clock. It changes nothing about what is required of the page.
+ */
+async function freezeTransitions(page: Page) {
+  await page.addStyleTag({
+    content:
+      '*, *::before, *::after { transition: none !important; animation: none !important; }',
+  });
+}
+
 async function tabStops(page: Page, max: number) {
   const seen: {
     tag: string;
@@ -120,6 +140,7 @@ test.describe('keyboard', () => {
       await page.goto(r.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
       await page.waitForLoadState('networkidle').catch(() => {});
       await page.waitForTimeout(300);
+      await freezeTransitions(page);
       const stops = await tabStops(page, 22);
       expect(stops.length, `${r.url}: nothing is focusable`).toBeGreaterThan(2);
       for (const s of stops) {
