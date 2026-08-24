@@ -133,8 +133,28 @@ export function CalloutField({
     <div className="hp-cos">
       {shown}
       {hidden > 0 ? (
-        <button type="button" className="hp-cos-more" onClick={onOverflowClick}>
-          +{hidden} more in layout
+        /**
+         * "+N more in layout" NAMED THE WRONG CAUSE.
+         *
+         * It reads as "there are N you have not added", so a reader with
+         * everything already enabled is told to go and find them — and the
+         * button opens the layout editor, where every one of them is present
+         * and ticked. A dead end that blames the reader for the field's own
+         * limit.
+         *
+         * The truth is capacity: six slots, three a side, past which callouts
+         * overlap the ring and each other. The remainder is not missing, it is
+         * undrawn — and the ORDER is what decides which six, which is the one
+         * thing the editor can actually change. So the label says what is
+         * happening and the title says what to do about it.
+         */
+        <button
+          type="button"
+          className="hp-cos-more"
+          onClick={onOverflowClick}
+          title={`The field draws ${max}. ${hidden} more ${hidden === 1 ? 'is' : 'are'} enabled but undrawn — reorder your layout to choose which ${max} appear.`}
+        >
+          +{hidden} undrawn · reorder
         </button>
       ) : null}
     </div>

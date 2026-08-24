@@ -197,7 +197,11 @@
   grid-auto-flow: column;
   grid-auto-columns: 9px;
   gap: 3px;
+  /* The heatmap scrolls sideways by design — 26 weeks of columns. Naming the
+   * other axis stops a single row's rounding from adding a vertical bar to a
+   * strip only nine pixels tall. */
   overflow-x: auto;
+  overflow-y: hidden;
   padding-bottom: 4px;
 }
 .hp-cal-grid i {

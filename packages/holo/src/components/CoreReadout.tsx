@@ -23,8 +23,20 @@ export interface CoreReadoutProps {
 export function CoreReadout({ value, unit, label, detail }: CoreReadoutProps) {
   return (
     <div className="hp-core">
-      <div className="n" data-v={value}>
-        {value}
+      <div className="n">
+        {/* THE FRINGE BELONGS TO THE VALUE, NOT THE LINE.
+            `data-v` was on this row while the row also holds the unit, and
+            the fringe pseudo-elements were stretched across it (`left` AND
+            `right` set). So the ghost text — the value alone — centred over
+            value+unit while the real value sits to the LEFT of the unit, and
+            the two drifted apart by roughly half the unit's width. Invisible
+            on a short unit, glaring on a word: Travel's "44 jumps" threw the
+            ghost right off the figure while the other lenses looked fine.
+            Its own span means the ghost box is the value's box at any unit
+            width. */}
+        <span className="v" data-v={value}>
+          {value}
+        </span>
         {unit ? <em>{unit}</em> : null}
       </div>
       {label ? <div className="u">{label}</div> : null}

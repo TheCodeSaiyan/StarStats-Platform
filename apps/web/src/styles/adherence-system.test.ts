@@ -25,6 +25,10 @@ const STYLES = [
   path.join(process.cwd(), 'src/styles/projection-shell.css'),
 ];
 
+/** Newline splitter, defined once so a regex literal never has to survive
+ *  being written into this file by a script. */
+const SPLIT_NL = new RegExp(String.fromCharCode(92) + 'r?' + String.fromCharCode(92) + 'n');
+
 /** CSS with block comments removed — a rule's prose is not a rule. */
 function code(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '');
@@ -131,6 +135,40 @@ describe('design-system adherence', () => {
         const v = m[1].trim();
         if (v === '0' || v === '50%' || /^[0-2]px$/.test(v)) continue;
         offenders.push(`${path.basename(f)}: ${v}`);
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  it('states both axes on every scroll container', () => {
+    /**
+     * Per CSS overflow, when ONE axis is set to something other than
+     * `visible`, the other axis's `visible` COMPUTES to `auto`. So a rule
+     * that says only `overflow-y: auto` has quietly asked for a horizontal
+     * scroll container too, and any hairline overflow — a glow, a sub-pixel
+     * rounding, one wide chip — paints a bar the author never wanted.
+     *
+     * `.hp-pane` and the nav menu both did this; `.hp-settings` already got
+     * it right, which is what made the omission look deliberate.
+     *
+     * The rule: if you set one axis, say what the other one is.
+     */
+    const offenders: string[] = [];
+    for (const f of STYLES) {
+      const css = code(fs.readFileSync(f, 'utf8'));
+      const rule = /([^{}]*)\{([^{}]*)\}/g;
+      let m: RegExpExecArray | null;
+      while ((m = rule.exec(css)) !== null) {
+        const [, selector, body] = m;
+        const hasY = /overflow-y:\s*(auto|scroll|hidden|clip)/.test(body);
+        const hasX = /overflow-x:\s*(auto|scroll|hidden|clip)/.test(body);
+        // `overflow:` shorthand sets both, so it is already explicit.
+        if (/(^|[^-])overflow:\s*/.test(body)) continue;
+        if (hasY === hasX) continue;
+        const sel = selector.trim().split(SPLIT_NL).pop()?.trim();
+        offenders.push(
+          `${path.basename(f)}: ${sel} sets only overflow-${hasY ? 'y' : 'x'}`,
+        );
       }
     }
     expect(offenders).toEqual([]);
