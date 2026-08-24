@@ -252,9 +252,38 @@ Recorded here rather than fixed, because each is a considered decision:
 
 ## Phase 5 — verification
 
-Final gate on the branch: typecheck, lint (17 pre-existing warnings, none new),
-production build, unit suite, full Playwright suite, and a beta image built from
-the branch.
+- **typecheck** clean, **lint** clean (17 warnings, all pre-existing — unused
+  `React` imports in test files and `next/image` advisories).
+- **Production build** compiles; **901 unit tests** across 129 files.
+- **Cold `--no-cache` container build** from `git archive HEAD`, then the image
+  run and inspected: all four `--label` values (`#73A6B7` terra, `#BC986C`
+  stanton, `#C88F81` pyro, `#A894CA` nyx) and `.hp-rangebar__opt` are present in
+  the shipped stylesheet, and `/robots.txt` disallows all under
+  `STARSTATS_NOINDEX=1`. The palette is not just in the source — it is in the
+  bytes the browser gets.
+- **Beta deployed** from the finished branch: `web:beta` / `web:beta-39270bb`.
+
+### A harness pattern worth knowing
+
+Four tests flaked tonight with one shape — click a link, assert the URL, pass in
+isolation, fail under load (auth, dashboard, travel, contrast). Two causes, both
+fixed at the cause rather than retried:
+
+- `expect(page).toHaveURL()` defaults to 5s while the config allows 10s for a
+  navigation, so `waitForURL` is the right call after a click.
+- The three whole-app sweeps each visit ~16 routes, most of them cold, so they
+  get an explicit 30s goto budget. Nothing about what they assert changed.
+
+### Commits
+
+```
+39270bb  test: cold-route navigation budget for the sweeps
+59bd6dc  fix: heatmap on the beam, no filled active controls
+90e0844  fix: last inline type into the system, keyboard proven
+198616b  fix: --label tier split out of --dim, and what that exposed
+b1e0045  fix: docked panes swallowing the scroll wheel
+39ab3dc  feat: port every surface onto the projection system
+```
 
 ## Open items for your review
 
