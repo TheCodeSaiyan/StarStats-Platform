@@ -628,6 +628,106 @@ settles inline, and the phone suite needed the touch context described above.
 
 ---
 
+## The render error: a rate limit was being treated as a crash
+
+Reported as a Server Components error in the browser with the message stripped.
+The digest resolved in the beta container log to a wall of:
+
+```
+reference item/slug/ventris-jumpsuit-… returned 429 Too Many Requests
+ ⨯ Error: Failed to load item/ventris-jumpsuit-…: 429 Too Many Requests
+```
+
+`/kb/[category]/[slug]` threw on any non-404 failure. The comment there argued
+a backend error should reach the error boundary rather than a misleading 404 —
+right for a genuine error, wrong for a 429, which says "come back shortly". The
+reference API is per-IP rate limited and the web container is ONE IP fronting
+every SSR render, so a busy moment 429s legitimate navigations. Every one of
+those became a full-page crash for an entry that exists and is already
+compiled into the image.
+
+**`rate_limited` is now its own outcome**, separate from `error`. The fetcher
+honours `Retry-After` when the API sends one (clamped to 2s so a render cannot
+be held open) instead of guessing at a backoff — guessing is how a retry
+becomes part of the load. On exhaustion the page renders **from the shipped
+`reference-data` snapshot**: `ReferenceEntryDetail` is `ReferenceEntry` plus
+`metadata`, so a catalogue entry with an empty blob is a valid detail, and the
+live-only sections (ship matrix, media, peer stats) already handle a missing
+blob and drop out on their own. A banner says where the data came from — stale
+detail served as though it were live would be worse than the crash. Only when
+the snapshot has no such slug either is there a "busy, reload" page, and even
+then never a throw: the entry may exist and simply be unreachable this second.
+
+Lookup is a memoised slug index (`findEntryBySlug`), because the catalogue is
+keyed by class_name and display_name, never by slug — a linear scan per
+rate-limited render would be thousands of comparisons on the busiest path.
+
+**On the load itself:** the amplifiers are already handled — every KB detail
+link sets `prefetch={false}` and detail fetches carry a 1h revalidate, so
+repeat views collapse. The log is many DISTINCT obscure slugs at ~1/sec, which
+is a systematic walk (most likely a crawler on the noindexed beta host). That
+cannot be stopped from the web tier, which is exactly why degrading is the fix
+rather than the consolation prize.
+
+## The rows that would not link: their labels were never place names
+
+The other half of "the items in the lists are not clickable", and the
+screenshot showed it: the Travel lens listed `Stanton|clio|`,
+`Stanton|microTech|New Babbage`, `Rr||mic Leo` and a bare `||`.
+
+`top_locations[].value` and `routes[].destination` are `system|planet|city`
+composite keys, not names. The flat `locations` and `routes` widgets both run
+`aggregateLocationBuckets` to resolve them and merge duplicates; the projection
+builders skipped it and passed the raw value through. So the rows read as
+machine keys AND could never link — a composite matches nothing in a catalogue
+keyed by class and display name.
+
+Measured against the shipped snapshot:
+
+| raw | resolved | links |
+| --- | --- | --- |
+| `Stanton\|clio\|` | Clio | `/kb/location/clio` |
+| `Stanton\|microTech\|New Babbage` | New Babbage | `/kb/location/new-babbage` |
+| `Rr\|\|mic Leo` | Mic Leo | no catalogue entry |
+| `\|\|` | Unknown | no catalogue entry |
+
+Both planes now run the same resolver the widgets do, and `entityRow` gained a
+`label` parameter to PIN the display text: without it a catalogue miss falls
+through to `toFriendlyName`, which rewrites prose — a merged "Mission beacon"
+or a fallback "Unknown" would come back mangled. The catalogue lookup still
+runs, so a real place still links.
+
+Deliberately still not links, because the target would have to be guessed:
+docking kinds (Hangar / Pad / Other are berth types, not entities) and
+corridors (`A ⇄ B` is two places, so there is no single destination).
+
+## Guards, and two corrections to my own measurements
+
+`kb.spec.ts` reproduces a 429 against a slug that really exists in the
+snapshot and asserts no error boundary, that the entry still renders, and that
+the page admits where the data came from. `projection-rows.spec.ts` uses the
+verbatim raw values from the report and asserts no pipe survives to the screen,
+that the composites became the places they name, and that Clio is a link. Both
+were run against the reverted code and seen to fail.
+
+Two things I got wrong along the way, recorded because the method matters:
+
+1. **A throwaway probe reported a `/downloads` button "blocked by an h2" and
+   collapsed disclosures "leaking content".** Both false.
+   `getBoundingClientRect` returns a full-size rect for a
+   `content-visibility: hidden` subtree and `display` is not `none`, so hidden
+   content measured as visible. `checkVisibility()` and Playwright's
+   `isVisible()` both disagree with the probe. The same flaw was in the
+   committed tap-target sweep and is now fixed there.
+2. **My first "production build" reproduction was invalid.** Playwright's dev
+   server shares the `.next` directory and had clobbered the build, so I was
+   driving a broken artifact. Running the production server ON the test port —
+   so Playwright reuses it instead of starting `next dev` — is what made the
+   run real. It then rendered every route cleanly, which is what proved the
+   fault was data-dependent rather than structural.
+
+---
+
 ## Open items for your review
 
 1. **`--fs-sm` moved 11.5 → 12px and `--fs-micro` 8.5 → 10px.** Everything

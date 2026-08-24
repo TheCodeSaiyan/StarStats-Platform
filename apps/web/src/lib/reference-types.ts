@@ -341,6 +341,20 @@ export const EMPTY_CATEGORY_BUNDLE: CategoryBundle = {
 export type EntityDetailOutcome =
   | { kind: 'ok'; entry: ReferenceEntryDetail }
   | { kind: 'not_found' }
+  /**
+   * The upstream said "come back shortly", not "this is broken".
+   *
+   * Split out of `error` because the two deserve opposite treatments and
+   * conflating them crashed pages. The reference API is per-IP rate limited
+   * and the web container is ONE IP fronting every SSR render, so a busy
+   * moment 429s legitimate navigations — and the detail page turned that into
+   * a thrown error and an error boundary. Beta's log is a wall of
+   * `Failed to load item/…: 429 Too Many Requests`, each one a reader who got
+   * a crash page for a catalogue entry that exists and is already in memory.
+   *
+   * A rate limit is transient by definition, so it degrades instead.
+   */
+  | { kind: 'rate_limited' }
   | { kind: 'error'; reason: string };
 
 /**

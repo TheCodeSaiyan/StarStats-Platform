@@ -215,7 +215,13 @@ test('row_link_opens_detail_page_with_payload', async ({ page, request }) => {
   await page.goto('/admin/parser-submissions');
   await page.getByRole('link', { name: /sh_aaa111/ }).first().click();
 
-  await expect(page).toHaveURL(/\/admin\/parser-submissions\/101/);
+  // `waitForURL`, not a bare `toHaveURL`. The assertion is identical — the
+  // click must navigate — but `expect` defaults to 5s while a cold route
+  // compile under full-suite load takes longer. Same shape, and same fix, as
+  // the four flakes already corrected in `travel-projection` and `auth`.
+  await page.waitForURL(/\/admin\/parser-submissions\/101/, {
+    timeout: 15_000,
+  });
 
   // Header — the shape hash renders as h1.
   await expect(

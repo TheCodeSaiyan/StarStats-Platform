@@ -17,6 +17,7 @@ import type {
 } from '@/lib/reference-types';
 import { CATEGORIES, resolveReferenceEntry } from '@/lib/reference-types';
 import { toFriendlyName } from '@/lib/heuristic-name';
+import { aggregateLocationBuckets } from '@/lib/class-name-parts';
 import { RowLink } from './RowLink';
 
 /** The catalogues the ranked planes resolve their raw identifiers against. */
@@ -325,10 +326,21 @@ function entityRow(
   catalog: ReferenceCatalog | undefined,
   value: string,
   pct: number,
+  /**
+   * Pin the displayed text.
+   *
+   * For a caller that has ALREADY resolved a human label — the location
+   * planes, which run the same `aggregateLocationBuckets` the flat widgets do
+   * — the label is the truth and must not be re-derived. Without pinning,
+   * `toFriendlyName` runs on a catalogue miss and rewrites prose: a merged
+   * label like "Mission beacon" or a fallback "Unknown" would come back
+   * mangled. The catalogue lookup still runs, so a real place still links.
+   */
+  label?: string,
 ): RankedRow {
   const entry = resolveReferenceEntry(category, classKey, catalog);
   return {
-    name: entry?.display_name ?? toFriendlyName(classKey),
+    name: label ?? entry?.display_name ?? toFriendlyName(classKey),
     value,
     pct,
     href: entry?.slug
@@ -383,18 +395,29 @@ interface RoutesData {
 }
 
 function routesPlane(d: RoutesData, refs?: ProjectionRefs): React.ReactNode {
-  const max = Math.max(...d.routes.map((r) => r.count), 0);
+  // RESOLVE FIRST, exactly as the flat `routes` widget does. A destination
+  // arrives as an engine id or a `system|planet|city` pipe hierarchy, so this
+  // plane was rendering rows that read `Stanton|clio|` and `||` and — because
+  // a composite key matches nothing in a catalogue keyed by class and display
+  // name — could never link either. `aggregateLocationBuckets` turns those
+  // into "Clio" and "Unknown" AND merges the duplicates that collapse to one
+  // label, which is why the counts are re-derived from it rather than kept.
+  const agg = aggregateLocationBuckets(
+    d.routes.map((r) => ({ value: r.destination, count: r.count })),
+  );
+  const max = Math.max(...agg.map((a) => a.count), 0);
   return rankedPlane(
     'Top routes',
-    d.routes
+    agg
       .slice(0, 6)
-      .map((r) =>
+      .map((a) =>
         entityRow(
           'location',
-          r.destination,
+          a.label,
           refs?.catalogs?.locations,
-          fmtNum(r.count),
-          pctOf(r.count, max),
+          fmtNum(a.count),
+          pctOf(a.count, max),
+          a.label,
         ),
       ),
     { href: '/me/travel' as Route, hint: 'select a destination →' },
@@ -511,19 +534,26 @@ interface LocationsData {
 }
 
 function locationsPlane(d: LocationsData, refs?: ProjectionRefs): React.ReactNode {
-  const rows = d.top ?? [];
-  const max = Math.max(...rows.map((r) => r.count), 0);
+  // Same resolution the flat `locations` widget performs, and for the same
+  // reason: `top_locations[].value` is a `system|planet|city` key, not a
+  // place name. Rendering it raw put `Stanton|microTech|New Babbage` and a
+  // bare `||` on screen, neither of which could resolve to a KB entry.
+  const agg = aggregateLocationBuckets(
+    (d.top ?? []).map((r) => ({ value: r.value, count: r.count })),
+  );
+  const max = Math.max(...agg.map((a) => a.count), 0);
   return rankedPlane(
     'Places visited',
-    rows
+    agg
       .slice(0, 6)
-      .map((r) =>
+      .map((a) =>
         entityRow(
           'location',
-          r.value,
+          a.label,
           d.locations ?? refs?.catalogs?.locations,
-          fmtNum(r.count),
-          pctOf(r.count, max),
+          fmtNum(a.count),
+          pctOf(a.count, max),
+          a.label,
         ),
       ),
     { href: '/me/travel' as Route, hint: 'select a place →' },

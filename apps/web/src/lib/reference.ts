@@ -247,9 +247,26 @@ async function _getEntityDetail(
         },
       );
       if (resp.status === 404) return { kind: 'not_found' };
-      if (resp.status === 429 && attempt < RETRYABLE_DELAYS_MS.length) {
-        await new Promise((r) => setTimeout(r, RETRYABLE_DELAYS_MS[attempt]));
-        continue;
+      if (resp.status === 429) {
+        if (attempt < RETRYABLE_DELAYS_MS.length) {
+          // `Retry-After` when the API sends one, because guessing at a
+          // backoff against a governor that has already told you the answer
+          // is how a retry becomes part of the load. Seconds per RFC 9110;
+          // clamped so a large value cannot hold an SSR render open.
+          const after = Number(resp.headers.get('retry-after'));
+          const wait =
+            Number.isFinite(after) && after > 0
+              ? Math.min(after * 1000, 2000)
+              : RETRYABLE_DELAYS_MS[attempt];
+          await new Promise((r) => setTimeout(r, wait));
+          continue;
+        }
+        // Distinct from `error`: the entry is fine, the door is busy. The
+        // caller renders from the local snapshot rather than crashing.
+        console.warn(
+          `reference ${category}/slug/${slug} rate limited after ${RETRYABLE_DELAYS_MS.length + 1} attempts`,
+        );
+        return { kind: 'rate_limited' };
       }
       if (!resp.ok) {
         const reason = `${resp.status} ${resp.statusText}`;
@@ -264,6 +281,43 @@ async function _getEntityDetail(
     console.error(`reference ${category}/slug/${slug} fetch failed`, err);
     return { kind: 'error', reason: String(err) };
   }
+}
+
+/**
+ * Find a catalogue entry by its KB slug, from the SHIPPED SNAPSHOT.
+ *
+ * This is the fallback the detail page renders when the live API is rate
+ * limiting: `packages/reference-data` is compiled into the image and read
+ * from memory, so it cannot 429, cannot time out, and costs nothing. It
+ * carries the name, the slug and the curated summary — everything the page
+ * needs bar the live `metadata` blob (ship matrix, media), which degrades to
+ * nothing on its own.
+ *
+ * Indexed lazily and memoised for the process, because the catalogue is
+ * keyed by class_name and display_name, never by slug — a linear scan per
+ * rate-limited render would be thousands of comparisons on the busiest path
+ * there is.
+ */
+const slugIndex = new Map<ReferenceCategory, ReadonlyMap<string, ReferenceEntry>>();
+
+export async function findEntryBySlug(
+  category: ReferenceCategory,
+  slug: string,
+): Promise<ReferenceEntry | undefined> {
+  let index = slugIndex.get(category);
+  if (!index) {
+    const bundle = await getCategoryBundle(category);
+    const built = new Map<string, ReferenceEntry>();
+    // `list`, not `catalog.values()` — the catalog stores each entry under
+    // both its class_name and its display_name, so `.values()` would walk
+    // every entry twice.
+    for (const e of bundle.list) {
+      if (e.slug) built.set(e.slug.toLowerCase(), e);
+    }
+    index = built;
+    slugIndex.set(category, index);
+  }
+  return index.get(slug.toLowerCase());
 }
 
 /**
