@@ -1,6 +1,6 @@
 import React from 'react';
-import { getMetricsEventTypes, getObjectives } from '@/lib/api';
-import type { ObjectivesResponse } from '@/lib/api';
+import { getCombatStats, getMetricsEventTypes, getObjectives } from '@/lib/api';
+import type { ObjectivesResponse, StatsBucket } from '@/lib/api';
 import { rangeToMetricsRange, rangeToHours } from '@/lib/range';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
@@ -32,6 +32,20 @@ interface CombatMissionData {
   objectivePct: number | null;
   counts: Record<string, number>;
   objectives: ObjectivesResponse | null;
+  /**
+   * Weapon → kill count, and zone → death count.
+   *
+   * `CombatStatsResponse` has carried both since it was written and nothing
+   * ever rendered them: `/me` fetched the response, destructured `kills` and
+   * `deaths`, and dropped these on the floor. No new query, no new capture —
+   * only a caller.
+   *
+   * `top_weapons` is scoped KILL-side by the server (its own comment is
+   * explicit that weapons which killed YOU are a different metric), so this
+   * reads as "what you kill with", never "what killed you".
+   */
+  topWeapons: StatsBucket[];
+  deathsByZone: StatsBucket[];
 }
 
 export const combatMissionWidget = defineWidget<CombatMissionData>({
@@ -51,9 +65,13 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
     // endpoint has no '24h' bucket, so a '24h' pick still widens that
     // half to 7d — see rangeToMetricsRange.)
     const hours = rangeToHours(ctx.range);
-    const [breakdownRes, objectivesRes] = await Promise.allSettled([
+    const [breakdownRes, objectivesRes, combatRes] = await Promise.allSettled([
       getMetricsEventTypes(token, rangeToMetricsRange(ctx.range)),
       getObjectives(token, hours),
+      // Same window as the other two: a lifetime weapon board beside a
+      // range-scoped death count under one range label is the exact fault
+      // the objectives half was already fixed for.
+      getCombatStats(token, hours),
     ]);
     if (breakdownRes.status === 'rejected') {
       logger.warn({ err: breakdownRes.reason, call: 'widget.combat_mission' }, 'fetch failed');
@@ -64,6 +82,13 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
         'fetch failed',
       );
     }
+    if (combatRes.status === 'rejected') {
+      logger.warn(
+        { err: combatRes.reason, call: 'widget.combat_mission.combat' },
+        'fetch failed',
+      );
+    }
+    const combat = combatRes.status === 'fulfilled' ? combatRes.value : null;
     const breakdown = breakdownRes.status === 'fulfilled' ? breakdownRes.value : null;
     const objectives = objectivesRes.status === 'fulfilled' ? objectivesRes.value : null;
     if (!breakdown) return null;
@@ -94,6 +119,8 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
       objectivePct,
       counts,
       objectives,
+      topWeapons: combat?.top_weapons ?? [],
+      deathsByZone: combat?.deaths_by_zone ?? [],
     };
   },
   body(data, _ctx, size) {

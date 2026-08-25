@@ -572,9 +572,79 @@ interface CombatMissionData {
   missionsStarted: number;
   missionsEnded: number;
   completionPct: number | null;
+  /** Weapon → kill count, zone → death count. Both come from
+   *  `CombatStatsResponse`, which has always carried them and which nothing
+   *  rendered until now. */
+  topWeapons: ReadonlyArray<StatsBucket>;
+  deathsByZone: ReadonlyArray<StatsBucket>;
 }
 
-function combatPlane(d: CombatMissionData): React.ReactNode {
+/**
+ * What you kill with, and where you die.
+ *
+ * Both lists arrive on a response the page already fetched and both were
+ * discarded — this is a render, not a new metric. The weapon rows link to the
+ * weapon catalogue and the zone rows to the location catalogue, through the
+ * same resolution every other ranked row uses, so an engine class id never
+ * reaches the screen.
+ */
+function combatDetailPlanes(
+  d: CombatMissionData,
+  refs?: ProjectionRefs,
+): React.ReactNode[] {
+  const out: React.ReactNode[] = [];
+  const weapons = d.topWeapons ?? [];
+  if (weapons.length > 0) {
+    const max = Math.max(...weapons.map((w) => w.count), 0);
+    out.push(
+      rankedPlane(
+        'What you kill with',
+        weapons
+          .slice(0, 6)
+          .map((w) =>
+            entityRow(
+              'weapon',
+              w.value,
+              refs?.catalogs?.weapons,
+              fmtNum(w.count),
+              pctOf(w.count, max),
+            ),
+          ),
+        { href: '/kb/weapon' as Route, hint: 'kills by weapon' },
+      ),
+    );
+  }
+  const zones = d.deathsByZone ?? [];
+  if (zones.length > 0) {
+    // Zones are `system|planet|city` keys like every other location field, so
+    // they go through the same resolver rather than reaching the screen raw.
+    const agg = aggregateLocationBuckets(
+      zones.map((z) => ({ value: z.value, count: z.count })),
+    );
+    const max = Math.max(...agg.map((a) => a.count), 0);
+    out.push(
+      rankedPlane(
+        'Where you die',
+        agg
+          .slice(0, 6)
+          .map((a) =>
+            entityRow(
+              'location',
+              a.label,
+              refs?.catalogs?.locations,
+              fmtNum(a.count),
+              pctOf(a.count, max),
+              a.label,
+            ),
+          ),
+        { hint: 'deaths by zone' },
+      ),
+    );
+  }
+  return out;
+}
+
+function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNode {
   const rows: RankedRow[] = [
     { name: 'Contracts started', value: fmtNum(d.missionsStarted), pct: 0 },
     { name: 'Contracts ended', value: fmtNum(d.missionsEnded), pct: 0 },
@@ -588,7 +658,12 @@ function combatPlane(d: CombatMissionData): React.ReactNode {
     d.vehicleLosses,
     0,
   );
+  // The headline plane, then the two lists that were being discarded. A
+  // fragment rather than three view models: they are one element in the
+  // reader's layout, and splitting them would make "Combat" removable in
+  // three pieces.
   return (
+    <>
     <Plane
       cap="Combat & contracts"
       hint={
@@ -609,6 +684,8 @@ function combatPlane(d: CombatMissionData): React.ReactNode {
         />
       ))}
     </Plane>
+      {combatDetailPlanes(d, refs)}
+    </>
   );
 }
 
@@ -965,7 +1042,10 @@ const BUILDERS: Partial<Record<WidgetId, Builder>> = {
   fleet: { kind: 'plane', build: fleetPlane as (d: never) => React.ReactNode },
   docking: { kind: 'plane', build: dockingPlane as (d: never) => React.ReactNode },
   locations: { kind: 'plane', build: locationsPlane as (d: never) => React.ReactNode },
-  combat_mission: { kind: 'plane', build: combatPlane as (d: never) => React.ReactNode },
+  combat_mission: {
+    kind: 'plane',
+    build: combatPlane as (d: never, r?: ProjectionRefs) => React.ReactNode,
+  },
   facts: { kind: 'plane', build: factsPlane as (d: never) => React.ReactNode },
   heatmap: { kind: 'plane', build: heatmapPlane as (d: never) => React.ReactNode },
   orgs: { kind: 'plane', build: orgsPlane as (d: never) => React.ReactNode },

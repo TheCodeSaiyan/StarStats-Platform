@@ -471,3 +471,86 @@ test.describe('commerce lens', () => {
     expect(over, 'the pane must not scroll horizontally').toBeLessThanOrEqual(0);
   });
 });
+
+/**
+ * Two metrics that were already on the page and being thrown away.
+ *
+ * `CombatStatsResponse` has always carried `top_weapons` (weapon → kills) and
+ * `deaths_by_zone` (zone → deaths). `/me` fetched the response, destructured
+ * `kills` and `deaths`, and dropped both. Rendering them needed no new query,
+ * no new endpoint and no new capture — only a caller.
+ *
+ * The fixture uses a REAL weapon class id from the shipped catalogue
+ * (`apar_hmg_ballistic_01` → "Vendetta HMG") and a real `system|planet|city`
+ * zone key, because both go through the same resolution as every other ranked
+ * row: an engine id must not reach the screen, and the row must link.
+ */
+const COMBAT_SCENARIO: Record<string, unknown> = {
+  'GET /v1/users/me/profile-layout': {
+    status: 200,
+    body: { layout: [{ id: 'combat_mission', enabled: true, size: 'compact' }] },
+  },
+  'GET /v1/me/metrics/event-types': {
+    status: 200,
+    body: {
+      types: [
+        { event_type: 'actor_death', count: 21 },
+        { event_type: 'vehicle_destruction', count: 4 },
+        { event_type: 'mission_start', count: 9 },
+        { event_type: 'mission_end', count: 7 },
+      ],
+    },
+  },
+  'GET /v1/me/stats/combat': {
+    status: 200,
+    body: {
+      hours: 168,
+      kills: 21,
+      deaths: 12,
+      deaths_inferred: 3,
+      top_weapons: [
+        { value: 'apar_hmg_ballistic_01', count: 14 },
+        { value: 'behr_rifle_ballistic_01', count: 5 },
+      ],
+      deaths_by_zone: [
+        { value: 'Stanton|Crusader|Orison', count: 7 },
+        { value: 'Stanton|microTech|New Babbage', count: 3 },
+      ],
+    },
+  },
+};
+
+test.describe('combat lens', () => {
+  test.beforeEach(async ({ request }) => {
+    await resetScenario(request);
+    await setScenario(request, scenarioFor('projection-combat', COMBAT_SCENARIO));
+  });
+
+  test('shows what you kill with and where you die', async ({ page }) => {
+    test.slow();
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const lens = page.locator('.hp-lens button', { hasText: 'Combat' });
+    await expect(lens).toBeVisible({ timeout: 20_000 });
+    await expect(async () => {
+      await lens.click();
+      await expect(page.locator('.hp-plane').first()).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 40_000 });
+
+    const weapons = page.locator('.hp-plane', { hasText: 'What you kill with' });
+    await expect(weapons).toBeVisible();
+    // Resolved through the weapon catalogue — never the raw class id.
+    await expect(weapons).toContainText('Vendetta HMG');
+    await expect(weapons).not.toContainText('apar_hmg');
+    // And the row is a destination, like every other ranked row.
+    await expect(
+      weapons.locator('.hp-rw').filter({ hasText: 'Vendetta HMG' }).first(),
+    ).toHaveAttribute('href', /^\/kb\/weapon\//);
+
+    const zones = page.locator('.hp-plane', { hasText: 'Where you die' });
+    await expect(zones).toBeVisible();
+    // Zone keys are pipe-joined like every other location field.
+    await expect(zones).not.toContainText('|');
+    await expect(zones).toContainText('Orison');
+  });
+});
