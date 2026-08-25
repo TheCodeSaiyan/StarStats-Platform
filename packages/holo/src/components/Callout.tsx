@@ -78,7 +78,7 @@ export function Callout({
 }
 
 /**
- * The six fixed callout slots (gap B5).
+ * The fixed callout slots (gap B5).
  *
  * Upstream, every callout id was pinned to a literal `{left:76, top:212}` in a
  * hand-authored map — fine for a kit with a fixed cast, wrong for a product
@@ -89,6 +89,18 @@ export function Callout({
  *
  * Coordinates are lifted from the kit's primary six so the composition is the
  * one that was actually drawn and stress-tested. Left column fills first.
+ *
+ * THE SEVENTH EXISTS BECAUSE THE CATALOGUE OFFERS SEVEN. With six, a reader
+ * who enabled every callout was told "+1 undrawn · reorder" permanently — a
+ * true statement about capacity, and an unactionable one: reordering only
+ * changes WHICH six appear, so there was no arrangement that satisfied it.
+ * Being told part of your projection cannot be shown, with no remedy, reads
+ * as a fault however the label is worded (this was the second attempt at
+ * wording it). The extra slot continues the left column's 154px rhythm and is
+ * only ever filled when all seven are on. It is kept clear of the two things
+ * that sit low on the stage — the hint is bottom-RIGHT and the lens rail is
+ * bottom-CENTRE, while this is on the left — so the deepest slot has no
+ * horizontal overlap with either.
  */
 export const CALLOUT_SLOTS: readonly { side: 'l' | 'r'; at: CalloutPosition }[] =
   [
@@ -98,6 +110,7 @@ export const CALLOUT_SLOTS: readonly { side: 'l' | 'r'; at: CalloutPosition }[] 
     { side: 'r', at: { right: 74, top: 204 } },
     { side: 'r', at: { right: 92, top: 358 } },
     { side: 'r', at: { right: 66, top: 512 } },
+    { side: 'l', at: { left: 68, top: 674 } },
   ];
 
 /** Slot for the Nth projected callout, or `null` past capacity (CalloutField
@@ -109,9 +122,11 @@ export function slotFor(
 }
 
 /**
- * Wrapper for the callout set. Caps at `max` (6 — the drawn capacity, three
- * slots a side) because past that they overlap the ring and each other, and
- * reports the remainder rather than silently dropping it. Extra metrics stay
+ * Wrapper for the callout set. Caps at `max` — the number of slots that
+ * exist, because past that they overlap the ring and each other — and reports
+ * the remainder rather than silently dropping it. The default is derived from
+ * `CALLOUT_SLOTS` rather than written out: a literal that had to agree with
+ * the array is exactly how the two drifted apart. Extra metrics stay
  * reachable in the pane and the layout editor.
  *
  * The whole field is hidden below 1180px, where the ring and pane leave no
@@ -119,7 +134,7 @@ export function slotFor(
  */
 export function CalloutField({
   children,
-  max = 6,
+  max = CALLOUT_SLOTS.length,
   onOverflowClick,
 }: {
   children?: React.ReactNode;

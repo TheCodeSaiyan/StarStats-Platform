@@ -305,12 +305,18 @@ export function LayoutEditor({
         return (
         <div key={grp.g}>
           <div className="grp">{grp.g}</div>
-          {grp.items.map((e) => {
+          {grp.items.map((e, i) => {
             const on = layout.has(e.id);
+            // Enabled elements now float to the top of their group in layout
+            // order, which left the on block and the off block running
+            // together as one undifferentiated list. One rule, at the seam:
+            // the first off element in a group that has any on ones above it.
+            const seam = !on && i > 0 && layout.has(grp.items[i - 1].id);
             return (
+              <React.Fragment key={e.id}>
+              {seam ? <div className="off">Off</div> : null}
               <div
                 className="hp-el"
-                key={e.id}
                 data-on={on ? 'true' : 'false'}
                 // The row a reader just added, before the server has rebuilt.
                 data-pending={
@@ -370,6 +376,7 @@ export function LayoutEditor({
                   </button>
                 )}
               </div>
+              </React.Fragment>
             );
           })}
         </div>
