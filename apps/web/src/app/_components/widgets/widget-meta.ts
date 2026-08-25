@@ -84,6 +84,11 @@ export const WIDGET_META: Record<WidgetId, WidgetMeta> = {
     description: 'Personal bests and milestones.',
     bounds: { minW: 6, minH: 3, maxW: 16, maxH: 6 },
   },
+  stability: {
+    title: 'Stability',
+    description: 'Game crashes in this window, and the rate per hour played.',
+    bounds: { minW: 4, minH: 3, maxW: 12, maxH: 5 },
+  },
   recent_activity: {
     title: 'Recent activity',
     description: 'Your latest tracked events.',

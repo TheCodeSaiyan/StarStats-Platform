@@ -177,6 +177,12 @@ export const PROJECTION_CATALOGUE: readonly ProjectionElement[] = [
     kind: 'plane',
   },
   {
+    id: 'stability',
+    name: 'Stability',
+    group: 'Lens panes',
+    kind: 'plane',
+  },
+  {
     id: 'orgs',
     name: 'Orgs',
     group: 'Lens panes',

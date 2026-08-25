@@ -1033,6 +1033,66 @@ const CATEGORY_LABEL: Record<ReferenceCategory, string> = {
   location: 'Places',
 };
 
+interface StabilityData {
+  crashes: number;
+  byChannel: ReadonlyArray<StatsBucket>;
+  perHour: number | null;
+  hoursPlayed: number;
+}
+
+/**
+ * Crashes, and the rate that makes the count mean something.
+ *
+ * `/v1/me/stats/stability` was built, tested and never called. It answers a
+ * different question from `lives.lives_ended_by_crash` — that counts CHARACTER
+ * lives ended by a crash; this counts the client falling over, and carries the
+ * release channel so a bad build is visible as a bad build.
+ *
+ * Zero crashes is a RESULT and gets said out loud rather than rendering as an
+ * empty pane — it is the best thing this element can report.
+ */
+function stabilityPlane(d: StabilityData): React.ReactNode {
+  const rows: RankedRow[] = [
+    { name: 'Crashes', value: fmtNum(d.crashes), pct: 0 },
+    ...(d.perHour != null
+      ? [
+          {
+            name: 'Per hour played',
+            // Two decimals, because a healthy rate is well under 1 and whole
+            // numbers would render every good window as a flat zero.
+            value: d.perHour.toFixed(2),
+            pct: 0,
+          } as RankedRow,
+        ]
+      : []),
+    // Channel rows only when there is more than one: a single "LIVE 4" row
+    // beside "Crashes 4" is the same number twice.
+    ...(d.byChannel.length > 1
+      ? d.byChannel.map((b) => ({
+          name: b.value,
+          value: fmtNum(b.count),
+          pct: 0,
+        }))
+      : []),
+  ];
+  return (
+    <Plane
+      tilt="flat"
+      cap="Stability"
+      hint={
+        d.crashes === 0
+          ? `none in ${fmtNum(Math.round(d.hoursPlayed))}h`
+          : 'client crashes'
+      }
+      empty={<span className="hp-empty">{MISSING} nothing in this window</span>}
+    >
+      {rows.map((r, i) => (
+        <MeterRow key={i} rank={i + 1} name={r.name} value={r.value} valueText />
+      ))}
+    </Plane>
+  );
+}
+
 // ── Dispatch ──────────────────────────────────────────────────────────────
 
 type Builder =
@@ -1067,6 +1127,7 @@ const BUILDERS: Partial<Record<WidgetId, Builder>> = {
     build: recentActivityPlane as (d: never) => React.ReactNode,
   },
   records: { kind: 'plane', build: recordsPlane as (d: never) => React.ReactNode },
+  stability: { kind: 'plane', build: stabilityPlane as (d: never) => React.ReactNode },
   hangar: { kind: 'plane', build: hangarPlane as (d: never) => React.ReactNode },
   loadout: { kind: 'plane', build: loadoutPlane as (d: never) => React.ReactNode },
   entities: { kind: 'plane', build: entitiesPlane as (d: never) => React.ReactNode },
