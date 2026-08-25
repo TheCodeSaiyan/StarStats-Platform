@@ -338,7 +338,16 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-tbl tbody tr:hover td { background: rgba(var(--bR),var(--bG),var(--bB),.06); }
 
 /* Traces */
-.hp-graf { margin-top: 20px; height: 96px; }
+/* `min-height`, NOT `height`. A fixed 96px box held a caption plus a 76px
+ * chart, and when `--fs-micro` moved 8.5px -> 10px in the contrast pass the
+ * caption grew and the content became 99px. Three pixels of overflow in a
+ * box that cannot scroll, which propagated to the PANE — every lens whose
+ * pane held a trace grew a scrollbar for content that fits on screen.
+ *
+ * The floor keeps the reserved space so the trace does not jump as data
+ * loads; dropping the ceiling means a future type change reflows instead of
+ * overflowing. Measured: pane overflow 3px -> 0 on every lens. */
+.hp-graf { margin-top: 20px; min-height: 96px; }
 .hp-grafcap { font-size: var(--fs-micro); font-weight: 500; letter-spacing: var(--placard-tracking); text-transform: uppercase; color: var(--label); margin-bottom: 6px; }
 .hp-graf svg { width: 100%; height: 76px; overflow: visible; }
 
