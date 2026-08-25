@@ -584,6 +584,13 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-el .gp { color: var(--dim); cursor: grab; font-size: 12px; }
 .hp-el .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: .04em; }
 .hp-el[data-on="false"] .nm { color: var(--dim); }
+/* A row the reader has just added, before the server has rebuilt and can
+ * draw it. Marked rather than silently counted as projected — the editor used
+ * to claim it was. */
+.hp-el[data-pending="true"] .nm { color: var(--warn); }
+.hp-el[data-pending="true"] .gp { color: var(--warn); }
+.hp-layout .note .pend { color: var(--warn); font-weight: 500; }
+.hp-layout .note .err { color: var(--bad); font-weight: 500; }
 .hp-el button { font: inherit; background: none; border: 1px solid rgba(var(--bR),var(--bG),var(--bB),.28); color: var(--beam); width: 18px; height: 18px; line-height: 1; display: grid; place-items: center; cursor: pointer; font-size: 12px; transition: border-color 180ms, color 180ms, background 180ms; }
 .hp-el button:hover { border-color: var(--hot); color: var(--hot); background: rgba(var(--hR),var(--hG),var(--hB),.1); }
 .hp-el .add { color: var(--good); border-color: rgba(124,255,178,.4); }
