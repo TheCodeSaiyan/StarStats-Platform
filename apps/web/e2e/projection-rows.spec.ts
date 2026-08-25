@@ -365,3 +365,80 @@ test.describe('loadout plane', () => {
     await expect(rows.first()).toHaveAttribute('href', /^\/kb\/(weapon|item)\//);
   });
 });
+
+/**
+ * The Commerce lens, and a raw engine id that reached the screen twice.
+ *
+ * `shop_buy_request` carries the engine's own name. Reported from a live
+ * account: the pane's "Top shop" figure and the core readout's detail line
+ * both read `SCShop_NoodleBar_A_Food_RestStop`. It is also ONE unbroken
+ * token, so it pushed the sub-stat grid wider than the pane and the pane grew
+ * a horizontal scrollbar behind it — the raw value and the stray bar were the
+ * same fault.
+ *
+ * The transform already existed in both flat widgets; the projection was not
+ * using it. Same shape as the `system|planet|city` keys on Travel: the
+ * projection re-deriving what a widget already computes.
+ */
+const COMMERCE_SCENARIO: Record<string, unknown> = {
+  'GET /v1/users/me/profile-layout': {
+    status: 200,
+    body: { layout: [{ id: 'spend', enabled: true, size: 'compact' }] },
+  },
+  'GET /v1/me/stats/spend': {
+    status: 200,
+    body: {
+      total_auec: 21909,
+      purchases: 14,
+      orders: 14,
+      buys: 14,
+      sells: 0,
+      top_shop: 'SCShop_NoodleBar_A_Food_RestStop',
+    },
+  },
+};
+
+test.describe('commerce lens', () => {
+  test.beforeEach(async ({ request }) => {
+    await resetScenario(request);
+    await setScenario(request, scenarioFor('projection-commerce', COMMERCE_SCENARIO));
+  });
+
+  test('names the shop, and no raw id reaches the screen', async ({ page }) => {
+    test.slow();
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const lens = page.locator('.hp-lens button', { hasText: 'Commerce' });
+    await expect(lens).toBeVisible({ timeout: 20_000 });
+    await expect(async () => {
+      await lens.click();
+      await expect(page.locator('.hp-subs').first()).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 40_000 });
+
+    // Nowhere on the page, because it appeared in two places and fixing one
+    // would have looked like fixing it.
+    await expect(page.locator('body')).not.toContainText('SCShop_');
+    await expect(page.locator('body')).not.toContainText('_Food_RestStop');
+    // And the readable form is present.
+    await expect(page.locator('body')).toContainText('NoodleBar A Food RestStop');
+  });
+
+  test('a long value cannot push the pane sideways', async ({ page }) => {
+    test.slow();
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const lens = page.locator('.hp-lens button', { hasText: 'Commerce' });
+    await expect(lens).toBeVisible({ timeout: 20_000 });
+    await expect(async () => {
+      await lens.click();
+      await expect(page.locator('.hp-subs').first()).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 40_000 });
+
+    const over = await page.evaluate(() => {
+      const pane = document.querySelector('.hp-pane') as HTMLElement | null;
+      if (!pane) return null;
+      return pane.scrollWidth - pane.clientWidth;
+    });
+    expect(over, 'the pane must not scroll horizontally').toBeLessThanOrEqual(0);
+  });
+});

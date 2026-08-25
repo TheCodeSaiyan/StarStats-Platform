@@ -1,4 +1,5 @@
 import React from 'react';
+import { prettyShop } from '@/lib/shop-name';
 import { getSpend } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { rangeToWindowHours, rangeHasLifetimeBaseline } from '@/lib/range';
@@ -9,11 +10,6 @@ import { ReadoutGroup, type Readout } from './kit/archetypes';
 import { fmtNum } from './kit/format';
 import { InfoTip } from '@/components/hud/InfoTip';
 import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
-
-/** Strip the `SCShop_` prefix + underscores from a raw shop_name. */
-function prettyShop(raw: string): string {
-  return raw.replace(/^SCShop[_-]?/i, '').replace(/_/g, ' ').trim() || raw;
-}
 
 /**
  * `spend` widget — kiosk spending depth from the reparse-gated
