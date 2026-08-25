@@ -129,3 +129,67 @@ test('no console errors', async ({ page }) => {
   }
   expect(consoleErrors).toEqual([]);
 });
+
+test('the empty state says WHICH kind of nothing it is', async ({ page, request }) => {
+  /**
+   * "No loadout snapshot yet" was the only message, and it conflated two
+   * situations with opposite remedies: no bursts at all (play, nothing is
+   * broken) versus bursts that carry no gear (an older tray build, or the
+   * rule_id mismatch fixed in tray-v1.8.28..31 — re-parse, and no amount of
+   * playing will fix the old rows).
+   *
+   * Reported as "the gear loadout is not loading", which is exactly what the
+   * second case looks like from the outside.
+   */
+  await setScenario(
+    request,
+    scenarioFor('loadout-empty-bursts', {
+      // Bursts exist, but none is a loadout_restore: no `kind`, no `items`,
+      // which is precisely what an older tray emitted.
+      'GET /v1/me/events': {
+        status: 200,
+        body: {
+          next_after: null,
+          events: [
+            {
+              seq: 91422,
+              event_type: 'burst_summary',
+              event_timestamp: '2026-07-18T20:14:03Z',
+              log_source: 'game.log',
+              source_offset: 1,
+              hidden_at: null,
+              resolved_location: null,
+              payload: { rule_id: 'movement_burst', size: 5 },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me/loadout');
+
+  // The lead sentence is unchanged — it is shipped copy.
+  await expect(page.locator('body')).toContainText('No loadout snapshot yet');
+  // …but it now names the situation and the remedy.
+  await expect(page.locator('body')).toContainText('none carrying gear');
+  await expect(page.locator('body')).toContainText('Re-parse local store');
+});
+
+test('with no bursts at all it says to go and fly, not to re-parse', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('loadout-no-bursts', {
+      'GET /v1/me/events': { status: 200, body: { next_after: null, events: [] } },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me/loadout');
+
+  await expect(page.locator('body')).toContainText('No loadout snapshot yet');
+  // Telling someone to re-parse when they have never played is noise.
+  await expect(page.locator('body')).not.toContainText('Re-parse local store');
+});
