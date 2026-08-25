@@ -1,5 +1,8 @@
 import 'server-only';
 import { headers } from 'next/headers';
+// A static import, not a lazy `require`: the lint bans require-style imports,
+// and this module is `server-only` so `node:fs` never reaches a client bundle.
+import { readFileSync } from 'node:fs';
 
 /**
  * Headers that tell the API which end user a server-side render is for.
@@ -45,8 +48,47 @@ function clientAddress(h: Headers): string | null {
   return h.get('cf-connecting-ip') ?? h.get('x-real-ip');
 }
 
+/**
+ * The shared secret, from an env var or a mounted secret file.
+ *
+ * `_FILE` is what production uses: the homelab renders 1Password items into
+ * `$SECRETSDIR` and Docker mounts them at `/run/secrets/…`, so the value never
+ * sits in a committed file or an image. Mirrors `read_env_or_file` on the
+ * server, which reads the same pair.
+ *
+ * Read once per process and memoised — this is on the render path for every
+ * reference fetch, and re-reading a file per request would be a syscall for a
+ * value that cannot change without a restart. `null` memoises too, so an
+ * unconfigured deployment does not stat a missing path on every render.
+ */
+let cachedToken: string | null | undefined;
+
+function ssrToken(): string | null {
+  if (cachedToken !== undefined) return cachedToken;
+  const inline = process.env.STARSTATS_SSR_TOKEN;
+  if (inline && inline.trim()) {
+    cachedToken = inline.trim();
+    return cachedToken;
+  }
+  const path = process.env.STARSTATS_SSR_TOKEN_FILE;
+  if (path) {
+    try {
+      const raw = readFileSync(path, 'utf8').trimEnd();
+      cachedToken = raw.trim() ? raw : null;
+      return cachedToken;
+    } catch {
+      // A broken secret mount must not take rendering down — it just means
+      // the reader cannot be named and the old shared bucket applies.
+      cachedToken = null;
+      return cachedToken;
+    }
+  }
+  cachedToken = null;
+  return cachedToken;
+}
+
 export async function ssrIdentityHeaders(): Promise<Record<string, string>> {
-  const token = process.env.STARSTATS_SSR_TOKEN;
+  const token = ssrToken();
   if (!token) return {};
   try {
     // `headers()` throws outside a request scope — during static generation,
