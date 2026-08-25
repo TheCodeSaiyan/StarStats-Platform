@@ -103,6 +103,31 @@ export default async function LoadoutPage() {
   const burstEvent = pickFullestLoadoutBurst(eventsResp.events);
 
   if (burstEvent == null || !isLoadoutBurstPayload(burstEvent.payload)) {
+    /**
+     * SAY WHICH KIND OF NOTHING THIS IS.
+     *
+     * "No loadout snapshot yet" was the only message, and it conflated two
+     * very different situations with different remedies:
+     *
+     *   - No `burst_summary` events at all. The tray has not yet seen a spawn
+     *     or a re-equip. The remedy is to play; nothing is broken.
+     *   - Bursts exist but none carry gear. Their payloads have no
+     *     `kind: 'loadout_restore'` and no `items`, which is what a tray build
+     *     from before the per-item capture produces, and what the rule_id
+     *     mismatch fixed in tray-v1.8.28..31 left behind on historical rows.
+     *     The remedy is a re-parse (Settings → "Re-parse local store"), or an
+     *     update — and no amount of playing will fix the old rows on its own.
+     *
+     * A reader told only "no snapshot yet" cannot tell those apart, and will
+     * wait for something that is never going to arrive.
+     */
+    const burstsSeen = eventsResp.events.length;
+    const message =
+      burstsSeen === 0
+        ? 'No loadout snapshot yet.'
+        : `No loadout snapshot yet — ${burstsSeen} activity burst${
+            burstsSeen === 1 ? '' : 's'
+          } recorded, none carrying gear.`;
     return (
       <LoadoutProjection
         {...shell}
@@ -111,8 +136,26 @@ export default async function LoadoutPage() {
             id: 'kit',
             title: 'Loadout',
             group: 'kit',
-            // Shipped copy, verbatim — the e2e asserts on it.
-            node: <p className="hp-prose">No loadout snapshot yet.</p>,
+            node: (
+              <>
+                {/* The first sentence is shipped copy, verbatim — the e2e
+                    asserts on it, and it stays the lead in both cases. */}
+                <p className="hp-prose">{message}</p>
+                {burstsSeen > 0 ? (
+                  <p className="hp-prose">
+                    Gear is captured from a spawn or re-equip. Bursts recorded
+                    by an older tray build carry no per-item detail — run
+                    <strong> Re-parse local store</strong> in the tray&rsquo;s
+                    Settings to rebuild them, then sync.
+                  </p>
+                ) : (
+                  <p className="hp-prose">
+                    The tray records your kit the next time you spawn or
+                    re-equip. Nothing to do but fly.
+                  </p>
+                )}
+              </>
+            ),
           },
         ]}
         notice={null}
