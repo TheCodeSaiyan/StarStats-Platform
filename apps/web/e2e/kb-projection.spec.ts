@@ -30,7 +30,12 @@ test('the flat marketing chrome does not stack above the volume', async ({
   // and the marketing footer. It sets `display: flex` INLINE, so hiding it
   // needs `!important` — a plain rule loses to the inline declaration however
   // specific it is. Shipped stacked once, on the first public projection page.
-  await page.goto('/kb/vehicle');
+  // A 30s navigation budget, not the config's 10s. `/kb/vehicle` is the
+  // heaviest route in the suite — a 12k-entry catalogue — and its FIRST
+  // compile in `next dev` under full-suite load exceeds the default, so two
+  // tests in this file failed on the clock rather than on anything they
+  // measure. Both pass in isolation. Nothing about the assertions changes.
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   await expect(page.locator('.hp-catgrid')).toBeVisible();
   await expect(page.locator('.ss-marketing-nav')).toBeHidden();
   await expect(page.locator('.site-footer')).toBeHidden();
@@ -89,7 +94,7 @@ test('a card link is nameable — the article landmark would otherwise hide it',
   // `aria-label` on the card link is load-bearing: the contents sit inside
   // `<article>`, an ARIA landmark, and the accessible-name algorithm stops at
   // landmark boundaries.
-  await page.goto('/kb/vehicle');
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   const first = page.locator('.hp-catcard').first();
   await expect(first).toHaveAttribute('aria-label', /.+/);
 });
@@ -269,7 +274,7 @@ test('a referenced entry gets a Contracts pane, headed once', async ({
  * out altogether. These assert the shapes the spec actually calls for.
  */
 test('the browse cards are planes, not a bespoke card', async ({ page }) => {
-  await page.goto('/kb/vehicle');
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   const cards = page.locator('.hp-catgrid .hp-catcard');
   await expect(cards.first()).toBeVisible();
   // `Catalogue.jsx` draws each entry as `hp-plane flat`.
@@ -285,7 +290,7 @@ test('facets and sort share one chip style', async ({ page }) => {
   // The spec has a single `chip(active)` used by both rows. Two near-identical
   // control styles on one screen is exactly what a design system exists to
   // prevent.
-  await page.goto('/kb/vehicle');
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   const chips = page.locator('.hp-catchip');
   expect(await chips.count()).toBeGreaterThan(2);
   await expect(page.locator('.hp-preset, .hp-sortrow')).toHaveCount(0);
@@ -294,7 +299,7 @@ test('facets and sort share one chip style', async ({ page }) => {
 test('the browse offers the overlay comparison', async ({ page }) => {
   // Missing entirely from the first pass. It sits between the sort row and the
   // grid, and nothing is fetched until two entries are picked.
-  await page.goto('/kb/vehicle');
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   const bar = page.locator('.hp-cmp-bar');
   await expect(bar).toBeVisible();
   await expect(page.getByText(/Pick two or three to overlay them/)).toBeVisible();
@@ -304,7 +309,7 @@ test('exactly one skip link', async ({ page }) => {
   // Deleting the flat chrome left the root layout's skip link pointing at a
   // wrapper that no longer contained anything to skip, alongside the
   // projection's own — two "Skip to content" links on every page.
-  await page.goto('/kb/vehicle');
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   await expect(page.getByRole('link', { name: /skip to content/i })).toHaveCount(
     1,
   );
@@ -325,7 +330,7 @@ test('the browse makes no API call until a comparison is asked for', async ({
     if (r.url().includes('/kb/compare/')) compareCalls.push(r.url());
   });
 
-  await page.goto('/kb/vehicle');
+  await page.goto('/kb/vehicle', { timeout: 30_000 });
   await expect(page.locator('.hp-cmp-bar')).toBeVisible();
   await page.waitForTimeout(800);
   expect(compareCalls).toEqual([]);
