@@ -235,10 +235,19 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
    * express first-of-row, and a negative margin needs a clipping parent a
    * component cannot assume. Text starts 14px in, so nothing legible is lost. */
   clip-path: inset(0 0 0 1px); }
-.hp-subs > div { position: relative; padding: 0 14px; }
+/* `min-width: 0` on the grid item: an auto-fit track's minimum is its content
+ * by default, so ONE long value — a shop id, a place with a long name — makes
+ * the whole grid wider than the pane and the pane grows a horizontal
+ * scrollbar. Measured on the Commerce lens, where
+ * `SCShop_NoodleBar_A_Food_RestStop` did exactly that. */
+.hp-subs > div { position: relative; padding: 0 14px; min-width: 0; }
 .hp-subs > div::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: rgba(var(--bR),var(--bG),var(--bB),.16); pointer-events: none; }
 .hp-subs span { display: block; font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); }
-.hp-subs b { display: block; font-size: 25px; font-weight: 400; color: var(--hot); margin-top: 4px; letter-spacing: -.01em; white-space: nowrap; text-shadow: 0 0 11px rgba(var(--bR),var(--bG),var(--bB),.5); font-variant-numeric: tabular-nums; }
+/* `nowrap` is right for a FIGURE — "21,909" must never break across lines —
+ * but these slots also carry words, and a word that cannot wrap and cannot
+ * shrink can only overflow. Ellipsis on overflow keeps the figure intact and
+ * bounds the text; the full value is still in the callout's detail line. */
+.hp-subs b { display: block; font-size: 25px; font-weight: 400; color: var(--hot); margin-top: 4px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 11px rgba(var(--bR),var(--bG),var(--bB),.5); font-variant-numeric: tabular-nums; }
 .hp-subs b small { font-size: var(--fs-base); font-weight: 300; color: var(--beam); }
 .hp-subs b.w { color: var(--warn); text-shadow: 0 0 11px rgba(255,194,77,.45); }
 .hp-subs b.g { color: var(--good); text-shadow: 0 0 11px rgba(124,255,178,.45); }

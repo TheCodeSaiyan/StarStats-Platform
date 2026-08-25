@@ -1,4 +1,5 @@
 import React from 'react';
+import { prettyShop } from '@/lib/shop-name';
 import { getCommerceRecent, getFriendCommerceRecent, getSpend } from '@/lib/api';
 import type {
   CommerceRecentResponse,
@@ -12,11 +13,6 @@ import { EmptyWindow } from './kit/EmptyWindow';
 import { defineWidget } from './kit/defineWidget';
 import { ReadoutGroup, RankedList, type Readout, type Row } from './kit/archetypes';
 import { fmtNum } from './kit/format';
-
-/** Strip the `SCShop_` prefix + underscores from a raw shop_name for display. */
-function prettyShop(raw: string): string {
-  return raw.replace(/^SCShop[_-]?/i, '').replace(/_/g, ' ').trim() || raw;
-}
 
 // Data source per viewer:
 //   - Owner self-view:   /v1/me/commerce/recent       (existing endpoint)

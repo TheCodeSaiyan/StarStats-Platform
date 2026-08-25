@@ -18,6 +18,7 @@ import type {
 import { CATEGORIES, resolveReferenceEntry } from '@/lib/reference-types';
 import { toFriendlyName } from '@/lib/heuristic-name';
 import { aggregateLocationBuckets } from '@/lib/class-name-parts';
+import { prettyShop } from '@/lib/shop-name';
 import { RowLink } from './RowLink';
 
 /** The catalogues the ranked planes resolve their raw identifiers against. */
@@ -202,13 +203,18 @@ function spendCallout(d: SpendData): CalloutVM {
     stats: [
       { k: 'Spent', v: fmtNum(d.total_auec), u: 'aUEC' },
       { k: 'Purchases', v: fmtNum(d.purchases) },
-      ...(d.top_shop ? [{ k: 'Top shop', v: d.top_shop }] : []),
+      // `prettyShop`, the SAME transform the flat widgets apply. The raw
+      // value is the engine's own id — `SCShop_NoodleBar_A_Food_RestStop` —
+      // and it reached the screen twice on the Commerce lens: here, and in
+      // the detail line below. A single unbroken token, so it also overflowed
+      // the pane and grew a horizontal scrollbar behind it.
+      ...(d.top_shop ? [{ k: 'Top shop', v: prettyShop(d.top_shop) }] : []),
     ],
     label: 'Spending',
     value: fmtNum(d.total_auec),
     unit: 'aUEC',
     sub: d.top_shop
-      ? `${fmtNum(d.purchases)} purchases · ${d.top_shop}`
+      ? `${fmtNum(d.purchases)} purchases · ${prettyShop(d.top_shop)}`
       : `${fmtNum(d.purchases)} purchases`,
     tone: 'warn',
   };
