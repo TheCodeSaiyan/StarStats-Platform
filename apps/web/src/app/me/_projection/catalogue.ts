@@ -34,7 +34,7 @@ export interface ProjectionElement {
   /** Editor label. */
   name: string;
   /** Editor grouping. */
-  group: 'Callouts' | 'Lens panes' | 'Ring';
+  group: 'Callouts' | 'Lens panes' | 'Centre ring';
   kind: ElementKind;
   /** Clarifies an ambiguous name in the editor. */
   hint?: string;
@@ -150,13 +150,17 @@ export const PROJECTION_CATALOGUE: readonly ProjectionElement[] = [
     kind: 'plane',
   },
 
-  // ── Ring ────────────────────────────────────────────────────────────────
+  // ── Centre ring ────────────────────────────────────────────────────────────────
   {
     id: 'journey',
     name: 'Route map',
-    group: 'Ring',
+    // "Ring" alone did not say WHICH ring, and a reader asked whether it
+    // meant the one in the middle of the screen. It does — this element is
+    // drawn BY that ring rather than beside it, which is the whole reason it
+    // is not a pane or a callout, so the group says where to look.
+    group: 'Centre ring',
     kind: 'ring',
-    hint: 'Drawn by the ring itself under the Travel lens',
+    hint: 'Turns the ring at the centre of the volume into a route map, under the Travel lens',
   },
 
   // ── Restored after the first pass dropped them ──────────────────────────

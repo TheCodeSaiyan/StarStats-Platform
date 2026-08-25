@@ -580,6 +580,13 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-layout h3 { margin: 0 0 3px; font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--placard-tracking); text-transform: uppercase; color: var(--hot); }
 .hp-layout .note { font-size: var(--fs-micro); letter-spacing: .14em; text-transform: uppercase; color: var(--label); margin-bottom: 12px; }
 .hp-layout .grp { font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.16); }
+/* The seam between a group's enabled elements — which are in layout order,
+   and whose order is load-bearing — and the ones that are off, which have no
+   position at all. Lighter than a group header: it divides a group, it is not
+   one. It is separated by space and the absence of a rule, NOT by fading the
+   text: --dim on small uppercase, and opacity on readable text, are both
+   contrast failures the palette guard rejects. */
+.hp-layout .off { font-size: var(--fs-micro); letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); margin: 11px 0 4px; }
 /* Five columns since the reorder controls became a pair: grip, name, up,
    down, add/remove. With four, the down arrow landed in the add column and
    pushed it out of the row. */

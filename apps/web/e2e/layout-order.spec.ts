@@ -154,6 +154,42 @@ test.describe('projection layout order', () => {
     await expect(first.locator('button[aria-label$="later"]')).toBeEnabled();
   });
 
+  test('a group separates what is on from what is off', async ({
+    page,
+    request,
+  }) => {
+    test.slow();
+    await resetScenario(request);
+    await setScenario(
+      request,
+      scenarioFor('lo', {
+        'GET /v1/users/me/profile-layout': { status: 200, body: { layout: LAYOUT } },
+      }),
+    );
+    await loginAs(page, { handle: 'TestPilot' });
+    await openEditor(page);
+
+    // Enabled elements float to the top of their group in layout order, which
+    // ran the on block and the off block together as one list.
+    const group = page
+      .locator('.hp-layout > div')
+      .filter({ has: page.locator('.grp', { hasText: 'Callouts' }) });
+    await expect(group.locator('.off')).toHaveCount(1);
+
+    // Exactly at the seam: everything above it is on, everything below is off.
+    const states = await group.evaluateAll((els) =>
+      [...els[0].children]
+        .filter((c) => c.classList.contains('hp-el') || c.classList.contains('off'))
+        .map((c) =>
+          c.classList.contains('off') ? 'SEAM' : c.getAttribute('data-on'),
+        ),
+    );
+    const seam = states.indexOf('SEAM');
+    expect(seam).toBeGreaterThan(0);
+    expect(states.slice(0, seam).every((v) => v === 'true')).toBe(true);
+    expect(states.slice(seam + 1).every((v) => v === 'false')).toBe(true);
+  });
+
   test('a refused write is not reported as saved', async ({ page, request }) => {
     test.slow();
     await resetScenario(request);
