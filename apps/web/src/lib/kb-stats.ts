@@ -1,4 +1,5 @@
 import { cache } from 'react';
+import { ssrIdentityHeaders } from './ssr-identity';
 import 'server-only';
 import { apiBase } from './api';
 import { kbCacheOpts } from './reference';
@@ -31,6 +32,10 @@ async function _getCategoryStats(
 ): Promise<CategoryStats> {
   try {
     const resp = await fetch(`${apiBase()}/v1/reference/${category}/stats`, {
+      // Same reason as the detail fetch — see `lib/ssr-identity.ts`. This one
+      // is `no-store` for the large categories, so it hits the API on every
+      // render and is the other half of the shared-bucket problem.
+      headers: await ssrIdentityHeaders(),
       method: 'GET',
       signal: AbortSignal.timeout(STATS_FETCH_TIMEOUT_MS),
       // Most categories' stats are small quantile summaries, but

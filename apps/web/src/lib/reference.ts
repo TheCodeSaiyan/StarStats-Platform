@@ -37,6 +37,7 @@ import {
   type ConsolidatedEntry,
 } from 'reference-data';
 import { apiBase } from './api';
+import { ssrIdentityHeaders } from './ssr-identity';
 import {
   CATEGORIES,
   emptySummary,
@@ -243,6 +244,10 @@ async function _getEntityDetail(
         `${apiBase()}/v1/reference/${category}/slug/${encodeURIComponent(slug)}`,
         {
           method: 'GET',
+          // Names the reader this render is for, so the API's limiter gives
+          // them their own bucket instead of pooling every visitor into the
+          // web container's single address. See `lib/ssr-identity.ts`.
+          headers: await ssrIdentityHeaders(),
           ...kbCacheOpts('detail', category),
         },
       );
