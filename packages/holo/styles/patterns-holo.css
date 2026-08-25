@@ -249,6 +249,17 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  * bounds the text; the full value is still in the callout's detail line. */
 .hp-subs b { display: block; font-size: 25px; font-weight: 400; color: var(--hot); margin-top: 4px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 11px rgba(var(--bR),var(--bG),var(--bB),.5); font-variant-numeric: tabular-nums; }
 .hp-subs b small { font-size: var(--fs-base); font-weight: 300; color: var(--beam); }
+/* A WORD value gets a face it can actually be read in, and two lines to do it.
+ * The figure treatment above — 25px, tabular, nowrap — is right for "21,909"
+ * and wrong for a name: at a 194px column it truncated
+ * "NoodleBar A Food RestStop" to "NoodleBar A Food Rest…". Same rule the
+ * ranked rows already follow when their value is words rather than a number. */
+.hp-subs > div[data-kind="text"] b {
+  font-size: var(--fs-base); line-height: 1.25; white-space: normal;
+  overflow-wrap: anywhere; font-variant-numeric: normal;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .hp-subs b.w { color: var(--warn); text-shadow: 0 0 11px rgba(255,194,77,.45); }
 .hp-subs b.g { color: var(--good); text-shadow: 0 0 11px rgba(124,255,178,.45); }
 
