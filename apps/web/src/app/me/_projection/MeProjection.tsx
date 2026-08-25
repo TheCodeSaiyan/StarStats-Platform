@@ -101,7 +101,10 @@ export interface MeProjectionProps {
   traceDays: number;
   nav: NavSection[];
   /** Persists the layout to the account. */
-  onSaveLayout: (ids: string[]) => void;
+  /** Server action writing the layout. Returns a promise so the editor can
+   *  report whether the write landed, and so the refresh that redraws a newly
+   *  added widget runs only AFTER the new layout is stored. */
+  onSaveLayout: (ids: string[]) => Promise<void>;
   /** Persists the calibration (reuses the existing theme preference). */
   onCalibrate: (id: CalibrationId) => void;
 }
@@ -142,9 +145,32 @@ export function MeProjection({
   // Keep in step if the server sends a different value on a later navigation.
   React.useEffect(() => setCal(calibration), [calibration]);
 
+  /**
+   * ADDING A WIDGET HAS TO REACH THE SERVER BEFORE IT CAN DRAW.
+   *
+   * `callouts` and `planes` are built server-side from the SAVED layout, so
+   * the client can only filter what it was given — an id the server has not
+   * seen has no data and no view model. Adding one therefore changed the
+   * editor's counter and nothing else: measured at "1 of 22 projected" ->
+   * "2 of 22" with the drawn plane count still zero.
+   *
+   * So the save is followed by `router.refresh()`, which re-runs the server
+   * render with the new layout, fetches the widget's data and draws it. The
+   * refresh is awaited-then-fired rather than raced with the write: refreshing
+   * before the layout is stored would rebuild from the OLD layout and the new
+   * widget would vanish again.
+   */
+  const persistLayout = React.useCallback(
+    async (ids: string[]) => {
+      await onSaveLayout(ids);
+      router.refresh();
+    },
+    [onSaveLayout, router],
+  );
+
   const layout = useLayout('me.projection', PROJECTION_CATALOGUE, {
     initial: enabledIds,
-    persist: onSaveLayout,
+    persist: persistLayout,
   });
 
   const mode = record ? 'inspect' : lens > -1 ? 'detail' : 'overview';

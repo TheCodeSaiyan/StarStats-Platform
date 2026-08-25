@@ -36,6 +36,22 @@ export interface CatalogueEntry {
   hint?: string;
 }
 
+/**
+ * What the last write is doing, so the editor can say so.
+ *
+ * `pending` also carries the ids ADDED since the server last rendered. Those
+ * cannot appear yet — the elements are built server-side from the saved
+ * layout, so an id the server has not seen has no data and no view — and the
+ * editor was reporting them as projected regardless. Measured: adding a
+ * widget moved the counter from "1 of 22 projected" to "2 of 22" while the
+ * number of drawn planes stayed at zero.
+ */
+export type LayoutSaveState =
+  | { kind: 'idle' }
+  | { kind: 'saving' }
+  | { kind: 'saved' }
+  | { kind: 'error' };
+
 export interface LayoutApi {
   ids: string[];
   has: (id: string) => boolean;
@@ -44,6 +60,11 @@ export interface LayoutApi {
   toggle: (id: string) => void;
   move: (id: string, dir: number) => void;
   reset: () => void;
+  /** State of the most recent write. */
+  save: LayoutSaveState;
+  /** Ids added since the server last built the elements — enabled in the
+   *  layout but not yet drawable. Empty once a refresh has landed. */
+  awaitingRender: string[];
   /** Enabled elements in layout order — map this to render. */
   projected: CatalogueEntry[];
 }
@@ -53,11 +74,14 @@ export interface UseLayoutOptions {
   initial?: string[];
   /**
    * Called with the full id list after every change. Wire this to the server
-   * action that writes `PUT /v1/users/me/profile-layout`. Persistence is
-   * fire-and-forget: the UI has already moved, and a failed write must not
-   * strand the reader mid-edit.
+   * action that writes `PUT /v1/users/me/profile-layout`.
+   *
+   * The UI still moves immediately — a reader mid-edit must not be blocked on
+   * a round trip — but the promise IS awaited so the editor can say whether
+   * the write landed. It used to be fire-and-forget, which meant a failed
+   * save looked exactly like a successful one.
    */
-  persist?: (ids: string[]) => void;
+  persist?: (ids: string[]) => void | Promise<void>;
 }
 
 export function useLayout(
@@ -80,17 +104,47 @@ export function useLayout(
     [catalogue],
   );
 
+  const [save, setSave] = React.useState<LayoutSaveState>({ kind: 'idle' });
+  /**
+   * The ids the SERVER knew about when it built the elements.
+   *
+   * Anything added after that cannot be drawn — its data was never fetched —
+   * so the editor must not claim it is projected. `initial` changes when a
+   * refresh lands with the new layout, which is what clears the pending set.
+   */
+  const serverIds = React.useMemo(() => new Set(initial), [initial]);
+
   const commit = React.useCallback(
     (next: string[]) => {
       const clean = next.filter((id) => known.has(id));
+      // Optimistic: the reader's own click must not wait on a round trip.
       setIds(clean);
-      persist?.(clean);
+      if (!persist) return;
+      let result: void | Promise<void>;
+      try {
+        result = persist(clean);
+      } catch {
+        setSave({ kind: 'error' });
+        return;
+      }
+      if (!result || typeof (result as Promise<void>).then !== 'function') {
+        // A synchronous persist tells us nothing about the write; say nothing.
+        return;
+      }
+      setSave({ kind: 'saving' });
+      (result as Promise<void>).then(
+        () => setSave({ kind: 'saved' }),
+        // A failed write used to look exactly like a successful one.
+        () => setSave({ kind: 'error' }),
+      );
     },
     [known, persist],
   );
 
   return {
     ids,
+    save,
+    awaitingRender: ids.filter((id) => !serverIds.has(id)),
     has: (id: string) => ids.includes(id),
     add: (id: string) => {
       if (!ids.includes(id)) commit([...ids, id]);
@@ -151,8 +205,30 @@ export function LayoutEditor({
       aria-label={title}
     >
       <h3>{title}</h3>
-      <div className="note">
-        {count} of {catalogue.length} projected · saved to your account
+      {/* THE COUNT USED TO LIE. It read "N of M projected" the instant an id
+          was added, but the elements are built server-side from the saved
+          layout — a widget the server has not seen has no data and draws
+          nothing. Measured: the counter moved 1 -> 2 while the drawn planes
+          stayed at 0. Now the line separates what IS projected from what is
+          waiting on a refresh, and says whether the write actually landed. */}
+      <div className="note" role="status" aria-live="polite">
+        {count - layout.awaitingRender.length} of {catalogue.length} projected
+        {layout.awaitingRender.length > 0 ? (
+          <>
+            {' · '}
+            <b className="pend">
+              {layout.awaitingRender.length} loading
+            </b>
+          </>
+        ) : null}
+        {' · '}
+        {layout.save.kind === 'saving'
+          ? 'saving…'
+          : layout.save.kind === 'error'
+            ? <b className="err">could not save — your change may not stick</b>
+            : layout.save.kind === 'saved'
+              ? 'saved to your account'
+              : 'saved to your account'}
       </div>
       {groups.map((grp) => (
         <div key={grp.g}>
@@ -160,7 +236,15 @@ export function LayoutEditor({
           {grp.items.map((e) => {
             const on = layout.has(e.id);
             return (
-              <div className="hp-el" key={e.id} data-on={on ? 'true' : 'false'}>
+              <div
+                className="hp-el"
+                key={e.id}
+                data-on={on ? 'true' : 'false'}
+                // The row a reader just added, before the server has rebuilt.
+                data-pending={
+                  layout.awaitingRender.includes(e.id) ? 'true' : undefined
+                }
+              >
                 <span className="gp" aria-hidden="true">
                   {on ? '⠿' : '·'}
                 </span>
