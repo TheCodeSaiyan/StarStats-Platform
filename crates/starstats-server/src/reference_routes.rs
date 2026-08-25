@@ -59,9 +59,15 @@ pub struct CohortSchema {
 const SSR_TOKEN_HEADER: &str = "x-starstats-ssr";
 const SSR_FOR_HEADER: &str = "x-starstats-ssr-for";
 
-/// Environment variable holding the SSR shared secret. Absent → no request
+/// Environment variables holding the SSR shared secret. Absent → no request
 /// can ever be treated as SSR, which is the safe default.
+///
+/// The `_FILE` variant is the one production uses: the homelab renders
+/// 1Password items into `$SECRETSDIR` and mounts them as Docker secrets, so
+/// the value never appears in a committed file or an image. Same
+/// `read_env_or_file` pattern as the ingest token and the parser signing key.
 const SSR_TOKEN_ENV: &str = "STARSTATS_SSR_TOKEN";
+const SSR_TOKEN_FILE_ENV: &str = "STARSTATS_SSR_TOKEN_FILE";
 
 /// Rate-limit key that understands server-side rendering.
 ///
@@ -97,10 +103,19 @@ impl SsrAwareIpKeyExtractor {
     /// Read the shared secret from the environment. An empty value is treated
     /// as unset so a blank env var cannot accidentally match a blank header.
     pub fn from_env() -> Self {
-        let token = std::env::var(SSR_TOKEN_ENV)
-            .ok()
-            .filter(|t| !t.trim().is_empty())
-            .map(|t| Arc::from(t.as_str()));
+        // `read_env_or_file` so the secret can arrive as a mounted Docker
+        // secret rather than an inline env var. A read failure is logged and
+        // treated as absent: a broken secret mount must leave the limiter
+        // working, not take the API down.
+        let token = match crate::config::read_env_or_file(SSR_TOKEN_ENV, SSR_TOKEN_FILE_ENV) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(error = %e, "could not read {SSR_TOKEN_FILE_ENV}; SSR keying stays off");
+                None
+            }
+        }
+        .filter(|t| !t.trim().is_empty())
+        .map(|t| Arc::from(t.as_str()));
         if token.is_none() {
             tracing::info!(
                 "{SSR_TOKEN_ENV} not set — reference rate limiting keys every                  request by its own IP, so all server-side renders share one bucket"
