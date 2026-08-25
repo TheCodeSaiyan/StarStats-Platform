@@ -9,6 +9,7 @@ import { economyWidget } from './economy';
 import { travelWidget } from './travel';
 import { journeyWidget } from './journey';
 import { recordsWidget } from './records';
+import { stabilityWidget } from './stability';
 import { recentActivityWidget } from './recent_activity';
 import { livesWidget } from './lives';
 import { fleetWidget } from './fleet';
@@ -32,6 +33,7 @@ export const WIDGETS: readonly WidgetDef[] = [
   travelWidget,
   journeyWidget,
   recordsWidget,
+  stabilityWidget,
   hangarWidget,
   loadoutWidget,
   entitiesWidget,

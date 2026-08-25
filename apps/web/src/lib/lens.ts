@@ -62,6 +62,10 @@ export const WIDGET_LENSES: Record<WidgetId, Lens[]> = {
   // Facts observe across travel, combat and session rhythm at once, so
   // they belong to no single dimension — `all` only, like `records`.
   facts: [],
+  // Client health is a property of PLAYING, not of a play dimension — it
+  // belongs beside sessions and the heatmap rather than under combat or
+  // travel.
+  stability: ['activity'],
   records: [],
   orgs: [],
   entities: [],

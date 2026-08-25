@@ -16,6 +16,7 @@ import type { ShareScope, WidgetShareScopesApi } from '@/lib/api';
 import type { RangeId } from '@/lib/range';
 
 export type WidgetId =
+  | 'stability'
   | 'sessions'
   | 'heatmap'
   | 'orgs'

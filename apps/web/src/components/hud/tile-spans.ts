@@ -15,6 +15,7 @@ export const TILE_SPANS: Record<WidgetId, number> = {
   economy: 1,
   loadout: 1,
   records: 1,
+  stability: 1,
   hangar: 1,
   orgs: 1,
   entities: 1,

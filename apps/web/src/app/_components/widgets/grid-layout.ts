@@ -127,6 +127,7 @@ export const ROWS_BY_ID: Record<WidgetId, Record<WidgetSize, number>> = {
   economy: { compact: 4, expanded: 6 },
   spend: { compact: 4, expanded: 6 },
   records: { compact: 4, expanded: 6 },
+  stability: { compact: 3, expanded: 5 },
   lives: { compact: 4, expanded: 6 },
   objectives: { compact: 4, expanded: 6 },
   contracts: { compact: 4, expanded: 6 },

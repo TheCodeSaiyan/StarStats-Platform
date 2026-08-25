@@ -23,6 +23,7 @@ export const DEFAULT_LAYOUT: LayoutEntry[] = [
   // renders for a visitor (isAvailable also gates on ctx.isOwner).
   { id: 'journey', enabled: false, size: 'compact' },
   { id: 'records', enabled: false, size: 'compact' },
+  { id: 'stability', enabled: false, size: 'compact' },
   // hangar + loadout ship disabled by default — owners opt-in via the
   // layout editor. Both require tray/parser data that may not exist yet.
   { id: 'hangar', enabled: false, size: 'compact' },
