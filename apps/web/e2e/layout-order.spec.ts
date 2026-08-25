@@ -218,3 +218,44 @@ test.describe('projection layout order', () => {
     });
   });
 });
+
+/**
+ * An element the reader switched on has to appear, even with nothing in it.
+ *
+ * A widget returns `null` for "no data", and `buildElements` dropped that
+ * element entirely — so a pane a reader had deliberately enabled simply was
+ * not drawn, with nothing to distinguish "nothing recorded yet" from "this is
+ * broken". That ambiguity is what made the loadout pane so hard to diagnose:
+ * the tray had stopped producing the events it reads, and the surface said
+ * nothing at all. Callouts still drop (a figure with no number should not take
+ * a slot beside the ring); planes now show their empty state.
+ */
+test('an enabled pane with no data still appears, and names itself', async ({
+  page,
+  request,
+}) => {
+  test.slow();
+  await resetScenario(request);
+  await setScenario(
+    request,
+    scenarioFor('lo-empty', {
+      'GET /v1/users/me/profile-layout': {
+        status: 200,
+        body: { layout: [{ id: 'loadout', enabled: true, size: 'compact' }] },
+      },
+      // The exact failure: the tray is producing no loadout bursts.
+      'GET /v1/me/events': { status: 200, body: { events: [] } },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 40_000 });
+  await expect(page.locator('.hp-lens').first()).toBeVisible({ timeout: 20_000 });
+
+  // Open the Loadout lens, where that pane lives.
+  await page.locator('.hp-lens button', { hasText: 'Loadout' }).click();
+
+  const pane = page.locator('.hp-plane', { hasText: 'Player loadout' });
+  await expect(pane).toBeVisible({ timeout: 15_000 });
+  await expect(pane).toContainText(/nothing recorded yet/i);
+});

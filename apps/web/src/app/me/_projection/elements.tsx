@@ -4,6 +4,8 @@ import React from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { Plane, MeterRow, LogRow } from 'holo';
+// Type-only elsewhere, so no cycle: catalogue.ts imports nothing from here.
+import { PROJECTION_CATALOGUE } from './catalogue';
 import { WIDGETS_BY_ID } from '@/app/_components/widgets/registry';
 import type { ViewerCtx, WidgetId } from '@/app/_components/widgets/types';
 import { logger } from '@/lib/logger';
@@ -88,6 +90,13 @@ export interface PlaneVM {
 
 /** The em-dash is the missing marker throughout. */
 const MISSING = '—';
+
+/** The element's name as the layout editor lists it, so a plane with nothing
+ *  in it still says WHICH element is empty. Falls back to the id rather than
+ *  drawing an anonymous box. */
+function elementName(id: WidgetId): string {
+  return PROJECTION_CATALOGUE.find((e) => e.id === id)?.name ?? id;
+}
 
 /**
  * The leading token of a bounded count label.
@@ -1175,9 +1184,31 @@ export async function buildElements(
       // meant its plane could never render at all. Build it with no data; a
       // load-less builder takes its content from the reference bundle.
       const data = def.load ? await def.load(ctx) : undefined;
-      // `null` is the widget contract for "no data / error" — not an error.
-      if (def.load && data == null) return null;
       const builder = BUILDERS[id as WidgetId]!;
+      // `null` is the widget contract for "no data / error" — not an error.
+      //
+      // AN ELEMENT THAT VANISHES IS INDISTINGUISHABLE FROM A BROKEN ONE.
+      // Dropping it here is right for a callout (a figure with no number
+      // should not take a slot beside the ring) and wrong for a plane: the
+      // reader switched it on deliberately and the lens simply did not draw
+      // it, with no way to tell "nothing recorded yet" from "this feature is
+      // broken". That ambiguity cost real time on the loadout pane — the tray
+      // had stopped producing the events it reads, and the surface said
+      // nothing at all. Planes already have an `empty` treatment; use it.
+      if (def.load && data == null) {
+        if (builder.kind === 'callout') return null;
+        return {
+          kind: 'plane' as const,
+          vm: {
+            id: id as WidgetId,
+            node: (
+              <Plane tilt="flat" cap={elementName(id as WidgetId)}>
+                <span className="hp-empty">{MISSING} nothing recorded yet</span>
+              </Plane>
+            ),
+          },
+        };
+      }
       if (builder.kind === 'callout') {
         return {
           kind: 'callout' as const,
