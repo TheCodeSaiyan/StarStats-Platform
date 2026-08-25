@@ -39,7 +39,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::RwLock;
 use tower_governor::{
-    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+    governor::GovernorConfigBuilder,
+    key_extractor::{KeyExtractor, SmartIpKeyExtractor},
+    GovernorError, GovernorLayer,
 };
 use utoipa::ToSchema;
 
@@ -50,6 +52,107 @@ pub struct CohortSchema {
     pub key: String,
     pub kind: String,
     pub label: String,
+}
+
+/// Header carrying the SSR shared secret, and the header carrying the end
+/// user's address that it vouches for.
+const SSR_TOKEN_HEADER: &str = "x-starstats-ssr";
+const SSR_FOR_HEADER: &str = "x-starstats-ssr-for";
+
+/// Environment variable holding the SSR shared secret. Absent → no request
+/// can ever be treated as SSR, which is the safe default.
+const SSR_TOKEN_ENV: &str = "STARSTATS_SSR_TOKEN";
+
+/// Rate-limit key that understands server-side rendering.
+///
+/// THE PROBLEM THIS SOLVES. The web frontend is server-rendered, so every
+/// reference read for EVERY end user arrives at this limiter from the web
+/// container's single IP. One bucket fronts the entire site. A crawler
+/// walking KB slugs therefore does not throttle itself — it drains the bucket
+/// that every real reader's page render shares, and those renders 429. The
+/// limit has already been raised once for this (10/s+40 → 30/s+150) and
+/// raising it again only moves the cliff.
+///
+/// THE FIX IS NOT AN EXEMPTION. Letting the SSR caller past the limiter would
+/// also let the crawler past it, because the crawler reaches this API THROUGH
+/// the web tier — the abuse would arrive pre-approved. Instead the web tier
+/// says who it is rendering for, and that end user gets their own bucket. A
+/// crawler is then throttled on its own address and a reader is unaffected by
+/// it.
+///
+/// TRUST. The forwarded address is only believed when the request also
+/// carries the shared secret, compared in constant time. Without the secret —
+/// or without `STARSTATS_SSR_TOKEN` configured at all — the header is ignored
+/// completely and the caller is keyed by its own IP exactly as before. So a
+/// third party cannot mint themselves a private bucket, or evade the limit by
+/// rotating a forged header, and the mechanism is off entirely until an
+/// operator deliberately turns it on.
+#[derive(Clone)]
+pub struct SsrAwareIpKeyExtractor {
+    /// `None` disables SSR keying entirely.
+    token: Option<Arc<str>>,
+}
+
+impl SsrAwareIpKeyExtractor {
+    /// Read the shared secret from the environment. An empty value is treated
+    /// as unset so a blank env var cannot accidentally match a blank header.
+    pub fn from_env() -> Self {
+        let token = std::env::var(SSR_TOKEN_ENV)
+            .ok()
+            .filter(|t| !t.trim().is_empty())
+            .map(|t| Arc::from(t.as_str()));
+        if token.is_none() {
+            tracing::info!(
+                "{SSR_TOKEN_ENV} not set — reference rate limiting keys every                  request by its own IP, so all server-side renders share one bucket"
+            );
+        }
+        Self { token }
+    }
+
+    /// Constant-time equality. A short-circuiting compare would leak the
+    /// secret's prefix to anyone able to time responses.
+    fn token_matches(expected: &str, presented: &str) -> bool {
+        if expected.len() != presented.len() {
+            return false;
+        }
+        expected
+            .bytes()
+            .zip(presented.bytes())
+            .fold(0u8, |acc, (a, b)| acc | (a ^ b))
+            == 0
+    }
+}
+
+impl KeyExtractor for SsrAwareIpKeyExtractor {
+    type Key = String;
+
+    fn extract<T>(&self, req: &axum::http::Request<T>) -> Result<Self::Key, GovernorError> {
+        if let Some(expected) = self.token.as_deref() {
+            let presented = req
+                .headers()
+                .get(SSR_TOKEN_HEADER)
+                .and_then(|v| v.to_str().ok());
+            if presented.is_some_and(|p| Self::token_matches(expected, p)) {
+                if let Some(on_behalf_of) = req
+                    .headers()
+                    .get(SSR_FOR_HEADER)
+                    .and_then(|v| v.to_str().ok())
+                    .map(str::trim)
+                    .filter(|v| !v.is_empty())
+                {
+                    // Namespaced so a forwarded value can never collide with a
+                    // direct caller's own IP key.
+                    return Ok(format!("ssr:{on_behalf_of}"));
+                }
+                // Authenticated SSR with no end user named (a cron, a warmup):
+                // one bucket of its own, still bounded.
+                return Ok("ssr:anonymous".to_string());
+            }
+        }
+        SmartIpKeyExtractor
+            .extract(req)
+            .map(|ip| format!("ip:{ip}"))
+    }
 }
 
 /// In-memory cache of the slim listing responses (`GET
@@ -336,7 +439,7 @@ pub fn routes(
         GovernorConfigBuilder::default()
             .per_second(30)
             .burst_size(150)
-            .key_extractor(SmartIpKeyExtractor)
+            .key_extractor(SsrAwareIpKeyExtractor::from_env())
             .finish()
             .expect("reference governor config builder produced no config"),
     );
@@ -690,7 +793,25 @@ pub async fn get_entry_by_slug<R: ReferenceStore>(
             .into_response();
     }
     match store.get_by_slug(cat, &slug).await {
-        Ok(Some(entry)) => (StatusCode::OK, Json(entry_to_detail(entry))).into_response(),
+        Ok(Some(entry)) => (
+            StatusCode::OK,
+            // CACHEABLE AT THE EDGE, which is the cheap half of fixing the
+            // 429s. The rate limiter runs as a layer BEFORE this handler, so
+            // an in-process cache would cut database load and not one 429 —
+            // but a response a CDN can serve never reaches the limiter at all.
+            // A crawler re-walking the catalogue then costs us nothing after
+            // its first pass.
+            //
+            // Reference data changes on the daily reconcile, so five minutes
+            // is conservative; `stale-while-revalidate` keeps the edge serving
+            // through a refresh rather than stampeding back to us.
+            [(
+                header::CACHE_CONTROL,
+                "public, max-age=300, stale-while-revalidate=3600",
+            )],
+            Json(entry_to_detail(entry)),
+        )
+            .into_response(),
         Ok(None) => error(StatusCode::NOT_FOUND, "entry_not_found", None),
         Err(e) => {
             tracing::error!(error = %e, category = %category, slug = %slug, "get_entry_by_slug failed");
@@ -1449,5 +1570,131 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp2.status(), StatusCode::BAD_REQUEST);
+    }
+}
+
+#[cfg(test)]
+mod ssr_key_tests {
+    use super::*;
+    use axum::http::Request;
+
+    fn req(headers: &[(&str, &str)]) -> Request<()> {
+        let mut b = Request::builder().uri("/v1/reference/vehicle/slug/x");
+        for (k, v) in headers {
+            b = b.header(*k, *v);
+        }
+        b.body(()).unwrap()
+    }
+
+    /// True when the request was NOT granted an SSR bucket.
+    ///
+    /// The fallback is `SmartIpKeyExtractor`, which cannot produce a key for a
+    /// synthetic request with no peer address and returns `Err`. Both outcomes
+    /// mean the same thing here — the caller did not get SSR treatment — and
+    /// conflating them keeps the assertion about the security property rather
+    /// than about the test harness.
+    fn denied_ssr(r: &Result<String, GovernorError>) -> bool {
+        match r {
+            Ok(key) => !key.starts_with("ssr:"),
+            Err(_) => true,
+        }
+    }
+
+    fn with_token(tok: &str) -> SsrAwareIpKeyExtractor {
+        SsrAwareIpKeyExtractor {
+            token: Some(Arc::from(tok)),
+        }
+    }
+
+    #[test]
+    fn forwarded_address_is_ignored_without_the_secret() {
+        // The whole security property: an address a caller simply asserts must
+        // buy them nothing. Otherwise anyone could mint a private bucket, or
+        // evade the limit entirely by rotating the header.
+        let k = with_token("s3cret");
+        let key = k.extract(&req(&[(SSR_FOR_HEADER, "203.0.113.9")]));
+        assert!(
+            denied_ssr(&key),
+            "keyed as SSR without presenting the secret: {key:?}"
+        );
+    }
+
+    #[test]
+    fn a_wrong_secret_is_ignored() {
+        let k = with_token("s3cret");
+        let key = k.extract(&req(&[
+            (SSR_TOKEN_HEADER, "not-the-secret"),
+            (SSR_FOR_HEADER, "203.0.113.9"),
+        ]));
+        assert!(denied_ssr(&key), "wrong secret was accepted: {key:?}");
+    }
+
+    #[test]
+    fn the_mechanism_is_off_when_unconfigured() {
+        // Fail closed: with no configured secret, a caller presenting ANY
+        // token must be keyed by its own address.
+        let k = SsrAwareIpKeyExtractor { token: None };
+        let key = k.extract(&req(&[
+            (SSR_TOKEN_HEADER, "anything"),
+            (SSR_FOR_HEADER, "203.0.113.9"),
+        ]));
+        assert!(
+            denied_ssr(&key),
+            "SSR keying active while unconfigured: {key:?}"
+        );
+    }
+
+    #[test]
+    fn each_end_user_gets_their_own_bucket() {
+        // The point of the change. Two readers rendered by the same web
+        // container must not share a limit — that shared bucket is what let a
+        // crawler 429 everybody else.
+        let k = with_token("s3cret");
+        let a = k
+            .extract(&req(&[
+                (SSR_TOKEN_HEADER, "s3cret"),
+                (SSR_FOR_HEADER, "198.51.100.1"),
+            ]))
+            .unwrap();
+        let b = k
+            .extract(&req(&[
+                (SSR_TOKEN_HEADER, "s3cret"),
+                (SSR_FOR_HEADER, "198.51.100.2"),
+            ]))
+            .unwrap();
+        assert_ne!(a, b);
+        assert_eq!(a, "ssr:198.51.100.1");
+    }
+
+    #[test]
+    fn authenticated_ssr_naming_nobody_is_still_bounded() {
+        // A warmup or a cron has no end user. It gets one bucket rather than
+        // no bucket — bounded, just not attributed.
+        let k = with_token("s3cret");
+        let key = k.extract(&req(&[(SSR_TOKEN_HEADER, "s3cret")])).unwrap();
+        assert_eq!(key, "ssr:anonymous");
+    }
+
+    #[test]
+    fn a_forwarded_value_cannot_collide_with_a_direct_callers_key() {
+        // Namespacing matters: without it a forged `ssr-for` of the web
+        // container's own IP would land in the same bucket as direct traffic.
+        let k = with_token("s3cret");
+        let ssr = k
+            .extract(&req(&[
+                (SSR_TOKEN_HEADER, "s3cret"),
+                (SSR_FOR_HEADER, "198.51.100.1"),
+            ]))
+            .unwrap();
+        assert!(ssr.starts_with("ssr:"));
+        assert!(!ssr.starts_with("ip:"));
+    }
+
+    #[test]
+    fn secret_comparison_does_not_short_circuit_on_length() {
+        assert!(SsrAwareIpKeyExtractor::token_matches("abc", "abc"));
+        assert!(!SsrAwareIpKeyExtractor::token_matches("abc", "abcd"));
+        assert!(!SsrAwareIpKeyExtractor::token_matches("abc", "ab"));
+        assert!(!SsrAwareIpKeyExtractor::token_matches("abc", "abd"));
     }
 }
