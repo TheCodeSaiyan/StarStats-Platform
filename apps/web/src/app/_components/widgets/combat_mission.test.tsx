@@ -5,9 +5,14 @@ import { render } from '@testing-library/react';
 vi.mock('@/lib/api', () => ({
   getMetricsEventTypes: vi.fn(),
   getObjectives: vi.fn(),
+  // `top_weapons` and `deaths_by_zone` come from here. They were already on
+  // this response and discarded; the widget now reads them, so the mock has
+  // to offer the call or every test in this file fails on the mock rather
+  // than on the widget.
+  getCombatStats: vi.fn(),
 }));
 
-import { getMetricsEventTypes, getObjectives } from '@/lib/api';
+import { getCombatStats, getMetricsEventTypes, getObjectives } from '@/lib/api';
 import { combatMissionWidget } from './combat_mission';
 import { DEFAULT_SHARE_SCOPES } from './types';
 import type { ViewerCtx } from './types';
