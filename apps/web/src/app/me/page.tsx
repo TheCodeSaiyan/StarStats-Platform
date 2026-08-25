@@ -234,7 +234,11 @@ export default async function MePage(props: PageProps) {
       nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'me')}
       onSaveLayout={async (ids: string[]) => {
         'use server';
-        await saveProjectionLayoutAction(ids);
+        // The result was being dropped here, so `{ok:false}` reached the
+        // editor as a resolved promise and it reported "saved to your
+        // account" for a write the server had refused.
+        const res = await saveProjectionLayoutAction(ids);
+        return { ok: res.ok };
       }}
       onCalibrate={async (id: string) => {
         'use server';
