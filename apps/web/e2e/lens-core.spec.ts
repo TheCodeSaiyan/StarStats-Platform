@@ -292,10 +292,20 @@ test('the core figure keeps its chromatic fringe when the unit is a word', async
    * ("44 jumps") renders and what was reported as "way off compared to the
    * others".
    *
-   * Asserted by APPENDING a unit and checking the value's box does not move:
-   * the fringe is anchored to that box, so if it cannot move, the ghost
-   * cannot drift. Asserting the offset directly is not possible — a
-   * pseudo-element has no box to read.
+   * ASSERTED AS "the ghost's box is the VALUE's box, not the ROW's", in two
+   * parts, because a pseudo-element has no box to read directly:
+   *
+   *   - `.n` must not carry `data-v`. That is the bug expressed structurally
+   *     and it survives any change to the value or the unit.
+   *   - Appending a unit must not change the WIDTH of the element that does
+   *     carry it. A box that hugs its own text cannot be stretched by a
+   *     sibling, so a ghost drawn into it cannot centre over anything else.
+   *
+   * NOT its position: the row is centred, so adding a unit shifts the value
+   * left by half the unit's width — measured at 59px here. That is correct
+   * and the fringe moves with it. The first draft of this test asserted the
+   * position and failed on the fix, which is the assertion being wrong rather
+   * than the page.
    */
   await setScenario(request, scenarioFor('lens-fringe', SCENARIO));
   await loginAs(page, { handle: 'TestPilot' });
@@ -319,6 +329,8 @@ test('the core figure keeps its chromatic fringe when the unit is a word', async
     em.remove();
     return { dx: Math.round(after.left - before.left), dw: Math.round(after.width - before.width) };
   });
-  expect(drift.dx, 'a unit must not move the figure the fringe tracks').toBe(0);
-  expect(drift.dw).toBe(0);
+  expect(
+    drift.dw,
+    'the box the fringe is drawn into must hug the value, not stretch with the unit',
+  ).toBe(0);
 });
