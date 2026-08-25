@@ -174,3 +174,72 @@ describe('combatMissionWidget C2 owner-only gating', () => {
     expect(getMetricsEventTypes).not.toHaveBeenCalled();
   });
 });
+
+describe('combatMissionWidget death accounting', () => {
+  /**
+   * A KILL IS NOT A DEATH, and this widget used to count it as one.
+   *
+   * `actor_death` fires whether the caller was the victim or the killer, so
+   * summing the event type added every kill to the death total.
+   * `player_incapacitated` — downed but alive — was in the same sum. Only the
+   * server can separate them, because the distinction lives in the payload:
+   * `/v1/me/stats/combat` filters on whether the caller is the killer or the
+   * victim, and unions `player_death` for modern builds.
+   *
+   * The fixture is the shape that exposed it: 21 `actor_death` rows that the
+   * server scores as 21 kills and 12 deaths. The widget displayed 21.
+   */
+  it('reports the server death count, not the actor_death event count', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [
+        { event_type: 'actor_death', count: 21 },
+        { event_type: 'player_incapacitated', count: 5 },
+        { event_type: 'vehicle_destruction', count: 4 },
+      ],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockResolvedValue({
+      hours: 168,
+      kills: 21,
+      deaths: 12,
+      deaths_inferred: 3,
+      top_weapons: [],
+      deaths_by_zone: [],
+    } as never);
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      deaths: number;
+      kills: number | null;
+      incapacitated: number;
+    } | null;
+    expect(data).not.toBeNull();
+    expect(data!.deaths, 'kills must not be added to deaths').toBe(12);
+    expect(data!.kills).toBe(21);
+    // Downed is its own outcome, never folded into deaths.
+    expect(data!.incapacitated).toBe(5);
+  });
+
+  it('falls back to the event count when the combat call fails', async () => {
+    // An over-count beats a blank when the authoritative source is down —
+    // but incapacitation stays out of it either way.
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [
+        { event_type: 'actor_death', count: 6 },
+        { event_type: 'player_death', count: 2 },
+        { event_type: 'player_incapacitated', count: 4 },
+      ],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockRejectedValue(new Error('boom'));
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      deaths: number;
+      kills: number | null;
+      incapacitated: number;
+    } | null;
+    expect(data).not.toBeNull();
+    expect(data!.deaths).toBe(8);
+    expect(data!.kills).toBeNull();
+    expect(data!.incapacitated).toBe(4);
+  });
+});

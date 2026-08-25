@@ -18,13 +18,34 @@ import { fmtNum, countsByType, sumCounts } from './kit/format';
  * `load` re-guards defensively. Do NOT reinstate a
  * `shareScopes.combat_mission` visitor path without a real friend endpoint.
  */
-const DEATH_TYPES = ['player_death', 'player_incapacitated', 'actor_death'];
+/**
+ * FALLBACK ONLY. Counting deaths by summing event types cannot be right:
+ * `actor_death` fires whether the caller was the victim OR the killer, so
+ * every kill a reader scored was being added to their death total. Measured
+ * against a fixture the server scored as 21 kills / 12 deaths, this widget
+ * displayed "Deaths 21".
+ *
+ * `player_incapacitated` was in here too — downed but alive, counted as dead.
+ *
+ * `/v1/me/stats/combat` does the separation properly (its own comment: "kills
+ * = actor_death where the caller is the killer, deaths = actor_death where
+ * the caller is the victim", unioned with `player_death` for modern builds),
+ * so that is the source now. This list survives only for when that call
+ * fails, where an over-count beats a blank.
+ */
+const DEATH_TYPES_FALLBACK = ['player_death', 'actor_death'];
+const INCAPACITATED_TYPES = ['player_incapacitated'];
 const VEHICLE_LOSS_TYPES = ['vehicle_destruction'];
 const MISSION_START_TYPES = ['mission_start'];
 const MISSION_END_TYPES = ['mission_end'];
 
 interface CombatMissionData {
   deaths: number;
+  /** Server-computed kills. `null` when the combat call failed. */
+  kills: number | null;
+  /** Downed but not killed — never folded into `deaths`, which is what this
+   *  widget used to do. */
+  incapacitated: number;
   vehicleLosses: number;
   missionsStarted: number;
   missionsEnded: number;
@@ -94,7 +115,12 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
     if (!breakdown) return null;
 
     const counts = countsByType(breakdown.types);
-    const deaths = sumCounts(breakdown.types, DEATH_TYPES);
+    // Server-computed when we have it: it is the only source that can tell a
+    // kill from a death, because that distinction lives in the payload rather
+    // than in the event type.
+    const deaths = combat?.deaths ?? sumCounts(breakdown.types, DEATH_TYPES_FALLBACK);
+    const kills = combat?.kills ?? null;
+    const incapacitated = sumCounts(breakdown.types, INCAPACITATED_TYPES);
     const vehicleLosses = sumCounts(breakdown.types, VEHICLE_LOSS_TYPES);
     const missionsStarted = sumCounts(breakdown.types, MISSION_START_TYPES);
     const missionsEnded = sumCounts(breakdown.types, MISSION_END_TYPES);
@@ -112,6 +138,8 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
 
     return {
       deaths,
+      kills,
+      incapacitated,
       vehicleLosses,
       missionsStarted,
       missionsEnded,
@@ -126,6 +154,7 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
   body(data, _ctx, size) {
     const {
       deaths,
+      kills,
       vehicleLosses,
       missionsStarted,
       missionsEnded,
@@ -137,6 +166,9 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
 
     if (size === 'compact') {
       const readouts: Readout[] = [
+        ...(kills != null
+          ? [{ label: 'kills', value: fmtNum(kills) } as Readout]
+          : []),
         { label: 'deaths', value: fmtNum(deaths) },
         { label: 'veh loss', value: fmtNum(vehicleLosses) },
         { label: 'missions', value: fmtNum(missionsStarted) },
