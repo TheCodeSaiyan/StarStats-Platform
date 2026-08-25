@@ -580,7 +580,10 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-layout h3 { margin: 0 0 3px; font-size: var(--fs-xs); font-weight: 600; letter-spacing: var(--placard-tracking); text-transform: uppercase; color: var(--hot); }
 .hp-layout .note { font-size: var(--fs-micro); letter-spacing: .14em; text-transform: uppercase; color: var(--label); margin-bottom: 12px; }
 .hp-layout .grp { font-size: var(--fs-micro); font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); margin: 14px 0 6px; padding-bottom: 4px; border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.16); }
-.hp-el { display: grid; grid-template-columns: 14px 1fr auto auto; align-items: center; gap: 9px; padding: 5px 0; font-size: var(--fs-sm); color: var(--beam); }
+/* Five columns since the reorder controls became a pair: grip, name, up,
+   down, add/remove. With four, the down arrow landed in the add column and
+   pushed it out of the row. */
+.hp-el { display: grid; grid-template-columns: 14px 1fr auto auto auto; align-items: center; gap: 9px; padding: 5px 0; font-size: var(--fs-sm); color: var(--beam); }
 .hp-el .gp { color: var(--dim); cursor: grab; font-size: 12px; }
 .hp-el .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; letter-spacing: .04em; }
 .hp-el[data-on="false"] .nm { color: var(--dim); }
@@ -595,6 +598,11 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-el button:hover { border-color: var(--hot); color: var(--hot); background: rgba(var(--hR),var(--hG),var(--hB),.1); }
 .hp-el .add { color: var(--good); border-color: rgba(124,255,178,.4); }
 .hp-el .del { color: var(--warn); border-color: rgba(255,194,77,.4); }
+/* An arrow at the end of the order cannot move anything; say so rather than
+   offering a press that does nothing. */
+.hp-el button:disabled { opacity: .3; cursor: default; }
+.hp-el button:disabled:hover { border-color: rgba(var(--bR),var(--bG),var(--bB),.28); color: var(--beam); background: none; }
+@media (pointer: coarse) { .hp-el button { width: 24px; height: 24px; } }
 .hp-layout .ft { display: flex; gap: 10px; margin-top: 16px; }
 .hp-layout .ft button { flex: 1; }
 

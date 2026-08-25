@@ -104,7 +104,10 @@ export interface MeProjectionProps {
   /** Server action writing the layout. Returns a promise so the editor can
    *  report whether the write landed, and so the refresh that redraws a newly
    *  added widget runs only AFTER the new layout is stored. */
-  onSaveLayout: (ids: string[]) => Promise<void>;
+  /** Returns the write's outcome. It used to return `void`, which meant a
+   *  refusal and a success were the same value and the editor said "saved"
+   *  either way. */
+  onSaveLayout: (ids: string[]) => Promise<{ ok: boolean }>;
   /** Persists the calibration (reuses the existing theme preference). */
   onCalibrate: (id: CalibrationId) => void;
 }
@@ -162,8 +165,13 @@ export function MeProjection({
    */
   const persistLayout = React.useCallback(
     async (ids: string[]) => {
-      await onSaveLayout(ids);
+      const res = await onSaveLayout(ids);
+      // A refused write is not a saved one. Throwing puts the editor into its
+      // error state; the refresh still runs so the stage — and, through
+      // `initial`, the editor's own list — go back to what the server holds
+      // rather than showing a change that was never stored.
       router.refresh();
+      if (!res?.ok) throw new Error('layout_save_refused');
     },
     [onSaveLayout, router],
   );

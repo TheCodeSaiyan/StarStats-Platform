@@ -58,7 +58,18 @@ export interface LayoutApi {
   add: (id: string) => void;
   remove: (id: string) => void;
   toggle: (id: string) => void;
-  move: (id: string, dir: number) => void;
+  /**
+   * Step `id` one position through `peers` — the ids as the READER SEES THEM.
+   *
+   * It used to swap neighbours in the global `ids` array, which the editor
+   * does not render: rows are drawn per group in catalogue order, so a reorder
+   * moved the data and nothing on screen. Measured: moving "Top routes"
+   * earlier wrote `[routes, travel, spend]` while the visible list stayed
+   * `[Spending, Quantum transits, Top routes]`. Passing the displayed sequence
+   * makes the move land where the reader is looking; the global order is kept
+   * coherent by splicing `id` next to the peer it stepped over.
+   */
+  move: (id: string, dir: number, peers?: readonly string[]) => void;
   reset: () => void;
   /** State of the most recent write. */
   save: LayoutSaveState;
@@ -114,6 +125,26 @@ export function useLayout(
    */
   const serverIds = React.useMemo(() => new Set(initial), [initial]);
 
+  /**
+   * ADOPT WHAT THE SERVER LAST SENT.
+   *
+   * `ids` seeds from `initial` once and never looked at it again, so a write
+   * the server REFUSED left the editor showing the reader's change for the
+   * rest of the session — ticked in the list, absent from the stage, and
+   * gone on the next full load. After a successful save the refresh echoes
+   * back what we sent and this is a no-op; after a failed one it snaps to the
+   * truth. Keyed on the contents, so a fresh array of the same ids does not
+   * clobber an edit in flight.
+   */
+  const initialKey = initial.join('|');
+  const adopted = React.useRef(initialKey);
+  React.useEffect(() => {
+    if (adopted.current === initialKey) return;
+    adopted.current = initialKey;
+    setIds(initial.filter((id) => known.has(id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialKey]);
+
   const commit = React.useCallback(
     (next: string[]) => {
       const clean = next.filter((id) => known.has(id));
@@ -154,13 +185,17 @@ export function useLayout(
       ids.includes(id)
         ? commit(ids.filter((x) => x !== id))
         : commit([...ids, id]),
-    move: (id: string, dir: number) => {
-      const i = ids.indexOf(id);
+    move: (id: string, dir: number, peers?: readonly string[]) => {
+      // Step through what is on screen, fall back to the whole layout.
+      const seq = (peers ?? ids).filter((x) => ids.includes(x));
+      const i = seq.indexOf(id);
       const j = i + dir;
-      if (i < 0 || j < 0 || j >= ids.length) return;
-      const next = [...ids];
-      next[i] = next[j];
-      next[j] = id;
+      if (i < 0 || j < 0 || j >= seq.length) return;
+      const over = seq[j];
+      const next = ids.filter((x) => x !== id);
+      const at = next.indexOf(over);
+      if (at < 0) return;
+      next.splice(dir < 0 ? at : at + 1, 0, id);
       commit(next);
     },
     reset: () => commit(defaults),
@@ -186,6 +221,17 @@ export function LayoutEditor({
   docked = false,
   title = 'Projection layout',
 }: LayoutEditorProps) {
+  /**
+   * ROWS ARE DRAWN IN LAYOUT ORDER, NOT CATALOGUE ORDER.
+   *
+   * The list was always catalogue order, so the reorder controls moved an
+   * array the reader could not see — and order is not cosmetic here: the
+   * callout field draws the first six and reports the rest as undrawn, so the
+   * order IS the choice of which six appear. Enabled elements now sit at the
+   * top of their group in the order they will be used; the ones that are off
+   * have no position yet and keep catalogue order below them.
+   */
+  const pos = new Map(layout.ids.map((id, i) => [id, i] as const));
   const groups: { g: string; items: CatalogueEntry[] }[] = [];
   catalogue.forEach((e) => {
     const g = e.group || 'Elements';
@@ -196,6 +242,20 @@ export function LayoutEditor({
     }
     bucket.items.push(e);
   });
+  groups.forEach((grp) => {
+    grp.items = grp.items
+      .map((e, i) => ({ e, i }))
+      .sort((a, b) => {
+        const pa = pos.get(a.e.id);
+        const pb = pos.get(b.e.id);
+        if (pa != null && pb != null) return pa - pb;
+        // Enabled first: an element that is off has no place in the order.
+        if (pa != null) return -1;
+        if (pb != null) return 1;
+        return a.i - b.i;
+      })
+      .map((x) => x.e);
+  });
   const count = layout.ids.length;
 
   return (
@@ -205,14 +265,19 @@ export function LayoutEditor({
       aria-label={title}
     >
       <h3>{title}</h3>
-      {/* THE COUNT USED TO LIE. It read "N of M projected" the instant an id
-          was added, but the elements are built server-side from the saved
-          layout — a widget the server has not seen has no data and draws
-          nothing. Measured: the counter moved 1 -> 2 while the drawn planes
-          stayed at 0. Now the line separates what IS projected from what is
-          waiting on a refresh, and says whether the write actually landed. */}
+      {/* THE COUNT USED TO LIE, TWICE OVER.
+          It read "N of M projected" the instant an id was added, but elements
+          are built server-side from the saved layout — one the server has not
+          seen draws nothing. Measured: the counter moved 1 -> 2 while the
+          drawn planes stayed at 0. That part is handled by holding the id in
+          `awaitingRender` until a refresh lands.
+          The second lie was the WORD. Enabled is not projected: the callout
+          field draws six, the rest are reported undrawn, and lens panes only
+          show their own lens. A reader with everything switched on was told
+          "23 of 23 projected" while six were on the ring. It now counts what
+          it can actually prove — how many are switched on. */}
       <div className="note" role="status" aria-live="polite">
-        {count - layout.awaitingRender.length} of {catalogue.length} projected
+        {count - layout.awaitingRender.length} of {catalogue.length} on
         {layout.awaitingRender.length > 0 ? (
           <>
             {' · '}
@@ -230,7 +295,14 @@ export function LayoutEditor({
               ? 'saved to your account'
               : 'saved to your account'}
       </div>
-      {groups.map((grp) => (
+      {groups.map((grp) => {
+        // The sequence the arrows step through: this group's enabled ids in
+        // the order they are drawn. Ends are disabled, so a press that cannot
+        // move anything is never offered.
+        const ordered = grp.items
+          .filter((x) => layout.has(x.id))
+          .map((x) => x.id);
+        return (
         <div key={grp.g}>
           <div className="grp">{grp.g}</div>
           {grp.items.map((e) => {
@@ -251,13 +323,29 @@ export function LayoutEditor({
                 <span className="nm" title={e.hint || e.name}>
                   {e.name}
                 </span>
+                {/* Both directions. There was only an "earlier" control, so
+                    an element could be moved up and never back down — the
+                    only way to demote one was to promote everything else. */}
                 {on ? (
                   <button
                     type="button"
                     aria-label={`Move ${e.name} earlier`}
-                    onClick={() => layout.move(e.id, -1)}
+                    disabled={ordered.indexOf(e.id) <= 0}
+                    onClick={() => layout.move(e.id, -1, ordered)}
                   >
                     ↑
+                  </button>
+                ) : (
+                  <span />
+                )}
+                {on ? (
+                  <button
+                    type="button"
+                    aria-label={`Move ${e.name} later`}
+                    disabled={ordered.indexOf(e.id) >= ordered.length - 1}
+                    onClick={() => layout.move(e.id, 1, ordered)}
+                  >
+                    ↓
                   </button>
                 ) : (
                   <span />
@@ -285,7 +373,8 @@ export function LayoutEditor({
             );
           })}
         </div>
-      ))}
+        );
+      })}
       <div className="ft">
         <button
           type="button"
