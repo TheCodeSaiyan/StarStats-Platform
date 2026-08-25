@@ -419,8 +419,37 @@ test.describe('commerce lens', () => {
     // would have looked like fixing it.
     await expect(page.locator('body')).not.toContainText('SCShop_');
     await expect(page.locator('body')).not.toContainText('_Food_RestStop');
-    // And the readable form is present.
+    // And the readable form is present, IN FULL. Not truncated: the slot is
+    // sized for figures — 25px, tabular, nowrap — and a name in that face
+    // ellipsised to "NoodleBar A Food Rest…", which is not much better than
+    // the raw id it replaced. A word value gets a smaller face and two lines.
     await expect(page.locator('body')).toContainText('NoodleBar A Food RestStop');
+
+    const cells = await page.evaluate(() => {
+      return [...document.querySelectorAll('.hp-subs > div')].map((c) => {
+        const b = c.querySelector('b') as HTMLElement | null;
+        const box = c.getBoundingClientRect();
+        const vb = b?.getBoundingClientRect();
+        return {
+          k: (c.querySelector('span')?.textContent || '').trim(),
+          kind: c.getAttribute('data-kind'),
+          size: b ? Math.round(parseFloat(getComputedStyle(b).fontSize)) : 0,
+          truncated: b ? b.scrollWidth > b.clientWidth : false,
+          spill: vb ? Math.round(vb.right - box.right) : 0,
+        };
+      });
+    });
+    const shop = cells.find((c) => /shop/i.test(c.k));
+    expect(shop, 'no Top shop cell rendered').toBeTruthy();
+    expect(shop!.kind, 'a name is not a figure').toBe('text');
+    expect(shop!.truncated, 'the shop name must not be cut off').toBe(false);
+    expect(shop!.spill, 'a value must stay inside its own cell').toBeLessThanOrEqual(0);
+
+    // The figures keep the figure treatment — this must not have become a
+    // blanket shrink of every value.
+    const spent = cells.find((c) => /spent/i.test(c.k));
+    expect(spent!.kind, '21,909 is a figure').toBeNull();
+    expect(spent!.size).toBeGreaterThan(shop!.size);
   });
 
   test('a long value cannot push the pane sideways', async ({ page }) => {

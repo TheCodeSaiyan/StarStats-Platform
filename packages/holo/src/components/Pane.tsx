@@ -87,6 +87,27 @@ export interface SubStatItem {
 }
 
 /**
+ * Is this value a FIGURE, or words?
+ *
+ * The slot is sized for figures — 25px, tabular, never wrapping — because
+ * "21,909" must not break across lines. A shop name in that face cannot fit a
+ * 194px column and gets truncated to "NoodleBar A Food Rest…", which is not
+ * much better than the raw id it replaced.
+ *
+ * The system already draws this distinction one level down: a ranked row whose
+ * value is words drops the meter and sets the value small
+ * (`.hp-rw--text .vv`). This is the same rule for the same reason.
+ *
+ * A digit anywhere means figure — "4h 12m", "75%" and "21,909aUEC" are all
+ * figures; "NoodleBar A Food RestStop" is not.
+ */
+function isFigure(v: React.ReactNode): boolean {
+  if (typeof v === 'number') return true;
+  if (typeof v !== 'string') return true; // a node is the caller's business
+  return /\d/.test(v);
+}
+
+/**
  * Four hairline-divided figures under a pane header.
  *
  * EXACTLY four items — the grid is four columns and a fifth wraps badly.
@@ -96,7 +117,7 @@ export function SubStats({ items = [] }: { items?: SubStatItem[] }) {
   return (
     <div className="hp-subs">
       {items.map((it, i) => (
-        <div key={i}>
+        <div key={i} data-kind={isFigure(it.v) ? undefined : 'text'}>
           <span>{it.k}</span>
           <b
             className={
