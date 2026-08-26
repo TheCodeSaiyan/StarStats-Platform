@@ -22,6 +22,7 @@ import {
   type Summary,
   placementLabel,
 } from '@/lib/reference';
+import { prettyItemType } from '@/lib/reference-types';
 import { parseSortDir, sortKbEntries, type SortDir } from '@/lib/kb-sort';
 import { BrowseCompare } from './_components/BrowseCompare';
 import {
@@ -491,7 +492,7 @@ function summaryPreviewFields(summary: Summary): Array<[string, string]> {
       break;
     case 'item':
       push('manufacturer', summary.manufacturer);
-      push('type', summary.item_type);
+      push('type', summary.item_type ? prettyItemType(summary.item_type) : undefined);
       push('grade', summary.grade);
       break;
     case 'location':
