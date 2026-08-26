@@ -1,0 +1,54 @@
+{
+  "recovered_from": "tray local cache (parser_def_manifest)",
+  "fetched_at": "2026-07-21 23:45:27",
+  "manifest_version": 1,
+  "issued_at": "2026-05-07T00:00:00Z",
+  "rules": [
+    {
+      "id": "asop.fetch_vehicles.v1",
+      "event_name": "OnRequestFetchVehicles",
+      "match_kind": "event_name",
+      "body_regex": "Fetching player vehicle list",
+      "fields": []
+    },
+    {
+      "id": "comms.notification.v1",
+      "event_name": "SHUDEvent_OnCommsNotification",
+      "match_kind": "event_name",
+      "body_regex": "Adding CommsNotification \\[(?P<comms_id>[0-9a-fA-F-]+)\\]",
+      "fields": [
+        "comms_id"
+      ]
+    },
+    {
+      "id": "party.marker.v1",
+      "event_name": "CPartyMarkerComponent RWES",
+      "match_kind": "event_name",
+      "body_regex": "party marker id (?P<marker_id>\\d+)\\. TrackedEntityId: (?P<tracked_id>\\d+)",
+      "fields": [
+        "marker_id",
+        "tracked_id"
+      ]
+    },
+    {
+      "id": "shop.buy.standard.v1",
+      "event_name": "CEntityComponentShoppingProvider::SendStandardItemBuyRequest",
+      "match_kind": "event_name",
+      "body_regex": "shopName\\[(?P<shop>[^\\]]+)\\].*?client_price\\[(?P<price>[0-9.]+)\\]",
+      "fields": [
+        "shop",
+        "price"
+      ]
+    },
+    {
+      "id": "shop.buy.ui.v1",
+      "event_name": "CEntityComponentShopUIProvider::SendShopBuyRequest",
+      "match_kind": "event_name",
+      "body_regex": "shopName\\[(?P<shop>[^\\]]+)\\].*?client_price\\[(?P<price>[0-9.]+)\\]",
+      "fields": [
+        "shop",
+        "price"
+      ]
+    }
+  ]
+}
