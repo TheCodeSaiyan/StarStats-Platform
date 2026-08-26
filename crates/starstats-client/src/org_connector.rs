@@ -166,6 +166,34 @@ pub fn respawn(
     *handle.lock() = new_handle;
 }
 
+/// How long a session must HOLD before it counts as evidence the connector
+/// is healthy. Below this it is a flap, not a connection.
+const STABLE_SESSION: Duration = Duration::from_secs(30);
+
+/// Delay before the next connect attempt.
+///
+/// `session` is how long the last session lasted, or `None` when the
+/// handshake itself failed.
+///
+/// THE BACKOFF USED TO RESET ON A SUCCESSFUL HANDSHAKE. That is not the same
+/// as a successful session, and the difference is a hot loop: when the server
+/// accepts the socket and immediately resets it without a closing handshake,
+/// every attempt "connected", so every attempt reset the delay to
+/// `BACKOFF_MIN` and the exponential backoff could never grow. Measured on one
+/// install: 36,725 reconnects in a single day, one every 2.25 seconds, around
+/// the clock — 2 seconds of `BACKOFF_MIN` plus the round trip — and 73,450 log
+/// lines saying so.
+///
+/// The reset now needs a session that actually held. A server that keeps
+/// dropping us is still a server-side fault, but the client's job is to stop
+/// hammering it while that is true.
+fn backoff_after_session(current: Duration, session: Option<Duration>) -> Duration {
+    match session {
+        Some(held) if held >= STABLE_SESSION => BACKOFF_MIN,
+        _ => (current * 2).min(BACKOFF_MAX),
+    }
+}
+
 /// Outer connect/reconnect loop. Each successful connection runs
 /// [`pump`] until the socket closes or errors, then backs off and
 /// reconnects. Telemetry is presence data — there's nothing to persist
@@ -187,6 +215,7 @@ async fn run_loop(
     seed_cursor_if_unset(&storage);
 
     let mut backoff = BACKOFF_MIN;
+    let mut last_session: Option<Duration>;
     loop {
         // Build a fresh handshake request each attempt (connect_async
         // consumes it). The bearer token rides the `Authorization` header
@@ -199,17 +228,27 @@ async fn run_loop(
         match tokio_tungstenite::connect_async(request).await {
             Ok((socket, _resp)) => {
                 tracing::info!("org connector connected");
-                backoff = BACKOFF_MIN; // reset on a clean connect
+                let started = tokio::time::Instant::now();
                 if let Err(e) = pump(socket, &storage, &catalog, &tail_kick).await {
-                    tracing::warn!(error = %e, "org connector session ended");
+                    tracing::warn!(
+                        error = %e,
+                        held_secs = started.elapsed().as_secs(),
+                        "org connector session ended"
+                    );
                 }
+                // How long it HELD is what decides the next delay — see
+                // `backoff_after_session`. Resetting here, on the handshake
+                // alone, is what produced a 2-second reconnect loop that ran
+                // for days.
+                last_session = Some(started.elapsed());
             }
             Err(e) => {
                 tracing::warn!(error = %e, backoff_secs = backoff.as_secs(), "org connector connect failed");
+                last_session = None;
             }
         }
+        backoff = backoff_after_session(backoff, last_session);
         tokio::time::sleep(backoff).await;
-        backoff = (backoff * 2).min(BACKOFF_MAX);
     }
 }
 
@@ -500,6 +539,56 @@ fn host_of(authority: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+
+    /// A server that accepts and instantly resets must NOT be hammered.
+    ///
+    /// This is the shape of the real fault: `connect_async` succeeds, `pump`
+    /// returns an error within milliseconds, forever. The old code reset the
+    /// delay on the handshake, so every one of those cycles went back to
+    /// `BACKOFF_MIN` — 36,725 reconnects in a day on one install, one every
+    /// 2.25 seconds, around the clock.
+    ///
+    /// Asserting only "the delay grows once" would pass on the old code too,
+    /// because it did double — once — before the next handshake reset it. The
+    /// load-bearing assertion is that it STAYS grown across many cycles.
+    #[test]
+    fn an_instantly_reset_session_escalates_and_stays_escalated() {
+        let instant = Some(Duration::from_millis(20));
+        let mut backoff = BACKOFF_MIN;
+        let mut seen = Vec::new();
+        for _ in 0..10 {
+            backoff = backoff_after_session(backoff, instant);
+            seen.push(backoff);
+        }
+        assert_eq!(
+            seen.iter().filter(|d| **d == BACKOFF_MIN).count(),
+            0,
+            "a flapping session must never return to the floor; got {seen:?}",
+        );
+        assert_eq!(
+            *seen.last().unwrap(),
+            BACKOFF_MAX,
+            "sustained flapping must settle at the ceiling; got {seen:?}",
+        );
+        assert!(
+            seen.windows(2).all(|w| w[1] >= w[0]),
+            "the delay must be monotonic while the fault persists; got {seen:?}",
+        );
+    }
+
+    /// The other half: a connection that actually worked earns a fast retry.
+    #[test]
+    fn a_session_that_held_returns_to_the_floor() {
+        let held = Some(STABLE_SESSION + Duration::from_secs(1));
+        assert_eq!(backoff_after_session(BACKOFF_MAX, held), BACKOFF_MIN);
+    }
+
+    /// A failed handshake escalates like a flap — there is no session to judge.
+    #[test]
+    fn a_failed_handshake_escalates() {
+        assert!(backoff_after_session(BACKOFF_MIN, None) > BACKOFF_MIN);
+    }
+
     use super::*;
     use starstats_core::events::{
         ActorDeath, LocationChanged, PlayerDeath, PlayerIncapacitated, QuantumTargetSelected,
