@@ -37,7 +37,7 @@ use serde::Serialize;
 use starstats_core::CompiledInferenceRule;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader, SeekFrom};
+use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 
 /// Lines per `process_buffer` chunk during backfill. Keeps peak memory
 /// bounded on a 10–100 MB rotated log instead of buffering the whole file.
@@ -232,7 +232,7 @@ async fn backfill_file(
     loop {
         let line_start = offset;
         buf.clear();
-        let n = reader.read_line(&mut buf).await?;
+        let n = crate::gamelog::read_line_lossy(&mut reader, &mut buf).await?;
         if n == 0 {
             // EOF reached cleanly.
             break;
