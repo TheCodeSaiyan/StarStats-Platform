@@ -107,6 +107,7 @@ pub struct EventTemplateDoc {
     operation_id = "parser_definitions_get_manifest",
     responses(
         (status = 200, description = "Active parser-definition manifest", body = ManifestResponse),
+        (status = 503, description = "Rules could not be loaded. Deliberately NOT an empty manifest: since F10 the manifest is signed, so an empty one verifies and an adopting client would swap its working rules for nothing."),
     ),
 )]
 pub async fn get_manifest(
@@ -115,36 +116,51 @@ pub async fn get_manifest(
         Arc<dyn InferenceRulesStore>,
     )>,
 ) -> Response {
-    let manifest = current_manifest(store.as_ref(), inference_store.as_ref()).await;
-    (StatusCode::OK, Json(manifest)).into_response()
+    match current_manifest(store.as_ref(), inference_store.as_ref()).await {
+        Ok(manifest) => (StatusCode::OK, Json(manifest)).into_response(),
+        // A rule-load failure must not be served as "there are no rules".
+        // See `current_manifest`.
+        Err(()) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
 }
 
 /// Source-of-truth for the active manifest: the enabled rows of the
 /// `parser_rules` table, projected to `RemoteRule`s, plus the enabled
 /// rows of the `parser_inference_rules` table (migration 0050) served
-/// via `inference_store`. A DB error on either store degrades to an
-/// empty list rather than 500-ing this public, cache-tolerant endpoint
-/// — collectors keep their last-known-good rule set.
+/// via `inference_store`.
 ///
-/// `version`/`issued_at` freshness signalling is intentionally minimal
-/// here; a richer generation counter lands with the client-adoption
-/// slice that will actually consume it (until then no shipping client
-/// fetches this endpoint).
+/// A STORE ERROR IS NOT AN EMPTY RULE SET. This used to degrade both
+/// stores to `Vec::new()` on error, reasoning that a public,
+/// cache-tolerant endpoint should not 500 and that "collectors keep
+/// their last-known-good rule set". That was true while manifests were
+/// unsigned and clients had no reason to trust one. It stopped being
+/// true when F10 signing landed: the empty manifest is signed with the
+/// real key, so it VERIFIES, so an adopting client swaps its working
+/// rules for nothing — a transient database hiccup would silently strip
+/// every remote parser rule from every tray, authenticated. The failure
+/// is now reported as 503, which is the one response that actually
+/// produces the documented behaviour: the client keeps what it has.
+///
+/// A genuinely empty rule set (every rule disabled by an operator) is
+/// still served as an empty 200 — that is a real answer, not a failure.
 async fn current_manifest(
     store: &dyn ParserRulesStore,
     inference_store: &dyn InferenceRulesStore,
-) -> Manifest {
+) -> Result<Manifest, ()> {
     let rules = match store.active_rules().await {
         Ok(rules) => rules,
         Err(e) => {
-            tracing::error!(error = %e, "failed to load parser rules; serving empty manifest");
-            Vec::new()
+            tracing::error!(error = %e, "failed to load parser rules; refusing to serve a manifest");
+            return Err(());
         }
     };
-    let inference_rules = inference_store.active_rules().await.unwrap_or_else(|e| {
-        tracing::error!(error=%e, "failed to load inference rules; serving none");
-        Vec::new()
-    });
+    let inference_rules = match inference_store.active_rules().await {
+        Ok(rules) => rules,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to load inference rules; refusing to serve a manifest");
+            return Err(());
+        }
+    };
     let mut manifest = Manifest {
         version: 1,
         schema_version: 1,
@@ -153,13 +169,14 @@ async fn current_manifest(
         inference_rules,
         signature: None,
     };
+
     // F10: sign the canonical payload when a signing key is configured.
     // Unset (the default) → the manifest ships unsigned, no behaviour change;
     // the client verifies against a pinned pubkey only once one is provisioned.
     if let Some(key) = parser_signing_key() {
         manifest.signature = Some(sign_manifest(&manifest, key));
     }
-    manifest
+    Ok(manifest)
 }
 
 /// The ed25519 key that signs the parser manifest (F10), loaded once from
@@ -215,6 +232,57 @@ mod tests {
     use starstats_core::{EventPattern, EventTemplate, RemoteInferenceRule, RuleMatchKind};
     use std::collections::BTreeMap;
 
+    /// A store that cannot answer. Every method fails the same way.
+    struct FailingParserRulesStore;
+
+    #[async_trait::async_trait]
+    impl ParserRulesStore for FailingParserRulesStore {
+        async fn active_rules(
+            &self,
+        ) -> Result<Vec<starstats_core::RemoteRule>, crate::repo::RepoError> {
+            Err(crate::repo::RepoError::Database(sqlx::Error::PoolTimedOut))
+        }
+        async fn upsert(&self, _rule: ParserRule) -> Result<(), crate::repo::RepoError> {
+            Err(crate::repo::RepoError::Database(sqlx::Error::PoolTimedOut))
+        }
+        async fn all_rules(
+            &self,
+        ) -> Result<Vec<crate::parser_rules::AdminParserRuleRow>, crate::repo::RepoError> {
+            Err(crate::repo::RepoError::Database(sqlx::Error::PoolTimedOut))
+        }
+    }
+
+    /// A DB error must NOT be served as "there are no rules".
+    ///
+    /// It used to be: both stores degraded to `Vec::new()` so the endpoint
+    /// would not 500. That reasoning held while manifests were unsigned. Once
+    /// F10 signing landed the empty manifest is signed with the real key —
+    /// so it verifies, so an adopting client swaps its working rules for
+    /// nothing. A transient pool timeout would have silently stripped every
+    /// remote parser rule from every tray, authenticated.
+    #[tokio::test]
+    async fn a_store_failure_is_not_served_as_an_empty_rule_set() {
+        let store = FailingParserRulesStore;
+        let inference_store = MemoryInferenceRulesStore::new();
+        let out = current_manifest(&store, &inference_store).await;
+        assert!(
+            out.is_err(),
+            "a failed rule load must not produce a manifest — a signed empty one \
+             is adopted by clients and wipes their rules",
+        );
+    }
+
+    /// The other half: genuinely empty is a real answer and still served.
+    #[tokio::test]
+    async fn an_operator_disabling_every_rule_still_serves_a_manifest() {
+        let store = MemoryParserRulesStore::new();
+        let inference_store = MemoryInferenceRulesStore::new();
+        let manifest = current_manifest(&store, &inference_store)
+            .await
+            .expect("an empty-but-healthy store is not a failure");
+        assert!(manifest.rules.is_empty());
+    }
+
     #[test]
     fn sign_manifest_produces_a_signature_its_pubkey_verifies() {
         use base64::Engine as _;
@@ -258,7 +326,9 @@ mod tests {
             .unwrap();
 
         let inference_store = MemoryInferenceRulesStore::new();
-        let manifest = current_manifest(&store, &inference_store).await;
+        let manifest = current_manifest(&store, &inference_store)
+            .await
+            .expect("a healthy store must yield a manifest");
         assert_eq!(manifest.rules.len(), 1, "the enabled rule must be served");
         assert_eq!(manifest.rules[0].id, "new_death_variant");
         assert_eq!(manifest.rules[0].event_name, "SomeNewDeath");
@@ -269,7 +339,9 @@ mod tests {
     async fn manifest_is_empty_when_no_rules_published() {
         let store = MemoryParserRulesStore::new();
         let inference_store = MemoryInferenceRulesStore::new();
-        let manifest = current_manifest(&store, &inference_store).await;
+        let manifest = current_manifest(&store, &inference_store)
+            .await
+            .expect("a healthy store must yield a manifest");
         assert!(
             manifest.rules.is_empty(),
             "no published rules → empty manifest (former stub behaviour, now DB-driven)"
@@ -307,7 +379,9 @@ mod tests {
             .await
             .unwrap();
 
-        let manifest = current_manifest(&store, &inference_store).await;
+        let manifest = current_manifest(&store, &inference_store)
+            .await
+            .expect("a healthy store must yield a manifest");
         assert_eq!(
             manifest.inference_rules.len(),
             1,
