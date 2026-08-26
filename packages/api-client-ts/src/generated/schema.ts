@@ -15075,6 +15075,13 @@ export interface operations {
                     "application/json": components["schemas"]["ManifestResponse"];
                 };
             };
+            /** @description Rules could not be loaded. Deliberately NOT an empty manifest: since F10 the manifest is signed, so an empty one verifies and an adopting client would swap its working rules for nothing. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     parser_submissions_submit: {
