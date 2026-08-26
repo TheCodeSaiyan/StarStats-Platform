@@ -1435,7 +1435,7 @@ fn run_reingest(
         IngestOutcome,
     };
     use std::fs::File;
-    use std::io::{BufRead, BufReader, Seek, SeekFrom};
+    use std::io::{BufReader, Seek, SeekFrom};
 
     let archived: Vec<_> = discovery::discover()
         .into_iter()
@@ -1498,7 +1498,7 @@ fn run_reingest(
         loop {
             let line_start = offset;
             line_buf.clear();
-            let n = match reader.read_line(&mut line_buf) {
+            let n = match crate::gamelog::read_line_lossy_sync(&mut reader, &mut line_buf) {
                 Ok(n) => n,
                 Err(e) => {
                     tracing::warn!(

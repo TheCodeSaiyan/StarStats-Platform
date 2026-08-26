@@ -29,7 +29,7 @@ use starstats_core::{classify_launcher_message, parse_launcher_line, GameEvent, 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader, SeekFrom};
+use tokio::io::{AsyncSeekExt, BufReader, SeekFrom};
 use tokio::sync::mpsc;
 
 /// Live counters surfaced to the frontend so the user can see the
@@ -187,7 +187,7 @@ async fn drain(
     loop {
         let line_start = *offset;
         buf.clear();
-        let n = reader.read_line(&mut buf).await?;
+        let n = crate::gamelog::read_line_lossy(&mut reader, &mut buf).await?;
         if n == 0 {
             break;
         }

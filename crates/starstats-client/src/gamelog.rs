@@ -33,7 +33,7 @@ use std::collections::{HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncSeekExt, BufReader, SeekFrom};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, BufReader, SeekFrom};
 use tokio::sync::{mpsc, Notify};
 
 /// How many classified envelopes the rolling inference window keeps
@@ -278,7 +278,7 @@ async fn drain(
     loop {
         let line_start = *offset;
         buf.clear();
-        let n = reader.read_line(&mut buf).await?;
+        let n = read_line_lossy(&mut reader, &mut buf).await?;
         if n == 0 {
             break;
         }
@@ -452,6 +452,45 @@ fn stitch_multiline_records(mut lines: Vec<(String, u64)>) -> Vec<(String, u64)>
         }
     }
     out
+}
+
+/// Read one line, REPLACING invalid UTF-8 instead of failing the whole file.
+///
+/// `read_line` requires the entire line to be valid UTF-8 and returns
+/// `InvalidData: stream did not contain valid UTF-8` otherwise — and the `?`
+/// at every call site aborted the file, not the line. Star Citizen emits
+/// Windows-1252 bytes inside mission text: a 0xA0 non-breaking space was
+/// found 724 KB into a 15.6 MB archive ("locate the infiltrated 890
+/// Jump.\u{a0}]"), which discarded the other 95% of that session. The cursor
+/// only advances on success, so the file was retried forever — 209 failures
+/// across 11 archives on one machine, every one of them a session that never
+/// reached the server.
+///
+/// The live tail reads the same way, so a single such byte in the ACTIVE
+/// Game.log would stall ingestion at that offset indefinitely.
+///
+/// Byte counts are unchanged, so offsets, cursors and idempotency salting are
+/// unaffected; for valid UTF-8 the result is identical to `read_line`.
+pub(crate) async fn read_line_lossy<R: tokio::io::AsyncBufRead + Unpin>(
+    reader: &mut R,
+    out: &mut String,
+) -> std::io::Result<usize> {
+    use tokio::io::AsyncBufReadExt;
+    let mut raw: Vec<u8> = Vec::new();
+    let n = reader.read_until(b'\n', &mut raw).await?;
+    out.push_str(&String::from_utf8_lossy(&raw));
+    Ok(n)
+}
+
+/// Blocking twin of [`read_line_lossy`], for the re-ingest path.
+pub(crate) fn read_line_lossy_sync<R: std::io::BufRead>(
+    reader: &mut R,
+    out: &mut String,
+) -> std::io::Result<usize> {
+    let mut raw: Vec<u8> = Vec::new();
+    let n = reader.read_until(b'\n', &mut raw)?;
+    out.push_str(&String::from_utf8_lossy(&raw));
+    Ok(n)
 }
 
 /// Process a batch of lines from one drain. Four passes:
@@ -2386,6 +2425,73 @@ mod tests {
     /// `"loadout_restore"` instead of `"loadout_restore_burst"`, which
     /// meant the condition was never true and every burst summary was
     /// emitted with `kind = null` / `categories = null`.
+    /// A Windows-1252 byte from CIG must cost that LINE, never the file.
+    ///
+    /// `read_line` returns `InvalidData` for a line that is not valid UTF-8,
+    /// and every call site propagated it with `?` — so one stray byte aborted
+    /// the whole archive. Found in the wild: a 0xA0 non-breaking space inside
+    /// mission text, 724 KB into a 15.6 MB backup, which threw away the other
+    /// 95% of that session. Because the cursor only advances on success the
+    /// file was retried forever: 209 failures over 11 archives on one machine.
+    ///
+    /// The load-bearing assertion is the line AFTER the bad one. That is what
+    /// was unreachable, and a test that only checked the bad line itself would
+    /// pass on the broken reader.
+    #[tokio::test]
+    async fn a_bad_byte_costs_its_line_not_the_file() {
+        use tokio::io::BufReader as TokioBufReader;
+
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("Game.log");
+        let mut bytes: Vec<u8> = Vec::new();
+        bytes.extend_from_slice("<first> ok".as_bytes());
+        bytes.push(b'\n');
+        // Verbatim shape of the real one: a mission description ending in a
+        // lone 0xA0 before the closing bracket.
+        bytes.extend_from_slice("<second> locate the infiltrated 890 Jump.".as_bytes());
+        bytes.push(0xA0);
+        bytes.push(b']');
+        bytes.push(b'\n');
+        bytes.extend_from_slice("<third> after the bad byte".as_bytes());
+        bytes.push(b'\n');
+        let total = bytes.len() as u64;
+        std::fs::write(&path, &bytes).expect("write log");
+
+        let file = tokio::fs::File::open(&path).await.expect("open");
+        let mut reader = TokioBufReader::new(file);
+        let mut lines: Vec<String> = Vec::new();
+        let mut read_bytes = 0u64;
+        let mut buf = String::new();
+        loop {
+            buf.clear();
+            let n = read_line_lossy(&mut reader, &mut buf)
+                .await
+                .expect("a bad byte must not fail the read");
+            if n == 0 {
+                break;
+            }
+            read_bytes += n as u64;
+            lines.push(buf.trim_end().to_string());
+        }
+
+        assert_eq!(lines.len(), 3, "every line must survive; got {lines:?}");
+        assert!(
+            lines[2].contains("after the bad byte"),
+            "the line AFTER the invalid byte is what used to be unreachable; got {:?}",
+            lines[2]
+        );
+        assert!(
+            lines[1].contains("890 Jump."),
+            "the offending line keeps its readable text; got {:?}",
+            lines[1]
+        );
+        assert_eq!(
+            read_bytes, total,
+            "byte counts drive cursors and idempotency salting — they must be \
+             unchanged by lossy decoding",
+        );
+    }
+
     #[test]
     fn loadout_burst_summary_carries_kind_and_categories() {
         // Three realistic AttachmentReceived lines spanning two item
