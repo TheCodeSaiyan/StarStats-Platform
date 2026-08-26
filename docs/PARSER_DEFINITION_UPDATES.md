@@ -100,3 +100,58 @@ In `parser::classify`:
 - Submission flow (community → maintainer review): out of scope for v1;
   a forms-style PR-style workflow is the right answer but it's its own
   feature.
+
+---
+
+## Recovery: the served rule set has no source of truth outside the database
+
+**Status as of 2026-08-27:** `GET /v1/parser-definitions` serves **0 rules**.
+A tray that cached the manifest on 2026-07-21 holds **5**. The rules are gone
+from the server.
+
+### Why this could happen silently
+
+`migrations/0048_parser_rules.sql` creates the table and inserts nothing. The
+only write path is a moderator publishing an approved submission through
+`admin_parser_rules.rs`. So the served rule set exists **only** as
+hand-published rows: no seed, no fixture, nothing in version control. Lose the
+rows — a restore, a wrong environment, a manual delete — and there is no copy
+to compare against and nothing that notices.
+
+It is also invisible from the outside. An empty rule set and a healthy one are
+both `200`. (A rule-load *failure* is now `503` rather than an empty manifest,
+so at least the two are distinguishable — see the note on `current_manifest`.)
+
+### The recovered set
+
+`docs/recovery/parser-rules-2026-07-21.json` holds all five, verbatim, with
+their `body_regex` and `fields`, recovered from a tray's local
+`parser_def_manifest` cache:
+
+| rule id | event name |
+| --- | --- |
+| `asop.fetch_vehicles.v1` | `OnRequestFetchVehicles` |
+| `comms.notification.v1` | `SHUDEvent_OnCommsNotification` |
+| `party.marker.v1` | `CPartyMarkerComponent RWES` |
+| `shop.buy.standard.v1` | `CEntityComponentShoppingProvider::SendStandardItemBuyRequest` |
+| `shop.buy.ui.v1` | `CEntityComponentShopUIProvider::SendShopBuyRequest` |
+
+That file is a **recovery record, not a seed** — nothing reads it. Restoring
+means re-publishing each rule through the admin route.
+
+### Restore before fixing the signing key, not after
+
+These interact, and the order matters. The client rejects the live manifest
+because the server's signing key no longer matches the pubkey pinned in
+`parser_defs.rs` (a manifest cached 2026-07-21 verifies against the pin;
+today's does not). **That rejection is the only reason trays are still running
+the 5 rules** — they fall back to last-known-good.
+
+Fix the key while the table is still empty and every tray will happily verify
+and adopt an empty manifest, dropping the rules they are currently running on.
+Repopulate first, then fix the key.
+
+### Worth closing properly
+
+- Nothing alerts when the served rule count drops to zero.
+- There is no export, so this recovery depended on one machine's cache.
