@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",
-    "turbo": "^2.10.10",
+    "turbo": "^2.10.11",
     "typescript": "^5.7.2",
     "@types/node": "^26.2.0"
   },
