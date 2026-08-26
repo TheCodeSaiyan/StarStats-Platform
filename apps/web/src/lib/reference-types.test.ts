@@ -4,6 +4,7 @@ import {
   isCosmeticItemPort,
   isNonLinkableItemClass,
   placementLabel,
+  prettyItemType,
   resolveReferenceEntry,
   subtypeLabel,
   tierLabel,
@@ -306,5 +307,55 @@ describe('isCosmeticItemPort', () => {
   it('handles null / undefined', () => {
     expect(isCosmeticItemPort(null)).toBe(false);
     expect(isCosmeticItemPort(undefined)).toBe(false);
+  });
+});
+
+/**
+ * `item_type` reached the screen verbatim.
+ *
+ * "Odyssey II Undersuit Alpha" reported its item type as
+ * `Char_Armor_Undersuit` — a machine identifier presented as a fact about the
+ * item, on the one row a reader reads to find out what the thing is. The
+ * field is a mix: of the 100 distinct values in the catalogue some are
+ * already prose and the rest are engine tokens, so the fix has to improve the
+ * tokens WITHOUT mangling the values that were already fine.
+ */
+describe('prettyItemType', () => {
+  it('reads the engine tokens as words', () => {
+    // The verbatim value from the reported entry.
+    expect(prettyItemType('Char_Armor_Undersuit')).toBe('Armor undersuit');
+    expect(prettyItemType('Char_Armor_Helmet')).toBe('Armor helmet');
+    expect(prettyItemType('SeatAccess')).toBe('Seat access');
+    expect(prettyItemType('WeaponPersonal')).toBe('Weapon personal');
+  });
+
+  it('drops the variant index, which distinguishes nothing to a reader', () => {
+    expect(prettyItemType('Char_Clothing_Torso_0')).toBe('Clothing torso');
+    expect(prettyItemType('Char_Clothing_Torso_1')).toBe('Clothing torso');
+  });
+
+  it('leaves values that were already prose alone', () => {
+    // Roughly half the catalogue is already readable. A prettifier that
+    // "improves" these would be a regression, so they are pinned.
+    for (const already of ['Cargo', 'Paints', 'Usable', 'Misc']) {
+      expect(prettyItemType(already)).toBe(already);
+    }
+  });
+
+  it('never returns an empty label', () => {
+    // A token that is nothing but the dropped namespace still has to render
+    // as something; falling through to "" would leave a blank row.
+    expect(prettyItemType('Char')).toBe('Char');
+    expect(prettyItemType('_')).toBe('_');
+  });
+
+  it('never leaves an underscore on screen', () => {
+    const raws = [
+      'Char_Armor_Undersuit',
+      'Char_Clothing_Torso_1',
+      'Char_Armor_Legs',
+      'WeaponPersonal',
+    ];
+    for (const raw of raws) expect(prettyItemType(raw)).not.toContain('_');
   });
 });

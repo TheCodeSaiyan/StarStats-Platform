@@ -259,3 +259,54 @@ test('kb_detail_rate_limited_renders_from_snapshot_instead_of_crashing', async (
   // though it were live.
   await expect(page.locator('text=catalogue snapshot').first()).toBeVisible();
 });
+
+/**
+ * The "Item type" row showed a machine identifier.
+ *
+ * Reported verbatim from the live site: "Odyssey II Undersuit Alpha" listed
+ * its item type as `Char_Armor_Undersuit`, while the very same response
+ * carried `metadata.classification_label = "Undersuit"`. The page was
+ * rendering the raw `summary.item_type` with the human label sitting beside
+ * it in the response it had already fetched.
+ *
+ * The unit tests cover the token prettifier, but a prettifier nothing calls
+ * would pass those and change nothing on screen — this asserts the page.
+ */
+test('an item names its type in words, not an engine token', async ({
+  page,
+  request,
+}) => {
+  await resetScenario(request);
+  await setScenario(request, {
+    __id: 'kb_item_type',
+    routes: {
+      'GET /v1/reference/item/slug/odyssey-ii-undersuit-alpha': kbDetail({
+        category: 'item',
+        class_name: 'rsi_odyssey_undersuit_01_01_01',
+        display_name: 'Odyssey II Undersuit Alpha',
+        slug: 'odyssey-ii-undersuit-alpha',
+        summary: {
+          manufacturer: 'Roberts Space Industries',
+          item_type: 'Char_Armor_Undersuit',
+        },
+        metadata: {
+          classification: 'FPS.Armor.Undersuit',
+          classification_label: 'Undersuit',
+        },
+      }),
+    },
+  });
+
+  await page.goto('/kb/item/odyssey-ii-undersuit-alpha', {
+    waitUntil: 'domcontentloaded',
+    timeout: 40_000,
+  });
+  await expect(
+    page.getByRole('heading', { name: 'Odyssey II Undersuit Alpha' }).first(),
+  ).toBeVisible({ timeout: 20_000 });
+
+  // The server already worked out the friendly name; use it.
+  const body = page.locator('body');
+  await expect(body).toContainText('Undersuit');
+  await expect(body).not.toContainText('Char_Armor_Undersuit');
+});

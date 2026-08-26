@@ -152,6 +152,43 @@ export type Placement =
   | { kind: 'sunward_from'; body: string }
   | { kind: 'angle_from'; degrees: number; body: string };
 
+/**
+ * Make an `item_type` readable.
+ *
+ * The field is a MIX. Of the 100 distinct values in the catalogue, some are
+ * already prose (`Cargo`, `Paints`, `Usable`, `Misc`) and the rest are raw
+ * engine tokens (`Char_Armor_Undersuit`, `Char_Clothing_Torso_1`,
+ * `WeaponPersonal`, `SeatAccess`). The page rendered all of them verbatim, so
+ * "Odyssey II Undersuit Alpha" reported its item type as
+ * `Char_Armor_Undersuit` — a machine identifier presented as a fact about the
+ * item, on the one row a reader looks at to find out what the thing IS.
+ *
+ * Rules, in order:
+ *   - `Char_` is an engine namespace meaning "character"; it says nothing to a
+ *     reader and is dropped.
+ *   - A trailing all-digits segment is a variant index (`Torso_0`, `Torso_1`),
+ *     not a distinction anyone is looking for here.
+ *   - Remaining segments split on `_` and on camelCase humps.
+ *
+ * Values that are already prose come back unchanged: no separator, no humps,
+ * nothing to strip.
+ */
+export function prettyItemType(raw: string): string {
+  const segments = raw
+    .split('_')
+    .filter((s) => s.length > 0);
+  if (segments[0]?.toLowerCase() === 'char') segments.shift();
+  while (segments.length > 1 && /^\d+$/.test(segments[segments.length - 1])) {
+    segments.pop();
+  }
+  const words = segments
+    .flatMap((s) => s.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(' '))
+    .filter((w) => w.length > 0);
+  if (words.length === 0) return raw;
+  const joined = words.join(' ').toLowerCase();
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
+}
+
 /** Human label for a tier — for chip rendering + filter UI. */
 export function tierLabel(tier: LocationTier): string {
   switch (tier) {

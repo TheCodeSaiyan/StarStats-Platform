@@ -18,6 +18,7 @@
 import {
   type ReferenceCategory,
   type ReferenceEntry,
+  prettyItemType,
   tierLabel,
   subtypeLabel,
   placementLabel,
@@ -60,7 +61,10 @@ function fieldsFor(_category: ReferenceCategory, entry: ReferenceEntry): Field[]
       break;
     case 'item':
       push('Manufacturer', s.manufacturer);
-      push('Type', s.item_type);
+      // Same treatment as the detail page's "Item type" row — the two
+      // are deliberately kept in sync. No metadata here, so the token
+      // is prettified rather than swapped for classification_label.
+      push('Type', s.item_type ? prettyItemType(s.item_type) : undefined);
       push('Grade', s.grade);
       break;
     case 'location':

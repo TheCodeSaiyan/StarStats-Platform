@@ -58,6 +58,7 @@ import {
   type ReferenceCategory,
   type ReferenceEntryDetail,
   type Summary,
+  prettyItemType,
   tierLabel,
   subtypeLabel,
   placementLabel,
@@ -168,7 +169,10 @@ export default async function KbDetailPage(props: PageProps) {
     entry = outcome.entry;
   }
 
-  const summaryFields = summaryAtGlanceFields(entry.summary);
+  const summaryFields = summaryAtGlanceFields(
+    entry.summary,
+    entry.metadata as Record<string, unknown> | undefined,
+  );
 
   // Vehicle-only Ship Matrix enrichment. `metadata` is opaque
   // (`Record<string, unknown>`) so the blob is validated at the
@@ -360,9 +364,34 @@ function humanLabel(key: string): string {
     .replace(/^./, (c) => c.toUpperCase());
 }
 
+/**
+ * The friendly name for an item's type.
+ *
+ * The entry the detail page already fetched carries
+ * `metadata.classification_label` — "Undersuit" for the entry whose
+ * `summary.item_type` is `Char_Armor_Undersuit`. The page rendered the raw
+ * token anyway, so it showed a machine identifier with the human label
+ * sitting beside it in the same response. The paperdoll on /me/loadout has
+ * used that label since v1.8.49; this brings the KB in line.
+ *
+ * Not every item has one, so the token still gets prettified as a fallback
+ * rather than shown raw.
+ */
+function itemTypeLabel(
+  itemType: string | undefined,
+  metadata: Record<string, unknown> | undefined,
+): string | undefined {
+  const label = metadata?.['classification_label'];
+  if (typeof label === 'string' && label.trim().length > 0) return label;
+  return itemType ? prettyItemType(itemType) : undefined;
+}
+
 /** Per-category at-a-glance pairs. Excludes the `category`
  *  discriminator since it's redundant with the page's URL. */
-function summaryAtGlanceFields(summary: Summary): Array<[string, string]> {
+function summaryAtGlanceFields(
+  summary: Summary,
+  metadata?: Record<string, unknown>,
+): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   const push = (label: string, value: string | undefined) => {
     if (value && value.length > 0) out.push([label, value]);
@@ -382,7 +411,7 @@ function summaryAtGlanceFields(summary: Summary): Array<[string, string]> {
       break;
     case 'item':
       push('manufacturer', summary.manufacturer);
-      push('item_type', summary.item_type);
+      push('item_type', itemTypeLabel(summary.item_type, metadata));
       push('grade', summary.grade);
       break;
     case 'location':
