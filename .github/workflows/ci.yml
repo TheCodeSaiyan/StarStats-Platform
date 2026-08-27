@@ -199,6 +199,11 @@ jobs:
           scripts:
             - 'scripts/**'
             - '.github/workflows/ci.yml'
+            # The node:test suites lift logic straight OUT of this workflow
+            # (validate-tag, the immutable-image preflight, the build gate).
+            # Without it here, editing the workflow would not run the tests
+            # that guard it — a gate can be reintroduced with CI green.
+            - '.github/workflows/release-images.yml'
 
   rust:
     name: Rust ${{ matrix.os }}
