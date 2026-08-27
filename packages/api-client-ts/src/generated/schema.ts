@@ -6598,7 +6598,11 @@ export interface components {
             classification_label?: string | null;
             /** @description Player-friendly display name (e.g. "The Butcher Helmet"). */
             display_name: string;
-            /** @description True when `metadata.images` is a non-empty array. */
+            /**
+             * @description True when the entry has an image the media proxy will actually
+             *     serve — a listed image on a non-allowlisted host does not count,
+             *     because requesting it can only ever 404.
+             */
             has_image: boolean;
             /** @description KB URL slug, if the entry has one. */
             slug?: string | null;
