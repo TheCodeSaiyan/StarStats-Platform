@@ -65,10 +65,70 @@ rules first (`scripts/restore-parser-rules.mjs`), then the key.
 This exact sequence was live on 2026-08-27: 0 rules served, 5 still running in
 the field, held there only by the signature mismatch.
 
+## A RUNNING CONTAINER KEEPS THE SECRET IT WAS BORN WITH
+
+This is the one that costs hours, it applies to **every secret in the stack**,
+and nothing anywhere reports it.
+
+`render-secrets.sh` replaces files with `install`, and a container's view of a
+mounted secret is fixed when the container is created. So after a rotation:
+
+* 1Password is correct,
+* the file on the host is correct,
+* the render logs success,
+* and the container is still serving the **old value**.
+
+Measured on 2026-08-27, mid-incident:
+
+    host:      sha256(/var/lib/dockerprime/secrets/starstats_parser_signing_key) = 019e9fa8...
+    container: docker exec starstats-api cat /run/secrets/... | sha256sum       = 8fd193c1...
+
+Same path, different bytes. `docker compose up -d` will NOT fix this: it
+recreates a container only when the config or image digest changes, and
+rewriting a secret's contents changes neither, so compose reports the service
+up-to-date and leaves the old process running. A plain `docker restart` is
+not enough either, because the stale mount survives it.
+
+    docker compose up -d --force-recreate starstats-api
+
+To check any secret, on the host:
+
+    docker exec <container> cat /run/secrets/<name> | sha256sum
+    op read -n "<the op:// ref from secrets/manifest.toml>" | sha256sum
+
+Equal means the container has what 1Password has. Unequal means the container
+is stale no matter what the host file says.
+
+This is almost certainly how the halves diverged in the first place. Nobody
+"changed the key and forgot the client" — the key was changed in 1Password,
+the host file updated, and `starstats-api` simply carried on signing with the
+key it was created with, for weeks.
+
 ## If a rotation looks like it failed
 
-`--check` says MATCH but the manifest will not verify: the API was not
-recreated. That is the answer nearly every time.
+Work down this list; the first two are far more common than the third.
 
-`--check` says MISMATCH: the write did not land. Re-run `--rotate`, or restore
-the previous value from the 1Password item history.
+1. **The container was not recreated.** Compare the two hashes above. This is
+   the answer nearly every time.
+2. **The container was recreated but the process is old** — check
+   `docker inspect -f '{{.State.StartedAt}}' starstats-api` against when the
+   rotation happened. `parser_signing_key()` caches in a `OnceLock`, so the
+   key is read once at startup and never again.
+3. **`--check` says MISMATCH**: the write did not land. Re-run `--rotate`, or
+   restore the previous value from the 1Password item history.
+
+## Handling the seed
+
+Never print it. When comparing, hash it — never echo it:
+
+    op read -n "<ref>" | sha256sum                     # bash
+    $s = op read -n "<ref>"                            # PowerShell: bind, hash, then
+    -join ([Security.Cryptography.SHA256]::Create().ComputeHash(
+        [Text.Encoding]::UTF8.GetBytes($s.Trim())) | % { $_.ToString('x2') })
+    Remove-Variable s
+
+Note the bare leading `-join`. Writing `$s -join (...)` instead invokes the
+BINARY join operator, which joins the one-element array `$s` using the hash as
+a delimiter and therefore **prints the secret**. That happened during this
+incident and burned a key. Prefer the bash form, which cannot be mistyped into
+an echo.
