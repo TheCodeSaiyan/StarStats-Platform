@@ -13,10 +13,24 @@
 // shows nothing and offers no way to create one.
 //
 // Usage:
-//   STARSTATS_ADMIN_TOKEN=<moderator bearer> node scripts/restore-parser-rules.mjs [--dry-run]
+//   node scripts/restore-parser-rules.mjs --dry-run          # no token needed
+//   node scripts/restore-parser-rules.mjs --token-file tok    # preferred
+//   cat tok | node scripts/restore-parser-rules.mjs           # also fine
 //
-// The token is the `t` field of the `starstats_session` cookie on the site,
-// for an account with a moderator role. It is never printed by this script.
+// A CREDENTIAL MUST NOT GO ON THE COMMAND LINE. Arguments and inline
+// `VAR=... cmd` prefixes are recorded in shell history and are visible in the
+// process list to anything else on the machine. This script therefore reads
+// the token from a FILE or from STDIN. `STARSTATS_ADMIN_TOKEN` is still
+// honoured for CI, where the value comes from a secret store rather than a
+// keyboard, but it is the last resort and the script says so.
+//
+// The value can be EITHER a bare JWT or the whole `starstats_session` cookie
+// as copied from devtools — that cookie is URL-encoded JSON like
+// `%7B%22t%22%3A%22eyJ...`, and pasting it verbatim is the obvious thing to
+// do, so the script decodes it and takes the `t` field rather than sending
+// the blob and failing on a 401 that explains nothing.
+//
+// The account needs a moderator role. The token is never printed.
 //
 // ORDERING. Restore these BEFORE fixing the parser-manifest signing key.
 // Trays currently reject the live manifest (the server's key no longer
@@ -32,8 +46,64 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const RECOVERY = join(here, '..', 'docs', 'recovery', 'parser-rules-2026-07-21.json');
 const API = (process.env.STARSTATS_API_URL ?? 'https://api.starstats.app').replace(/\/+$/, '');
-const TOKEN = process.env.STARSTATS_ADMIN_TOKEN;
 const DRY = process.argv.includes('--dry-run');
+
+/**
+ * Accept a bare JWT or a whole `starstats_session` cookie.
+ *
+ * The cookie is URL-encoded JSON (`%7B%22t%22%3A%22eyJ...`), which is what
+ * devtools puts on the clipboard, so it is the value people actually have.
+ * Sending it as a bearer token 401s with nothing useful.
+ */
+function extractToken(raw) {
+  const value = String(raw ?? '').trim();
+  if (!value) return null;
+  if (value.startsWith('ey')) return value; // already a JWT
+  let text = value;
+  if (text.includes('%')) {
+    try {
+      text = decodeURIComponent(text);
+    } catch {
+      /* not encoded after all */
+    }
+  }
+  if (text.startsWith('{')) {
+    try {
+      const t = JSON.parse(text)?.t;
+      if (typeof t === 'string' && t.length > 0) return t;
+    } catch {
+      return null;
+    }
+  }
+  return text;
+}
+
+function readToken() {
+  const i = process.argv.indexOf('--token-file');
+  if (i !== -1) {
+    const path = process.argv[i + 1];
+    if (!path) die('--token-file needs a path');
+    return extractToken(readFileSync(path, 'utf8'));
+  }
+  // Piped stdin, if there is any.
+  if (!process.stdin.isTTY) {
+    try {
+      const piped = readFileSync(0, 'utf8');
+      if (piped.trim()) return extractToken(piped);
+    } catch {
+      /* no stdin */
+    }
+  }
+  if (process.env.STARSTATS_ADMIN_TOKEN) {
+    console.error(
+      'note: reading the token from the environment. If you typed it inline ' +
+        'on the command line it is now in your shell history — prefer ' +
+        '--token-file, and clear the entry.',
+    );
+    return extractToken(process.env.STARSTATS_ADMIN_TOKEN);
+  }
+  return null;
+}
 
 function die(msg) {
   console.error(`error: ${msg}`);
@@ -53,7 +123,13 @@ if (DRY) {
   console.log('[dry-run] nothing sent');
   process.exit(0);
 }
-if (!TOKEN) die('STARSTATS_ADMIN_TOKEN not set (see the header of this file)');
+const TOKEN = readToken();
+if (!TOKEN) {
+  die(
+    'no token. Pass --token-file <path>, or pipe it in. It may be a bare JWT ' +
+      'or the whole starstats_session cookie. See the header of this file.',
+  );
+}
 
 let failed = 0;
 for (const r of rules) {

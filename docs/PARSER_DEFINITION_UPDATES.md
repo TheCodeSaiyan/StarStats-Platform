@@ -146,17 +146,33 @@ empty table it shows an empty list and offers no way to create one. There is
 no "new rule" page (unlike `/admin/parser-inference-rules/new`).
 
 So it goes through the API the UI itself calls, `POST /v1/admin/parser-rules`,
-which needs a **moderator** bearer token — the `t` field of the
-`starstats_session` cookie on the site, for an account with that role:
+which needs a **moderator** token.
+
+Save the token to a file first, and **do not put it on the command line** —
+arguments and inline `VAR=... cmd` prefixes land in shell history and are
+visible in the process list:
 
 ```
-STARSTATS_ADMIN_TOKEN=<token> node scripts/restore-parser-rules.mjs --dry-run
-STARSTATS_ADMIN_TOKEN=<token> node scripts/restore-parser-rules.mjs
+# paste the token into ./tok (git-ignored, delete it afterwards)
+node scripts/restore-parser-rules.mjs --dry-run          # no token needed
+node scripts/restore-parser-rules.mjs --token-file ./tok
+rm ./tok
 ```
 
-It reads the recovery file, upserts each rule by `rule_id` (so re-running is
-safe), and then re-reads `GET /v1/parser-definitions` — the endpoint clients
-actually consume — to confirm the count came back. It never prints the token.
+The file may contain **either** a bare JWT **or** the whole
+`starstats_session` cookie exactly as devtools copies it — that cookie is
+URL-encoded JSON (`%7B%22t%22%3A%22eyJ...`), which is the value you actually
+have to hand, so the script decodes it and takes the `t` field itself.
+
+It upserts each rule by `rule_id` (so re-running is safe), then re-reads
+`GET /v1/parser-definitions` — the endpoint clients actually consume — to
+confirm the count came back. It never prints the token.
+
+**On JWT exposure.** These are stateless: `auth.rs` checks only *device*
+tokens against a revocation store, so a leaked `token_type: "user"` token
+stays valid until `exp` and signing out does not invalidate it. If one is
+exposed, the realistic mitigations are to wait out the (short) expiry and
+clear it from shell history.
 
 ### Restore before fixing the signing key, not after
 
