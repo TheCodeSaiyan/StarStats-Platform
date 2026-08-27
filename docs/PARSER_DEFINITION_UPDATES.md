@@ -136,8 +136,27 @@ their `body_regex` and `fields`, recovered from a tray's local
 | `shop.buy.standard.v1` | `CEntityComponentShoppingProvider::SendStandardItemBuyRequest` |
 | `shop.buy.ui.v1` | `CEntityComponentShopUIProvider::SendShopBuyRequest` |
 
-That file is a **recovery record, not a seed** — nothing reads it. Restoring
-means re-publishing each rule through the admin route.
+That file is a **recovery record, not a seed** — nothing reads it.
+
+### How to restore
+
+The admin UI cannot do it. `/admin/parser-rules` lists published rules and
+toggles them by re-POSTing their own fields as hidden inputs, so against an
+empty table it shows an empty list and offers no way to create one. There is
+no "new rule" page (unlike `/admin/parser-inference-rules/new`).
+
+So it goes through the API the UI itself calls, `POST /v1/admin/parser-rules`,
+which needs a **moderator** bearer token — the `t` field of the
+`starstats_session` cookie on the site, for an account with that role:
+
+```
+STARSTATS_ADMIN_TOKEN=<token> node scripts/restore-parser-rules.mjs --dry-run
+STARSTATS_ADMIN_TOKEN=<token> node scripts/restore-parser-rules.mjs
+```
+
+It reads the recovery file, upserts each rule by `rule_id` (so re-running is
+safe), and then re-reads `GET /v1/parser-definitions` — the endpoint clients
+actually consume — to confirm the count came back. It never prints the token.
 
 ### Restore before fixing the signing key, not after
 
