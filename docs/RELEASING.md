@@ -292,6 +292,26 @@ anything past `9f8e7d6` stays pre-release and rides the next promotion.
 `main` and `next` are now equal. New feature work on `next` will diverge
 forward; the next promotion will fast-forward `main` again.
 
+**Confirm the platform actually deployed.** A tag is not a deploy. Tag
+pushes build `:<version>` and `:<sha>` only — `:latest`, which is what
+the host pulls, moves solely on a **branch push to `main`**. So check
+the running version, not the tag:
+
+    curl -s https://api.starstats.app/healthz     # {"status":"ok","version":"X.Y.Z"}
+
+If that still reports the old version several minutes after the promote
+(Komodo polls roughly every 5 minutes), look for the `Release images`
+run on the **main branch** for the promoted SHA and make sure it ran
+rather than skipped. To ship without waiting for another push:
+
+    gh workflow run release-images.yml --ref main
+
+Historically the main-branch run could skip when the commit that landed
+on top was purely metadata, which silently produced a tagged-but-not-
+deployed release. `main` pushes now always build, so this should not
+recur — but the `healthz` check is still the only thing that proves a
+deploy, and it costs one command.
+
 ---
 
 ## 6. CI-driven promotion (the `Promote release` workflow)
