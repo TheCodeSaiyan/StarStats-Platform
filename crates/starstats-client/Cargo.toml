@@ -6,7 +6,7 @@ name = "starstats-client"
 # still inherit the workspace version (= "platform" version). This
 # crate is bumped independently by `release-promote.mjs prerelease
 # tray <channel>` / `live tray`.
-version = "0.1.8"
+version = "0.1.9"
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
