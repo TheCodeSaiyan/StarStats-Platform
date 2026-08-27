@@ -259,11 +259,31 @@ jobs:
     #   even though it does on `next`. (The `live platform` promote
     #   script fast-forwards main onto the existing prerelease bump
     #   commit, whose subject line matches the bump pattern.) On main
-    #   we skip only the purely-metadata commits (release-manifests /
-    #   docs) — anything else, including bump commits, gets a full
-    #   rebuild + floating-tag move. Surfaced 2026-05-27 when the
-    #   v1.8.8 live promotion left `:latest` pointing at the
-    #   pre-v1.8.8 image.
+    #   A main push therefore ALWAYS builds. It used to skip when the
+    #   head commit was purely metadata (release-manifests / docs),
+    #   which was wrong for a reason the head commit cannot express: a
+    #   push can carry MANY commits, and a live promote fast-forwards
+    #   main across everything on next. If the commit that happens to
+    #   land on top is metadata, the whole push skips — real changes
+    #   included.
+    #
+    #   Both halves of that fired on 2026-08-27. The `live platform`
+    #   promote fast-forwarded main onto a head whose subject was
+    #   `docs: ...`, and the tray release then pushed
+    #   `release-manifests: tray-live -> tray-v0.1.9` on top. Both runs
+    #   skipped, so `:latest` stayed on the previous image while
+    #   `v0.1.11` was tagged and `healthz` kept reporting the old
+    #   version. It took a manual `workflow_dispatch` to ship.
+    #
+    #   Note the shape of that failure: the tray release pushes a
+    #   manifest commit to main EVERY time, so a stale `:latest` was
+    #   the DEFAULT outcome of a tray+platform promote, not an edge
+    #   case. Main pushes are rare — live promotions and the manifest
+    #   back-merge — so the saving was a couple of builds per release,
+    #   against a production deploy that silently does not happen.
+    #   Not a trade worth keeping. (Earlier form surfaced 2026-05-27
+    #   when the v1.8.8 live promotion left `:latest` pointing at the
+    #   pre-v1.8.8 image; that fix addressed bump commits only.)
     #
     # **`next` branch push** — auto-alpha bumps + manifest bot
     #   commits arrive constantly; the parent already built the same
@@ -286,14 +306,7 @@ jobs:
           !contains(github.ref_name, '-rc')
         ) ||
         github.event_name != 'push' ||
-        (
-          github.ref == 'refs/heads/main' &&
-          !(
-            startsWith(github.event.head_commit.message, 'release-manifests:') ||
-            startsWith(github.event.head_commit.message, 'docs:') ||
-            startsWith(github.event.head_commit.message, 'docs(')
-          )
-        ) ||
+        github.ref == 'refs/heads/main' ||
         (
           github.ref == 'refs/heads/next' &&
           !(
