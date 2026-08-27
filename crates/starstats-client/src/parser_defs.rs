@@ -37,8 +37,23 @@ const FETCH_PATH: &str = "/v1/parser-definitions";
 /// build-time constant, not a fetched value — a key fetched over the wire
 /// could be swapped by the same MITM the signature defends against, so
 /// rotating the key is a client release. `None` disables verification.
+///
+/// ROTATED 2026-08-27. The previous key
+/// (`jJVxWYzC44rxEEPzLKWQ9Pubzy0VaszhYsubkCVeKmM=`) stopped matching what the
+/// server signs with at some point after 2026-07-21: a manifest cached by a
+/// tray on that date still verifies against it, the live one did not. Every
+/// client had been rejecting manifests and running on last-known-good rules
+/// since. Rather than hunt the divergence, the key was regenerated and both
+/// halves set together — the seed in 1Password (which the server mounts) and
+/// the public half here.
+///
+/// The rejection was, briefly, load-bearing: the served rule set was empty at
+/// the time, so a client that COULD verify would have adopted an empty
+/// manifest and dropped the rules it was running. The rules were republished
+/// first (see docs/PARSER_DEFINITION_UPDATES.md) precisely so this pin could
+/// be changed safely.
 const PARSER_SIGNING_PUBKEY_B64: Option<&str> =
-    Some("jJVxWYzC44rxEEPzLKWQ9Pubzy0VaszhYsubkCVeKmM=");
+    Some("BXC+xPQAZ5n5mT0VzBMqO5uS1gGTLtjtTzID/aZINXo=");
 
 /// Whether an unsigned / unverifiable manifest is REJECTED. **On by
 /// default** (the F10 enforcement rollout): the server signs every
@@ -349,6 +364,31 @@ mod tests {
         assert!(parse_require_signed(Some("1")));
         assert!(parse_require_signed(Some("true")));
         assert!(parse_require_signed(Some("anything")));
+    }
+
+    /// The pinned key must be a usable ed25519 public key.
+    ///
+    /// A typo here does not fail loudly: `verify_with_pubkey` returns `None`
+    /// when the pin will not decode, `manifest_is_adoptable(None, true)` is
+    /// false, and the client then rejects EVERY manifest and quietly runs on
+    /// last-known-good rules forever. That is exactly the failure this repo
+    /// just spent a rotation recovering from, so the constant is checked
+    /// rather than trusted.
+    #[test]
+    fn the_pinned_signing_key_is_a_valid_ed25519_public_key() {
+        use base64::Engine as _;
+
+        let pinned = PARSER_SIGNING_PUBKEY_B64
+            .expect("a pubkey is pinned; None disables verification entirely");
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(pinned.trim())
+            .expect("pinned key must be valid base64");
+        let arr: [u8; 32] = bytes
+            .as_slice()
+            .try_into()
+            .expect("pinned key must decode to exactly 32 bytes");
+        ed25519_dalek::VerifyingKey::from_bytes(&arr)
+            .expect("pinned key must be a valid ed25519 public key");
     }
 
     #[test]
