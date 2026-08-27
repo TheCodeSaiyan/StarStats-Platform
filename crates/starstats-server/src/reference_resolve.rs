@@ -47,7 +47,9 @@ pub struct ResolvedEntry {
     pub classification: Option<String>,
     /// `metadata.classification_label` — human-readable form, e.g. "Helmet".
     pub classification_label: Option<String>,
-    /// True when `metadata.images` is a non-empty array.
+    /// True when the entry has an image the media proxy will actually
+    /// serve — a listed image on a non-allowlisted host does not count,
+    /// because requesting it can only ever 404.
     pub has_image: bool,
 }
 
@@ -104,7 +106,22 @@ pub async fn resolve_reference_names<R: ReferenceStore>(
         let m = &entry.metadata;
         let classification = m["classification"].as_str().map(str::to_owned);
         let classification_label = m["classification_label"].as_str().map(str::to_owned);
-        let has_image = m["images"].as_array().is_some_and(|a| !a.is_empty());
+        // `has_image` MUST mean "we can serve it", not "the catalogue lists
+        // one". The wiki join carries image URLs from more than one host, and
+        // the media proxy is an SSRF allowlist of exactly
+        // `media.starcitizen.tools` — so an entry whose only image lives on
+        // e.g. `cstone.space` advertised `has_image: true`, the client
+        // rendered an <img> for it, and the proxy correctly refused with a
+        // 404 every single time. The image degraded fine but the request was
+        // never worth making, and it filled consoles with failures that look
+        // like a broken feature. Checked against the same predicate the proxy
+        // enforces, so the two can't disagree.
+        let has_image = m["images"]
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|img| img.get("original_url"))
+            .and_then(|v| v.as_str())
+            .is_some_and(crate::reference_media::allowed_image_host);
         resolved.insert(
             req_class,
             ResolvedEntry {
@@ -153,6 +170,73 @@ mod tests {
             slug: None,
             metadata: serde_json::json!({}),
         }
+    }
+
+    /// `has_image` must mean "we can serve it", not "one is listed".
+    ///
+    /// The wiki join carries image URLs from more than one host, and the media
+    /// proxy is an SSRF allowlist of exactly `media.starcitizen.tools`. Two
+    /// real items in the catalogue — `qrt_specialist_heavy_core_01_01_01` and
+    /// `grin_multitool_energy_01_mag` — have their only image on
+    /// `cstone.space`, so they advertised `has_image: true`, the client
+    /// rendered an <img>, and the proxy refused with a 404 every time. It
+    /// degraded correctly and was never worth requesting.
+    #[tokio::test]
+    async fn an_image_we_cannot_serve_is_not_advertised() {
+        let store = Arc::new(MemoryReferenceStore::new());
+        // Verbatim shape of the real entry, including the host.
+        store
+            .upsert_entries(&[
+                ReferenceEntry {
+                    category: ReferenceCategory::Item,
+                    class_name: "qrt_specialist_heavy_core_01_01_01".to_owned(),
+                    display_name: "Antium Core".to_owned(),
+                    slug: Some("antium-core".to_owned()),
+                    metadata: serde_json::json!({
+                        "images": [{
+                            "original_url":
+                                "https://cstone.space/uifimages/3c09b16a-0c8b-41df-84c9-e0a4a271c0fa.png"
+                        }]
+                    }),
+                },
+                // A second entry the proxy CAN serve, so the assertion below
+                // is about the host and not the field being broken outright.
+                make_item_with_metadata(
+                    "doom_armor_medium_helmet_02_01_01",
+                    "The Butcher Helmet",
+                    Some("the-butcher-helmet"),
+                ),
+            ])
+            .await
+            .unwrap();
+
+        let (issuer, verifier) = fresh_pair();
+        let token = mint_user_token(&issuer);
+        let app = build_app(store, Arc::new(verifier));
+
+        let (status, body) = post_json(
+            app,
+            serde_json::json!({
+                "class_names": [
+                    "qrt_specialist_heavy_core_01_01_01",
+                    "doom_armor_medium_helmet_02_01_01"
+                ]
+            }),
+            &token,
+        )
+        .await;
+
+        assert_eq!(status, StatusCode::OK);
+        let resolved = &body["resolved"];
+        assert_eq!(
+            resolved["qrt_specialist_heavy_core_01_01_01"]["has_image"], false,
+            "an image on a non-allowlisted host cannot be served, so it must \
+             not be advertised — the client would render an <img> that 404s",
+        );
+        assert_eq!(
+            resolved["doom_armor_medium_helmet_02_01_01"]["has_image"], true,
+            "an allowlisted image must still be advertised",
+        );
     }
 
     fn make_item_with_metadata(

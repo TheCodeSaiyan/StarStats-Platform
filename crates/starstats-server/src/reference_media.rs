@@ -165,6 +165,24 @@ pub async fn proxy_reference_media(
         }
     };
 
+    // REFUSE AN OVERSIZED IMAGE BEFORE DOWNLOADING IT.
+    //
+    // The cap used to be enforced only after `bytes().await`, which reads the
+    // whole body into memory first — so it rejected the response without ever
+    // having bounded the allocation it exists to bound. A real 10.75 MB PNG in
+    // the catalogue (`Pembroke_-_Backback.png`) was buffered in full on every
+    // request and then thrown away.
+    if let Some(len) = upstream.content_length() {
+        if len > MAX_IMAGE_BYTES as u64 {
+            tracing::warn!(
+                bytes = len,
+                url,
+                "reference media proxy: declared length exceeds cap; not fetching body"
+            );
+            return StatusCode::NOT_FOUND.into_response();
+        }
+    }
+
     let content_type = upstream
         .headers()
         .get(header::CONTENT_TYPE)
@@ -175,12 +193,20 @@ pub async fn proxy_reference_media(
     let bytes = match upstream.bytes().await {
         Ok(b) if b.len() <= MAX_IMAGE_BYTES => b,
         Ok(b) => {
+            // Backstop for a response that declared no Content-Length.
+            //
+            // NOT a 502. The upstream answered perfectly well; WE decline to
+            // serve an image this big. Reporting our own policy as a gateway
+            // failure sent operators looking for a broken upstream, and told
+            // the browser to treat a permanent condition as a server error.
+            // 404 is what "there is no image here for you" means, and it is
+            // what the client's onError already handles.
             tracing::warn!(
                 bytes = b.len(),
                 url,
                 "reference media proxy: image exceeds cap"
             );
-            return StatusCode::BAD_GATEWAY.into_response();
+            return StatusCode::NOT_FOUND.into_response();
         }
         Err(e) => {
             tracing::warn!(error = %e, url, "reference media proxy: body read failed");
