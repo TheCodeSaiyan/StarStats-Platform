@@ -52,8 +52,16 @@ const FETCH_PATH: &str = "/v1/parser-definitions";
 /// manifest and dropped the rules it was running. The rules were republished
 /// first (see docs/PARSER_DEFINITION_UPDATES.md) precisely so this pin could
 /// be changed safely.
+///
+/// Rotated TWICE that day. The first replacement was printed to a terminal by
+/// a mistyped PowerShell hash command and had to be retired before it shipped
+/// — it was never pinned in a release, so nothing ever trusted it. The root
+/// cause of the original divergence turned out not to be a key change at all:
+/// a running container keeps the secret it was created with, so the server had
+/// been signing with a stale mount for weeks while the host file and 1Password
+/// were both correct. See docs/RUNBOOK-PARSER-SIGNING-KEY.md.
 const PARSER_SIGNING_PUBKEY_B64: Option<&str> =
-    Some("BXC+xPQAZ5n5mT0VzBMqO5uS1gGTLtjtTzID/aZINXo=");
+    Some("XNTqbZrqyZKQ0cYHY0M96uLW2EHk0ja8QUzmalUloe4=");
 
 /// Whether an unsigned / unverifiable manifest is REJECTED. **On by
 /// default** (the F10 enforcement rollout): the server signs every
