@@ -89,7 +89,15 @@ rewriting a secret's contents changes neither, so compose reports the service
 up-to-date and leaves the old process running. A plain `docker restart` is
 not enough either, because the stale mount survives it.
 
-    docker compose up -d --force-recreate starstats-api
+    docker compose       --env-file /var/lib/dockerprime/.env       -f /var/lib/dockerprime/repo/compose/starstats/compose.yml       up -d --force-recreate starstats-api
+
+Both flags are required and both fail QUIETLY if omitted. Run from the repo
+root without `-f`, compose prints `no configuration file provided: not found`
+and does nothing — chained after other commands in a paste, that line is easy
+to scroll past, and the container simply never moves. Without `--env-file` the
+compose file's `$SECRETSDIR` / `$PUID` expand to empty and the secret mounts
+resolve to the wrong paths. Redeploying the `starstats` stack from Komodo does
+the same thing with the paths already configured, and is the safer option.
 
 To check any secret, on the host:
 
