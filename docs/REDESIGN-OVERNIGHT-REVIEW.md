@@ -737,9 +737,28 @@ Two things I got wrong along the way, recorded because the method matters:
 2. **The two `--beam` values changed** (pyro, nyx). They are more legible but
    visibly lighter; if you dislike them, the constraint to preserve is
    `--label < --beam` with real separation.
-3. **`HierarchicalBucketList` is still dead code** — a two-level system → body →
-   place roll-up with no equivalent on any current page. It is the one orphaned
-   Journey component with no replacement.
+3. **`HierarchicalBucketList` is still dead code**, and I now know WHY it
+   cannot simply be wired back in. Attempted: put it in the `locations` widget,
+   which is the obvious home — `rollUpLocations` exists, and `maxNodes` is
+   documented as the cap that makes it tile-safe.
+
+   It does not fit the data. `rollUpLocations` calls `parseLocationClass`,
+   which calls `stripAndSplit` — and that splits on `_`, because it parses
+   ENGINE CLASS NAMES (`Stanton1b_Lorville`). But `/v1/me/stats/locations`
+   returns `top_locations` keyed `system|planet|city`, pipe-delimited. Those
+   composites survive `stripAndSplit` as a single token and resolve to
+   nothing, so the roll-up renders an empty tree. It typechecks perfectly and
+   draws nothing — caught only by asserting a PARENT row appears with the
+   summed count of its children.
+
+   So this is orphaned because its input shape is: the raw class names it
+   parses came from journey events, and no surface feeds it those any more.
+   Reviving it means either an adapter from the composite keys (the hierarchy
+   is right there in the string — `aggregateLocationBuckets` already splits
+   it) or pointing it at a source that still emits class names. That is a data
+   decision, not a wiring job, which is why it has stayed dead.
+
+   The attempt is reverted; nothing of it is on the branch.
 4. ~~**Admin is not written in the system's components**~~ **NOT REPRODUCIBLE —
    it draws in the idiom.** This was the JSX-name scan again, the measure Phase
    4 itself records as measuring nothing: 23 of 51 admin files import `holo`
