@@ -10,11 +10,15 @@
 // branch push to `main`. The gate used to skip a main push whose HEAD commit
 // was metadata (`release-manifests:` / `docs:`) -- but a push carries many
 // commits, and a live promote fast-forwards main across everything on next.
-// On 2026-08-27 that skipped two consecutive main pushes: v0.1.11 was tagged,
-// `:latest` stayed on the previous image, and healthz kept reporting 0.1.10.
-// The tray release pushes a manifest commit to main every time, so this was
-// the DEFAULT outcome of a combined promote, and it looked exactly like a
+// On 2026-08-27 that skipped the promote's own push to main -- its head was a
+// `docs:` commit, because a promote fast-forwards main onto whatever happens
+// to be the tip of next. v0.1.11 was tagged, `:latest` stayed on the previous
+// image, healthz kept reporting 0.1.10, and it looked exactly like a
 // successful release.
+//
+// The manifest bot is NOT the trigger: its `release-manifests:` commit is
+// pushed with the default GITHUB_TOKEN, which does not start workflows, so it
+// can never cause a skip.
 //
 // Run: node --test scripts/release-images-build-gate.test.mjs
 import { test } from "node:test";
