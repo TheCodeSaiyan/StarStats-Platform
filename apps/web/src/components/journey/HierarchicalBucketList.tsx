@@ -465,8 +465,15 @@ export function rollUpWeapons(
     .sort((a, b) => b.count - a.count);
 }
 
-/** Group flat buckets by manufacturer → model. Used by Loadout >
- *  Most-attached items. */
+/** Group flat buckets by manufacturer → model.
+ *
+ *  NO CURRENT CALLER. It served a Loadout "most-attached items" list that
+ *  the projection redesign replaced, and there is no most-attached surface
+ *  today. Kept because the parse is correct and a future items roll-up
+ *  wants exactly this; delete it if that surface never arrives. Anything
+ *  wiring it up should assert a SUMMED PARENT — see
+ *  `apps/web/e2e/weapon-rollup.spec.ts` for why a weaker assertion lets an
+ *  empty tree through every gate. */
 export function rollUpItems(
   buckets: { value: string; count: number }[],
   catalog: ReferenceMap,
@@ -515,10 +522,15 @@ export function rollUpItems(
     .sort((a, b) => b.count - a.count);
 }
 
-/** Group flat buckets by system → body → place. Used by Travel and
- *  Combat (deaths_by_zone). Filters out engine-internal markers
- *  (mission objectives, nav points, object containers) up-front so
- *  they never reach the rollup tree. The `catalog` argument is the
+/** Group flat buckets by system → body → place.
+ *
+ *  NO CURRENT CALLER, and do not reach for it without checking
+ *  `aggregateLocationBuckets` first — that is what the projection's Travel
+ *  and "Where you die" planes actually use, and it already handles the
+ *  `system|planet|city` key shape those endpoints return.
+ *
+ *  This one filters out engine-internal markers (mission objectives, nav
+ *  points, object containers) up-front so they never reach the rollup tree. The `catalog` argument is the
  *  wiki-driven location lookup (see `getLocationCatalog`) — when
  *  non-empty, the parser uses it as Tier 0, gaining full hierarchy
  *  for every wiki-known location without hardcoded dictionaries. */
