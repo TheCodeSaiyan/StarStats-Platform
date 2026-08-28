@@ -734,9 +734,29 @@ Two things I got wrong along the way, recorded because the method matters:
    reflows slightly. The widget row unit was scaled to match, but the per-widget
    ROW COUNTS are tuned to old metrics and persisted per reader — worth a look
    on a real account with a full layout.
-2. **The two `--beam` values changed** (pyro, nyx). They are more legible but
-   visibly lighter; if you dislike them, the constraint to preserve is
-   `--label < --beam` with real separation.
+2. ~~**The two `--beam` values changed** (pyro, nyx).~~ **KEPT, and the
+   constraint is now enforced.** Measured before deciding:
+
+   | | old beam | new beam | vs void | beam vs label |
+   | --- | --- | --- | --- | --- |
+   | pyro | `#FF6B4A` | `#FF8E74` | 7.20 → 9.06 | **1.22** |
+   | nyx | `#B78BFF` | `#C19BFF` | → 9.08 | **1.21** |
+   | terra | unchanged | `#7FE4FF` | 13.96 | 1.84 |
+   | stanton | unchanged | `#FFAE3B` | 10.99 | 1.45 |
+
+   Both were lightened to clear 9:1 where the originals only just cleared 7:1,
+   and that necessarily moved them toward a `--label` pinned at "7:1 and no
+   further" — so pyro and nyx are the tightest by construction, not by
+   accident. The values are kept for the legibility.
+
+   The named constraint was only half-enforced: `palette-contrast.test.ts`
+   asserted the ORDER (`label < beam`) but never the DISTANCE, so a label could
+   creep to within a hair of its beam and still pass while the tier collapsed.
+   There is now a 1.2:1 floor measured directly between the two colours, set at
+   today's worst case so the current palette passes and any erosion fails.
+   Verified by nudging nyx's label one step toward its beam: the gap falls to
+   1.05:1 and the new test fails — while the old ordering test passes, which is
+   precisely the hole.
 3. **`HierarchicalBucketList` is still dead code**, and I now know WHY it
    cannot simply be wired back in. Attempted: put it in the `locations` widget,
    which is the obvious home — `rollUpLocations` exists, and `maxNodes` is

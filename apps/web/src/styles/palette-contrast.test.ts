@@ -150,6 +150,37 @@ describe('palette contrast', () => {
     }
   });
 
+  it('keeps a real gap between --label and --beam, not just an ordering', () => {
+    // The test above pins the ORDER; nothing pinned the DISTANCE, so a label
+    // could creep to within a hair of the beam and still pass while the tier
+    // it exists to create quietly disappeared.
+    //
+    // Measured directly between the two colours (not each against the void,
+    // which is a weaker proxy):
+    //
+    //   terra 1.84   stanton 1.45   pyro 1.22   nyx 1.21
+    //
+    // pyro and nyx are the two whose `--beam` was lightened to clear 9:1
+    // against the void where the originals only just cleared 7:1. Raising a
+    // warm beam for legibility moves it TOWARD a label pinned at "7:1 and no
+    // further", so those two are the tightest by construction and are the
+    // reason this floor exists.
+    //
+    // The floor is today's worst case, so the current palette passes and any
+    // further erosion fails. It is deliberately not aspirational: raising it
+    // is a palette decision, and should be made by changing colours and then
+    // this number, in that order.
+    const FLOOR = 1.2;
+    for (const c of cals) {
+      const gap = contrast(hexToRgb(c.tokens.beam), hexToRgb(c.tokens.label));
+      expect(
+        gap,
+        `${c.name}: --label and --beam are ${gap.toFixed(2)}:1 apart, under the ` +
+          `${FLOOR}:1 floor — the caption tier has collapsed into the value tier`,
+      ).toBeGreaterThanOrEqual(FLOOR);
+    }
+  });
+
   it('keeps --dim quieter than --label', () => {
     // Three tiers, in order: prose < label < value. Any inversion means a
     // caption is louder than the prose it introduces.
