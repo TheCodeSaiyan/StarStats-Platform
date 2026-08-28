@@ -10,29 +10,21 @@
  *     Behring                                   88 ▮▮▮
  *       P4-AR                                   88 ▮▮▮
  *
- * The component is intentionally generic over the row shape so it
- * works for weapons (mfr → family + size badges), items (mfr →
- * model), and locations (system → body → place). Callers pre-roll
- * up the buckets via the helpers below and hand the resulting tree
- * in.
+ * The component is generic over the row shape and renders up to three
+ * levels; callers pre-roll the buckets into a `RollupNode` tree and hand
+ * it in. `rollUpWeapons` (mfr → family, with size badges) is the only
+ * such helper that ships today — sibling roll-ups for items and for
+ * locations were deleted once the projection redesign left them without
+ * callers, locations because `aggregateLocationBuckets` covers that shape
+ * properly. Nothing currently produces a third level.
  */
 
 import React from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
-import {
-  isNonDestination,
-  parseWeaponClass,
-  parseItemClass,
-  parseLocationClass,
-  stripAndSplit,
-} from '@/lib/class-name-parts';
+import { parseWeaponClass } from '@/lib/class-name-parts';
 import { prettyClass } from '@/lib/reference';
-import type {
-  LocationCatalog,
-  ReferenceCatalog,
-  ReferenceMap,
-} from '@/lib/reference';
+import type { ReferenceCatalog, ReferenceMap } from '@/lib/reference';
 
 export interface RollupNode {
   /** Display label for this node (e.g. "Klaus & Werner"). */
@@ -465,232 +457,6 @@ export function rollUpWeapons(
     .sort((a, b) => b.count - a.count);
 }
 
-/** Group flat buckets by manufacturer → model.
- *
- *  NO CURRENT CALLER. It served a Loadout "most-attached items" list that
- *  the projection redesign replaced, and there is no most-attached surface
- *  today. Kept because the parse is correct and a future items roll-up
- *  wants exactly this; delete it if that surface never arrives. Anything
- *  wiring it up should assert a SUMMED PARENT — see
- *  `apps/web/e2e/weapon-rollup.spec.ts` for why a weaker assertion lets an
- *  empty tree through every gate. */
-export function rollUpItems(
-  buckets: { value: string; count: number }[],
-  catalog: ReferenceMap,
-  rich?: ReferenceCatalog,
-): RollupNode[] {
-  const tree = new Map<
-    string,
-    Map<string, { count: number; raws: string[] }>
-  >();
-  for (const b of buckets) {
-    const it = parseItemClass(b.value);
-    const mfr = it.manufacturer ?? 'Unknown manufacturer';
-    let mfrMap = tree.get(mfr);
-    if (!mfrMap) {
-      mfrMap = new Map();
-      tree.set(mfr, mfrMap);
-    }
-    let modelEntry = mfrMap.get(it.model);
-    if (!modelEntry) {
-      modelEntry = { count: 0, raws: [] };
-      mfrMap.set(it.model, modelEntry);
-    }
-    modelEntry.count += b.count;
-    modelEntry.raws.push(b.value);
-  }
-  return [...tree.entries()]
-    .map(([mfr, models]) => {
-      const children: RollupNode[] = [...models.entries()]
-        .map(([model, entry]) => {
-          const catalogLabel = prettyClass(entry.raws[0], catalog);
-          const displayModel =
-            catalogLabel && catalogLabel !== entry.raws[0]
-              ? stripDuplicateMfr(catalogLabel, mfr)
-              : model;
-          return {
-            label: displayModel,
-            count: entry.count,
-            title: entry.raws.join(' · '),
-            entityHref: leafHref('item', entry.raws, rich),
-          };
-        })
-        .sort((a, b) => b.count - a.count);
-      const total = children.reduce((acc, c) => acc + c.count, 0);
-      return { label: mfr, count: total, children };
-    })
-    .sort((a, b) => b.count - a.count);
-}
-
-/** Group flat buckets by system → body → place.
- *
- *  NO CURRENT CALLER, and do not reach for it without checking
- *  `aggregateLocationBuckets` first — that is what the projection's Travel
- *  and "Where you die" planes actually use, and it already handles the
- *  `system|planet|city` key shape those endpoints return.
- *
- *  This one filters out engine-internal markers (mission objectives, nav
- *  points, object containers) up-front so they never reach the rollup tree. The `catalog` argument is the
- *  wiki-driven location lookup (see `getLocationCatalog`) — when
- *  non-empty, the parser uses it as Tier 0, gaining full hierarchy
- *  for every wiki-known location without hardcoded dictionaries. */
-export function rollUpLocations(
-  buckets: { value: string; count: number }[],
-  catalog: LocationCatalog,
-): RollupNode[] {
-  const cleaned = buckets.filter((b) => !isNonDestination(b.value));
-  const tree = new Map<
-    string,
-    Map<string, Map<string, { count: number; raws: string[] }>>
-  >();
-  const unknownPlaces = new Map<
-    string,
-    { count: number; raws: string[] }
-  >();
-  // The display map embedded in the catalog still drives per-leaf
-  // labels via `prettyClass` (back-compat with the legacy path).
-  const display = catalog.display;
-  for (const b of cleaned) {
-    const loc = parseLocationClass(b.value, catalog);
-    if (!loc.system) {
-      const key =
-        loc.place ?? prettyClass(b.value, display) ?? b.value;
-      const e = unknownPlaces.get(key) ?? { count: 0, raws: [] };
-      e.count += b.count;
-      e.raws.push(b.value);
-      unknownPlaces.set(key, e);
-      continue;
-    }
-    let sysMap = tree.get(loc.system);
-    if (!sysMap) {
-      sysMap = new Map();
-      tree.set(loc.system, sysMap);
-    }
-    const bodyKey = loc.body ?? '(unknown body)';
-    let bodyMap = sysMap.get(bodyKey);
-    if (!bodyMap) {
-      bodyMap = new Map();
-      sysMap.set(bodyKey, bodyMap);
-    }
-    const placeKey = loc.place ?? bodyKey;
-    let placeEntry = bodyMap.get(placeKey);
-    if (!placeEntry) {
-      placeEntry = { count: 0, raws: [] };
-      bodyMap.set(placeKey, placeEntry);
-    }
-    placeEntry.count += b.count;
-    placeEntry.raws.push(b.value);
-  }
-  const nodes: RollupNode[] = [...tree.entries()].map(([system, bodies]) => {
-    const bodyChildren: RollupNode[] = [...bodies.entries()].map(
-      ([body, places]) => {
-        const placeChildren: RollupNode[] = [...places.entries()]
-          .map(([place, entry]) => {
-            // Single-entity place leaves get a KB link; aggregate
-            // places (multiple raws collapsed into the same display
-            // name) stay as plain text. `catalog.slugByClass` is
-            // empty until the slug backfill runs server-side — in
-            // that case every leaf renders unlinked, gracefully.
-            const slug =
-              entry.raws.length === 1
-                ? catalog.slugByClass.get(entry.raws[0].toLowerCase())
-                : undefined;
-            return {
-              label: prettyClass(entry.raws[0], display) || place,
-              count: entry.count,
-              title: entry.raws.join(' · '),
-              entityHref: slug
-                ? (`/kb/location/${slug}` as Route)
-                : undefined,
-            };
-          })
-          .sort((a, b) => b.count - a.count);
-        const bodyTotal = placeChildren.reduce((a, c) => a + c.count, 0);
-        // Collapse single-place bodies whose only place duplicates
-        // the body name — keeps the tree compact.
-        const isSinglePlaceMatchingBody =
-          placeChildren.length === 1 &&
-          placeChildren[0].label.toLowerCase() === body.toLowerCase();
-        return {
-          label: body,
-          count: bodyTotal,
-          children: isSinglePlaceMatchingBody ? undefined : placeChildren,
-        };
-      },
-    );
-    bodyChildren.sort((a, b) => b.count - a.count);
-    const sysTotal = bodyChildren.reduce((a, c) => a + c.count, 0);
-    return {
-      label: system,
-      count: sysTotal,
-      children: bodyChildren,
-    };
-  });
-  if (unknownPlaces.size > 0) {
-    // Group orphans by their leading token so `Other / unmapped`
-    // gets the same expandable tree shape Stanton / Pyro have,
-    // instead of being a single flat list. The leading token is
-    // usually a system/body short-code we don't yet recognise
-    // (e.g. `Pyro` jump variants, custom outpost prefixes), so
-    // grouping on it surfaces the patterns that need adding to
-    // the parser dictionaries.
-    const groupMap = new Map<string, RollupNode[]>();
-    for (const [place, entry] of unknownPlaces) {
-      // Tokenize the *first* raw — entries that share a display
-      // place but came from different leading tokens are rare,
-      // and picking the first keeps the math simple. The full
-      // raws list is still shown in the subtitle.
-      const tokens = stripAndSplit(entry.raws[0]);
-      const groupKey = tokens[0] ?? '(no leading token)';
-      const leaf: RollupNode = {
-        label: place,
-        count: entry.count,
-        title: entry.raws.join(' · '),
-        // Surface every raw identifier so we can pattern-spot what
-        // needs adding to KNOWN_BODIES / KNOWN_PLACES.
-        subtitle:
-          entry.raws.slice(0, 3).join(', ') +
-          (entry.raws.length > 3
-            ? ` (+${entry.raws.length - 3} more)`
-            : ''),
-      };
-      const list = groupMap.get(groupKey) ?? [];
-      list.push(leaf);
-      groupMap.set(groupKey, list);
-    }
-    const orphanGroups: RollupNode[] = [...groupMap.entries()]
-      .map(([token, places]) => {
-        const total = places.reduce((a, p) => a + p.count, 0);
-        return {
-          label: titleCaseSnake(token),
-          count: total,
-          children: places.sort((a, b) => b.count - a.count),
-        };
-      })
-      .sort((a, b) => b.count - a.count);
-    const orphanTotal = orphanGroups.reduce((a, c) => a + c.count, 0);
-    nodes.push({
-      label: 'Other / unmapped',
-      count: orphanTotal,
-      children: orphanGroups,
-      // Open by default — the whole point of this bucket is to
-      // expose what isn't being matched. Hiding it behind a click
-      // would defeat the purpose.
-      defaultOpen: true,
-    });
-  }
-  return nodes.sort((a, b) => b.count - a.count);
-}
-
-/** Title-case a snake_case or single-word token for display. */
-function titleCaseSnake(s: string): string {
-  if (!s) return '(no name)';
-  return s
-    .split('_')
-    .filter((p) => p.length > 0)
-    .map((p) => p[0].toUpperCase() + p.slice(1).toLowerCase())
-    .join(' ');
-}
 
 function stripDuplicateMfr(label: string, mfr: string): string {
   const lower = label.toLowerCase();
