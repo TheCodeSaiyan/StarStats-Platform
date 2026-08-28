@@ -110,6 +110,30 @@ test.describe('chrome nav', () => {
     );
   });
 
+  test('the heaviest surface keeps its links on a 1440 laptop', async ({ page }) => {
+    // /me is the worst case: it carries the range tabs and the lifetime
+    // readouts on top of everything every other surface has. It used to
+    // collapse here, and the reason was mean: nav inline at the tightest
+    // density wanted 1268px of content in a 1372px row, while the seven 20px
+    // gaps cost 140 — so the ladder surrendered every destination to keep a
+    // margin, then reset to dense 0 and drew the calibration caption and the
+    // lifetime figures at full width in the space the links had vacated.
+    //
+    // Tightening the gap at that last tier is what buys the row. Asserting the
+    // density too, because "inline" alone would also pass if some later change
+    // made the row fit by dropping something a reader needs.
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await settled(page);
+    const c = (await chrome(page))!;
+    expect(c.nav, '/me must reach an inline row on a 1440 laptop').toBe('inline');
+    expect(
+      c.rowLinks,
+      '/me must still offer its destinations inline, not an empty row',
+    ).toBeGreaterThan(0);
+  });
+
   test('a signed-out visitor is offered no destination they cannot open', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });

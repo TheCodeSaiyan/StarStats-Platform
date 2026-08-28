@@ -411,6 +411,19 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  * flex item plus `overflow: hidden` keeps the pulsing indicator and clips the
  * words, which is the same technique the phone breakpoint already uses. */
 .hp-top[data-dense="3"] > .live { width: 6px; overflow: hidden; }
+/* The last tier before the nav collapses buys its room from the GAPS.
+ *
+ * Measured at 1440 on /me: nav inline at dense 3 wants 1268px of content in a
+ * 1372px row, and the seven 20px gaps cost 140 — 36px more than there is. So
+ * the ladder gave up the ENTIRE nav to protect a margin, and then, having
+ * collapsed, reset to dense 0 and drew the calibration caption and the
+ * lifetime readouts at full width in the space the links had vacated. A
+ * reader lost every destination so that whitespace could stay generous.
+ *
+ * 14px frees 42px, which is more than the shortfall, and it applies only at
+ * the tier that exists to be the last thing tried before navigation goes. The
+ * ordering the ladder is built on is ornament first, links last. */
+.hp-top[data-dense="3"] { gap: 14px; }
 .hp-top .id { font-size: var(--fs-md); font-weight: 600; letter-spacing: var(--tracking-widest); color: var(--beam); }
 .hp-top .live { color: var(--hot); display: inline-flex; align-items: center; gap: 7px; }
 .hp-top .live i { width: 6px; height: 6px; background: var(--hot); border-radius: 50%; box-shadow: 0 0 9px var(--hot); animation: hpPulse 1.9s ease-in-out infinite; }
