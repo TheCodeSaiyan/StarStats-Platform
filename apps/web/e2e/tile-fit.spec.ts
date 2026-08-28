@@ -35,7 +35,7 @@ const MIN_TILES = 4;
  * having no test.
  */
 const KNOWN_TIGHT: Record<string, number> = {
-  sessions: 37, // 98px of content in a 61px body
+  sessions: 7, // 98px of content in a 91px body — was 37px before the row-model fix
   heatmap: 21, // 142px in 121px
   orgs: 21, // 112px in 91px
   entities: 28, // 47px in 19px — the one that used to collapse to 0

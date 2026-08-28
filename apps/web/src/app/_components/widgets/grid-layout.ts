@@ -27,8 +27,14 @@ import type { WidgetId, WidgetSize } from './types';
 export const GRID_COLS = 24;
 
 /** Height of one grid row, in px. Vertical resize/position works in
- *  these units. Kept small so vertical anchor points are dense too. */
-export const ROW_PX = 22;
+ *  these units. Kept small so vertical anchor points are dense too.
+ *
+ *  MUST MATCH `--hud-row`. When the micro tier was raised 8.5 -> 10px, the
+ *  row unit was scaled 22 -> 24px to keep every widget's tuned proportion —
+ *  but this constant, which is what decides how many rows a tile GETS, was
+ *  left at 22. Measured on /u/[handle]: `grid autoRows=24px rowGap=6px`
+ *  against a model of 22+6. */
+export const ROW_PX = 24;
 
 /** Minimum widget footprint so a tile never collapses to nothing. */
 export const MIN_W = 3;
@@ -214,11 +220,18 @@ export function clampHeight(h: number): number {
   return Math.max(MIN_H, Math.round(h));
 }
 
-/** Row stride in px: row height + gap (mirrors `--hud-row` 22 + `--hud-gap`
- *  6 in hud.css). A tile spanning `h` rows is `ROW_STRIDE*h - GAP` px tall. */
-const ROW_STRIDE = ROW_PX + 6;
-/** Chrome above a tile's measured content (header + top/bottom padding). */
-const TILE_CHROME_PX = 40;
+/** Row gap in px, mirroring `--hud-gap`. */
+const ROW_GAP_PX = 6;
+/** Row stride in px: row height + gap (mirrors `--hud-row` + `--hud-gap` in
+ *  hud.css). A tile spanning `h` rows is `ROW_STRIDE*h - GAP` px tall. */
+const ROW_STRIDE = ROW_PX + ROW_GAP_PX;
+/** Chrome above a tile's measured content (header + top/bottom padding).
+ *
+ *  Measured, not assumed: 59px on /u/[handle] at the current type scale, and
+ *  71px for `entities`, whose header carries an extra line. It was 40px — a
+ *  figure from before the micro tier grew — so every tile was allocated one
+ *  row too few and quietly scrolled. */
+const TILE_CHROME_PX = 60;
 
 /**
  * How many rows a tile needs to FIT `contentPx` of measured content without
@@ -229,7 +242,13 @@ const TILE_CHROME_PX = 40;
  */
 export function fitRows(contentPx: number, bounds: GridBounds): number {
   const b = normalizeBounds(bounds);
-  const rows = Math.ceil((Math.max(0, contentPx) + TILE_CHROME_PX) / ROW_STRIDE);
+  // A tile spanning `rows` is `ROW_STRIDE*rows - ROW_GAP_PX` tall, so the
+  // content fits when `ROW_STRIDE*rows >= content + chrome + gap`. The gap
+  // term was missing, which cost a further row's worth of slack on top of the
+  // stale chrome figure.
+  const rows = Math.ceil(
+    (Math.max(0, contentPx) + TILE_CHROME_PX + ROW_GAP_PX) / ROW_STRIDE,
+  );
   // Floor at the GLOBAL minimum, not the widget's min-viable `minH`: content
   // auto-fit measures what the body actually needs, so a widget with little
   // data should shrink all the way down rather than be padded up to a floor
