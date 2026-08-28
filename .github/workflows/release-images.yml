@@ -267,23 +267,28 @@ jobs:
     #   land on top is metadata, the whole push skips — real changes
     #   included.
     #
-    #   Both halves of that fired on 2026-08-27. The `live platform`
-    #   promote fast-forwarded main onto a head whose subject was
-    #   `docs: ...`, and the tray release then pushed
-    #   `release-manifests: tray-live -> tray-v0.1.9` on top. Both runs
-    #   skipped, so `:latest` stayed on the previous image while
-    #   `v0.1.11` was tagged and `healthz` kept reporting the old
-    #   version. It took a manual `workflow_dispatch` to ship.
+    #   Fired on 2026-08-27: the `live platform` promote fast-forwarded
+    #   main onto a head whose subject was `docs: ...`, the run skipped,
+    #   and `:latest` stayed on the previous image while `v0.1.11` was
+    #   tagged and `healthz` kept reporting the old version. It took a
+    #   manual `workflow_dispatch` to ship.
     #
-    #   Note the shape of that failure: the tray release pushes a
-    #   manifest commit to main EVERY time, so a stale `:latest` was
-    #   the DEFAULT outcome of a tray+platform promote, not an edge
-    #   case. Main pushes are rare — live promotions and the manifest
-    #   back-merge — so the saving was a couple of builds per release,
-    #   against a production deploy that silently does not happen.
-    #   Not a trade worth keeping. (Earlier form surfaced 2026-05-27
-    #   when the v1.8.8 live promotion left `:latest` pointing at the
-    #   pre-v1.8.8 image; that fix addressed bump commits only.)
+    #   The trigger is a promote, not the manifest bot. The bot's
+    #   `release-manifests:` commit is pushed with the default
+    #   GITHUB_TOKEN, which does not start workflows at all (see the
+    #   note on that step in release.yml), so it can never cause a
+    #   skip — an earlier version of this comment claimed it made a
+    #   stale `:latest` the DEFAULT outcome of a promote, which was
+    #   wrong. What makes it likely enough to matter is that a promote
+    #   fast-forwards main onto whatever happens to be the tip of
+    #   `next`, and a docs or manifest commit sitting there is ordinary.
+    #
+    #   Main pushes are rare either way, so the saving was a couple of
+    #   builds per release against a production deploy that silently
+    #   does not happen. Not a trade worth keeping. (Earlier form
+    #   surfaced 2026-05-27 when the v1.8.8 live promotion left
+    #   `:latest` pointing at the pre-v1.8.8 image; that fix addressed
+    #   bump commits only.)
     #
     # **`next` branch push** — auto-alpha bumps + manifest bot
     #   commits arrive constantly; the parent already built the same
