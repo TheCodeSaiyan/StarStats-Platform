@@ -743,13 +743,17 @@ Two things I got wrong along the way, recorded because the method matters:
 4. **Admin is not written in the system's components** (see Phase 4).
 5. `docs/plans/` is gitignored now, so the projection port's working plan lives
    outside the repo.
-6. **The remaining `BUILDERS` interfaces are unverified.** Three of them have
-   now been caught disagreeing with their widget (`docking`, `locations`,
-   `loadout`), each found by a reader or a crash rather than by a gate. The
-   `as (d: never)` cast is what allows it. Replacing those casts with the
-   widget's real return type would turn this whole class of fault into a
-   compile error; it is a contained change and I did not do it because it
-   reaches outside the port's scope.
+6. ~~**The remaining `BUILDERS` interfaces are unverified.**~~ **DONE.**
+   `defineWidget` now returns `TypedWidgetDef<D>`, carrying the loader's data
+   type on a phantom field, and the `callout` / `plane` binding helpers infer
+   `D` from the widget and check the builder against it. The cast survives once
+   inside each helper, after the relationship has been proven. Verified by
+   reintroducing the original `docking` bug (`by_kind` as an array): it now
+   fails at the binding site with `Type '{ hangar: number; other: number; pad:
+   number; }' is missing the following properties from type 'readonly { key:
+   string; count: number; }[]'` instead of throwing `by_kind.map is not a
+   function` on every render. All 21 loader-backed builders type-check as they
+   stand; `entities` is exempt because it is a nav card with no loader.
 7. **The range control still costs `/me` its inline row at 1440.** Everything
    else has been spent; the tabs are 360px in the chrome's trailing slot. Moving
    them out of the chrome at narrow widths is the next step and would need the

@@ -6,8 +6,33 @@ import Link from 'next/link';
 import { Plane, MeterRow, LogRow } from 'holo';
 // Type-only elsewhere, so no cycle: catalogue.ts imports nothing from here.
 import { PROJECTION_CATALOGUE } from './catalogue';
+import { livesWidget } from '@/app/_components/widgets/lives';
+import { contractsWidget } from '@/app/_components/widgets/contracts';
+import { objectivesWidget } from '@/app/_components/widgets/objectives';
+import { spendWidget } from '@/app/_components/widgets/spend';
+import { economyWidget } from '@/app/_components/widgets/economy';
+import { sessionsWidget } from '@/app/_components/widgets/sessions';
+import { travelWidget } from '@/app/_components/widgets/travel';
+import { routesWidget } from '@/app/_components/widgets/routes';
+import { corridorsWidget } from '@/app/_components/widgets/corridors';
+import { fleetWidget } from '@/app/_components/widgets/fleet';
+import { dockingWidget } from '@/app/_components/widgets/docking';
+import { locationsWidget } from '@/app/_components/widgets/locations';
+import { combatMissionWidget } from '@/app/_components/widgets/combat_mission';
+import { factsWidget } from '@/app/_components/widgets/facts';
+import { heatmapWidget } from '@/app/_components/widgets/heatmap';
+import { orgsWidget } from '@/app/_components/widgets/orgs';
+import { recentActivityWidget } from '@/app/_components/widgets/recent_activity';
+import { recordsWidget } from '@/app/_components/widgets/records';
+import { stabilityWidget } from '@/app/_components/widgets/stability';
+import { hangarWidget } from '@/app/_components/widgets/hangar';
+import { loadoutWidget } from '@/app/_components/widgets/loadout';
 import { WIDGETS_BY_ID } from '@/app/_components/widgets/registry';
 import type { ViewerCtx, WidgetId } from '@/app/_components/widgets/types';
+import type {
+  TypedWidgetDef,
+  WidgetData,
+} from '@/app/_components/widgets/kit/defineWidget';
 import { logger } from '@/lib/logger';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
 import type { DockingResponse, StatsBucket } from '@/lib/api';
@@ -499,12 +524,13 @@ function fleetPlane(d: FleetData, refs?: ProjectionRefs): React.ReactNode {
  * was written: `/me` logged `projection element failed` and dropped the plane
  * silently, because a failed element is caught per-element by design.
  *
- * TypeScript could not see it. `BUILDERS` casts every builder through
- * `as (d: never) => React.ReactNode`, which erases the relationship between
+ * TypeScript could not see it. `BUILDERS` used to cast every builder through
+ * `as (d: never) => React.ReactNode`, which erased the relationship between
  * what a widget LOADS and what its builder CLAIMS to receive — so a local
- * interface that disagrees with the API compiles cleanly and fails only in
- * production. Sourcing the type from `DockingResponse` is what makes the
- * compiler check it.
+ * interface that disagrees with the API compiled cleanly and failed only in
+ * production. Sourcing the type from `DockingResponse` fixed this instance;
+ * the `callout` / `plane` binding helpers below now close the hole for every
+ * builder, so the next one of these is a compile error.
  */
 interface DockingData {
   by_kind: DockingResponse['by_kind'];
@@ -943,9 +969,10 @@ function hangarPlane(d: HangarData, refs?: ProjectionRefs): React.ReactNode {
  * loadout widget returns `{ class, label, category, slug }` — so `count` was
  * always undefined and every row rendered an EMPTY value column, while the
  * `slug` the widget had already resolved went unused and the rows linked
- * nowhere. Nothing caught it: the `as (d: never)` cast in `BUILDERS` erases
- * the widget-to-builder relationship, so a local interface that disagrees with
- * its source compiles cleanly and only fails on screen.
+ * nowhere. Nothing caught it at the time: `BUILDERS` cast every builder
+ * through `as (d: never)`, erasing the widget-to-builder relationship, so a
+ * local interface that disagreed with its source compiled cleanly and only
+ * failed on screen. The binding helpers below now check it.
  */
 interface LoadoutPreviewItem {
   class: string;
@@ -1111,34 +1138,64 @@ type Builder =
   // Optional, so the builders that have no entities in them ignore it.
   | { kind: 'plane'; build: (data: never, refs?: ProjectionRefs) => React.ReactNode };
 
+/**
+ * Bind a builder to the widget whose data it draws.
+ *
+ * The map has to be heterogeneous, so `Builder` erases the payload to `never`
+ * — and the entries USED to apply that cast themselves, which meant nothing
+ * checked that a builder's parameter type matched what its widget actually
+ * loads. A local interface contradicting the API compiled perfectly and failed
+ * only on screen. It happened three times: `docking` declared `by_kind` as an
+ * array when the endpoint returns an object (`by_kind.map is not a function`,
+ * on every render since it was written), `locations` and `loadout` similarly.
+ * Each was found by a reader or a crash, never by a gate.
+ *
+ * These helpers infer `D` from the widget and check the builder against it, so
+ * the cast happens once, INSIDE, after the relationship has been proven. A
+ * builder that disagrees with its widget is now a compile error.
+ */
+function callout<D>(
+  _widget: TypedWidgetDef<D>,
+  build: (data: WidgetData<TypedWidgetDef<D>>) => CalloutVM,
+): Builder {
+  return { kind: 'callout', build: build as (d: never) => CalloutVM };
+}
+
+function plane<D>(
+  _widget: TypedWidgetDef<D>,
+  build: (data: WidgetData<TypedWidgetDef<D>>, refs?: ProjectionRefs) => React.ReactNode,
+): Builder {
+  return {
+    kind: 'plane',
+    build: build as (d: never, refs?: ProjectionRefs) => React.ReactNode,
+  };
+}
+
 const BUILDERS: Partial<Record<WidgetId, Builder>> = {
-  lives: { kind: 'callout', build: livesCallout as (d: never) => CalloutVM },
-  contracts: { kind: 'callout', build: contractsCallout as (d: never) => CalloutVM },
-  objectives: { kind: 'callout', build: objectivesCallout as (d: never) => CalloutVM },
-  spend: { kind: 'callout', build: spendCallout as (d: never) => CalloutVM },
-  economy: { kind: 'callout', build: economyCallout as (d: never) => CalloutVM },
-  sessions: { kind: 'callout', build: sessionsCallout as (d: never) => CalloutVM },
-  travel: { kind: 'callout', build: travelCallout as (d: never) => CalloutVM },
-  routes: { kind: 'plane', build: routesPlane as (d: never) => React.ReactNode },
-  corridors: { kind: 'plane', build: corridorsPlane as (d: never) => React.ReactNode },
-  fleet: { kind: 'plane', build: fleetPlane as (d: never) => React.ReactNode },
-  docking: { kind: 'plane', build: dockingPlane as (d: never) => React.ReactNode },
-  locations: { kind: 'plane', build: locationsPlane as (d: never) => React.ReactNode },
-  combat_mission: {
-    kind: 'plane',
-    build: combatPlane as (d: never, r?: ProjectionRefs) => React.ReactNode,
-  },
-  facts: { kind: 'plane', build: factsPlane as (d: never) => React.ReactNode },
-  heatmap: { kind: 'plane', build: heatmapPlane as (d: never) => React.ReactNode },
-  orgs: { kind: 'plane', build: orgsPlane as (d: never) => React.ReactNode },
-  recent_activity: {
-    kind: 'plane',
-    build: recentActivityPlane as (d: never) => React.ReactNode,
-  },
-  records: { kind: 'plane', build: recordsPlane as (d: never) => React.ReactNode },
-  stability: { kind: 'plane', build: stabilityPlane as (d: never) => React.ReactNode },
-  hangar: { kind: 'plane', build: hangarPlane as (d: never) => React.ReactNode },
-  loadout: { kind: 'plane', build: loadoutPlane as (d: never) => React.ReactNode },
+  lives: callout(livesWidget, livesCallout),
+  contracts: callout(contractsWidget, contractsCallout),
+  objectives: callout(objectivesWidget, objectivesCallout),
+  spend: callout(spendWidget, spendCallout),
+  economy: callout(economyWidget, economyCallout),
+  sessions: callout(sessionsWidget, sessionsCallout),
+  travel: callout(travelWidget, travelCallout),
+  routes: plane(routesWidget, routesPlane),
+  corridors: plane(corridorsWidget, corridorsPlane),
+  fleet: plane(fleetWidget, fleetPlane),
+  docking: plane(dockingWidget, dockingPlane),
+  locations: plane(locationsWidget, locationsPlane),
+  combat_mission: plane(combatMissionWidget, combatPlane),
+  facts: plane(factsWidget, factsPlane),
+  heatmap: plane(heatmapWidget, heatmapPlane),
+  orgs: plane(orgsWidget, orgsPlane),
+  recent_activity: plane(recentActivityWidget, recentActivityPlane),
+  records: plane(recordsWidget, recordsPlane),
+  stability: plane(stabilityWidget, stabilityPlane),
+  hangar: plane(hangarWidget, hangarPlane),
+  loadout: plane(loadoutWidget, loadoutPlane),
+  // `entities` is a nav card: a hand-written `WidgetDef` with NO loader, so
+  // there is no data type to check it against. It is built with `undefined`
+  // and takes its content from the reference bundle.
   entities: { kind: 'plane', build: entitiesPlane as (d: never) => React.ReactNode },
 };
 

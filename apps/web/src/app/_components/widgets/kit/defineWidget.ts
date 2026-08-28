@@ -52,7 +52,29 @@ function gate(visibility: Visibility | undefined) {
   };
 }
 
-export function defineWidget<D>(cfg: WidgetConfig<D>): WidgetDef {
+/**
+ * A `WidgetDef` that still remembers what its loader returns.
+ *
+ * `WidgetDef.load` is deliberately `Promise<unknown | null>` — the registry is
+ * a heterogeneous list and the render path does not care. But the projection
+ * (`/me`) reuses those loaders and draws the result with its OWN builders, and
+ * with `D` erased nothing checked that a builder's parameter type matched the
+ * data its widget actually loads. Three builders were caught disagreeing with
+ * their widget in production — `docking`, `locations`, `loadout` — each found
+ * by a reader or a crash rather than by a gate, because a local interface that
+ * contradicts the API compiles perfectly.
+ *
+ * `__data` is a phantom: optional, never assigned, present only so `D` can be
+ * recovered at a call site via {@link WidgetData}. It costs nothing at runtime.
+ */
+export interface TypedWidgetDef<D> extends WidgetDef {
+  readonly __data?: D;
+}
+
+/** Recover the loader's data type from a widget defined by `defineWidget`. */
+export type WidgetData<W> = W extends TypedWidgetDef<infer D> ? D : never;
+
+export function defineWidget<D>(cfg: WidgetConfig<D>): TypedWidgetDef<D> {
   const isAvailable = cfg.isAvailable ?? gate(cfg.visibility);
   return {
     id: cfg.id,
