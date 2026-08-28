@@ -18,7 +18,7 @@ import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-
  * separate a panel from the void. The line is drawn at alpha, because that is
  * the difference between a tint and a card.
  */
-const ROUTES = [
+const CORE_ROUTES = [
   { url: '/me', auth: true },
   { url: '/u/TestPilot', auth: true },
   { url: '/settings', auth: true },
@@ -27,32 +27,142 @@ const ROUTES = [
   { url: '/contracts', auth: false },
   { url: '/downloads', auth: false },
   { url: '/orgs', auth: true },
+];
+
+/**
+ * The admin console, as its own sweep.
+ *
+ * Split from the core surfaces for a harness reason, not a semantic one: one
+ * test walking all 28 routes exceeded even the tripled `test.slow()` budget,
+ * and a timeout measures nothing. Separately, an admin regression no longer
+ * masks a core one — the first failure used to end the whole sweep.
+ */
+const ADMIN_ROUTES = [
   { url: '/admin', auth: true },
   { url: '/admin/users', auth: true },
   { url: '/admin/settings', auth: true },
+  // The rest of the console. Admin was flagged in the overnight review as
+  // "not written in the system's components", but that review also records
+  // why a JSX-name scan measures nothing — a page using the system's CSS
+  // classes renders identically to one using its React components. Three of
+  // twenty admin routes were actually being measured, so the claim was
+  // untested either way. These are the other seventeen.
+  { url: '/admin/audit', auth: true },
+  { url: '/admin/contract-gaps', auth: true },
+  { url: '/admin/orgs', auth: true },
+  { url: '/admin/parser-health', auth: true },
+  { url: '/admin/parser-inference-rules', auth: true },
+  { url: '/admin/parser-inference-rules/new', auth: true },
+  { url: '/admin/parser-rules', auth: true },
+  { url: '/admin/parser-submissions', auth: true },
+  { url: '/admin/reference', auth: true },
+  // NOT listed: /admin/appearance, /admin/ship-matrix and /admin/smtp. Each
+  // redirects to /admin/settings, so measuring them measures that page three
+  // more times — they reported an identical 165 elements, which is what gave
+  // them away.
+  { url: '/admin/sharing', auth: true },
+  { url: '/admin/sharing/audit', auth: true },
+  { url: '/admin/sharing/reports', auth: true },
+  { url: '/admin/submissions', auth: true },
+  { url: '/admin/waitlist', auth: true },
 ];
 
-test('nothing inside a projection is a filled or rounded box', async ({ page, request }) => {
-  test.slow();
+/**
+ * Enough for the admin console to RENDER.
+ *
+ * Thirteen admin routes were reaching the error boundary on a missing fixture,
+ * and the boundary is itself drawn in the idiom — so the sweep measured an
+ * error page and reported the surface clean. An empty list is a legitimate
+ * state for every one of these, and it is the state that exercises the most
+ * chrome per route; the keys are supersets because the goal here is a rendered
+ * page to measure, not a faithful payload.
+ */
+const EMPTY_LIST = {
+  status: 200,
+  body: {
+    items: [],
+    rules: [],
+    orgs: [],
+    categories: [],
+    submissions: [],
+    entries: [],
+    reports: [],
+    queue: [],
+    users: [],
+    total: 0,
+    next_cursor: null,
+    // Route-specific keys these pages destructure directly and then call
+    // .filter / .map / .toLocaleString on. A generic empty list is not enough:
+    // an absent key reaches the boundary as
+    // `Cannot read properties of undefined`, which the sweep would report as
+    // "did not render" rather than as the missing fixture it is.
+    gaps: [],
+    total_unmatched_runs: 0,
+    findings: [],
+    last_run: null,
+    event_types: [],
+  },
+};
+
+const ADMIN_FIXTURES = {
+  'GET /v1/admin/orgs': EMPTY_LIST,
+  'GET /v1/admin/parser-rules': EMPTY_LIST,
+  'GET /v1/admin/parser-submissions': EMPTY_LIST,
+  'GET /v1/admin/reference/categories': EMPTY_LIST,
+  'GET /v1/admin/audit': EMPTY_LIST,
+  'GET /v1/admin/sharing/reports': EMPTY_LIST,
+  'GET /v1/admin/submissions/queue': EMPTY_LIST,
+  'GET /v1/admin/users': EMPTY_LIST,
+  'GET /v1/admin/contracts/gaps': EMPTY_LIST,
+  'GET /v1/admin/parser-health': EMPTY_LIST,
+  'GET /v1/admin/parser-inference-rules': EMPTY_LIST,
+  'GET /v1/admin/event-types': EMPTY_LIST,
+};
+
+async function sweep(
+  page: import('@playwright/test').Page,
+  request: import('@playwright/test').APIRequestContext,
+  routes: ReadonlyArray<{ url: string; auth: boolean }>,
+) {
   await resetScenario(request);
-  await setScenario(request, scenarioFor('idiom'));
+  await setScenario(request, scenarioFor('idiom', ADMIN_FIXTURES));
   await loginAs(page, { handle: 'TestPilot', staffRoles: ['admin'] });
 
   const failures: string[] = [];
-  for (const r of ROUTES) {
+  for (const r of routes) {
     // A generous goto budget, for a reason specific to these sweeps: this one
     // test visits every surface in the app, so most of its navigations are to
     // a route no other test has compiled yet. The config's 10s navigation
     // budget is sized for a warm route, and under full-suite parallelism a
     // cold one exceeded it — the sweep then failed on the harness rather than
     // on anything it measures. Nothing about what is asserted changes.
-    await page.goto(r.url, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(r.url, { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(300);
-    const bad = await page.evaluate(() => {
+    // A route that redirects after load destroys the execution context
+    // mid-measure. Settle, then retry once — and record where it actually
+    // landed, because a surface that redirects was never measured and should
+    // not look like a clean pass.
+    const landed = new URL(page.url()).pathname;
+    if (landed !== r.url) failures.push(`${r.url} — redirected to ${landed}, not measured`);
+    const measure = () => page.evaluate(() => {
       const out: string[] = [];
       const root = document.querySelector('.ss-projection-root');
       if (!root) return ['no projection root'];
+      // A PAGE THAT DID NOT RENDER MUST NOT PASS.
+      //
+      // The error boundary is itself drawn in the idiom, so a route whose data
+      // fetch 599s renders a handful of compliant elements and sails through —
+      // the sweep then reports the surface as clean without ever having seen
+      // it. Thirteen of the twenty admin routes were doing exactly that on a
+      // missing fixture, which is a green gate proving nothing.
+      const text = document.body.innerText;
+      if (
+        text.includes('The page failed to render') ||
+        text.includes('no_mock_fixture')
+      ) {
+        return ['did not render (error boundary) — the sweep saw nothing'];
+      }
       root.querySelectorAll<HTMLElement>('*').forEach((el) => {
         const cs = getComputedStyle(el);
         const rect = el.getBoundingClientRect();
@@ -107,7 +217,34 @@ test('nothing inside a projection is a filled or rounded box', async ({ page, re
       });
       return [...new Set(out)].slice(0, 10);
     });
+    let bad: string[];
+    try {
+      bad = await measure();
+    } catch {
+      await page.waitForTimeout(500);
+      bad = await measure();
+    }
     for (const b of bad) failures.push(`${r.url} — ${b}`);
   }
-  expect(failures, failures.join('\n')).toEqual([]);
+  return failures;
+}
+
+test('nothing inside a projection is a filled or rounded box', async ({ page, request }) => {
+  // Sized rather than tripled, for the same reason as the admin sweep below:
+  // the two together compile 31 routes in one worker, and the goto budget was
+  // being exceeded on cold ones.
+  test.setTimeout(300_000);
+  const failures = await sweep(page, request, CORE_ROUTES);
+  expect(failures, failures.join(String.fromCharCode(10))).toEqual([]);
+});
+
+test('the admin console draws in the same idiom', async ({ page, request }) => {
+  // Not `test.slow()`: that triples the 30s base to 90s, and this sweep walks
+  // twenty routes that no other test compiles, at roughly nine seconds each
+  // cold. It timed out on the harness rather than on anything it measures —
+  // which is the failure this file's own comments warn about. Sized to the
+  // work instead.
+  test.setTimeout(300_000);
+  const failures = await sweep(page, request, ADMIN_ROUTES);
+  expect(failures, failures.join(String.fromCharCode(10))).toEqual([]);
 });
