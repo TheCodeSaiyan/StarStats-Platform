@@ -1,3 +1,5 @@
+import { PageSkeleton } from '@/components/shell/PageSkeleton';
+
 /**
  * Entity detail skeleton. The detail page is the heaviest KB fetch:
  * the per-slug entry, the category `/stats` buckets, AND the full
@@ -9,11 +11,7 @@
 
 export default function Loading() {
   return (
-    <div
-      aria-busy="true"
-      aria-label="Loading entry"
-      style={{ maxWidth: 920, display: 'flex', flexDirection: 'column', gap: 'var(--s5, 24px)' }}
-    >
+    <PageSkeleton label="Loading entry…">
       <div className="skeleton" style={{ height: 13, width: 200 }} />
 
       {/* Hero */}
@@ -46,6 +44,6 @@ export default function Loading() {
           </div>
         </div>
       ))}
-    </div>
+    </PageSkeleton>
   );
 }

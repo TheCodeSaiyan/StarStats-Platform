@@ -1,12 +1,15 @@
+import { PageSkeleton } from '@/components/shell/PageSkeleton';
+
 /**
  * Root loading skeleton. Rendered by Next.js while a route segment's
- * server-side data is in flight. Server Component — pure CSS pulse,
- * no JS animation library.
+ * server-side data is in flight. Pure CSS pulse, no JS animation library,
+ * framed by `PageSkeleton` so it wears the projection rather than drawing
+ * bare into the layout.
  */
 
 export default function Loading() {
   return (
-    <div aria-busy="true" aria-label="Loading">
+    <PageSkeleton label="Loading…">
       <div
         className="skeleton"
         style={{ height: 32, width: '60%', marginBottom: 24 }}
@@ -19,6 +22,6 @@ export default function Loading() {
         className="skeleton"
         style={{ height: 16, width: '75%' }}
       />
-    </div>
+    </PageSkeleton>
   );
 }

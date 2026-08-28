@@ -1,14 +1,16 @@
+import { PageSkeleton } from '@/components/shell/PageSkeleton';
+
 /**
  * Knowledge base landing skeleton. The landing fetches all four
  * category bundles (`loadAllReferenceBundles`) to derive entry
  * counts — the slowest KB fetch — so a scoped loading boundary here
  * gives instant feedback on navigation into `/kb` instead of a
- * frozen-looking click. Server Component — pure CSS pulse.
+ * frozen-looking click. Pure CSS pulse inside `PageSkeleton`’s frame.
  */
 
 export default function Loading() {
   return (
-    <div aria-busy="true" aria-label="Loading knowledge base">
+    <PageSkeleton label="Loading knowledge base…">
       <div className="skeleton" style={{ height: 32, width: 280, marginBottom: 20 }} />
       <hr className="ss-rule" style={{ margin: '20px 0 16px' }} />
       <div className="skeleton" style={{ height: 16, width: '80%', marginBottom: 8 }} />
@@ -30,6 +32,6 @@ export default function Loading() {
           </div>
         ))}
       </div>
-    </div>
+    </PageSkeleton>
   );
 }

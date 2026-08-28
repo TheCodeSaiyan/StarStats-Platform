@@ -1,3 +1,5 @@
+import { PageSkeleton } from '@/components/shell/PageSkeleton';
+
 /**
  * Admin-segment loading skeleton.
  *
@@ -28,11 +30,7 @@ import React from 'react';
 
 export default function AdminLoading() {
   return (
-    <div
-      aria-busy="true"
-      aria-label="Loading admin section"
-      style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
-    >
+    <PageSkeleton label="Loading admin…">
       {/* Nav row placeholder — keeps the layout from jumping when the
           real page (which owns its own AdminNav) streams in. */}
       <div
@@ -50,6 +48,6 @@ export default function AdminLoading() {
           <div key={i} className="skeleton" style={{ height: 44, width: '100%' }} />
         ))}
       </div>
-    </div>
+    </PageSkeleton>
   );
 }

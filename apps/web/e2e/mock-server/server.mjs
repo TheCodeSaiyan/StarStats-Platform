@@ -140,6 +140,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // `delayMs` holds the response open. The only way to observe a
+  // server-rendered loading fallback: Next streams the shell + the
+  // segment's loading.tsx while this call is outstanding.
+  if (typeof stub.delayMs === 'number' && stub.delayMs > 0) {
+    setTimeout(() => send(res, stub.status ?? 200, stub.body), stub.delayMs);
+    return;
+  }
+
   send(res, stub.status ?? 200, stub.body);
 });
 

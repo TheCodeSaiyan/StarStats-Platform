@@ -1,17 +1,16 @@
+import { PageSkeleton } from '@/components/shell/PageSkeleton';
+
 /**
  * Dashboard loading skeleton. Mirrors the redesigned Manifest layout —
  * eyebrow + h1 header, then the stat strip, heatmap card, and the
  * 2-col distribution + stream cards — so page-shift on hydration is
- * minimal. Server Component, pure CSS animation.
+ * minimal. The skeleton itself is pure CSS animation; `PageSkeleton` wraps
+ * it in the projection frame, which is a Client Component.
  */
 
 export default function DashboardLoading() {
   return (
-    <div
-      aria-busy="true"
-      aria-label="Loading dashboard"
-      style={{ display: 'flex', flexDirection: 'column', gap: 20 }}
-    >
+    <PageSkeleton label="Loading dashboard…">
       <header>
         <div
           className="skeleton"
@@ -102,6 +101,6 @@ export default function DashboardLoading() {
           ))}
         </section>
       </div>
-    </div>
+    </PageSkeleton>
   );
 }
