@@ -840,7 +840,32 @@ Two things I got wrong along the way, recorded because the method matters:
    Left as they are. The existing phone tests already pin what matters: the
    account control stays on screen on every signed-in surface, and every range
    tab is reachable.
-10. **`/me` under the default "All" lens draws no ranked planes at all** — only
-   callouts and the trace. That is the lens preference behaving as written, not
-   a fault, but it means the first thing a reader sees has no lists in it.
+10. ~~**`/me` under the default "All" lens draws no ranked planes at all**~~ —
+   **the lens is now remembered.** The diagnosis needed one correction first:
+   "All" was never the problem. `widgetMatchesLens(id, 'all')` returns true for
+   everything, and the All lens does draw every enabled element. What `/me`
+   opens on is OVERVIEW (`lens = -1`), which `rail.ts` defines deliberately —
+   "overview is the ring and the callouts, All is the pane holding every
+   enabled element".
+
+   So the landing state was right and the STICKINESS was missing: a reader who
+   works in the lists re-opened their lens on every visit. `/me` now opens on
+   the lens last used, and a first visit still lands on overview.
+
+   Resolved SERVER-side from an `ss-lens` cookie, mirroring the calibration:
+   the lens decides what the first paint contains, so reading it in the browser
+   would paint overview and swap. The stored value is the lens ID, never the
+   rail index — the rail's order is a presentation decision and has changed
+   once already, which would have silently reinterpreted a saved index as a
+   different lens.
+
+   Per-device, unlike the tile layout. Syncing it would need a new
+   `UserPreferences` field, and that schema is a fixed set (`kb_view` is the
+   nearest precedent), so it is a server change with a migration rather than a
+   client one — worth doing if readers ask, not assumed.
+
+   Three e2e cases: a first visit lands on overview, a chosen lens is open on
+   arrival (asserted on the first paint, which is the point of resolving it
+   server-side), and returning to overview is remembered too, so an abandoned
+   lens does not re-open.
 

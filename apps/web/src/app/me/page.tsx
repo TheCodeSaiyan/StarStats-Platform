@@ -40,6 +40,7 @@ import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
 import { parseRange } from '@/lib/range';
 import { getTheme } from '@/lib/theme';
+import { getInitialLensIndex } from '@/lib/lens-preference';
 import { navSections } from '@/lib/nav';
 import { getProfileLayoutForRender } from '@/lib/profile-layout';
 import type { ViewerCtx } from '@/app/_components/widgets/types';
@@ -151,6 +152,11 @@ export default async function MePage(props: PageProps) {
   const combat: CombatStatsResponse | null = settledOr(combatResult, 'me.combat');
   // The calibration falls back to the system default rather than failing the
   // page — a beam colour is not worth a 500.
+  // Which lens to open on — remembered per device, overview on a first
+  // visit. Read here rather than in the client so the first paint is already
+  // the right view.
+  const initialLens = await getInitialLensIndex();
+
   const calibration = (settledOr(themeResult, 'me.theme') ??
     'terra') as Calibration;
 
@@ -226,6 +232,7 @@ export default async function MePage(props: PageProps) {
       calibration={calibration}
       range={range}
       enabledIds={enabledIds}
+      initialLens={initialLens}
       callouts={elements.callouts}
       planes={elements.planes}
       ringMap={ringMap}

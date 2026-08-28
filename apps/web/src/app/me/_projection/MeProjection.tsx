@@ -84,6 +84,9 @@ export interface MeProjectionProps {
   range: RangeId;
   /** Element ids the reader has enabled, in their saved order. */
   enabledIds: string[];
+  /** Rail index to open on (-1 = overview). Resolved server-side from the
+   *  reader's saved lens so the first paint is already the right view. */
+  initialLens: number;
   callouts: CalloutVM[];
   /** Server-rendered pane content, keyed by element id. */
   planes: LensPaneVM[];
@@ -121,6 +124,7 @@ export function MeProjection({
   calibration,
   range,
   enabledIds,
+  initialLens,
   callouts,
   planes,
   ringMap,
@@ -132,7 +136,7 @@ export function MeProjection({
 }: MeProjectionProps) {
   const router = useRouter();
   const { inboundShares } = useShellData();
-  const [lens, setLens] = React.useState(-1);
+  const [lens, setLens] = React.useState(initialLens);
   const [record, setRecord] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState(false);
   const [recalKey, setRecalKey] = React.useState(0);
@@ -184,14 +188,45 @@ export function MeProjection({
   const mode = record ? 'inspect' : lens > -1 ? 'detail' : 'overview';
   const activeLens: Lens | null = lens > -1 ? RAIL_LENSES[lens].id : null;
 
-  const openLens = React.useCallback((i: number) => {
-    setLens(i);
-    setRecord(null);
+  /**
+   * Remember which lens the reader chose, so the next visit opens on it.
+   *
+   * Written as a cookie rather than to `localStorage` because `/me` resolves
+   * the opening lens SERVER-side — storing it somewhere SSR cannot read would
+   * paint overview and then swap to the saved lens. Stores the lens ID, never
+   * the rail index: the rail's order is a presentation decision, and a saved
+   * index would silently become a different lens the next time it changes.
+   *
+   * Best-effort. A browser refusing cookies just means the projection stops
+   * remembering, which is exactly where it was before.
+   */
+  const rememberLens = React.useCallback((i: number) => {
+    const id = i > -1 ? RAIL_LENSES[i]?.id : null;
+    try {
+      const year = 60 * 60 * 24 * 365;
+      document.cookie = id
+        ? `ss-lens=${id}; path=/; max-age=${year}; samesite=lax`
+        : 'ss-lens=; path=/; max-age=0; samesite=lax';
+    } catch {
+      /* cookies disabled — the lens simply is not remembered */
+    }
   }, []);
+
+  const openLens = React.useCallback(
+    (i: number) => {
+      setLens(i);
+      setRecord(null);
+      rememberLens(i);
+    },
+    [rememberLens],
+  );
   const toOverview = React.useCallback(() => {
     setLens(-1);
     setRecord(null);
-  }, []);
+    // Going back to overview is a choice too — clear the saved lens so the
+    // next visit lands there rather than re-opening what was abandoned.
+    rememberLens(-1);
+  }, [rememberLens]);
 
   // 1–5 pick a lens, E toggles the layout editor, Esc walks one depth out —
   // the same bindings the design system documents for the rail.
