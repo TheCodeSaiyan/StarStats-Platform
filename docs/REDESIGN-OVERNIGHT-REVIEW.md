@@ -740,7 +740,22 @@ Two things I got wrong along the way, recorded because the method matters:
 3. **`HierarchicalBucketList` is still dead code** — a two-level system → body →
    place roll-up with no equivalent on any current page. It is the one orphaned
    Journey component with no replacement.
-4. **Admin is not written in the system's components** (see Phase 4).
+4. ~~**Admin is not written in the system's components**~~ **NOT REPRODUCIBLE —
+   it draws in the idiom.** This was the JSX-name scan again, the measure Phase
+   4 itself records as measuring nothing: 23 of 51 admin files import `holo`
+   directly and the rest use the system's CSS classes, which renders
+   identically. Measured properly on computed style, all 17 real admin routes
+   pass the same check as every other surface.
+
+   What WAS wrong was the measurement. `idiom.spec.ts` listed three admin
+   routes out of twenty, and thirteen of the others reached the error boundary
+   on a missing fixture — the boundary is itself drawn in the idiom, so those
+   pages would have passed while showing "SOMETHING WENT WRONG". The sweep now
+   fails on a page that did not render, is split from the core surfaces so
+   neither masks the other, and covers all 17 (91–165 elements each, verified,
+   rather than the 13-element error shell). Three routes were dropped from the
+   list as redirect aliases to `/admin/settings` — `appearance`, `ship-matrix`
+   and `smtp`, given away by all four reporting an identical 165 elements.
 5. `docs/plans/` is gitignored now, so the projection port's working plan lives
    outside the repo.
 6. ~~**The remaining `BUILDERS` interfaces are unverified.**~~ **DONE.**
