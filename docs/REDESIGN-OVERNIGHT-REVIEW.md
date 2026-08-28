@@ -808,18 +808,38 @@ Two things I got wrong along the way, recorded because the method matters:
    string; count: number; }[]'` instead of throwing `by_kind.map is not a
    function` on every render. All 21 loader-backed builders type-check as they
    stand; `entities` is exempt because it is a nav card with no loader.
-7. **The range control still costs `/me` its inline row at 1440.** Everything
-   else has been spent; the tabs are 360px in the chrome's trailing slot. Moving
-   them out of the chrome at narrow widths is the next step and would need the
-   crumb and the stage layout to move with them — bigger than this ask, so
-   noted rather than done.
-8. **The wordmark is hidden on phones (<=560px) on surfaces with a range
-   control.** It is a plain `<span>`, not a link, and it was the only
-   non-interactive item competing with the range strip for room — the strip went
-   from 84px to 178px. If that is too much to give up, the revert is one rule in
-   `patterns-holo.css` and the strip goes back to showing two tabs of five.
-9. **The calibration pips are gone from the phone chrome.** `/settings` carries
-   the full control, and keeping them cost the account menu its place on screen.
+7. ~~**The range control still costs `/me` its inline row at 1440.**~~ **FIXED,
+   and the range control did not have to move.** Measured at 1440 on `/me`, nav
+   inline at the tightest density: 1268px of content in a 1372px row — 36px
+   short. The seven 20px gaps cost 140px. So the ladder was surrendering every
+   destination to protect a margin, and then, having collapsed, resetting to
+   dense 0 and drawing the calibration caption and the lifetime readouts at
+   full width in the space the links had just vacated.
+
+   `gap: 14px` at `data-dense="3"` frees 42px, applied only at the tier that
+   exists to be the last thing tried before navigation goes. `/me` now reaches
+   `nav=inline` at 1440 with 19px of spacer to spare. 1280 still collapses and
+   should: even at the tighter gap it wants 1366px in a 1212px row.
+
+   Pinned by `chrome-nav.spec.ts` on `/me` (the heaviest surface, since it
+   carries the range tabs AND the lifetime readouts), asserting the density as
+   well as `inline` so a later change cannot pass by dropping something a
+   reader needs. Verified it fails at the old 20px gap.
+8 & 9. ~~**The wordmark is hidden on phones**~~ / ~~**the calibration pips are
+   gone from the phone chrome**~~ — **both confirmed necessary, with numbers.**
+   Re-measured at 390px after the gap fix above, which also tightened the phone
+   row: the chrome carries 302px of content plus 30px of gaps in the 358px
+   available, leaving **26px free**.
+
+   The wordmark is 121px and the pips 99px. Neither fits, with or without the
+   other, so these were not close calls — there is no arrangement of that row
+   that keeps them and the account menu, and the account menu is the one with
+   no second home (sign out, Calibrate and Sharing all live in it). `/settings`
+   carries the full calibration control.
+
+   Left as they are. The existing phone tests already pin what matters: the
+   account control stays on screen on every signed-in surface, and every range
+   tab is reachable.
 10. **`/me` under the default "All" lens draws no ranked planes at all** — only
    callouts and the trace. That is the lens preference behaving as written, not
    a fault, but it means the first thing a reader sees has no lists in it.
