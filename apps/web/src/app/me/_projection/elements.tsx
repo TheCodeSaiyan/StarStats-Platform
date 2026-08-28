@@ -4,10 +4,6 @@ import React from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { Plane, MeterRow, LogRow } from 'holo';
-import {
-  HierarchicalBucketList,
-  rollUpWeapons,
-} from '@/components/journey/HierarchicalBucketList';
 // Type-only elsewhere, so no cycle: catalogue.ts imports nothing from here.
 import { PROJECTION_CATALOGUE } from './catalogue';
 import { livesWidget } from '@/app/_components/widgets/lives';
@@ -394,24 +390,6 @@ function entityRow(
 }
 
 /**
- * class_name -> display name, derived from the rich catalogue.
- *
- * `rollUpWeapons` wants a `ReferenceMap` for labels and a `ReferenceCatalog`
- * for KB links; the projection only carries the latter. Cached per catalogue
- * OBJECT — the bundles are memoised upstream, so this builds once per process
- * rather than once per render of a combat lens.
- */
-const displayMaps = new WeakMap<object, ReadonlyMap<string, string>>();
-function displayMapFor(cat: ReferenceCatalog): ReadonlyMap<string, string> {
-  const hit = displayMaps.get(cat);
-  if (hit) return hit;
-  const m = new Map<string, string>();
-  for (const [k, e] of cat) m.set(k, e.display_name);
-  displayMaps.set(cat, m);
-  return m;
-}
-
-/**
  * The ranked Plane — the shape `RankedList` had in the flat kit.
  *
  * `trailing` is the real route out (gap A7): rows open the in-volume inspector,
@@ -657,54 +635,22 @@ function combatDetailPlanes(
   const out: React.ReactNode[] = [];
   const weapons = d.topWeapons ?? [];
   if (weapons.length > 0) {
-    // GROUPED BY MAKER, not a flat top-N.
-    //
-    // A weapon class carries its manufacturer, family and size, so a ranked
-    // list of them repeats the maker on every row and buries the fact that
-    // four of your six kills came from one house. `rollUpWeapons` reads that
-    // structure out of the class name and rolls it into maker -> family, with
-    // the sizes as badges; leaves that resolve to exactly one catalogued class
-    // keep their KB link, and merged buckets deliberately do not get one
-    // (there is no single entity to link to).
-    //
-    // No new fetch: `combat.top_weapons` was already on this response and was
-    // already being drawn, just flatter.
-    const wcat = refs?.catalogs?.weapons;
-    const tree = wcat
-      ? rollUpWeapons(
-          weapons.map((w) => ({ value: w.value, count: w.count })),
-          displayMapFor(wcat),
-          wcat,
-        )
-      : [];
+    const max = Math.max(...weapons.map((w) => w.count), 0);
     out.push(
-      tree.length > 0 ? (
-        <Plane
-          key="weapons"
-          cap="What you kill with"
-          hint="kills by weapon"
-          trailing={<Link href={'/kb/weapon' as Route}>see all →</Link>}
-        >
-          <HierarchicalBucketList nodes={tree} maxNodes={5} />
-        </Plane>
-      ) : (
-        // Without a catalogue there is nothing to group BY, so fall back to
-        // the flat ranking rather than drawing an empty pane.
-        rankedPlane(
-          'What you kill with',
-          weapons
-            .slice(0, 6)
-            .map((w) =>
-              entityRow(
-                'weapon',
-                w.value,
-                undefined,
-                fmtNum(w.count),
-                pctOf(w.count, Math.max(...weapons.map((x) => x.count), 0)),
-              ),
+      rankedPlane(
+        'What you kill with',
+        weapons
+          .slice(0, 6)
+          .map((w) =>
+            entityRow(
+              'weapon',
+              w.value,
+              refs?.catalogs?.weapons,
+              fmtNum(w.count),
+              pctOf(w.count, max),
             ),
-          { href: '/kb/weapon' as Route, hint: 'kills by weapon' },
-        )
+          ),
+        { href: '/kb/weapon' as Route, hint: 'kills by weapon' },
       ),
     );
   }
