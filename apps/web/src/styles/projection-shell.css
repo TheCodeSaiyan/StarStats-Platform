@@ -74,12 +74,27 @@ body:has(.ss-projection-root) .unverified-banner a {
 
 /* The warp canvas is the flat system's ambient background. The projection has
  * its own emitter, floor and scanlines — two ambiences at once is noise. */
-/* Collapse the 2-column grid and the padded column so the volume gets the
- * whole viewport. */
-body:has(.ss-projection-root) .ss-app {
+/* Collapse the flat era's 2-column grid so the volume gets the whole viewport.
+ *
+ * UNCONDITIONAL, deliberately. These were keyed on
+ * `body:has(.ss-projection-root)`, which reads as "when a projection is on
+ * screen" but actually means "when the PAGE has rendered" — the projection
+ * root lives inside the page, not the layout. So every `loading.tsx` fallback,
+ * which by definition renders with the page absent, dropped the override and
+ * sprang back to `220px 1fr` / `56px 1fr`, drawing the skeleton into the
+ * top-left cell with its own scrollbars on an otherwise blank screen. Measured
+ * at 220x96 in a 1600x950 viewport.
+ *
+ * There is no state where the grid is wanted: `TopBar` and `LeftRail` are
+ * deleted, nothing occupies either track, and `.ss-app` has exactly one child.
+ * Same root cause as the error and not-found boundaries, which got
+ * `BoundaryShell` instead — loading was never given the equivalent.
+ *
+ * Guard: `apps/web/e2e/loading-shell.spec.ts` measures the fallback's box. */
+.ss-app {
   display: block;
 }
-body:has(.ss-projection-root) .ss-main {
+.ss-main {
   max-width: none;
   padding: 0;
   margin: 0;

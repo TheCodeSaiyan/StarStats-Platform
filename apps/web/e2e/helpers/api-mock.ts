@@ -21,6 +21,10 @@ export const MOCK_BASE = `http://127.0.0.1:${MOCK_PORT}`;
 export interface ResponseStub {
   status?: number;
   body?: unknown;
+  /** Hold the response open this many ms before sending. Lets a test
+   *  observe a server-rendered `loading.tsx` fallback, which is only on
+   *  screen while an upstream call is outstanding. */
+  delayMs?: number;
 }
 
 export type ScenarioRoutes = Record<string, ResponseStub>;

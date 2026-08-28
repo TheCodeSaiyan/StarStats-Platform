@@ -1,3 +1,5 @@
+import { PageSkeleton } from '@/components/shell/PageSkeleton';
+
 /**
  * Per-category browse skeleton. The category page fetches the full
  * category bundle server-side (`getCategoryBundle`) — large for
@@ -5,12 +7,12 @@
  * has no client interactivity to paint until it resolves. Without a
  * scoped loading boundary the click looks dead until the server
  * component streams; this paints an instant list skeleton instead.
- * Server Component — pure CSS pulse.
+ * Pure CSS pulse inside `PageSkeleton`’s frame.
  */
 
 export default function Loading() {
   return (
-    <div aria-busy="true" aria-label="Loading category">
+    <PageSkeleton label="Loading category…">
       <div className="skeleton" style={{ height: 13, width: 140, marginBottom: 14 }} />
       <div className="skeleton" style={{ height: 32, width: 220 }} />
       <div className="skeleton" style={{ height: 13, width: 120, marginTop: 10 }} />
@@ -46,6 +48,6 @@ export default function Loading() {
           </div>
         ))}
       </div>
-    </div>
+    </PageSkeleton>
   );
 }
