@@ -242,13 +242,19 @@ const TILE_CHROME_PX = 60;
  */
 export function fitRows(contentPx: number, bounds: GridBounds): number {
   const b = normalizeBounds(bounds);
-  // A tile spanning `rows` is `ROW_STRIDE*rows - ROW_GAP_PX` tall, so the
-  // content fits when `ROW_STRIDE*rows >= content + chrome + gap`. The gap
-  // term was missing, which cost a further row's worth of slack on top of the
-  // stale chrome figure.
-  const rows = Math.ceil(
-    (Math.max(0, contentPx) + TILE_CHROME_PX + ROW_GAP_PX) / ROW_STRIDE,
-  );
+  // MEASURED, because the documented relation was wrong. A tile spanning N
+  // rows does NOT render `ROW_STRIDE*N - ROW_GAP_PX` tall; it renders
+  // `ROW_STRIDE*(N-1)`. Three independent spans on /u/[handle] agree exactly:
+  //
+  //   span 4 -> 90px,  span 6 -> 150px,  span 7 -> 180px
+  //   ROW_STRIDE*(N-1):  90              150               180
+  //   ROW_STRIDE*N-GAP: 114              174               204
+  //
+  // So every tile was sized one row short of what it asked for, which is why
+  // correcting the stale ROW_PX and chrome figures moved only the tile that
+  // happened to be within a row of fitting.
+  const rows =
+    Math.ceil((Math.max(0, contentPx) + TILE_CHROME_PX) / ROW_STRIDE) + 1;
   // Floor at the GLOBAL minimum, not the widget's min-viable `minH`: content
   // auto-fit measures what the body actually needs, so a widget with little
   // data should shrink all the way down rather than be padded up to a floor

@@ -284,15 +284,26 @@ describe('per-widget size bounds', () => {
 describe('fitRows (content auto-fit)', () => {
   const bounds: GridBounds = { minW: 6, minH: 3, maxW: 12, maxH: 10 };
 
-  it('fits short content to the min-viable floor', () => {
-    // ~15px of content (a single readout) → the minH floor, not smaller.
-    expect(fitRows(15, bounds)).toBe(3);
+  // The numbers below moved when the row model was corrected against what the
+  // browser actually renders. The old expectations encoded `28px stride, 40px
+  // chrome` and a tile height of `stride*rows - gap`; measured on /u/[handle],
+  // the grid is 24px rows + 6px gaps (stride 30), the chrome is 59px, and a
+  // tile spanning N rows renders `stride*(N-1)` — confirmed at three
+  // independent spans (4 -> 90px, 6 -> 150px, 7 -> 180px). Every tile was
+  // therefore sized a row short and scrolled. These assertions are corrected,
+  // not relaxed: each still pins an exact row count.
+
+  it('floors at the global minimum for empty content', () => {
+    // 30px stride, 60px chrome: ceil(60/30) + 1 = 3.
     expect(fitRows(0, bounds)).toBe(3);
+    // A single readout needs one row more than the floor: ceil(75/30) + 1 = 4.
+    expect(fitRows(15, bounds)).toBe(4);
   });
 
   it('grows to fit taller content', () => {
-    // 28px stride, 40px chrome: 200px content → ceil(240/28)=9 rows.
-    expect(fitRows(200, bounds)).toBe(9);
+    // 200px content: ceil((200 + 60) / 30) + 1 = 10 rows, which is also this
+    // fixture's maxH — so it lands exactly on the ceiling.
+    expect(fitRows(200, bounds)).toBe(10);
   });
 
   it('caps oversized content at the widget ceiling (its See-more keeps it bounded)', () => {

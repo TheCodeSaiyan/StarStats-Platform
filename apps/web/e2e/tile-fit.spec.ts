@@ -35,10 +35,13 @@ const MIN_TILES = 4;
  * having no test.
  */
 const KNOWN_TIGHT: Record<string, number> = {
-  sessions: 7, // 98px of content in a 91px body — was 37px before the row-model fix
-  heatmap: 21, // 142px in 121px
-  orgs: 21, // 112px in 91px
-  entities: 28, // 47px in 19px — the one that used to collapse to 0
+  // The only one left after the row model was corrected, and it is the one
+  // tile whose chrome is not the usual 59px: its header carries an extra
+  // line, measured at 71px. `TILE_CHROME_PX` is a single figure for every
+  // widget, so it under-provisions this one by ~12px — a third of a row.
+  // Raising the constant to suit it would add a wasted row to every other
+  // tile, which is the opposite failure.
+  entities: 26, // 47px of content in a 21px body
 };
 
 test('no widget tile hides its own content', async ({ page, request }) => {
