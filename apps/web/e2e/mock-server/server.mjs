@@ -51,6 +51,9 @@ function readBody(req) {
   });
 }
 
+/** Ceiling for a fixture's `delayMs`. See the clamp at the dispatch site. */
+const MAX_STUB_DELAY_MS = 30_000;
+
 function send(res, status, body) {
   const json = JSON.stringify(body ?? null);
   res.writeHead(status, {
@@ -143,8 +146,18 @@ const server = http.createServer(async (req, res) => {
   // `delayMs` holds the response open. The only way to observe a
   // server-rendered loading fallback: Next streams the shell + the
   // segment's loading.tsx while this call is outstanding.
-  if (typeof stub.delayMs === 'number' && stub.delayMs > 0) {
-    setTimeout(() => send(res, stub.status ?? 200, stub.body), stub.delayMs);
+  //
+  // CLAMPED, and not only to satisfy the js/resource-exhaustion scan that
+  // flagged the unbounded version. A scenario is fixture data, so a typo of
+  // 60000 for 6000 would park a worker for a minute and read as a hung
+  // suite rather than a bad fixture. Playwright's own timeouts are shorter
+  // than this ceiling, so a delay that reaches it fails the test honestly.
+  const delayMs = Number(stub.delayMs);
+  if (Number.isFinite(delayMs) && delayMs > 0) {
+    setTimeout(
+      () => send(res, stub.status ?? 200, stub.body),
+      Math.min(delayMs, MAX_STUB_DELAY_MS),
+    );
     return;
   }
 
