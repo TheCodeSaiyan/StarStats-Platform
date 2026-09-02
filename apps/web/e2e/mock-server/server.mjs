@@ -154,10 +154,19 @@ const server = http.createServer(async (req, res) => {
   // than this ceiling, so a delay that reaches it fails the test honestly.
   const delayMs = Number(stub.delayMs);
   if (Number.isFinite(delayMs) && delayMs > 0) {
-    setTimeout(
-      () => send(res, stub.status ?? 200, stub.body),
-      Math.min(delayMs, MAX_STUB_DELAY_MS),
-    );
+    // REJECT rather than clamp. An inline `Math.min` is not a bound the
+    // js/resource-exhaustion query recognises, and rejecting is the better
+    // harness behaviour regardless: a fixture asking to be held longer than
+    // any Playwright timeout is a typo, and it should fail the way an
+    // unknown route does instead of quietly becoming a different delay.
+    if (delayMs > MAX_STUB_DELAY_MS) {
+      send(res, 599, {
+        error: 'delay_too_long',
+        detail: `delayMs=${delayMs} exceeds the ${MAX_STUB_DELAY_MS}ms ceiling`,
+      });
+      return;
+    }
+    setTimeout(() => send(res, stub.status ?? 200, stub.body), delayMs);
     return;
   }
 
