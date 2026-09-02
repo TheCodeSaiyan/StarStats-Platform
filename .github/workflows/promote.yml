@@ -122,6 +122,14 @@ jobs:
             - 'crates/starstats-server/**'
             - 'crates/starstats-core/**'
             - 'apps/web/**'
+            # `holo` is the projection design system and `apps/web` is its only
+            # consumer (75 import sites; `apps/tray-ui` has none and does not
+            # depend on it). It was in NEITHER track's filter, so a holo-only
+            # change — a token, a Plane, the chrome ladder — merged to `next`,
+            # reported SUCCESS and tagged nothing. Same silent-no-ship shape the
+            # release notes already record for a `docs:` prefix on app code.
+            # Move it to `tray` as well if the tray ever takes the dependency.
+            - 'packages/holo/**'
             - 'packages/api-client-ts/**'
             - 'packages/design-tokens/**'
             - 'Cargo.toml'
