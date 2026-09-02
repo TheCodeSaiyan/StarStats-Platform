@@ -117,6 +117,37 @@ const ROUTES: { url: string; auth: boolean; label: string }[] = [
   { url: '/admin/audit', auth: true, label: 'console audit' },
 ];
 
+/**
+ * Re-run a probe that lost its execution context to a navigation.
+ *
+ * `worstOn` already waits for networkidle plus a fixed 400ms before stamping
+ * the calibration, and that guess held locally and lost on CI: both the terra
+ * and pyro sweeps died with "Execution context was destroyed, most likely
+ * because of a navigation". A client-side redirect that lands after the wait
+ * is a harness artifact, not a contrast result.
+ *
+ * Retries ONLY that error and rethrows everything else, so a real contrast
+ * failure still fails. A route that redirects forever exhausts the tries and
+ * reports honestly rather than hanging.
+ */
+async function throughNavigation<T>(page: Page, run: () => Promise<T>): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      return await run();
+    } catch (err) {
+      const msg = String(err);
+      if (!/Execution context was destroyed|because of a navigation/i.test(msg)) {
+        throw err;
+      }
+      last = err;
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(500);
+    }
+  }
+  throw last;
+}
+
 async function worstOn(page: Page, url: string, cal: string) {
   // A generous goto budget, for a reason specific to these sweeps: this one
     // test visits every surface in the app, so most of its navigations are to
@@ -130,12 +161,14 @@ async function worstOn(page: Page, url: string, cal: string) {
   // reads as a harness failure rather than a contrast one.
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(400);
-  await page.evaluate((c) => {
-    document.documentElement.setAttribute('data-cal', c);
-    document.querySelectorAll('[data-cal]').forEach((el) => el.setAttribute('data-cal', c));
-  }, cal);
+  await throughNavigation(page, () =>
+    page.evaluate((c) => {
+      document.documentElement.setAttribute('data-cal', c);
+      document.querySelectorAll('[data-cal]').forEach((el) => el.setAttribute('data-cal', c));
+    }, cal),
+  );
   await page.waitForTimeout(250);
-  return page.evaluate(PROBE) as Promise<
+  return throughNavigation(page, () => page.evaluate(PROBE)) as Promise<
     { ratio: number; size: number; need: number; sel: string; text: string }[]
   >;
 }

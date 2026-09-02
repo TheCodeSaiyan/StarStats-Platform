@@ -399,18 +399,22 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-top[data-dense="0"] > .who,
 .hp-top[data-dense="0"] > .emit { display: block; }
 .hp-top[data-dense="2"] .hp-cal .cl,
-.hp-top[data-dense="3"] .hp-cal .cl { display: none; }
-.hp-top[data-dense="3"] > .hp-idstats { display: none; }
+.hp-top[data-dense="3"] .hp-cal .cl,
+.hp-top[data-dense="4"] .hp-cal .cl { display: none; }
+.hp-top[data-dense="3"] > .hp-idstats,
+.hp-top[data-dense="4"] > .hp-idstats { display: none; }
 /* The range tabs' own caption — "All = 365 days" annotates the control, it is
  * not one of the tabs, and `RangeTabs` renders it by DEFAULT (`note = true`),
  * so it is on every ranged surface without any caller asking for it. Measured
  * at 390px it drew at x=521 on a 390px viewport: present, costed, and entirely
  * off-screen. Dropped at the same step as the pips' caption. */
-.hp-top[data-dense="3"] .hp-rng .rq { display: none; }
+.hp-top[data-dense="3"] .hp-rng .rq,
+.hp-top[data-dense="4"] .hp-rng .rq { display: none; }
 /* The dot alone, at its natural size — not a squeezed label. `width` on the
  * flex item plus `overflow: hidden` keeps the pulsing indicator and clips the
  * words, which is the same technique the phone breakpoint already uses. */
-.hp-top[data-dense="3"] > .live { width: 6px; overflow: hidden; }
+.hp-top[data-dense="3"] > .live,
+.hp-top[data-dense="4"] > .live { width: 6px; overflow: hidden; }
 /* The last tier before the nav collapses buys its room from the GAPS.
  *
  * Measured at 1440 on /me: nav inline at dense 3 wants 1268px of content in a
@@ -424,6 +428,15 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  * the tier that exists to be the last thing tried before navigation goes. The
  * ordering the ladder is built on is ornament first, links last. */
 .hp-top[data-dense="3"] { gap: 14px; }
+/* Tier 4 is tier 3 with the gaps tightened again, and it exists because 14px
+ * cleared the measured shortfall by SIX pixels. That held on the machine it
+ * was measured on and lost on CI, where the same row renders a little wider
+ * and /me surrendered its whole nav. 10px frees 70px against that 36px
+ * shortfall, so the last inline tier has room to absorb a font metric rather
+ * than a margin to defend. Nothing further is hidden: a reader at this tier
+ * has already given up the caption, the lifetime readouts and the live label,
+ * and the links are what the ladder exists to keep. */
+.hp-top[data-dense="4"] { gap: 10px; }
 .hp-top .id { font-size: var(--fs-md); font-weight: 600; letter-spacing: var(--tracking-widest); color: var(--beam); }
 .hp-top .live { color: var(--hot); display: inline-flex; align-items: center; gap: 7px; }
 .hp-top .live i { width: 6px; height: 6px; background: var(--hot); border-radius: 50%; box-shadow: 0 0 9px var(--hot); animation: hpPulse 1.9s ease-in-out infinite; }

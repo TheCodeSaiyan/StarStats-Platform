@@ -268,7 +268,13 @@ export function ChromeBar({
        * which are passive figures — a reader can still read them by looking,
        * but cannot navigate by looking at a bar with no links.
        */
-      const DENSITIES = ['0', '1', '2', '3'];
+      // '4' exists because '3' cleared its shortfall by 6px on ONE
+      // platform's metrics. Linux CI renders the same row a few px wider
+      // and /me collapsed there while passing locally — the same failure
+      // shape the project notes already record for this nav. A tier with
+      // real headroom is the fix; shaving '3' again would just move the
+      // margin around.
+      const DENSITIES = ['0', '1', '2', '3', '4'];
       const steps: [string, string][] = hasNav
         ? [
             ...DENSITIES.map((d) => ['inline', d] as [string, string]),
