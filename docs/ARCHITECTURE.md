@@ -80,26 +80,59 @@ the contract enforcement between server and TS consumers.
 ### Local tail (tray client)
 
 ```
-Game.log -tail-> structural_parse -> classify (GameEvent variant)
-                                          │
-                          ┌───── noise? ────┘
-                          │ yes              │ no
-                          ▼                  ▼
-                   noise_list table     events table
-                                              │
-                                              ▼
-                                       sync queue (ordered by id)
+Game.log ─tail─► structural_parse ─► classify ─(miss)─► apply_remote_rules
+                       │                │                       │
+                    no match          match                   match
+                       ▼                └───────────┬───────────┘
+                     skip                           ▼
+                                              serialise_event
+                                                    │
+                              ┌──────────── insert_event ────────────┐
+                              ▼                                      ▼
+                         events table                         InferenceWindow
+                              │                                      │
+                              ▼                                      ▼
+                    sync queue (ordered by id)          run_inference_and_persist
+                              ▲                                      │
+                              └──────────── insert_event ◄───────────┘
+                                             (inferred rows)
+
+on classifier miss AND remote-rule miss:
+        is_garbage_line  ──► drop
+        storage.is_noise ──► noise counter
+        otherwise        ──► record_unknown ──► unknown_lines
+                                                (tray Review pane)
 ```
 
-Two-pass parsing keeps adding new event variants safe: the structural
-pass extracts timestamp/level/event-name/rest from the log line, and
-the classify pass owns the per-variant regex tree. New variants
-require touching only `classify` — the structural parser is stable.
+Four passes, and the order between them is load-bearing.
+
+The **structural** pass extracts timestamp/level/event-name/rest and is
+stable; the **classify** pass owns the per-variant regex tree. New event
+variants require touching only `classify`.
+
+The **remote-rule** pass runs *only* on a built-in miss
+(`classify(&parsed).or_else(|| apply_remote_rules(...))` in
+`gamelog.rs`), so a published manifest can never override or suppress an
+authoritative classification — it can only add. The manifest is fetched
+from `GET /v1/parser-definitions` every six hours, is ed25519-signed, and
+is verified against a public key pinned as a build-time constant in the
+client; rotating that key is a client release. See
+`PARSER_DEFINITION_UPDATES.md` and `RUNBOOK-PARSER-SIGNING-KEY.md`.
+
+The **inference** pass derives events from a sliding window of recognised
+ones. It is gated on `parser_enable_v2_metadata` (default on, explicitly
+opt-out-able), so a flag-off install behaves exactly as it did before
+inference existed. Inferred rows persist through the same `insert_event`
+path as observed rows and ship to the server alongside them; their
+`raw_line` is `inferred:<rule_id>`, which is how the server recognises a
+row as derived without per-row metadata.
 
 A noise list filters engine-internal chatter (`StatObjLoad`,
-`ContextEstablisher*`, etc.) before lines reach the unknown-events
-table. Built-in defaults plus user-extensible entries via the tray
-"ignore" button in the Status pane.
+`ContextEstablisher*`, etc.) before lines reach the unknown-events table.
+Built-in defaults plus user-extensible entries via the tray "ignore"
+button in the Status pane. A hard-coded `is_garbage_line` filter for
+VFX/particle families runs *before* the DB noise check, because those
+engine event names vary too much to enumerate.
 
 ### Sync to server
 
