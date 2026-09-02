@@ -64,7 +64,7 @@ jobs:
       uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
 
     - name: Initialize CodeQL
-      uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4
+      uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4
       with:
         language: ${{ matrix.language }}
         # security-and-quality is noisier than the default; stick to the
