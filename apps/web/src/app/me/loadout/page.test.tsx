@@ -87,24 +87,93 @@ beforeEach(() => {
 
 describe('LoadoutPage', () => {
   it('renders the helmet in the head slot of BodyOutline', async () => {
-    render(await LoadoutPage());
+    render(await LoadoutPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText('Light Helmet')).toBeInTheDocument();
   });
 
   it('renders the pistol in a Weapons gear group', async () => {
-    render(await LoadoutPage());
+    render(await LoadoutPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText('Weapons')).toBeInTheDocument();
     expect(screen.getByText('Ballistic Pistol')).toBeInTheDocument();
   });
 
   it('does not render the eyeball (excluded port)', async () => {
-    render(await LoadoutPage());
+    render(await LoadoutPage({ searchParams: Promise.resolve({}) }));
     expect(screen.queryByText('Some Eye')).not.toBeInTheDocument();
+  });
+
+  it('shows when the snapshot was captured', async () => {
+    // An undated kit reads as "now". The live bug showed a months-old
+    // loadout with nothing on the page to reveal its age.
+    render(await LoadoutPage({ searchParams: Promise.resolve({}) }));
+    expect(screen.getByText(/Restored 24 Jun 2026/)).toBeInTheDocument();
+  });
+
+  it('offers the other snapshots, and shows the newest complete restore by default', async () => {
+    const older = {
+      id: 0,
+      event_type: 'burst_summary',
+      event_timestamp: '2026-01-01T00:00:00Z',
+      payload: {
+        kind: 'loadout_restore',
+        items: [
+          { class: 'GRIN_Light_Helmet', port: 'Armor_Undersuit', category: 'item' },
+          { class: 'BEHR_P4AR', port: 'weapon_attach_0', category: 'weapon' },
+          { class: 'SOME_Eye', port: EYEBALL_PORT, category: 'item' },
+          { class: 'EXTRA_A', port: 'weapon_attach_1', category: 'weapon' },
+          { class: 'EXTRA_B', port: 'weapon_attach_2', category: 'weapon' },
+        ],
+      },
+    };
+    // Both are full restores; the NEWER one is smaller, which is exactly the
+    // shape the old "most items wins" rule got wrong — it pinned the page to
+    // `older` forever.
+    const newer = {
+      ...burstEvent,
+      payload: {
+        kind: 'loadout_restore',
+        items: [
+          { class: 'GRIN_Light_Helmet', port: 'Armor_Undersuit', category: 'item' },
+          { class: 'BEHR_P4AR', port: 'weapon_attach_0', category: 'weapon' },
+        ],
+      },
+    };
+    mockListEvents.mockResolvedValue({ events: [newer, older], next_after: null });
+    render(await LoadoutPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText('Snapshots')).toBeInTheDocument();
+    expect(screen.getByText('2 recorded')).toBeInTheDocument();
+    // Both reachable, and the shown one is marked.
+    const current = screen.getByText(/24 Jun 2026/, { selector: 'a' });
+    expect(current).toHaveAttribute('aria-current', 'true');
+    expect(screen.getByText(/1 Jan 2026/, { selector: 'a' })).toHaveAttribute(
+      'href',
+      '/me/loadout?snapshot=2026-01-01T00%3A00%3A00Z',
+    );
+  });
+
+  it('honours an explicitly requested snapshot', async () => {
+    const older = {
+      id: 0,
+      event_type: 'burst_summary',
+      event_timestamp: '2026-01-01T00:00:00Z',
+      payload: {
+        kind: 'loadout_restore',
+        items: [{ class: 'BEHR_P4AR', port: 'Armor_Undersuit', category: 'weapon' }],
+      },
+    };
+    mockListEvents.mockResolvedValue({ events: [burstEvent, older], next_after: null });
+    render(
+      await LoadoutPage({
+        searchParams: Promise.resolve({ snapshot: '2026-01-01T00:00:00Z' }),
+      }),
+    );
+    expect(screen.getByText(/Restored 1 Jan 2026/)).toBeInTheDocument();
   });
 
   it('renders a no-loadout message when no burst event is found', async () => {
     mockListEvents.mockResolvedValue({ events: [], next_after: null });
-    render(await LoadoutPage());
+    render(await LoadoutPage({ searchParams: Promise.resolve({}) }));
     expect(screen.getByText(/no loadout snapshot/i)).toBeInTheDocument();
   });
 });
