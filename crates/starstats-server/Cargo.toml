@@ -71,7 +71,7 @@ aws-sdk-s3.workspace = true
 aws-credential-types.workspace = true
 aws-smithy-runtime-api.workspace = true
 utoipa.workspace = true
-axum-extra = { version = "0.9", features = ["typed-header"] }
+axum-extra = { version = "0.12", features = ["typed-header"] }
 base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
