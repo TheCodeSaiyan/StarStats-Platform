@@ -3173,6 +3173,57 @@ html[data-wave-speed='off'] .hp-stage::after {
   color: var(--dim);
 }
 
+/* ── Loadout snapshot history ─────────────────────────────────────────
+ *
+ * /me/loadout shows ONE kit out of however many the tray has recorded.
+ * This is the way to the others: one dated row each, the shown one marked
+ * with aria-current. Dates and counts sit in a tabular column so the eye
+ * can scan for the session it wants rather than reading every line. */
+.hp-snapshots {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  max-width: 62ch;
+}
+.hp-snapshots__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid color-mix(in oklab, var(--dim) 22%, transparent);
+  font-size: var(--fs-sm);
+  letter-spacing: var(--tracking-wide);
+}
+.hp-snapshots__row:last-child {
+  border-bottom: 0;
+}
+.hp-snapshots__row a {
+  color: var(--beam);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.hp-snapshots__row a:hover,
+.hp-snapshots__row a:focus-visible {
+  border-bottom-color: currentColor;
+}
+/* The one on screen. Marked, not linked away from — it stays a link so the
+ * row set reads uniformly, but it should not look like somewhere to go. */
+.hp-snapshots__row a[aria-current='true'] {
+  color: var(--beam);
+  font-weight: 500;
+}
+.hp-snapshots__row a[aria-current='true']::after {
+  content: ' ·  showing';
+  color: color-mix(in oklab, var(--dim) 60%, var(--beam));
+  font-weight: 400;
+}
+.hp-snapshots__meta {
+  color: color-mix(in oklab, var(--dim) 55%, var(--beam));
+  font-variant-numeric: tabular-nums;
+  text-shadow: none;
+}
 
 /* ── Touch targets ────────────────────────────────────────────────────
  * The controls declared in THIS file, brought to the 24px WCAG 2.5.8 floor
@@ -3184,6 +3235,9 @@ html[data-wave-speed='off'] .hp-stage::after {
  *
  * Padding around an unchanged visual, so nothing grows on screen. */
 @media (pointer: coarse) {
+  /* Snapshot rows are standalone links in a list, not links inside a
+   * sentence, so the WCAG inline exception does not cover them. */
+  .hp-snapshots__row a { padding: 6px 0; display: inline-block; }
   .hp-cattab { padding: 13px 0; }
   .hp-catchip { padding: 11px 12px; }
   /* Already `position: absolute; inset: 0` over its anchor, so it is sized by

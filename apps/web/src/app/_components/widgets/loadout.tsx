@@ -10,7 +10,7 @@ import { logger } from '@/lib/logger';
 import {
   isExcludedPort,
   prettify,
-  pickFullestLoadoutBurst,
+  pickLoadoutBurst,
 } from '@/lib/loadout';
 import type { LoadoutItem } from '@/lib/loadout';
 import { EntityLink } from '@/components/kb/EntityLink';
@@ -92,7 +92,10 @@ export const loadoutWidget = defineWidget<LoadoutViewData>({
     // ListEventsResponse.events is the correct field name (not .items or .data).
     if (!resp || !resp.events) return null;
 
-    const burst = pickFullestLoadoutBurst(resp.events);
+    // Same selection rule as /me/loadout: latest complete restore,
+    // not the biggest ever recorded. The two surfaces showing
+    // different kits would be worse than either being wrong.
+    const burst = pickLoadoutBurst(resp.events);
     const latest = (burst?.payload as LoadoutPayload | undefined) ?? null;
 
     // No loadout snapshot yet → render nothing so the tile auto-collapses

@@ -165,34 +165,100 @@ export function isLoadoutBurstPayload(p: unknown): p is LoadoutBurstPayload {
 interface BurstEventLike {
   event_type?: string;
   payload?: unknown;
+  event_timestamp?: string | null;
 }
 
 /**
- * Picks the loadout snapshot to display from a list of events.
+ * Ports that only a FULL restore fills.
  *
- * A burst is emitted for ANY run of 3+ attachment events, so a partial
- * re-equip produces a small burst while a full spawn produces a large
- * one. The most RECENT burst is therefore often partial. We instead pick
- * the burst with the MOST items — the user's fullest captured loadout —
- * so the paperdoll reflects a complete snapshot rather than a recent
- * fragment. Ties resolve to the first (newest, since events are
- * newest-first).
- *
- * Returns the chosen event, or undefined when no loadout burst exists.
+ * The tray emits a burst for any run of 3+ attachments, so swapping a
+ * weapon looks structurally identical to respawning in a fresh kit —
+ * both are "a burst". What separates them is the body: the engine
+ * re-attaches the character body and its undersuit on a spawn restore
+ * and never touches them for a re-equip. Either port present means the
+ * snapshot describes a whole character rather than a fragment of one.
  */
-export function pickFullestLoadoutBurst<T extends BurstEventLike>(
-  events: readonly T[],
-): T | undefined {
-  let best: T | undefined;
-  let bestCount = -1;
-  for (const e of events) {
-    if (e.event_type !== 'burst_summary') continue;
-    if (!isLoadoutBurstPayload(e.payload)) continue;
-    const n = e.payload.items.length;
-    if (n > bestCount) {
-      best = e;
-      bestCount = n;
-    }
-  }
-  return best;
+const RESTORE_ANCHOR_PORTS: ReadonlySet<string> = new Set([
+  'body_itemport',
+  'armor_undersuit',
+]);
+
+/** True when the burst looks like a full spawn restore, not a partial re-equip. */
+export function isCompleteRestore(payload: LoadoutBurstPayload): boolean {
+  return payload.items.some((item) =>
+    RESTORE_ANCHOR_PORTS.has(item.port.toLowerCase()),
+  );
 }
+
+/** One selectable loadout snapshot, for the history picker. */
+export interface LoadoutSnapshot<T> {
+  event: T;
+  /** RFC3339 capture time, or '' when the event carries none. */
+  timestamp: string;
+  /** Items before display filtering — the size the burst was recorded at. */
+  itemCount: number;
+  /** Whether this is a full restore (see `isCompleteRestore`). */
+  complete: boolean;
+}
+
+/**
+ * Every loadout snapshot in `events`, newest first.
+ *
+ * Feeds the history picker, which is the honest answer to a page that
+ * can only ever show one snapshot: rather than guessing which one the
+ * reader wants, show the chosen one and let them reach the rest.
+ */
+export function listLoadoutBursts<T extends BurstEventLike>(
+  events: readonly T[],
+): LoadoutSnapshot<T>[] {
+  const out: LoadoutSnapshot<T>[] = [];
+  for (const event of events) {
+    if (event.event_type !== 'burst_summary') continue;
+    if (!isLoadoutBurstPayload(event.payload)) continue;
+    out.push({
+      event,
+      timestamp: event.event_timestamp ?? '',
+      itemCount: event.payload.items.length,
+      complete: isCompleteRestore(event.payload),
+    });
+  }
+  return out.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+}
+
+/**
+ * Picks the loadout snapshot to display.
+ *
+ * Order: an explicitly requested `selected` timestamp wins; otherwise the
+ * most RECENT complete restore; otherwise the fullest burst of any kind.
+ *
+ * The old rule was "most items wins", full stop. It was aimed at a real
+ * problem — a 3-item weapon swap should not replace a whole kit — but it
+ * has no upper bound in time, so the largest burst ever recorded pins the
+ * page permanently and no later kit can displace it. Observed in the
+ * wild: a heavy-weapons snapshot kept showing for weeks while newer,
+ * smaller full restores sat in the same response, and because the page
+ * showed no date it read as current. Anchoring on "complete" instead of
+ * "big" separates a spawn restore from a re-equip without freezing time.
+ *
+ * Returns undefined when no loadout burst exists.
+ */
+export function pickLoadoutBurst<T extends BurstEventLike>(
+  events: readonly T[],
+  selected?: string,
+): T | undefined {
+  const snapshots = listLoadoutBursts(events);
+  if (snapshots.length === 0) return undefined;
+
+  if (selected !== undefined && selected !== '') {
+    const match = snapshots.find((s) => s.timestamp === selected);
+    if (match) return match.event;
+  }
+
+  const latestComplete = snapshots.find((s) => s.complete);
+  if (latestComplete) return latestComplete.event;
+
+  return snapshots.reduce((best, s) =>
+    s.itemCount > best.itemCount ? s : best,
+  ).event;
+}
+

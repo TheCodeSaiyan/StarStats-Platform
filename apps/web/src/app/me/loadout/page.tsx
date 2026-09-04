@@ -13,7 +13,8 @@ import {
   slotForClassification,
   groupForItem,
   isLoadoutBurstPayload,
-  pickFullestLoadoutBurst,
+  listLoadoutBursts,
+  pickLoadoutBurst,
   type BodySlot,
   type GearGroup as GearGroupKey,
 } from '@/lib/loadout';
@@ -62,7 +63,35 @@ const GEAR_GROUP_TITLES: Record<GearGroupKey, string> = {
   other: 'Other',
 };
 
-export default async function LoadoutPage() {
+/**
+ * Renders an RFC3339 capture time for display.
+ *
+ * Fixed en-GB rather than the reader's locale: this is server-rendered, so
+ * "the reader's locale" is the CI runner's, and a date that reads
+ * differently between build and browser is worse than one that reads the
+ * same everywhere. Returns null for a missing or unparseable stamp so the
+ * caller falls back to undated copy rather than printing "Invalid Date".
+ */
+function formatCapture(timestamp: string): string | null {
+  if (timestamp === '') return null;
+  const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  });
+}
+
+interface LoadoutPageProps {
+  searchParams: Promise<{ snapshot?: string }>;
+}
+
+export default async function LoadoutPage(props: LoadoutPageProps) {
+  const { snapshot: requestedSnapshot } = await props.searchParams;
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/me/loadout');
 
@@ -91,16 +120,17 @@ export default async function LoadoutPage() {
     },
   };
 
-  // Fetch recent burst_summary events and pick the FULLEST loadout burst
-  // (a partial re-equip emits a small burst; a full spawn emits a large
-  // one — the latest is often partial, so we take the one with the most
-  // items as the user's complete loadout). Filtering to burst_summary
-  // reaches much further back than a raw 200-event window.
+  // Fetch recent burst_summary events and pick the snapshot to show: the
+  // one named in `?snapshot=`, else the most recent COMPLETE restore, else
+  // the fullest of any kind (see `pickLoadoutBurst`). Filtering to
+  // burst_summary reaches much further back than a raw 200-event window.
   const eventsResp = await listEvents(token, {
     event_type: 'burst_summary',
     limit: 200,
   });
-  const burstEvent = pickFullestLoadoutBurst(eventsResp.events);
+  const snapshots = listLoadoutBursts(eventsResp.events);
+  const burstEvent = pickLoadoutBurst(eventsResp.events, requestedSnapshot);
+  const chosen = snapshots.find((s) => s.event === burstEvent);
 
   if (burstEvent == null || !isLoadoutBurstPayload(burstEvent.payload)) {
     /**
@@ -163,6 +193,8 @@ export default async function LoadoutPage() {
     );
   }
 
+  const capturedAt = formatCapture(chosen?.timestamp ?? '');
+
   const rawItems = burstEvent.payload.items.filter(
     (item) => !isExcludedPort(item.port),
   );
@@ -206,7 +238,11 @@ export default async function LoadoutPage() {
     {
       id: 'armour',
       title: 'Armour',
-      ctx: 'Last restored kit',
+      // ALWAYS carry the capture time when there is one. The page can only
+      // show one snapshot out of many, and an undated one reads as "now" —
+      // a kit from weeks ago looked current for as long as it was the
+      // biggest on record, with nothing on screen to give it away.
+      ctx: capturedAt !== null ? `Restored ${capturedAt}` : 'Last restored kit',
       group: 'kit',
       node: <Paperdoll slots={slots} />,
     },
@@ -233,6 +269,39 @@ export default async function LoadoutPage() {
       ),
     },
   ];
+
+  // The history. Only worth a section when there is more than one snapshot
+  // to move between — a single-entry picker is furniture, not a control.
+  if (snapshots.length > 1) {
+    sections.push({
+      id: 'snapshots',
+      title: 'Snapshots',
+      ctx: `${snapshots.length} recorded`,
+      group: 'kit',
+      node: (
+        <ul className="hp-snapshots">
+          {snapshots.map((s) => {
+            const label = formatCapture(s.timestamp) ?? 'Undated';
+            const isCurrent = s.event === burstEvent;
+            return (
+              <li key={s.timestamp || label} className="hp-snapshots__row">
+                <a
+                  href={`/me/loadout?snapshot=${encodeURIComponent(s.timestamp)}`}
+                  aria-current={isCurrent ? 'true' : undefined}
+                >
+                  {label}
+                </a>
+                <span className="hp-snapshots__meta">
+                  {s.itemCount} item{s.itemCount === 1 ? '' : 's'}
+                  {s.complete ? ' · full restore' : ' · partial'}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      ),
+    });
+  }
 
   return <LoadoutProjection {...shell} sections={sections} notice={null} />;
 }
