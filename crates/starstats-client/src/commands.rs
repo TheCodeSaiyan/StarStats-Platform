@@ -1076,6 +1076,26 @@ fn run_reparse(
     let mut zone_tracker = ZoneTracker::default();
     let outcome = storage.for_each_event(500, |row| {
         stats.examined += 1;
+        // NEVER re-derive a synthesised row from its raw line.
+        //
+        // A `burst_summary` is not a log line — it stands for a RUN of
+        // them — and `process_buffer` stores the burst ANCHOR's line in
+        // `raw` so the row has something to show. Re-classifying that
+        // line therefore reports "this is an AttachmentReceived", which
+        // differs from `burst_summary`, so the row was rewritten: type
+        // replaced, and the loadout payload (kind, categories, per-item
+        // list) overwritten with a single attachment's payload. The
+        // summary was destroyed by the pass meant to improve it, and
+        // since retro-burst has already deleted the members it stood
+        // for, the gear was gone from the local store entirely.
+        //
+        // Phase 3 has always had this guard (`event_type !=
+        // "burst_summary"` in the retro-burst scan); phase 1 did not.
+        // Measured on a real store: every loadout snapshot ever
+        // captured had been flattened to one `attachment_received` row.
+        if row.event_type == "burst_summary" {
+            return Ok(());
+        }
         let Some(parsed) = structural_parse(&row.raw_line) else {
             stats.kept_unmatched += 1;
             return Ok(());
@@ -4107,5 +4127,86 @@ mod tests {
         // Belt-and-suspenders: the literal value the const holds.
         assert_eq!(loadout.id, "loadout_restore_burst");
         assert_eq!(LOADOUT_RESTORE_BURST_RULE_ID, "loadout_restore_burst");
+    }
+
+    /// A `burst_summary` must survive Re-parse.
+    ///
+    /// It is a SYNTHESISED row: it stands for a run of log lines, and
+    /// `process_buffer` stores the burst anchor's line in `raw` so the row
+    /// has something to display. Phase 1 re-classified every row from its
+    /// `raw` line, so a loadout summary re-derived as "attachment_received"
+    /// — a type mismatch — and got rewritten in place, its `kind`,
+    /// `categories` and per-item list replaced by a single attachment's
+    /// payload. Retro-burst had already deleted the members it stood for,
+    /// so the gear left the store entirely, and nothing logged it.
+    ///
+    /// Measured on a real store before the fix: 2,969 burst summaries, not
+    /// one of them a loadout snapshot, against 94,891 attachment rows.
+    ///
+    /// Without the phase-1 guard this test finds `attachment_received` and
+    /// a payload with no `kind`.
+    #[test]
+    fn reparse_does_not_reclassify_a_burst_summary_into_its_anchor_line() {
+        let dir = TempDir::new().expect("tempdir");
+        let storage = Storage::open(&dir.path().join("t.db")).expect("open storage");
+
+        // Exactly the shape process_buffer writes: type=burst_summary,
+        // payload=the loadout snapshot, raw=the ANCHOR's attachment line.
+        let anchor = concat!(
+            "<2026-09-04T19:30:18.683Z> [Notice] <AttachmentReceived> ",
+            "Player[TheCodeSaiyan] ",
+            "Attachment[rsi_odyssey_undersuit_01_01_01_200000000232, ",
+            "rsi_odyssey_undersuit_01_01_01, 200000000232] ",
+            "Status[persistent] Port[Armor_Undersuit] Elapsed[27.480394] ",
+            "[Team_CoreGameplayFeatures][Inventory]"
+        );
+        let payload = concat!(
+            r#"{"type":"burst_summary","timestamp":"2026-09-04T19:30:18.683Z","#,
+            r#""rule_id":"loadout_restore_burst","size":23,"#,
+            r#""end_timestamp":"2026-09-04T19:30:18.690Z","kind":"loadout_restore","#,
+            r#""categories":{"armor":2},"items":[{"class":"rsi_odyssey_undersuit_01_01_01","#,
+            r#""port":"Armor_Undersuit","category":"armor"}]}"#
+        );
+        storage
+            .insert_event(
+                "burst-key",
+                "burst_summary",
+                "2026-09-04T19:30:18.683Z",
+                anchor,
+                payload,
+                "LIVE",
+                140206,
+            )
+            .expect("insert burst summary");
+
+        let stats = run_reparse(&storage, &[]).expect("reparse");
+        assert!(stats.error.is_none(), "reparse error: {:?}", stats.error);
+
+        let rows = storage.recent_events(10).expect("recent_events");
+        let row = rows
+            .iter()
+            .find(|r| r.raw_line == anchor)
+            .expect("the row must still exist");
+
+        assert_eq!(
+            row.event_type, "burst_summary",
+            "Re-parse re-derived the summary from its anchor line and              retyped it; the loadout snapshot is destroyed",
+        );
+
+        let parsed: serde_json::Value =
+            serde_json::from_str(&row.payload_json).expect("payload must be valid JSON");
+        assert_eq!(
+            parsed.get("kind").and_then(|k| k.as_str()),
+            Some("loadout_restore"),
+            "the loadout payload must be intact; got {parsed}",
+        );
+        assert_eq!(
+            parsed
+                .get("items")
+                .and_then(|i| i.as_array())
+                .map(|a| a.len()),
+            Some(1),
+            "the per-item list must survive; got {parsed}",
+        );
     }
 }
