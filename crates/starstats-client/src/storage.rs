@@ -414,6 +414,17 @@ impl Storage {
         Ok(())
     }
 
+    /// Insert one event row, deduplicating on `idempotency_key`.
+    ///
+    /// Returns `Ok(true)` when a new row was written, `Ok(false)` when a
+    /// row with that key was already present. The distinction is
+    /// load-bearing for any caller that suppresses OTHER rows in favour
+    /// of the one it is inserting — see the burst path in
+    /// [`crate::gamelog::process_buffer`]. Under a bare `Result<()>`,
+    /// "stored" and "silently discarded" are indistinguishable, which is
+    /// how a burst can end up with its members suppressed and no summary
+    /// standing in for them; the events are then gone from the local
+    /// store with nothing logged.
     #[allow(clippy::too_many_arguments)]
     pub fn insert_event(
         &self,
@@ -424,11 +435,11 @@ impl Storage {
         payload_json: &str,
         log_source: &str,
         source_offset: u64,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         // ON CONFLICT keeps the table append-only-ish: same line
         // re-tailed (after a rotation/replay) won't double-insert.
-        conn.execute(
+        let inserted = conn.execute(
             "INSERT INTO events
                 (idempotency_key, type, timestamp, raw, payload, log_source, source_offset)
              VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -443,7 +454,7 @@ impl Storage {
                 source_offset as i64,
             ],
         )?;
-        Ok(())
+        Ok(inserted > 0)
     }
 
     /// Read up to `limit` unsent events, filtered by event type.
@@ -1796,6 +1807,50 @@ mod tests {
             assert_eq!(row.event_name, "Foo");
             assert_eq!(row.occurrences, 1);
         }
+    }
+
+    /// `insert_event` must distinguish a fresh write from a conflict
+    /// no-op. `ON CONFLICT(idempotency_key) DO NOTHING` makes the two
+    /// outcomes identical to a caller that only sees `Result<()>`, and
+    /// the burst path in `gamelog::process_buffer` acts on the answer:
+    /// it deletes a burst's member lines from the buffer on the strength
+    /// of a summary row it believes it stored. A caller that cannot tell
+    /// "stored" from "silently discarded" cannot keep that promise.
+    #[test]
+    fn insert_event_reports_whether_the_row_was_actually_written() {
+        let dir = TempDir::new().expect("tempdir");
+        let storage = Storage::open(&dir.path().join("t.db")).expect("open");
+
+        let write = || {
+            storage
+                .insert_event(
+                    "same-key",
+                    "burst_summary",
+                    "2026-09-04T12:00:00Z",
+                    "raw",
+                    "{}",
+                    "live",
+                    42,
+                )
+                .expect("insert must not error")
+        };
+
+        assert!(write(), "first insert of a key must report a written row");
+        assert!(
+            !write(),
+            "second insert of the SAME key must report no row written — \
+             it conflicted and DO NOTHING dropped it"
+        );
+
+        let conn = storage.conn.lock().expect("mutex");
+        let n: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE idempotency_key = ?",
+                params!["same-key"],
+                |r| r.get(0),
+            )
+            .expect("count");
+        assert_eq!(n, 1, "the conflict must not have duplicated the row");
     }
 
     // ─── Priority-lanes sync (sent_at flag + filtered drain) ──────
