@@ -171,6 +171,47 @@ describe('LoadoutPage', () => {
     expect(screen.getByText(/Restored 1 Jan 2026/)).toBeInTheDocument();
   });
 
+  it('fills the paperdoll from the PORT when the catalogue has never heard of the armour', async () => {
+    // Verbatim from a real CDS Combat Superheavy restore. The reference
+    // catalogue contains cds_combat_heavy_* but nothing "superheavy", so
+    // resolveReferenceItems returns NOTHING for these classes: no display
+    // name, no classification. Every piece then fell through to the carried
+    // "Other" bucket and the paperdoll rendered as six empty outlines, while
+    // the gear was sitting right there in the payload with correct ports.
+    const superheavy = {
+      id: 9,
+      event_type: 'burst_summary',
+      event_timestamp: '2026-09-04T19:38:54.778Z',
+      payload: {
+        kind: 'loadout_restore',
+        items: [
+          { class: 'cds_combat_superheavy_helmet_01_04_01', port: 'Armor_Helmet', category: 'item' },
+          { class: 'cds_combat_superheavy_suit_01_04_01', port: 'Armor_Undersuit', category: 'item' },
+          { class: 'cds_combat_superheavy_arms_01_04_01', port: 'Armor_Arms', category: 'item' },
+          { class: 'cds_combat_superheavy_legs_01_04_01', port: 'Armor_Legs', category: 'item' },
+          { class: 'cds_combat_superheavy_backpack_01_04_01', port: 'backpack', category: 'item' },
+        ],
+      },
+    };
+    mockListEvents.mockResolvedValue({ events: [superheavy], next_after: null });
+    mockResolveReferenceItems.mockResolvedValue({});
+
+    const { container } = render(
+      await LoadoutPage({ searchParams: Promise.resolve({}) }),
+    );
+
+    // Assert on the SLOTS, not on the text: the names render either way
+    // (they'd just be sitting in "Other"), so text presence proves nothing.
+    for (const slot of ['head', 'undersuit', 'arms', 'legs', 'back']) {
+      expect(
+        container.querySelector(`.hp-slot--${slot}:not(.hp-slot--empty)`),
+        `the ${slot} slot must be filled from its port`,
+      ).not.toBeNull();
+    }
+    // Nothing armour-shaped should be left in the carried buckets.
+    expect(screen.queryByText('Other')).not.toBeInTheDocument();
+  });
+
   it('renders a no-loadout message when no burst event is found', async () => {
     mockListEvents.mockResolvedValue({ events: [], next_after: null });
     render(await LoadoutPage({ searchParams: Promise.resolve({}) }));

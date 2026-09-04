@@ -11,6 +11,7 @@ import {
 import {
   isExcludedPort,
   slotForClassification,
+  slotForPort,
   groupForItem,
   isLoadoutBurstPayload,
   listLoadoutBursts,
@@ -216,7 +217,13 @@ export default async function LoadoutPage(props: LoadoutPageProps) {
 
   for (const item of rawItems) {
     const resolvedItem = resolved[item.class];
-    const slot = slotForClassification(resolvedItem?.classification ?? undefined);
+    // Classification first, PORT as the fallback. The catalogue only knows
+    // what has been scraped, so an armour set it has never heard of used to
+    // put every piece in "Other" and leave the paperdoll empty; the port
+    // comes from the game's own attachment line and is always present.
+    const slot =
+      slotForClassification(resolvedItem?.classification ?? undefined) ??
+      slotForPort(item.port);
 
     if (slot != null) {
       // Armor item — put in paperdoll slot (last write wins per slot)
