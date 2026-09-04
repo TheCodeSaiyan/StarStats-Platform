@@ -555,14 +555,16 @@ pub(crate) fn process_buffer(
     // Pass 2: burst detection. Indices are into `valid_lines`.
     let bursts = detect_bursts(&valid_lines, burst_rules);
 
-    // Map burst-member indices back to original buffer indices for
-    // suppression in pass 3.
+    // Buffer indices pass 3 will skip because a stored BurstSummary now
+    // stands in for them. Deliberately EMPTY here and filled only at the
+    // bottom of pass 2b, once that burst's summary is known to be in the
+    // table: suppressing up front means any failure to store the summary
+    // — a serialise error, a write error — deletes the burst's members
+    // from the local store with nothing to show for them, and because
+    // `insert_event` dedupes with ON CONFLICT DO NOTHING the write can
+    // fail to land without returning an error at all. Members outliving
+    // a missing summary is noisy; members vanishing with it is data loss.
     let mut suppressed: HashSet<usize> = HashSet::new();
-    for burst in &bursts {
-        for &valid_idx in &burst.member_indices {
-            suppressed.insert(valid[valid_idx].0);
-        }
-    }
 
     // Pass 2b: emit one BurstSummary per burst.
     for burst in &bursts {
@@ -635,8 +637,10 @@ pub(crate) fn process_buffer(
         let key = idempotency_key(log_source, file_sig, anchor_offset, &synthetic_line);
         // Idempotency already covers retries; if the insert fails for
         // another reason, log and continue — better one missing summary
-        // than no events at all.
-        if let Err(e) = storage.insert_event(
+        // than no events at all. `continue` leaves this burst's members
+        // OUT of `suppressed`, so pass 3 ingests them line by line and
+        // the gear is still recorded, just uncollapsed.
+        let stored = match storage.insert_event(
             &key,
             &event_type,
             &ts,
@@ -645,9 +649,32 @@ pub(crate) fn process_buffer(
             log_source,
             anchor_offset,
         ) {
-            tracing::warn!(error = %e, rule = %burst.rule_id, "insert burst summary failed");
-            continue;
+            Ok(stored) => stored,
+            Err(e) => {
+                tracing::warn!(error = %e, rule = %burst.rule_id, "insert burst summary failed");
+                continue;
+            }
+        };
+
+        // A summary row for this key exists either way — freshly written
+        // (`true`) or already there from an earlier drain of the same
+        // bytes (`false`) — so the members are safe to collapse.
+        for &valid_idx in &burst.member_indices {
+            suppressed.insert(valid[valid_idx].0);
         }
+
+        if !stored {
+            // Benign on a re-drain, but worth a trace: it is the only
+            // place a burst's members are collapsed without this drain
+            // having written the row they collapse onto.
+            tracing::debug!(
+                rule = %burst.rule_id,
+                offset = anchor_offset,
+                size = burst.size,
+                "burst summary already present; members collapsed onto the existing row"
+            );
+        }
+
         if enable_v2_metadata {
             window.push(EventEnvelope {
                 idempotency_key: key.clone(),
@@ -2605,6 +2632,109 @@ mod tests {
                 .iter()
                 .any(|it| it.get("port").and_then(|v| v.as_str()) == Some("Armor_Helmet")),
             "expected one item with port == 'Armor_Helmet'; got {items:?}",
+        );
+    }
+
+    /// A burst whose summary does NOT reach the table must leave its
+    /// member lines alone.
+    ///
+    /// Collapsing a burst is a trade: N member rows are dropped because
+    /// one summary row now speaks for them. `process_buffer` used to
+    /// build the suppression set BEFORE attempting that write, so when
+    /// the write did not land the members went anyway and the burst left
+    /// no trace at all — no rows, no summary, and (because
+    /// `insert_event` deduped with `ON CONFLICT DO NOTHING`) not even an
+    /// error. Observed in the wild on a real capture: seven loadout
+    /// bursts totalling 79 `<AttachmentReceived>` lines reduced to seven
+    /// rows, with nothing in the tray log to say so.
+    ///
+    /// The failure is injected with a trigger on `events` that rejects
+    /// `burst_summary` inserts, which is the one shape a unit test can
+    /// produce without a seam in `Storage`. What the assertion is really
+    /// pinning is the ORDER: suppression must follow the write.
+    ///
+    /// Reverting the ordering change turns the member-count assertion
+    /// from 3 to 0.
+    #[tokio::test]
+    async fn a_burst_summary_that_cannot_be_stored_does_not_take_its_members_with_it() {
+        const LINE_UNDERSUIT: &str = concat!(
+            "<2026-05-03T17:52:57.219Z> [Notice] <AttachmentReceived> ",
+            "Player[TheCodeSaiyan] ",
+            "Attachment[rsi_odyssey_undersuit_01_01_01_200000000232, ",
+            "rsi_odyssey_undersuit_01_01_01, 200000000232] ",
+            "Status[persistent] Port[Armor_Undersuit] Elapsed[27.480394] ",
+            "[Team_CoreGameplayFeatures][Inventory]"
+        );
+        const LINE_HELMET: &str = concat!(
+            "<2026-05-03T17:52:57.220Z> [Notice] <AttachmentReceived> ",
+            "Player[TheCodeSaiyan] ",
+            "Attachment[rsi_odyssey_helmet_01_01_01_200000000233, ",
+            "rsi_odyssey_helmet_01_01_01, 200000000233] ",
+            "Status[persistent] Port[Armor_Helmet] Elapsed[27.480500] ",
+            "[Team_CoreGameplayFeatures][Inventory]"
+        );
+        const LINE_PISTOL: &str = concat!(
+            "<2026-05-03T17:52:57.221Z> [Notice] <AttachmentReceived> ",
+            "Player[TheCodeSaiyan] ",
+            "Attachment[behr_pistol_ballistic_01_200000000234, ",
+            "behr_pistol_ballistic_01, 200000000234] ",
+            "Status[persistent] Port[WeaponRight] Elapsed[27.480600] ",
+            "[Team_CoreGameplayFeatures][Inventory]"
+        );
+
+        let dir = TempDir::new().expect("tempdir");
+        let db_path = dir.path().join("test.db");
+        let storage = Storage::open(&db_path).expect("open storage");
+
+        // Injected failure: reject exactly the summary write. A second
+        // connection to the same file is enough — the trigger lives in
+        // the schema, not the connection.
+        {
+            let conn = rusqlite::Connection::open(&db_path).expect("open injector connection");
+            conn.execute_batch(
+                "CREATE TRIGGER reject_burst_summary
+                 BEFORE INSERT ON events
+                 WHEN NEW.type = 'burst_summary'
+                 BEGIN SELECT RAISE(ABORT, 'injected burst summary failure'); END;",
+            )
+            .expect("create trigger");
+        }
+
+        let rules = RuleCache::new();
+        let mut window = InferenceWindow::default();
+        let buffer = vec![
+            (LINE_UNDERSUIT.to_string(), 0u64),
+            (LINE_HELMET.to_string(), 1u64),
+            (LINE_PISTOL.to_string(), 2u64),
+        ];
+        run_two_line_drain(
+            &storage,
+            &rules,
+            "live",
+            LogSource::Live,
+            false,
+            &mut window,
+            &buffer,
+        );
+
+        let rows = storage.recent_events(20).expect("recent_events");
+
+        assert!(
+            !rows.iter().any(|r| r.event_type == "burst_summary"),
+            "the trigger must have rejected the summary — if one is present \
+             the injection failed and this test proves nothing; got {:?}",
+            rows.iter().map(|r| &r.event_type).collect::<Vec<_>>(),
+        );
+
+        let members = rows
+            .iter()
+            .filter(|r| r.event_type == "attachment_received")
+            .count();
+        assert_eq!(
+            members, 3,
+            "all three attachment lines must survive a summary that was never \
+             stored; got {members}. Suppressing members before the summary write \
+             is what silently destroyed real loadout captures.",
         );
     }
 }
