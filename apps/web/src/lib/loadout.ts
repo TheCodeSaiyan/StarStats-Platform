@@ -103,6 +103,39 @@ export function slotForClassification(c?: string): BodySlot | null {
   return CLASSIFICATION_TO_SLOT.get(c) ?? null;
 }
 
+/**
+ * Item-port names that identify a paperdoll slot on their own.
+ *
+ * The port comes from the game's own `<AttachmentReceived>` line and says
+ * where the item is WORN, so it holds for any armour the player owns.
+ * `classification` comes from the reference catalogue, which only holds
+ * what has been scraped — a new or missing set resolves to nothing, and
+ * every piece of it then falls through to the carried-gear "Other" bucket
+ * while the paperdoll renders empty. Observed with the CDS Combat
+ * Superheavy set: suit, arms, legs, helmet and backpack all present in the
+ * payload with correct ports, none of them in the catalogue.
+ */
+const PORT_TO_SLOT: ReadonlyMap<string, BodySlot> = new Map([
+  ['armor_helmet', 'head'],
+  ['armor_torso', 'torso'],
+  ['armor_core', 'torso'],
+  ['armor_arms', 'arms'],
+  ['armor_legs', 'legs'],
+  ['armor_undersuit', 'undersuit'],
+  ['armor_backpack', 'back'],
+  ['backpack', 'back'],
+]);
+
+/**
+ * Maps an item PORT to a paperdoll slot. Case-insensitive.
+ *
+ * The fallback for `slotForClassification` — see `PORT_TO_SLOT`. Returns
+ * null for any port that is not an armour mount.
+ */
+export function slotForPort(port: string): BodySlot | null {
+  return PORT_TO_SLOT.get(port.toLowerCase()) ?? null;
+}
+
 // ---------------------------------------------------------------------------
 // Gear group mapping — classification + port → carried-gear bucket
 // ---------------------------------------------------------------------------

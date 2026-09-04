@@ -8,6 +8,7 @@ import {
   listLoadoutBursts,
   pickLoadoutBurst,
   slotForClassification,
+  slotForPort,
 } from '@/lib/loadout';
 
 test('excludes anatomy + radar + mobiglas, keeps gear', () => {
@@ -170,4 +171,20 @@ test('pickLoadoutBurst returns undefined when no loadout burst exists', () => {
       { event_type: 'session_start', payload: {} },
     ]),
   ).toBeUndefined();
+});
+
+test('slotForPort maps armour mounts, and only armour mounts', () => {
+  // Verbatim ports from a real CDS Combat Superheavy restore — a set the
+  // reference catalogue does not contain, so classification is undefined
+  // for every piece and the port is the only thing that knows where they go.
+  expect(slotForPort('Armor_Helmet')).toBe('head');
+  expect(slotForPort('Armor_Undersuit')).toBe('undersuit');
+  expect(slotForPort('Armor_Arms')).toBe('arms');
+  expect(slotForPort('Armor_Legs')).toBe('legs');
+  expect(slotForPort('backpack')).toBe('back');
+  expect(slotForPort('armor_core')).toBe('torso');
+  // Carried gear and cosmetics are not slots.
+  expect(slotForPort('wep_sidearm')).toBeNull();
+  expect(slotForPort('helmet_visor')).toBeNull();
+  expect(slotForPort('magAttach_1')).toBeNull();
 });
