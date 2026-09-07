@@ -650,17 +650,17 @@ function SectionOwnership() {
       number="07"
       eyebrow="Export & ownership"
       title="Your numbers stay your file."
-      lede="The whole manifest is yours. Download it, take it with you, delete it whenever. Nothing locks you in. Open formats, plain rows, no proprietary blobs."
+      lede="The whole manifest is yours. Take it with you, delete it whenever. Nothing locks you in — and nothing here is promised that doesn’t exist yet."
     >
       <PointGrid
         points={[
           {
-            title: 'Full manifest download',
-            body: 'Per-day heatmap, top activities, full timeline, snapshot history. Whatever’s on the server about you, in one file.',
+            title: 'Export on request',
+            body: 'Not a button yet. The privacy policy commits to portability, so ask and you get your account record and events as JSON — by hand, until a self-serve download ships.',
           },
           {
-            title: 'Open formats',
-            body: 'NDJSON for the timeline, CSV for tables, ZIP bundle for everything. Nothing you can’t open in a text editor.',
+            title: 'Rebuild from source',
+            body: 'The client can re-parse your local Game.log archive from scratch, so the server never holds the only copy of your record.',
           },
           {
             title: 'Delete on request',

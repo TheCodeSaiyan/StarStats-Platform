@@ -13,14 +13,16 @@ const REPO = 'https://github.com/TheCodeSaiyan/StarStats-Platform';
 const DISCUSSIONS = `${REPO}/discussions`;
 const NEW_ISSUE = `${REPO}/issues/new/choose`;
 const CONTACT_EMAIL = 'dojo@thecodesaiyan.io';
+const DISCORD = 'https://discord.gg/6nbYZfvDkF';
 
 /* Anonymous help page. Was a donation checkout (auth-gated) — moved to
  * /donate. During a bug-hunting beta, "Support" must mean help, and a
  * help-seeker must never be bounced to a login or a payment page. No
  * getSession here, on purpose. Destinations are verified real: /docs
  * exists, the issue chooser + Discussions are GitHub, the email is the
- * same CONTACT_EMAIL used on /trust and the waitlist form. There is no
- * Discord — do not add one. */
+ * same CONTACT_EMAIL used on /trust and the waitlist form, and the Discord
+ * invite is the non-expiring one for the StarStats.app server (added
+ * 2026-09-07; this page used to say "do not add one"). */
 export default function SupportPage() {
   return (
     <MarketingSurface
@@ -87,8 +89,9 @@ export default function SupportPage() {
         <div className="ss-about-section-eyebrow">03 — Talk to us</div>
         <h2>Questions, ideas, or not sure it&apos;s a bug.</h2>
         <p>
-          Open-ended things go in{' '}
-          <a href={DISCUSSIONS}>GitHub Discussions</a>. Or email{' '}
+          The quickest answer is on the{' '}
+          <a href={DISCORD}>StarStats.app Discord</a>. Open-ended things also
+          go in <a href={DISCUSSIONS}>GitHub Discussions</a>, or email{' '}
           <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> — it
           reaches the maintainer directly.
         </p>

@@ -35,6 +35,17 @@ test('support_is_help_not_login', async ({ page, request }) => {
   ).toHaveCount(1);
 });
 
+// The Discord is the first-line support channel and the launch posts link it
+// directly, so the site must link it too — exactly once, from the page's own
+// prose. Scoped the same way as the docs-link assertion above.
+test('support_links_the_discord', async ({ page, request }) => {
+  await setScenario(request, scenarioFor('support_anon3', { 'GET /v1/auth/me': unauthorized }));
+  await page.goto('/support');
+  await expect(
+    page.locator('.hp-marketing a[href="https://discord.gg/6nbYZfvDkF"]'),
+  ).toHaveCount(1);
+});
+
 // And it is NOT silently redirected to the payment page.
 test('support_not_redirected_to_donate', async ({ page, request }) => {
   await setScenario(request, scenarioFor('support_anon2', { 'GET /v1/auth/me': unauthorized }));
