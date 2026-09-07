@@ -22,7 +22,11 @@ import { combatMissionWidget } from '@/app/_components/widgets/combat_mission';
 import { factsWidget } from '@/app/_components/widgets/facts';
 import { heatmapWidget } from '@/app/_components/widgets/heatmap';
 import { orgsWidget } from '@/app/_components/widgets/orgs';
-import { recentActivityWidget } from '@/app/_components/widgets/recent_activity';
+import {
+  recentActivityWidget,
+  type RecentActivityData,
+} from '@/app/_components/widgets/recent_activity';
+import { recentActivityRows } from './recent-activity-rows';
 import { recordsWidget } from '@/app/_components/widgets/records';
 import { stabilityWidget } from '@/app/_components/widgets/stability';
 import { hangarWidget } from '@/app/_components/widgets/hangar';
@@ -41,6 +45,7 @@ import type {
   ReferenceCatalog,
   ReferenceCatalogs,
   ReferenceCategory,
+  ReferenceLookup,
 } from '@/lib/reference-types';
 import { CATEGORIES, resolveReferenceEntry } from '@/lib/reference-types';
 import { toFriendlyName } from '@/lib/heuristic-name';
@@ -61,7 +66,11 @@ type Catalogs = ReferenceCatalogs;
  */
 interface ProjectionRefs {
   catalogs?: Catalogs;
+  /** Display-name maps, for the sentence formatters that predate `catalogs`. */
+  lookup?: ReferenceLookup;
   counts?: Record<ReferenceCategory, number>;
+  /** Whose projection this is — for planes that link to a per-handle page. */
+  ownerHandle?: string;
 }
 
 /**
@@ -838,38 +847,40 @@ function orgsPlane(d: OrgsData): React.ReactNode {
   );
 }
 
-interface RecentActivityData {
-  events: ReadonlyArray<{
-    seq?: number;
-    event_type: string;
-    event_timestamp?: string | null;
-  }>;
-}
+const RECENT_ACTIVITY_CAP = 8;
 
-function recentActivityPlane(d: RecentActivityData): React.ReactNode {
+/**
+ * Sentence per event, not the identifier — see `recent-activity-rows.tsx`.
+ *
+ * "See all" goes to the owner's sessions, which is the only web surface with
+ * a per-event timeline. It used to point at `/me/contracts`, a different
+ * feature altogether.
+ */
+function recentActivityPlane(
+  d: RecentActivityData,
+  refs?: ProjectionRefs,
+): React.ReactNode {
+  const rows = recentActivityRows(d.events, refs, {
+    now: new Date(),
+    cap: RECENT_ACTIVITY_CAP,
+  });
+  const handle = refs?.ownerHandle;
   return (
     <Plane
       tilt="flat"
       cap="Recent activity"
       hint="most recent first"
-      trailing={<Link href={'/me/contracts' as Route}>see all →</Link>}
+      trailing={
+        handle ? (
+          <Link href={`/u/${encodeURIComponent(handle)}/sessions` as Route}>
+            see all →
+          </Link>
+        ) : undefined
+      }
       empty={<span className="hp-empty">{MISSING} nothing in this window</span>}
     >
-      {d.events.slice(0, 8).map((e, i) => (
-        <LogRow
-          key={e.seq ?? i}
-          time={
-            e.event_timestamp
-              ? new Date(e.event_timestamp).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })
-              : MISSING
-          }
-          // The raw discriminant stays addressable rather than being
-          // prettified into something the log never said.
-          event={e.event_type}
-        />
+      {rows.map((r) => (
+        <LogRow key={r.key} time={r.time} event={r.event} tone={r.tone} mark={r.mark} />
       ))}
     </Plane>
   );
@@ -1223,10 +1234,15 @@ export async function buildElements(
   // is a memory read, not a fetch — and it is already loaded on this request by
   // the hover cards. Degrades to undefined, which `entityRow` renders as plain
   // text: a row is never worse off than the raw value it showed before.
-  let refs: ProjectionRefs | undefined;
+  let refs: ProjectionRefs | undefined = { ownerHandle: ctx.ownerHandle };
   try {
     const bundle = await loadAllReferenceBundles();
-    refs = { catalogs: bundle.catalogs, counts: bundle.counts };
+    refs = {
+      ...refs,
+      catalogs: bundle.catalogs,
+      lookup: bundle.lookup,
+      counts: bundle.counts,
+    };
   } catch (err) {
     logger.warn({ err, call: 'projection.catalogs' }, 'catalogue load failed');
   }

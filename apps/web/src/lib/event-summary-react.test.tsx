@@ -78,3 +78,85 @@ describe('renderEventSummary resolved_location', () => {
     expect(screen.getByText(/Crusader/)).toBeInTheDocument();
   });
 });
+
+describe('renderEventSummary: variants the tray emits that had no case', () => {
+  const ts = '2026-09-06T14:04:15.205Z';
+
+  it('quantum_route links the destination through the resolved location', () => {
+    const resolved = { display_name: 'Pyro', slug: 'pyro', system: 'Pyro' };
+    render(
+      <>
+        {renderEventSummary(
+          {
+            type: 'quantum_route',
+            timestamp: ts,
+            start_system: 'Stanton',
+            destination: 'LOC_pyro',
+            vehicle_class: 'RSI_Polaris',
+            vehicle_id: '1',
+          },
+          undefined,
+          undefined,
+          resolved,
+        )}
+      </>,
+    );
+    expect(
+      screen.getByRole('link', { name: 'Pyro' }).getAttribute('href'),
+    ).toBe('/kb/location/pyro');
+    expect(screen.getByText(/Route plotted/)).toBeTruthy();
+  });
+
+  it('location_changed links where the player now is', () => {
+    const resolved = {
+      display_name: 'Everus Harbor',
+      slug: 'everus-harbor',
+      system: 'Stanton',
+    };
+    render(
+      <>
+        {renderEventSummary(
+          { type: 'location_changed', timestamp: ts, from: null, to: 'Stanton|hurston|everus' },
+          undefined,
+          undefined,
+          resolved,
+        )}
+      </>,
+    );
+    expect(screen.getByRole('link', { name: 'Everus Harbor' })).toBeTruthy();
+  });
+
+  it('mission_objective states the outcome in words', () => {
+    render(
+      <>
+        {renderEventSummary({
+          type: 'mission_objective',
+          timestamp: ts,
+          objective_id: 'o',
+          mission_id: null,
+          state: 'failed',
+          text: 'Hold the point',
+        })}
+      </>,
+    );
+    expect(screen.getByText('Objective failed: Hold the point')).toBeTruthy();
+  });
+
+  it('never renders a bare "<type> event" for a known variant', () => {
+    const known = [
+      { type: 'quantum_arrived', timestamp: ts, vehicle_class: 'RSI_Polaris', vehicle_id: '1' },
+      { type: 'shop_request_timed_out', timestamp: ts, shop_id: null, item_class: null, timed_out_after_secs: 30 },
+      { type: 'item_equip_change', timestamp: ts, action: 'equip', item_class: 'x', port: null, items_count: null },
+      { type: 'mission_quantum_destination_selected', timestamp: ts, beacon_id: 'b', is_mission_destination: true, travel_confirmed: false },
+      { type: 'travel_to_contract_location', timestamp: ts, beacon_id: 'b', travel_started: true, travel_completed: false },
+    ];
+    for (const p of known) {
+      const { container, unmount } = render(<>{renderEventSummary(p)}</>);
+      // The switch used to fall off the end for these and render NOTHING,
+      // which is why an "is not `<type> event`" check alone is not enough.
+      expect(container.textContent?.trim()).toBeTruthy();
+      expect(container.textContent).not.toMatch(/_/);
+      unmount();
+    }
+  });
+});

@@ -7,7 +7,11 @@ vi.mock('@/lib/api', () => ({
 }));
 
 import { listEvents } from '@/lib/api';
-import { recentActivityWidget } from './recent_activity';
+import {
+  recentActivityWidget,
+  isLowSignal,
+  type RecentActivityData,
+} from './recent_activity';
 import { DEFAULT_SHARE_SCOPES } from './types';
 import type { ViewerCtx } from './types';
 
@@ -106,5 +110,67 @@ describe('recentActivityWidget H9 label formatting', () => {
     // ...but the visible label is humanised — no snake_case underscores.
     expect(label.textContent ?? '').not.toContain('_');
     expect(label.textContent?.trim()).toBeTruthy();
+  });
+});
+
+describe('recentActivityWidget low-signal filter', () => {
+  const ts = '2026-09-06T14:21:46.264Z';
+  const ev = (event_type: string, payload: Record<string, unknown> = {}) => ({
+    seq: 1,
+    event_type,
+    event_timestamp: ts,
+    payload: { type: event_type, timestamp: ts, ...payload },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it.each([
+    'attachment_received',
+    'planet_terrain_load',
+    'location_inventory_requested',
+    'shop_flow_response',
+  ])('%s is instrumentation, not activity', (type) => {
+    expect(isLowSignal(ev(type))).toBe(true);
+  });
+
+  it('keeps a HUD banner only when it belongs to a mission', () => {
+    expect(isLowSignal(ev('hud_notification', { text: 'Entering Armistice Zone', mission_id: null }))).toBe(true);
+    expect(isLowSignal(ev('hud_notification', { text: 'Package delivered', mission_id: 'm1' }))).toBe(false);
+  });
+
+  it('keeps the loadout burst and drops the bursts that summarise noise', () => {
+    expect(isLowSignal(ev('burst_summary', { rule_id: 'loadout_restore_burst', size: 14 }))).toBe(false);
+    expect(isLowSignal(ev('burst_summary', { rule_id: 'terrain_load_burst', size: 40 }))).toBe(true);
+    expect(isLowSignal(ev('burst_summary', { rule_id: 'hud_notification_burst', size: 5 }))).toBe(true);
+  });
+
+  it.each(['vehicle_stowed', 'player_death', 'mission_objective', 'session_end', 'shop_buy_request'])(
+    '%s is activity',
+    (type) => {
+      expect(isLowSignal(ev(type))).toBe(false);
+    },
+  );
+
+  it('load drops low-signal rows and asks for a page big enough to survive the cut', async () => {
+    (listEvents as ReturnType<typeof vi.fn>).mockResolvedValue({
+      events: [ev('attachment_received'), ev('vehicle_stowed'), ev('planet_terrain_load')],
+      next_after: null,
+    });
+    const data = (await recentActivityWidget.load!(ownerCtx('7d'))) as RecentActivityData | null;
+    expect(data?.events.map((e) => e.event_type)).toEqual(['vehicle_stowed']);
+    const call = (listEvents as ReturnType<typeof vi.fn>).mock.calls[0] as [string, { limit?: number }];
+    // Roughly 70% of a real stream is filtered here, so 20 rows would leave
+    // the pane with a handful.
+    expect(call[1].limit).toBeGreaterThanOrEqual(100);
+  });
+
+  it('load returns null when everything fetched was low-signal', async () => {
+    (listEvents as ReturnType<typeof vi.fn>).mockResolvedValue({
+      events: [ev('attachment_received')],
+      next_after: null,
+    });
+    expect(await recentActivityWidget.load!(ownerCtx('7d'))).toBeNull();
   });
 });

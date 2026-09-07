@@ -35,6 +35,7 @@ import {
   prettyClass,
 } from './reference-types';
 import { toFriendlyName } from './heuristic-name';
+import { objectiveStateWord } from './event-summary';
 import { EntityLink } from '@/components/kb/EntityLink';
 
 // Re-export the payload union from event-summary so consumers don't
@@ -180,6 +181,55 @@ type GameEventPayload =
       rule_id: string;
       event_name: string;
       fields: Record<string, string>;
+    })
+  | (BaseEvent & {
+      type: 'quantum_route';
+      start_system: string;
+      destination: string;
+      vehicle_class: string;
+      vehicle_id: string;
+    })
+  | (BaseEvent & {
+      type: 'quantum_arrived';
+      vehicle_class: string;
+      vehicle_id: string;
+    })
+  | (BaseEvent & {
+      type: 'location_changed';
+      from?: string | null;
+      to: string;
+    })
+  | (BaseEvent & {
+      type: 'shop_request_timed_out';
+      shop_id?: string | null;
+      item_class?: string | null;
+      timed_out_after_secs: number;
+    })
+  | (BaseEvent & {
+      type: 'mission_objective';
+      objective_id: string;
+      mission_id?: string | null;
+      state?: string | null;
+      text?: string | null;
+    })
+  | (BaseEvent & {
+      type: 'item_equip_change';
+      action: 'equip' | 'store';
+      item_class: string;
+      port?: string | null;
+      items_count?: number | null;
+    })
+  | (BaseEvent & {
+      type: 'mission_quantum_destination_selected';
+      beacon_id: string;
+      is_mission_destination: boolean;
+      travel_confirmed: boolean;
+    })
+  | (BaseEvent & {
+      type: 'travel_to_contract_location';
+      beacon_id: string;
+      travel_started: boolean;
+      travel_completed: boolean;
     });
 
 /**
@@ -517,6 +567,113 @@ function renderKnown(
       })`;
     case 'remote_match':
       return event.event_name || `Remote rule: ${event.rule_id}`;
+    case 'quantum_route':
+      // The destination is the event's `location_raw()`, so the tray's
+      // resolution applies to that link and not to the origin system.
+      return (
+        <>
+          Route plotted:{' '}
+          <EntityLink
+            category="location"
+            classKey={event.start_system}
+            catalog={catalogs.locations}
+          />{' '}
+          →{' '}
+          <EntityLink
+            category="location"
+            classKey={event.destination}
+            catalog={catalogs.locations}
+            {...resolvedLocationProps(resolvedLocation)}
+          />{' '}
+          in{' '}
+          <EntityLink
+            category="vehicle"
+            classKey={event.vehicle_class}
+            catalog={catalogs.vehicles}
+          />
+        </>
+      );
+    case 'quantum_arrived':
+      // No destination in the source line, so none is claimed here.
+      return (
+        <>
+          Quantum travel complete in{' '}
+          <EntityLink
+            category="vehicle"
+            classKey={event.vehicle_class}
+            catalog={catalogs.vehicles}
+          />
+        </>
+      );
+    case 'location_changed': {
+      const to = (
+        <EntityLink
+          category="location"
+          classKey={event.to}
+          catalog={catalogs.locations}
+          {...resolvedLocationProps(resolvedLocation)}
+        />
+      );
+      if (!event.from) return <>Now at {to}</>;
+      return (
+        <>
+          Moved from{' '}
+          <EntityLink
+            category="location"
+            classKey={event.from}
+            catalog={catalogs.locations}
+          />{' '}
+          to {to}
+        </>
+      );
+    }
+    case 'shop_request_timed_out':
+      if (!event.item_class) {
+        return `Shop request timed out after ${event.timed_out_after_secs}s`;
+      }
+      return (
+        <>
+          Shop request for{' '}
+          <EntityLink
+            category="item"
+            classKey={event.item_class}
+            catalog={catalogs.items}
+          />{' '}
+          timed out after {event.timed_out_after_secs}s
+        </>
+      );
+    case 'mission_objective': {
+      const label = event.text || event.objective_id;
+      const state = objectiveStateWord(event.state);
+      return state ? `Objective ${state}: ${label}` : `Objective: ${label}`;
+    }
+    case 'item_equip_change': {
+      const item = (
+        <EntityLink
+          category="item"
+          classKey={event.item_class}
+          catalog={catalogs.items}
+        />
+      );
+      if (event.action === 'store') return <>Stored {item}</>;
+      return event.port ? (
+        <>
+          Equipped {item} ({event.port})
+        </>
+      ) : (
+        <>Equipped {item}</>
+      );
+    }
+    case 'mission_quantum_destination_selected':
+      // The beacon id is an engine handle with nothing to link to, so
+      // the sentence says what happened rather than quoting it.
+      return event.travel_confirmed
+        ? 'Mission destination selected, travel confirmed'
+        : 'Mission destination selected';
+    case 'travel_to_contract_location':
+      return event.travel_completed
+        ? 'Arrived at the contract location'
+        : 'Heading to the contract location';
   }
 }
 

@@ -71,7 +71,7 @@ interface RawMetaEntry {
   glyph: string;
 }
 
-/** The full 30-variant catalogue. Order intentional — keeps related
+/** The full 35-variant catalogue. Order intentional — keeps related
  *  variants near each other so the diff stays readable when a new
  *  category is added. */
 const META: Record<string, RawMetaEntry> = {
@@ -95,6 +95,12 @@ const META: Record<string, RawMetaEntry> = {
     group: 'travel',
     glyph: '🧭',
   },
+  quantum_arrived: {
+    label: 'Quantum travel complete',
+    group: 'travel',
+    glyph: '⚡',
+  },
+  location_changed: { label: 'Moved location', group: 'travel', glyph: '📍' },
   planet_terrain_load: { label: 'Loaded planet', group: 'travel', glyph: '🪐' },
 
   // -- Combat --
@@ -137,6 +143,16 @@ const META: Record<string, RawMetaEntry> = {
     group: 'mission',
     glyph: '🎯',
   },
+  mission_quantum_destination_selected: {
+    label: 'Mission destination set',
+    group: 'mission',
+    glyph: '🎯',
+  },
+  travel_to_contract_location: {
+    label: 'Heading to contract',
+    group: 'mission',
+    glyph: '🧭',
+  },
 
   // -- Commerce --
   shop_buy_request: { label: 'Shop purchase', group: 'commerce', glyph: '🛒' },
@@ -154,6 +170,11 @@ const META: Record<string, RawMetaEntry> = {
     label: 'Sold commodity',
     group: 'commerce',
     glyph: '💰',
+  },
+  shop_request_timed_out: {
+    label: 'Shop request timed out',
+    group: 'commerce',
+    glyph: '⏳',
   },
 
   // -- System / instrumentation --
