@@ -69,8 +69,6 @@ interface ProjectionRefs {
   /** Display-name maps, for the sentence formatters that predate `catalogs`. */
   lookup?: ReferenceLookup;
   counts?: Record<ReferenceCategory, number>;
-  /** Whose projection this is — for planes that link to a per-handle page. */
-  ownerHandle?: string;
 }
 
 /**
@@ -852,9 +850,8 @@ const RECENT_ACTIVITY_CAP = 8;
 /**
  * Sentence per event, not the identifier — see `recent-activity-rows.tsx`.
  *
- * "See all" goes to the owner's sessions, which is the only web surface with
- * a per-event timeline. It used to point at `/me/contracts`, a different
- * feature altogether.
+ * "See all" goes to `/me/activity`, the full log behind this digest. It used
+ * to point at `/me/contracts`, a different feature altogether.
  */
 function recentActivityPlane(
   d: RecentActivityData,
@@ -864,19 +861,12 @@ function recentActivityPlane(
     now: new Date(),
     cap: RECENT_ACTIVITY_CAP,
   });
-  const handle = refs?.ownerHandle;
   return (
     <Plane
       tilt="flat"
       cap="Recent activity"
       hint="most recent first"
-      trailing={
-        handle ? (
-          <Link href={`/u/${encodeURIComponent(handle)}/sessions` as Route}>
-            see all →
-          </Link>
-        ) : undefined
-      }
+      trailing={<Link href={'/me/activity' as Route}>see all →</Link>}
       empty={<span className="hp-empty">{MISSING} nothing in this window</span>}
     >
       {rows.map((r) => (
@@ -1234,11 +1224,10 @@ export async function buildElements(
   // is a memory read, not a fetch — and it is already loaded on this request by
   // the hover cards. Degrades to undefined, which `entityRow` renders as plain
   // text: a row is never worse off than the raw value it showed before.
-  let refs: ProjectionRefs | undefined = { ownerHandle: ctx.ownerHandle };
+  let refs: ProjectionRefs | undefined;
   try {
     const bundle = await loadAllReferenceBundles();
     refs = {
-      ...refs,
       catalogs: bundle.catalogs,
       lookup: bundle.lookup,
       counts: bundle.counts,

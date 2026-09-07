@@ -36,6 +36,8 @@ const ENTRIES: readonly {
   label: string;
   key: keyof RecordsIndexCounts | null;
 }[] = [
+  // The full event log — the record every other record is cut from.
+  { href: '/me/activity', label: 'Activity', key: null },
   { href: '/me/contracts', label: 'My contracts', key: 'myContracts' },
   { href: '/contracts', label: 'Catalogue', key: 'catalogue' },
   { href: '/me/loadout', label: 'Player loadout', key: 'loadout' },
