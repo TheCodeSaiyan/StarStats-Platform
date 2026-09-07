@@ -64,20 +64,29 @@ function send(res, status, body) {
 }
 
 /**
+ * The only response headers a raw-body stub may set. Header NAMES come
+ * from this list, never from the fixture: a scenario is data posted over
+ * HTTP, and letting it name headers is a property-injection sink
+ * (js/remote-property-injection). Values are still fixture-supplied.
+ */
+const RAW_STUB_HEADERS = ['content-type', 'content-disposition', 'retry-after'];
+
+/**
  * Answer from a stub. JSON by default; a stub carrying `rawBody` is sent
- * verbatim with its own `headers` — the shape a bytes endpoint like
- * `GET /v1/me/export` produces (NDJSON / CSV / ZIP with a
+ * verbatim with its allow-listed `headers` — the shape a bytes endpoint
+ * like `GET /v1/me/export` produces (NDJSON / CSV / ZIP with a
  * Content-Disposition), which `send()`'s JSON.stringify would mangle.
  */
 function sendStub(res, stub) {
   const status = stub.status ?? 200;
   if (typeof stub.rawBody === 'string') {
-    const headers = {
-      'content-type': 'application/octet-stream',
-      ...(stub.headers ?? {}),
-      'content-length': Buffer.byteLength(stub.rawBody),
-    };
-    res.writeHead(status, headers);
+    res.statusCode = status;
+    res.setHeader('content-type', 'application/octet-stream');
+    for (const name of RAW_STUB_HEADERS) {
+      const value = stub.headers?.[name];
+      if (typeof value === 'string') res.setHeader(name, value);
+    }
+    res.setHeader('content-length', Buffer.byteLength(stub.rawBody));
     res.end(stub.rawBody);
     return;
   }

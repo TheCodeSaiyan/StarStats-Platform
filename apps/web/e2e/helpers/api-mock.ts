@@ -29,8 +29,12 @@ export interface ResponseStub {
    *  endpoints that stream a file (`GET /v1/me/export`). Pair with
    *  `headers` for the content-type and Content-Disposition. */
   rawBody?: string;
-  /** Extra response headers; only honoured alongside `rawBody`. */
-  headers?: Record<string, string>;
+  /** Response headers for a `rawBody` stub. Only `content-type`,
+   *  `content-disposition` and `retry-after` are honoured — the mock
+   *  copies those by name and ignores anything else. */
+  headers?: Partial<
+    Record<'content-type' | 'content-disposition' | 'retry-after', string>
+  >;
 }
 
 export type ScenarioRoutes = Record<string, ResponseStub>;
