@@ -47,6 +47,25 @@ test.beforeEach(async ({ request, page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
 });
 
+/**
+ * No page may advertise a self-serve manifest export. There is no export
+ * endpoint (settings/page.tsx says so, and the privacy policy's Art. 20 clause
+ * says "contact us"), yet /trust, /features, /about and the home page all
+ * promised NDJSON / CSV / ZIP downloads until 2026-09-07. Pinned here so the
+ * copy cannot drift back ahead of the product.
+ */
+for (const route of ['/trust', '/features', '/about'] as const) {
+  test(`${route} does not promise an export format that does not ship`, async ({
+    page,
+  }) => {
+    await page.goto(route);
+    await expect(page.locator('[role="main"]')).toBeVisible();
+    await expect(page.locator('[role="main"]')).not.toContainText(
+      /NDJSON|CSV|ZIP bundle|Download the whole manifest/,
+    );
+  });
+}
+
 for (const { route, h1 } of PAGES) {
   test(`${route} renders in the projection with its body intact`, async ({
     page,
