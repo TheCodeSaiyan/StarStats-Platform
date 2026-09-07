@@ -160,3 +160,40 @@ describe('renderEventSummary: variants the tray emits that had no case', () => {
     }
   });
 });
+
+describe('renderEventSummary: what the live log showed', () => {
+  const ts = '2026-09-06T14:16:39.536Z';
+
+  it('never prints a shop item that is only an engine GUID', () => {
+    const { container } = render(
+      <>
+        {renderEventSummary({
+          type: 'shop_buy_request',
+          timestamp: ts,
+          shop_id: '1',
+          item_class: '72b91153-5a3e-4d71-af5c-f6c57ea2891a',
+          quantity: null,
+          raw: '',
+        })}
+      </>,
+    );
+    expect(container.textContent).toBe('Shop purchase requested');
+  });
+
+  it('describes a stow without the engine vehicle id', () => {
+    const { container } = render(
+      <>
+        {renderEventSummary({
+          type: 'vehicle_stowed',
+          timestamp: ts,
+          vehicle_id: '816633546929',
+          landing_area: 'LandingArea_ShipElevator_HangarMediumFront',
+          landing_area_id: '1',
+          zone_host_id: '2',
+        })}
+      </>,
+    );
+    expect(container.textContent).toMatch(/^Stowed a ship at /);
+    expect(container.textContent).not.toMatch(/816633546929/);
+  });
+});

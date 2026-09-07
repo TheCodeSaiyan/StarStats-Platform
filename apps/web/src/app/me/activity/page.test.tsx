@@ -118,7 +118,10 @@ describe('ActivityPage', () => {
 
     const rows = rowTexts(container);
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toMatch(/stowed at/);
+    expect(rows[0]).toMatch(/Stowed a ship at/);
+    // A log page owes the reader the time of day, not just the date.
+    const times = Array.from(container.querySelectorAll('.hp-lg .t')).map((el) => el.textContent);
+    expect(times[0]).toMatch(/\d{2}:\d{2}$/);
     expect(rows[1]).toMatch(/^Died/);
     expect(rows.join('\n')).not.toMatch(/Attached|attachment_received/);
     expect(screen.getByText(/1 hidden on this page/)).toBeInTheDocument();

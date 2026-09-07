@@ -43,28 +43,39 @@ export interface RecentRow {
 const MISSING = '—';
 
 /**
- * Fixed locale so the server renders the same text whatever the container's
- * `LANG` is. The time zone is the server's, as it was before this existed —
- * the full ISO timestamp goes in the tooltip so the reader can check.
+ * Fixed three-letter months rather than the locale's: `en-GB` spells
+ * September "Sept", and "30 Sept 23:59" measured 67px in the log row's
+ * 64px time cell on the live page, where "30 Sep 23:59" is 63px. The time
+ * zone is the server's, as it was before this existed — the full ISO
+ * timestamp goes in the tooltip so the reader can check.
  */
-const LOG_LOCALE = 'en-GB';
+const MONTHS = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+] as const;
+
+function clock(d: Date): string {
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
 
 export function fmtLogTime(
   iso: string | null | undefined,
   now: Date,
+  opts: {
+    /** Keep the clock on older days too — the log page wants it, the
+     *  eight-row digest does not. */
+    clock?: boolean;
+  } = {},
 ): { text: string; title: string } {
   if (!iso) return { text: MISSING, title: '' };
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return { text: MISSING, title: '' };
   const sameDay = d.toDateString() === now.toDateString();
-  const text = sameDay
-    ? d.toLocaleTimeString(LOG_LOCALE, {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-      })
-    : d.toLocaleDateString(LOG_LOCALE, { day: 'numeric', month: 'short' });
-  return { text, title: iso };
+  if (sameDay) return { text: clock(d), title: iso };
+  const day = `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return { text: opts.clock ? `${day} ${clock(d)}` : day, title: iso };
 }
 
 function hasTypedPayload(p: unknown): boolean {
@@ -154,6 +165,8 @@ export function recentActivityRows(
     /** Fold consecutive repeats (default). `/me/activity` passes `false`:
      *  a log page owes the reader every line, not a digest of them. */
     fold?: boolean;
+    /** Show the clock on older days too — see `fmtLogTime`. */
+    clock?: boolean;
   },
 ): RecentRow[] {
   const ordered = sortNewestFirst(events);
@@ -175,7 +188,7 @@ export function recentActivityRows(
             e.resolved_location ?? null,
           )
         : null;
-    const time = fmtLogTime(e.event_timestamp, opts.now);
+    const time = fmtLogTime(e.event_timestamp, opts.now, { clock: opts.clock });
     const oldest = run.members[n - 1];
     const timeTitle =
       n > 1 && oldest.event_timestamp
