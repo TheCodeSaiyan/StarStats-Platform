@@ -168,7 +168,76 @@ type GameEventPayload =
       rule_id: string;
       event_name: string;
       fields: Record<string, string>;
+    })
+  | (BaseEvent & {
+      type: 'quantum_route';
+      start_system: string;
+      destination: string;
+      vehicle_class: string;
+      vehicle_id: string;
+    })
+  | (BaseEvent & {
+      type: 'quantum_arrived';
+      vehicle_class: string;
+      vehicle_id: string;
+    })
+  | (BaseEvent & {
+      type: 'location_changed';
+      from?: string | null;
+      to: string;
+    })
+  | (BaseEvent & {
+      type: 'shop_request_timed_out';
+      shop_id?: string | null;
+      item_class?: string | null;
+      timed_out_after_secs: number;
+    })
+  | (BaseEvent & {
+      type: 'mission_objective';
+      objective_id: string;
+      mission_id?: string | null;
+      state?: string | null;
+      text?: string | null;
+    })
+  | (BaseEvent & {
+      type: 'item_equip_change';
+      action: 'equip' | 'store';
+      item_class: string;
+      port?: string | null;
+      items_count?: number | null;
+    })
+  | (BaseEvent & {
+      type: 'mission_quantum_destination_selected';
+      beacon_id: string;
+      is_mission_destination: boolean;
+      travel_confirmed: boolean;
+    })
+  | (BaseEvent & {
+      type: 'travel_to_contract_location';
+      beacon_id: string;
+      travel_started: boolean;
+      travel_completed: boolean;
     });
+
+/**
+ * `MissionObjectiveState` in words. The core enum is snake_case on the
+ * wire, but payloads are never rewritten, so an older PascalCase
+ * spelling is accepted too — every consumer must take both.
+ */
+export function objectiveStateWord(state: string | null | undefined): string | null {
+  if (!state) return null;
+  const key = state.replace(/([a-z])([A-Z])/g, '$1_$2').toLowerCase();
+  switch (key) {
+    case 'in_progress':
+      return 'in progress';
+    case 'completed':
+    case 'failed':
+    case 'withdrawn':
+      return key;
+    default:
+      return null;
+  }
+}
 
 /** Either the legacy vehicles-only Map or the full ReferenceLookup. */
 export type ReferenceLookupArg =
@@ -374,6 +443,46 @@ function formatKnown(
       // Remote-served parser rules carry their own display name. If
       // the rule didn't supply one, fall back to the rule id.
       return event.event_name || `Remote rule: ${event.rule_id}`;
+    case 'quantum_route':
+      return `Route plotted: ${prettyClass(event.start_system, lookup.locations)} → ${prettyClass(
+        event.destination,
+        lookup.locations,
+      )} in ${prettyClass(event.vehicle_class, lookup.vehicles)}`;
+    case 'quantum_arrived':
+      // No destination in the source line, so none is claimed here.
+      return `Quantum travel complete in ${prettyClass(event.vehicle_class, lookup.vehicles)}`;
+    case 'location_changed': {
+      const to = prettyClass(event.to, lookup.locations);
+      return event.from
+        ? `Moved from ${prettyClass(event.from, lookup.locations)} to ${to}`
+        : `Now at ${to}`;
+    }
+    case 'shop_request_timed_out': {
+      const item = event.item_class ? prettyClass(event.item_class, lookup.items) : null;
+      return item
+        ? `Shop request for ${item} timed out after ${event.timed_out_after_secs}s`
+        : `Shop request timed out after ${event.timed_out_after_secs}s`;
+    }
+    case 'mission_objective': {
+      const label = event.text || event.objective_id;
+      const state = objectiveStateWord(event.state);
+      return state ? `Objective ${state}: ${label}` : `Objective: ${label}`;
+    }
+    case 'item_equip_change': {
+      const item = prettyClass(event.item_class, lookup.items);
+      if (event.action === 'store') return `Stored ${item}`;
+      return event.port ? `Equipped ${item} (${event.port})` : `Equipped ${item}`;
+    }
+    case 'mission_quantum_destination_selected':
+      // The beacon id is an engine handle with nothing to link to, so
+      // the sentence says what happened rather than quoting it.
+      return event.travel_confirmed
+        ? 'Mission destination selected, travel confirmed'
+        : 'Mission destination selected';
+    case 'travel_to_contract_location':
+      return event.travel_completed
+        ? 'Arrived at the contract location'
+        : 'Heading to the contract location';
   }
 }
 
