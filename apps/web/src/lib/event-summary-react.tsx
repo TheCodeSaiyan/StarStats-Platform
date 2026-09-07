@@ -35,7 +35,7 @@ import {
   prettyClass,
 } from './reference-types';
 import { toFriendlyName } from './heuristic-name';
-import { objectiveStateWord } from './event-summary';
+import { namedClass, objectiveStateWord } from './event-summary';
 import { EntityLink } from '@/components/kb/EntityLink';
 
 // Re-export the payload union from event-summary so consumers don't
@@ -424,9 +424,11 @@ function renderKnown(
       const cleaned = event.landing_area
         .replace(/^\[PROC\]/, '')
         .replace(/^LandingArea_/, '');
+      // `vehicle_id` is an engine handle with no class behind it, so it
+      // cannot be resolved to a ship and is not worth a reader's eye.
       return (
         <>
-          Ship {event.vehicle_id} stowed at{' '}
+          Stowed a ship at{' '}
           <EntityLink
             category="location"
             classKey={cleaned}
@@ -508,7 +510,8 @@ function renderKnown(
       return outcome ? `Mission ended: ${outcome}` : 'Mission ended';
     }
     case 'shop_buy_request': {
-      const itemLabel = prettyClass(event.item_class, lookup.items);
+      const cls = namedClass(event.item_class);
+      const itemLabel = prettyClass(cls, lookup.items);
       const qty = event.quantity ?? null;
       if (itemLabel && qty) {
         return (
@@ -516,7 +519,7 @@ function renderKnown(
             Buying{' '}
             <EntityLink
               category="item"
-              classKey={event.item_class ?? null}
+              classKey={cls}
               catalog={catalogs.items}
               label={itemLabel}
             />{' '}
@@ -530,7 +533,7 @@ function renderKnown(
             Buying{' '}
             <EntityLink
               category="item"
-              classKey={event.item_class ?? null}
+              classKey={cls}
               catalog={catalogs.items}
               label={itemLabel}
             />
@@ -627,21 +630,19 @@ function renderKnown(
         </>
       );
     }
-    case 'shop_request_timed_out':
-      if (!event.item_class) {
+    case 'shop_request_timed_out': {
+      const cls = namedClass(event.item_class);
+      if (!cls) {
         return `Shop request timed out after ${event.timed_out_after_secs}s`;
       }
       return (
         <>
           Shop request for{' '}
-          <EntityLink
-            category="item"
-            classKey={event.item_class}
-            catalog={catalogs.items}
-          />{' '}
+          <EntityLink category="item" classKey={cls} catalog={catalogs.items} />{' '}
           timed out after {event.timed_out_after_secs}s
         </>
       );
+    }
     case 'mission_objective': {
       const label = event.text || event.objective_id;
       const state = objectiveStateWord(event.state);

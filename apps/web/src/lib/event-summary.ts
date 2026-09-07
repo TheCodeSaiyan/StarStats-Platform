@@ -219,6 +219,20 @@ type GameEventPayload =
       travel_completed: boolean;
     });
 
+const ENGINE_GUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Shop events carry the item as an engine GUID rather than a class name
+ * (`72b91153-5a3e-…`), which no catalogue resolves and which
+ * `toFriendlyName` would print verbatim. Treat such a value as "no item"
+ * so the sentence says what happened instead of quoting the handle.
+ */
+export function namedClass(cls: string | null | undefined): string | null {
+  if (!cls || ENGINE_GUID.test(cls)) return null;
+  return cls;
+}
+
 /**
  * `MissionObjectiveState` in words. The core enum is snake_case on the
  * wire, but payloads are never rewritten, so an older PascalCase
@@ -339,7 +353,9 @@ function formatKnown(
         .replace(/^\[PROC\]/, '')
         .replace(/^LandingArea_/, '');
       const label = prettyClass(cleaned, lookup.locations);
-      return `Ship ${event.vehicle_id} stowed at ${label}`;
+      // `vehicle_id` is an engine handle with no class behind it, so it
+      // cannot be resolved to a ship and is not worth a reader's eye.
+      return `Stowed a ship at ${label}`;
     }
     case 'burst_summary': {
       // Friendly per-rule labels for the four built-in BurstRules in
@@ -401,7 +417,7 @@ function formatKnown(
       return outcome ? `Mission ended: ${outcome}` : 'Mission ended';
     }
     case 'shop_buy_request': {
-      const item = prettyClass(event.item_class, lookup.items);
+      const item = prettyClass(namedClass(event.item_class), lookup.items);
       const qty = event.quantity ?? null;
       if (item && qty) return `Buying ${item} × ${qty}`;
       if (item) return `Buying ${item}`;
@@ -458,7 +474,8 @@ function formatKnown(
         : `Now at ${to}`;
     }
     case 'shop_request_timed_out': {
-      const item = event.item_class ? prettyClass(event.item_class, lookup.items) : null;
+      const cls = namedClass(event.item_class);
+      const item = cls ? prettyClass(cls, lookup.items) : null;
       return item
         ? `Shop request for ${item} timed out after ${event.timed_out_after_secs}s`
         : `Shop request timed out after ${event.timed_out_after_secs}s`;

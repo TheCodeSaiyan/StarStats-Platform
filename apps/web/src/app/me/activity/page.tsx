@@ -119,7 +119,11 @@ export default async function ActivityPage(props: PageProps) {
   const visible =
     q.all || q.type ? fetched : fetched.filter((e) => !isLowSignal(e));
   const hiddenCount = fetched.length - visible.length;
-  const rows = recentActivityRows(visible, refs, { now: new Date(), fold: false });
+  const rows = recentActivityRows(visible, refs, {
+    now: new Date(),
+    fold: false,
+    clock: true,
+  });
 
   // Older-page cursor: the smallest seq on THIS page. Offered only when the
   // page came back full, because a short page is the end of the window.

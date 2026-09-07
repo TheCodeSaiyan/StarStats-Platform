@@ -28,9 +28,17 @@ describe('fmtLogTime', () => {
     // The live pane read "03:21 PM" for yesterday's events, indistinguishable
     // from today's. Older rows must carry the day instead.
     const t = fmtLogTime(iso('2026-09-06T15:21:00'), NOW);
-    expect(t.text).not.toMatch(/:/);
-    expect(t.text).toMatch(/[A-Za-z]/);
+    expect(t.text).toMatch(/^\d{1,2} [A-Z][a-z]{2}$/);
     expect(t.title).toBe(iso('2026-09-06T15:21:00'));
+  });
+
+  it('keeps the clock on an older event when asked, in a form that fits the column', () => {
+    // Measured on the live page: "30 Sep 23:59" is 63px in the 64px cell, so
+    // the month must stay three letters ("Sept" from the locale is 67px).
+    const t = fmtLogTime(iso('2026-09-30T23:59:00'), new Date('2026-10-02T12:00:00'), { clock: true });
+    expect(t.text).toBe('30 Sep 23:59');
+    const today = fmtLogTime(iso('2026-09-07T09:05:00'), NOW, { clock: true });
+    expect(today.text).toBe('09:05');
   });
 
   it('is the missing marker when there is no timestamp', () => {
@@ -62,7 +70,7 @@ describe('recentActivityRows', () => {
         ))}
       </>,
     );
-    expect(screen.getByText(/stowed at/)).toBeTruthy();
+    expect(screen.getByText(/Stowed a ship at/)).toBeTruthy();
     expect(screen.queryByText('vehicle_stowed')).toBeNull();
     expect(screen.getByTitle('vehicle_stowed')).toBeTruthy();
   });
@@ -128,6 +136,16 @@ describe('recentActivityRows', () => {
     expect(rows.map((r) => r.key)).toEqual(['4', '9']);
   });
 
+  it('carries the clock into the rows when asked', () => {
+    const rows = recentActivityRows(
+      [{ ...stowed, event_timestamp: iso('2026-09-06T15:21:00') }],
+      undefined,
+      { now: NOW, clock: true },
+    );
+    render(<LogRow time={rows[0].time} event={rows[0].event} mark={rows[0].mark} />);
+    expect(screen.getByText('6 Sep 15:21')).toBeTruthy();
+  });
+
   it('caps the pane', () => {
     // Alternating types so nothing folds and the cap alone is under test.
     const death = {
@@ -183,8 +201,8 @@ describe('recentActivityRows folds runs', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].key).toBe('3');
     const [text] = texts(rows);
-    expect(text).toMatch(/Stowed ship/);
-    expect(text).toMatch(/×3/);
+    // Same place three times, so the folded row keeps the sentence.
+    expect(text).toMatch(/^Stowed a ship at .* ×3$/);
   });
 
   it('breaks a run on a different event', () => {

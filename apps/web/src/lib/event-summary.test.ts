@@ -135,3 +135,32 @@ describe('formatEventSummary: variants the tray emits that had no case', () => {
     ).toBe('Arrived at the contract location');
   });
 });
+
+describe('formatEventSummary: what the live log showed', () => {
+  const guid = '72b91153-5a3e-4d71-af5c-f6c57ea2891a';
+
+  it('never prints a shop item that is only an engine GUID', () => {
+    expect(
+      formatEventSummary({ type: 'shop_buy_request', timestamp: ts, shop_id: '1', item_class: guid, quantity: null, raw: '' }),
+    ).toBe('Shop purchase requested');
+    expect(
+      formatEventSummary({ type: 'shop_request_timed_out', timestamp: ts, shop_id: '1', item_class: guid, timed_out_after_secs: 30 }),
+    ).toBe('Shop request timed out after 30s');
+    expect(
+      formatEventSummary({ type: 'shop_buy_request', timestamp: ts, shop_id: '1', item_class: 'scu_shirt_01', quantity: null, raw: '' }),
+    ).toMatch(/^Buying /);
+  });
+
+  it('describes a stow without the engine vehicle id', () => {
+    expect(
+      formatEventSummary({
+        type: 'vehicle_stowed',
+        timestamp: ts,
+        vehicle_id: '816633546929',
+        landing_area: 'LandingArea_ShipElevator_HangarMediumFront',
+        landing_area_id: '1',
+        zone_host_id: '2',
+      }),
+    ).toBe('Stowed a ship at Ship Elevator Hangar Medium Front');
+  });
+});
