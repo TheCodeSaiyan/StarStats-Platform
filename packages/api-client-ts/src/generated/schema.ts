@@ -1492,6 +1492,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download everything the server holds about the calling user.
+         * @description Streams; the body is not buffered server-side. The `Content-Disposition`
+         *     filename is `starstats-export-{handle}-{YYYYMMDD}.{ext}`.
+         */
+        get: operations["export_manifest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/facts": {
         parameters: {
             query?: never;
@@ -4535,6 +4556,8 @@ export interface components {
             /** Format: int64 */
             next_after?: number | null;
         };
+        /** @enum {string} */
+        ExportFormat: "ndjson" | "csv" | "zip";
         /** @description The extracted contract. Mirrors sp-ingest `ExtractedContract`. */
         ExtractedContractReq: {
             /** @default [] */
@@ -12937,6 +12960,71 @@ export interface operations {
             };
             /** @description Update failed */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    export_manifest: {
+        parameters: {
+            query: {
+                /** @description `ndjson`, `csv` or `zip`. */
+                format: components["schemas"]["ExportFormat"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The export, streamed. Content-Type is application/x-ndjson, text/csv or application/zip per `format`; Content-Disposition names the file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Unknown `format` */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Device and interim tokens cannot export */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The token's user no longer exists */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Exported too recently; `Retry-After` is set */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A backing store was unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

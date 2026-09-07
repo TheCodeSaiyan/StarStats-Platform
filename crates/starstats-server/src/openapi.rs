@@ -32,6 +32,7 @@ use crate::device_routes;
 use crate::discover_routes;
 use crate::entity_rollup;
 use crate::event_timeline;
+use crate::export_routes;
 use crate::facts_routes;
 use crate::hangar_routes;
 use crate::hangar_store;
@@ -173,6 +174,7 @@ impl Modify for SecurityAddon {
         rsi_org_routes::public_orgs,
         hangar_routes::push,
         hangar_routes::me,
+        export_routes::export_manifest,
         preferences_routes::get,
         preferences_routes::put,
         profile_layout_routes::get_profile_layout,
@@ -628,6 +630,7 @@ impl Modify for SecurityAddon {
         rsi_org_store::RsiOrgsSnapshot,
         // Hangar
         hangar_store::HangarSnapshot,
+        export_routes::ExportFormat,
         hangar_routes::HangarPushRequestSchema,
         hangar_routes::HangarShipSchema,
         // Preferences
@@ -803,6 +806,24 @@ mod tests {
     /// Scoped deliberately: this covers the one route whose absence
     /// is silent and unrecoverable, not every route. A handler that
     /// merely 404s is loud enough to find without a test.
+    /// The export is a bytes endpoint, so nothing else in the generated
+    /// client would notice it missing from the spec — the web tier's
+    /// proxy would just 404. Same shape as the reference-sync guard.
+    #[test]
+    fn data_export_is_documented() {
+        let spec = ApiDoc::openapi().to_json().expect("spec serialises");
+        assert!(
+            spec.contains("/v1/me/export"),
+            "data export path missing from the OpenAPI spec — add \
+             `export_routes::export_manifest` to the `paths(...)` list."
+        );
+        assert!(
+            spec.contains("ExportFormat"),
+            "ExportFormat schema missing from the spec — add it to the \
+             `components(schemas(...))` list."
+        );
+    }
+
     #[test]
     fn reference_sync_trigger_is_documented() {
         let spec = ApiDoc::openapi().to_json().expect("spec serialises");

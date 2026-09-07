@@ -438,17 +438,21 @@ export default async function SettingsPage(props: {
               so the single most important fact about a reader's data, that it
               is bounded at a year, was surfaced nowhere in settings.
 
-              THE SPEC'S OTHER ROWS ARE OMITTED, NOT FAKED. Its pane also lists
-              parsed-event bytes, a raw-archive size, a free-tier cap and an
-              export format, with "Export manifest" and "Re-parse local store"
-              buttons. The product has no export endpoint and no storage
-              accounting — inventing figures for them here would be exactly the
-              inferred-field trap the kit's own Unverified banner warns about,
-              on the page where a reader goes to find out what is kept. */}
+              The kit's storage rows (parsed-event bytes, raw-archive size, a
+              free-tier cap) are STILL omitted, not faked: the product has no
+              storage accounting, and inventing figures on the page where a
+              reader goes to find out what is kept would be exactly the
+              inferred-field trap the kit's own Unverified banner warns about.
+              The export row is real as of the `/v1/me/export` endpoint: the
+              three links below are plain navigations to
+              `app/settings/export/route.ts`, which streams the API's response
+              back as an attachment. Plain `<a>`s on purpose — a server action
+              cannot hand the browser a file. */}
           <HoloKV
             items={[
               { k: 'Window', v: '365 days (server maximum)' },
               { k: 'Beyond the window', v: 'Deleted, not archived' },
+              { k: 'Export', v: 'NDJSON · CSV · ZIP, streamed' },
             ]}
           />
           <p className="hp-prose">
@@ -456,6 +460,25 @@ export default async function SettingsPage(props: {
             called All rather than all time — it is everything there is, not
             everything there ever was.
           </p>
+          <p className="hp-prose">
+            Take it all with you. The export holds your account record, paired
+            devices, preferences, every RSI profile snapshot, the latest hangar
+            and org snapshots, shares you granted and received, and every
+            event — streamed straight from the server, oldest first. NDJSON is
+            one record per line; CSV is the event table; ZIP bundles both with
+            a manifest and a README. One export a minute.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 16 }}>
+            <BeamButton href="/settings/export?format=ndjson" variant="primary">
+              Export NDJSON
+            </BeamButton>
+            <BeamButton href="/settings/export?format=csv" variant="ghost">
+              Export CSV
+            </BeamButton>
+            <BeamButton href="/settings/export?format=zip" variant="ghost">
+              Export ZIP
+            </BeamButton>
+          </div>
         </>
       ),
     },
@@ -927,6 +950,10 @@ function labelForError(code: string): string {
       return "That theme isn't recognised. Pick one of the four shown.";
     case 'invalid_wave_speed':
       return "That wave speed isn't recognised. Pick one of the four shown.";
+    case 'export_too_soon':
+      return 'You exported less than a minute ago — that file is still the latest. Try again shortly.';
+    case 'export_failed':
+      return "The export couldn't be started. Nothing was downloaded; please try again in a moment.";
     case 'invalid_code':
       return "That authentication code didn't match. Check the time on your device and try again.";
     case 'no_setup':

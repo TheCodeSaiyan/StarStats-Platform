@@ -168,6 +168,31 @@ pub struct StoredQueryEvent {
     pub hidden_at: Option<DateTime<Utc>>,
 }
 
+/// One `events` row at full fidelity, for the owner's data export
+/// (`GET /v1/me/export`). Unlike [`StoredQueryEvent`] this carries every
+/// column — `id`, `idempotency_key`, `received_at`, `raw_line` and the
+/// stored `metadata` / `resolved_location` blobs — because portability
+/// means handing back what is held, not what the dashboards render.
+/// `resolved_location` is the CLIENT-stamped value (F4): it is exported
+/// as stored, and labelled as such in the export README.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct ExportEvent {
+    pub seq: i64,
+    pub id: Uuid,
+    pub claimed_handle: String,
+    pub idempotency_key: String,
+    pub event_type: String,
+    pub event_timestamp: Option<DateTime<Utc>>,
+    pub received_at: DateTime<Utc>,
+    pub log_source: String,
+    pub source_offset: i64,
+    pub raw_line: String,
+    pub payload: Value,
+    pub metadata: Option<Value>,
+    pub resolved_location: Option<Value>,
+    pub hidden_at: Option<DateTime<Utc>>,
+}
+
 /// Direction of cursor pagination on `event_seq`.
 ///
 /// `Before` returns rows older than the cursor in DESC order (the
@@ -344,6 +369,19 @@ pub trait EventQuery: Send + Sync + 'static {
         claimed_handle: &str,
         filters: EventFilters,
     ) -> Result<Vec<StoredQueryEvent>, RepoError>;
+
+    /// One page of the owner's events at full column fidelity, oldest
+    /// first: rows with `seq > after_seq`, ASC by seq, at most `limit`.
+    /// The export handler walks this until a short page comes back, so
+    /// a 300k-event account streams in bounded pages rather than one
+    /// unbounded `fetch_all` that would pin a pool connection and buffer
+    /// the whole table in memory.
+    async fn export_page(
+        &self,
+        claimed_handle: &str,
+        after_seq: i64,
+        limit: i64,
+    ) -> Result<Vec<ExportEvent>, RepoError>;
 
     /// Per-day event counts for the trailing `days` window. Returns
     /// only days that had events; the handler is responsible for
@@ -1059,6 +1097,47 @@ pub struct LatestLocationEvent {
     pub payload: Value,
 }
 
+/// Named row for [`EventQuery::export_page`]; `FromRow` matches by
+/// column name so the SELECT list and the struct cannot drift silently.
+#[derive(sqlx::FromRow)]
+struct ExportEventRow {
+    seq: i64,
+    id: Uuid,
+    claimed_handle: String,
+    idempotency_key: String,
+    event_type: String,
+    event_timestamp: Option<DateTime<Utc>>,
+    received_at: DateTime<Utc>,
+    log_source: String,
+    source_offset: i64,
+    raw_line: String,
+    payload: Value,
+    metadata: Option<Value>,
+    resolved_location: Option<Value>,
+    hidden_at: Option<DateTime<Utc>>,
+}
+
+impl ExportEventRow {
+    fn into_event(self) -> ExportEvent {
+        ExportEvent {
+            seq: self.seq,
+            id: self.id,
+            claimed_handle: self.claimed_handle,
+            idempotency_key: self.idempotency_key,
+            event_type: self.event_type,
+            event_timestamp: self.event_timestamp,
+            received_at: self.received_at,
+            log_source: self.log_source,
+            source_offset: self.source_offset,
+            raw_line: self.raw_line,
+            payload: self.payload,
+            metadata: self.metadata,
+            resolved_location: self.resolved_location,
+            hidden_at: self.hidden_at,
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum RepoError {
     #[error("database error: {0}")]
@@ -1185,6 +1264,12 @@ pub mod test_support {
         /// audit_log by `actor_handle`, so the test stub keeps the
         /// handle alongside each row to mirror that scoping.
         ingest_history: Vec<(String, IngestBatchRow)>,
+        /// Full-fidelity rows for [`EventQuery::export_page`]. Kept as a
+        /// separate list rather than synthesised from `rows`, because
+        /// `StoredQueryEvent` has no `raw_line` / `id` / `received_at`
+        /// and inventing them would make the export tests assert on
+        /// placeholders.
+        export_rows: Vec<ExportEvent>,
     }
 
     impl MemoryQuery {
@@ -1192,7 +1277,13 @@ pub mod test_support {
             Self {
                 rows,
                 ingest_history: Vec::new(),
+                export_rows: Vec::new(),
             }
+        }
+
+        pub fn with_export_rows(mut self, rows: Vec<ExportEvent>) -> Self {
+            self.export_rows = rows;
+            self
         }
 
         pub fn with_ingest_history(mut self, history: Vec<(String, IngestBatchRow)>) -> Self {
@@ -1240,6 +1331,26 @@ pub mod test_support {
             }
 
             rows.truncate(filters.limit.max(0) as usize);
+            Ok(rows)
+        }
+
+        async fn export_page(
+            &self,
+            claimed_handle: &str,
+            after_seq: i64,
+            limit: i64,
+        ) -> Result<Vec<ExportEvent>, RepoError> {
+            // Mirrors the Postgres query: handle match is case-insensitive
+            // (ingest lower-cases), keyset `seq > after`, ASC, LIMIT.
+            let mut rows: Vec<ExportEvent> = self
+                .export_rows
+                .iter()
+                .filter(|r| r.claimed_handle.eq_ignore_ascii_case(claimed_handle))
+                .filter(|r| r.seq > after_seq)
+                .cloned()
+                .collect();
+            rows.sort_by_key(|r| r.seq);
+            rows.truncate(limit.max(0) as usize);
             Ok(rows)
         }
 
@@ -2653,6 +2764,32 @@ impl EventQuery for PostgresStore {
                 },
             )
             .collect())
+    }
+
+    async fn export_page(
+        &self,
+        claimed_handle: &str,
+        after_seq: i64,
+        limit: i64,
+    ) -> Result<Vec<ExportEvent>, RepoError> {
+        // Keyset walk on `events_handle_seq_idx (claimed_handle, seq)`;
+        // ASC so the file reads in the order the game wrote the lines.
+        // `LOWER($1)` matches the ingest-side normalisation (0055).
+        let rows: Vec<ExportEventRow> = sqlx::query_as(
+            "SELECT seq, id, claimed_handle, idempotency_key, event_type,
+                    event_timestamp, received_at, log_source, source_offset,
+                    raw_line, payload, metadata, resolved_location, hidden_at
+             FROM events
+             WHERE claimed_handle = LOWER($1) AND seq > $2
+             ORDER BY seq ASC
+             LIMIT $3",
+        )
+        .bind(claimed_handle)
+        .bind(after_seq)
+        .bind(limit.max(0))
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(ExportEventRow::into_event).collect())
     }
 
     async fn timeline(

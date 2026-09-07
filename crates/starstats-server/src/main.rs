@@ -74,6 +74,7 @@ mod discover_routes;
 mod enrichment;
 mod entity_rollup;
 mod event_timeline;
+mod export_routes;
 mod facts;
 mod facts_routes;
 mod facts_store;
@@ -636,6 +637,24 @@ async fn main() -> anyhow::Result<()> {
     let profile_router =
         rsi_profile_routes::routes(users.clone(), profiles.clone(), profile_view_stats.clone());
     let rsi_orgs_router = rsi_org_routes::routes(users.clone(), rsi_orgs.clone());
+    // `GET /v1/me/export` reads every per-user store. It takes the same
+    // dyn handles the rest of the app already exposes, plus the concrete
+    // event store as `State` (the `EventQuery` pattern `query::*` uses).
+    let export_router = export_routes::routes(
+        store.clone(),
+        export_routes::ExportDeps {
+            users: users.clone(),
+            devices: device_store_dyn.clone(),
+            preferences: preferences.clone(),
+            profiles: profiles.clone(),
+            hangars: hangars.clone(),
+            rsi_orgs: rsi_orgs.clone(),
+            share_metadata: share_metadata_dyn.clone(),
+            share_scopes: share_scopes_store.clone(),
+            audit: audit.clone(),
+            throttle: export_routes::ExportThrottle::new(export_routes::DEFAULT_EXPORT_COOLDOWN),
+        },
+    );
     let hangar_router = hangar_routes::routes(hangars);
     // Also exposed app-wide as a dyn Extension so `facts_routes` can read
     // the player's stored timezone. `preferences_routes` keeps taking the
@@ -881,6 +900,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(profile_router)
         .merge(rsi_orgs_router)
         .merge(hangar_router)
+        .merge(export_router)
         .merge(preferences_router)
         .merge(magic_router)
         .merge(totp_router)

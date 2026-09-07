@@ -89,6 +89,15 @@ subtle = "2.6"
 # client IP behind Traefik, falling back to peer addr in dev.
 tower_governor = "0.4"
 url.workspace = true
+# `GET /v1/me/export`: the ZIP bundle is written in streaming mode
+# (`ZipWriter::new_stream`, data descriptors, no Seek) so a large export
+# never has to be buffered whole. Only the deflate codec is enabled —
+# the default feature set drags in aes/bzip2/lzma/zstd the export never
+# uses. Already resolved in Cargo.lock via tauri-plugin-updater.
+zip = { version = "4", default-features = false, features = ["deflate"] }
+# `ReceiverStream` turns the export producer's mpsc channel into the
+# `Stream` axum's `Body::from_stream` wants. Also already in Cargo.lock.
+tokio-stream = "0.1"
 # Mirrors migration 0061's `regexp_replace` quantity-stripping for
 # `contracts.required_item` — see `contracts::strip_item_qty`.
 regex.workspace = true
