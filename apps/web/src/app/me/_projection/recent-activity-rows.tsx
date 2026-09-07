@@ -148,9 +148,19 @@ function foldRuns(
 export function recentActivityRows(
   events: ReadonlyArray<RecentActivityEvent>,
   refs: RecentRefs | undefined,
-  opts: { now: Date; cap?: number },
+  opts: {
+    now: Date;
+    cap?: number;
+    /** Fold consecutive repeats (default). `/me/activity` passes `false`:
+     *  a log page owes the reader every line, not a digest of them. */
+    fold?: boolean;
+  },
 ): RecentRow[] {
-  const runs = foldRuns(sortNewestFirst(events), refs);
+  const ordered = sortNewestFirst(events);
+  const runs =
+    opts.fold === false
+      ? ordered.map((e) => ({ anchor: e, members: [e], uniform: true }))
+      : foldRuns(ordered, refs);
   const shown = typeof opts.cap === 'number' ? runs.slice(0, opts.cap) : runs;
   return shown.map((run, i) => {
     const e = run.anchor;
