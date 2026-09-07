@@ -53,6 +53,12 @@ pub const ACTION_PROFILE_LAYOUT_UPDATED: &str = "profile_layout.updated";
 /// owner changes their per-widget visibility toggles (Plan 3b Option A).
 pub const ACTION_SHARE_SCOPES_UPDATED: &str = "share_scopes.updated";
 
+/// Wire string for the `user.data_exported` audit action. Emitted by
+/// `GET /v1/me/export` before the first byte streams — an export is a
+/// read, so a failed append is logged rather than fatal (contrast
+/// `user.account_deleted`, which refuses to proceed unrecorded).
+pub const ACTION_USER_DATA_EXPORTED: &str = "user.data_exported";
+
 #[derive(Debug, thiserror::Error)]
 pub enum AuditError {
     #[error("database error: {0}")]

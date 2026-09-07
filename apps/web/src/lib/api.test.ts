@@ -11,6 +11,8 @@ import {
   publishSubmissionToCommunity,
   getAdminEventTypes,
   getLives,
+  exportManifest,
+  isExportFormat,
 } from './api';
 
 // `api.ts` reads STARSTATS_API_URL at call time via apiBase().
@@ -26,6 +28,51 @@ const fetchMock = vi.fn();
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
+});
+
+describe('exportManifest', () => {
+  it('GETs /v1/me/export with the format and bearer, and returns the raw Response', async () => {
+    const upstream = new Response('{"kind":"export"}\n', {
+      status: 200,
+      headers: { 'content-type': 'application/x-ndjson' },
+    });
+    fetchMock.mockResolvedValueOnce(upstream);
+
+    const out = await exportManifest('bearer-token', 'ndjson');
+
+    expect(out).toBe(upstream);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(`${API_ORIGIN}/v1/me/export?format=ndjson`);
+    expect(init.method).toBe('GET');
+    expect((init.headers as Record<string, string>).authorization).toBe(
+      'Bearer bearer-token',
+    );
+    expect(init.cache).toBe('no-store');
+    // No timeout signal: an export can legitimately run for minutes.
+    expect(init.signal).toBeUndefined();
+  });
+
+  it('hands non-2xx back untouched instead of throwing ApiCallError', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'too_many_requests' }), {
+        status: 429,
+        headers: { 'retry-after': '42' },
+      }),
+    );
+    const out = await exportManifest('bearer-token', 'zip');
+    expect(out.status).toBe(429);
+    expect(out.headers.get('retry-after')).toBe('42');
+  });
+
+  it('isExportFormat accepts exactly the three shipped formats', () => {
+    expect(isExportFormat('ndjson')).toBe(true);
+    expect(isExportFormat('csv')).toBe(true);
+    expect(isExportFormat('zip')).toBe(true);
+    expect(isExportFormat('xlsx')).toBe(false);
+    expect(isExportFormat(null)).toBe(false);
+    expect(isExportFormat('NDJSON')).toBe(false);
+  });
 });
 
 describe('setDeviceSync', () => {

@@ -1715,6 +1715,40 @@ export async function getSupporterStatus(
   );
 }
 
+// ---------------------------------------------------------------------
+// Data export (GDPR / UK-GDPR Art. 20)
+// ---------------------------------------------------------------------
+
+export const EXPORT_FORMATS = ['ndjson', 'csv', 'zip'] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
+export function isExportFormat(v: unknown): v is ExportFormat {
+  return (
+    typeof v === 'string' && (EXPORT_FORMATS as readonly string[]).includes(v)
+  );
+}
+
+/**
+ * `GET /v1/me/export?format=…` — the caller's whole manifest as a stream.
+ *
+ * Returns the raw upstream `Response` rather than going through
+ * `request<T>()`: the body is bytes to hand straight to the browser, not
+ * JSON to parse, and it can run to hundreds of megabytes, so neither the
+ * 15 s timeout nor buffering applies. Status handling (401 / 429 / 5xx)
+ * is the caller's — `app/settings/export/route.ts` turns each into the
+ * right redirect.
+ */
+export async function exportManifest(
+  bearer: string,
+  format: ExportFormat,
+): Promise<Response> {
+  return fetch(`${apiBase()}/v1/me/export?format=${format}`, {
+    method: 'GET',
+    headers: { authorization: `Bearer ${bearer}` },
+    cache: 'no-store',
+  });
+}
+
 // -- Location: where the user currently is in-game ---------------
 //
 // Backed by `GET /v1/me/location/current` on the server. Returns 204

@@ -71,6 +71,16 @@ pub trait ProfileStore: Send + Sync + 'static {
         user_id: Uuid,
     ) -> Result<Option<ProfileSnapshot>, ProfileStoreError>;
 
+    /// Every snapshot ever captured for `user_id`, oldest first. Only the
+    /// owner's data export reads this — the dashboards want
+    /// [`Self::latest_for_user`] — so there is no LIMIT: portability
+    /// means the whole history, and the table grows per refresh (a
+    /// handful of rows per user), not per event.
+    async fn history_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<ProfileSnapshot>, ProfileStoreError>;
+
     /// Most-recent snapshot for the user whose `claimed_handle`
     /// case-insensitively matches `handle`. Resolves the handle ->
     /// user_id mapping via `users` so callers don't have to.
@@ -174,6 +184,24 @@ impl ProfileStore for PostgresProfileStore {
         Ok(row.map(snapshot_from_row))
     }
 
+    async fn history_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<ProfileSnapshot>, ProfileStoreError> {
+        // The `(user_id, captured_at)` PK covers both the filter and
+        // the ORDER BY.
+        let sql = format!(
+            "SELECT {SNAPSHOT_SELECT} FROM rsi_profile_snapshots \
+             WHERE user_id = $1 \
+             ORDER BY captured_at ASC"
+        );
+        let rows: Vec<SnapshotRow> = sqlx::query_as(&sql)
+            .bind(user_id)
+            .fetch_all(&self.pool)
+            .await?;
+        Ok(rows.into_iter().map(snapshot_from_row).collect())
+    }
+
     async fn latest_for_handle(
         &self,
         handle: &str,
@@ -258,6 +286,20 @@ pub mod test_support {
                 .cloned())
         }
 
+        async fn history_for_user(
+            &self,
+            user_id: Uuid,
+        ) -> Result<Vec<ProfileSnapshot>, ProfileStoreError> {
+            let snaps = self.snapshots.lock().unwrap();
+            let mut rows: Vec<ProfileSnapshot> = snaps
+                .iter()
+                .filter(|s| s.user_id == user_id)
+                .cloned()
+                .collect();
+            rows.sort_by_key(|s| s.captured_at);
+            Ok(rows)
+        }
+
         async fn latest_for_handle(
             &self,
             handle: &str,
@@ -298,6 +340,43 @@ mod tests {
             bio: Some("Hello world.".to_owned()),
             primary_org_summary: Some("Imperium".to_owned()),
         }
+    }
+
+    #[tokio::test]
+    async fn history_for_user_is_oldest_first_and_scoped() {
+        use chrono::TimeZone as _;
+        let store = MemoryProfileStore::new();
+        let user = Uuid::new_v4();
+        let other = Uuid::new_v4();
+        let at = |d: u32| Utc.with_ymd_and_hms(2026, 8, d, 0, 0, 0).unwrap();
+        // Saved out of order, and one row for somebody else.
+        for (uid, day) in [(user, 3), (other, 1), (user, 1), (user, 2)] {
+            store
+                .save(ProfileSnapshot {
+                    user_id: uid,
+                    captured_at: at(day),
+                    display_name: Some(format!("day-{day}")),
+                    enlistment_date: None,
+                    location: None,
+                    badges: Vec::new(),
+                    bio: None,
+                    primary_org_summary: None,
+                })
+                .await
+                .unwrap();
+        }
+
+        let history = store.history_for_user(user).await.unwrap();
+        let names: Vec<&str> = history
+            .iter()
+            .map(|s| s.display_name.as_deref().unwrap())
+            .collect();
+        assert_eq!(names, vec!["day-1", "day-2", "day-3"]);
+        assert!(store
+            .history_for_user(Uuid::new_v4())
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]

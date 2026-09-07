@@ -130,7 +130,7 @@ const FEATURES: ReadonlyArray<{ title: string; body: string }> = [
   {
     title: 'Your numbers, your file',
     body:
-      'Per-day heatmap, top activities, full timeline. Your events are yours to take with you: export on request, deletion self-serve.',
+      'Per-day heatmap, top activities, full timeline. Download the whole manifest as one file from Settings whenever you want.',
   },
   {
     title: 'Locked-down sign-in',

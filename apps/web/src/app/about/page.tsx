@@ -118,9 +118,8 @@ export default function AboutPage() {
           and gives you back a logbook — kills, deaths, cargo, contracts, jumps,
           ships flown, time on station — without uploading anything you
           didn&apos;t ask it to upload. Your manifest lives on your drive. Sync
-          is opt-in. Export is on request — the privacy policy commits to it,
-          and a self-serve download isn&apos;t built yet — so you can leave
-          whenever you want.
+          is opt-in. Export is a button in Settings — NDJSON, CSV or ZIP —
+          so you can leave whenever you want.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
           It does one job and tries to do it well. Pairing, parsing, viewing,

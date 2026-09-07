@@ -48,23 +48,19 @@ test.beforeEach(async ({ request, page }) => {
 });
 
 /**
- * No page may advertise a self-serve manifest export. There is no export
- * endpoint (settings/page.tsx says so, and the privacy policy's Art. 20 clause
- * says "contact us"), yet /trust, /features, /about and the home page all
- * promised NDJSON / CSV / ZIP downloads until 2026-09-07. Pinned here so the
- * copy cannot drift back ahead of the product.
+ * The marketing copy and the product must agree on the export. For a few
+ * weeks /trust promised NDJSON / ZIP / CSV downloads while no endpoint
+ * existed; now `GET /v1/me/export` ships exactly those three, and the trust
+ * page has to say so AND point at where the button is.
  */
-for (const route of ['/trust', '/features', '/about'] as const) {
-  test(`${route} does not promise an export format that does not ship`, async ({
-    page,
-  }) => {
-    await page.goto(route);
-    await expect(page.locator('[role="main"]')).toBeVisible();
-    await expect(page.locator('[role="main"]')).not.toContainText(
-      /NDJSON|CSV|ZIP bundle|Download the whole manifest/,
-    );
-  });
-}
+test('/trust names the three export formats that ship and links to Settings', async ({
+  page,
+}) => {
+  await page.goto('/trust');
+  const main = page.locator('[role="main"]');
+  await expect(main).toContainText(/NDJSON, CSV or ZIP/);
+  await expect(main.locator('a[href="/settings#retention"]')).toHaveCount(1);
+});
 
 for (const { route, h1 } of PAGES) {
   test(`${route} renders in the projection with its body intact`, async ({

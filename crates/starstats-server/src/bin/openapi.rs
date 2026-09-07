@@ -78,6 +78,8 @@ mod discover_routes;
 mod entity_rollup;
 #[path = "../event_timeline.rs"]
 mod event_timeline;
+#[path = "../export_routes.rs"]
+mod export_routes;
 #[path = "../facts.rs"]
 mod facts;
 #[path = "../facts_routes.rs"]

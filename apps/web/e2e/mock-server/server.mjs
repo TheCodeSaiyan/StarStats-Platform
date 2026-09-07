@@ -63,6 +63,27 @@ function send(res, status, body) {
   res.end(json);
 }
 
+/**
+ * Answer from a stub. JSON by default; a stub carrying `rawBody` is sent
+ * verbatim with its own `headers` — the shape a bytes endpoint like
+ * `GET /v1/me/export` produces (NDJSON / CSV / ZIP with a
+ * Content-Disposition), which `send()`'s JSON.stringify would mangle.
+ */
+function sendStub(res, stub) {
+  const status = stub.status ?? 200;
+  if (typeof stub.rawBody === 'string') {
+    const headers = {
+      'content-type': 'application/octet-stream',
+      ...(stub.headers ?? {}),
+      'content-length': Buffer.byteLength(stub.rawBody),
+    };
+    res.writeHead(status, headers);
+    res.end(stub.rawBody);
+    return;
+  }
+  send(res, status, stub.body);
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   const method = req.method ?? 'GET';
@@ -166,11 +187,11 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
-    setTimeout(() => send(res, stub.status ?? 200, stub.body), delayMs);
+    setTimeout(() => sendStub(res, stub), delayMs);
     return;
   }
 
-  send(res, stub.status ?? 200, stub.body);
+  sendStub(res, stub);
 });
 
 function findWildcard(routes, method, pathOnly) {

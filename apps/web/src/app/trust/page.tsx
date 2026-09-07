@@ -226,12 +226,11 @@ export default function TrustPage() {
         <div className="ss-about-section-eyebrow">05 — Leaving</div>
         <h2>You can take it all back.</h2>
         <p>
-          Export isn&apos;t a button yet. The right to take your data with
-          you is written into{' '}
-          <Link href="/privacy">the privacy policy</Link> (Art. 20), and until
-          there is a self-serve download it is honoured by hand: ask, and you
-          get your account record and events as JSON. Delete your account and
-          it goes, on the schedule set out in the same policy.
+          Export your whole manifest whenever you like from{' '}
+          <Link href="/settings#retention">Settings</Link> — the actual data,
+          in NDJSON, CSV or ZIP, not a screenshot of a dashboard. Delete your
+          account and it goes, on the schedule set out in{' '}
+          <Link href="/privacy">the privacy policy</Link>.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
           The client can re-parse your local logs from scratch, so leaving

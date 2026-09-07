@@ -16,9 +16,10 @@ import {
  * pair code, a Retention section with storage figures and export formats, and
  * scanline / cloud-sync / public-projection switches. None of those exist on
  * `/settings` — pairing is `/devices`, visibility is `/sharing`, cloud sync is
- * a tray-side setting under the two-gate model, and retention/export has no
- * endpoint at all. So this ports the REAL route's ten sections and leaves the
- * kit's fiction out.
+ * a tray-side setting under the two-gate model, and there is no storage
+ * accounting to put figures to. So this ports the REAL route's ten sections
+ * and leaves the kit's fiction out. (The export it imagined has since become
+ * real — `GET /v1/me/export` — and lives in the Retention section.)
  *
  * The shell — chrome, rail, scrolling panes and the fragment wiring that keeps
  * `#security` / `#danger` / `#rsi` landing — is `PaneSurface`, shared with

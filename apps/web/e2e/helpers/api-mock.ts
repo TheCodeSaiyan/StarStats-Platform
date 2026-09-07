@@ -25,6 +25,12 @@ export interface ResponseStub {
    *  observe a server-rendered `loading.tsx` fallback, which is only on
    *  screen while an upstream call is outstanding. */
   delayMs?: number;
+  /** Send these bytes verbatim instead of `JSON.stringify(body)`. For
+   *  endpoints that stream a file (`GET /v1/me/export`). Pair with
+   *  `headers` for the content-type and Content-Disposition. */
+  rawBody?: string;
+  /** Extra response headers; only honoured alongside `rawBody`. */
+  headers?: Record<string, string>;
 }
 
 export type ScenarioRoutes = Record<string, ResponseStub>;

@@ -473,8 +473,10 @@ export default function PrivacyPage() {
             pause processing of your account.
           </li>
           <li>
-            <strong>Portability</strong> (Art. 20): contact us for
-            an export of your account record and events as JSON.
+            <strong>Portability</strong> (Art. 20): use the Export controls
+            in Settings to download your account record, snapshots, shares
+            and every event as NDJSON, CSV or a ZIP bundle. Or contact us and
+            we will send the same export.
           </li>
           <li>
             <strong>Objection</strong> (Art. 21): you may object to

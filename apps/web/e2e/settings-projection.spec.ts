@@ -8,6 +8,7 @@
  * are the assertions written alongside them, which are about behaviour and
  * outlive the port.
  */
+import { readFileSync } from 'node:fs';
 import { test, expect, type Page } from '@playwright/test';
 import {
   currentUser,
@@ -115,10 +116,11 @@ test('settings states the retention window', async ({ page }) => {
   // single most important fact about a reader's data — that it is bounded at a
   // year — was surfaced nowhere in settings.
   //
-  // The spec's other rows (storage bytes, free-tier cap, export format) are
-  // deliberately absent: the product has no export endpoint and no storage
-  // accounting, and inventing them on the page where a reader goes to find out
-  // what is kept would be the worst possible place for a fabricated figure.
+  // The spec's storage rows (parsed bytes, free-tier cap) are deliberately
+  // absent: the product has no storage accounting, and inventing them on the
+  // page where a reader goes to find out what is kept would be the worst
+  // possible place for a fabricated figure. The export row it also imagined
+  // is now real (`GET /v1/me/export`) and asserted separately below.
   await page.goto('/settings');
   await expect(page.locator('.hp-settings')).toBeVisible();
   const pane = page.locator('.hp-pane', { hasText: 'Retention' }).first();
@@ -127,5 +129,71 @@ test('settings states the retention window', async ({ page }) => {
   // "All" means the retention limit, not all time — the vocabulary rule.
   await expect(pane).toContainText(/All rather than all time/i);
   // No invented figures.
-  await expect(pane).not.toContainText(/free-tier|MB|NDJSON/i);
+  await expect(pane).not.toContainText(/free-tier|MB/i);
+});
+
+test('settings offers the manifest export in the three shipped formats', async ({ page }) => {
+  await page.goto('/settings');
+  const pane = page.locator('.hp-pane', { hasText: 'Retention' }).first();
+  await expect(pane).toContainText('NDJSON');
+  // Exactly one link per format, pointing at the streaming route handler —
+  // not a server action, which cannot hand the browser a file.
+  for (const format of ['ndjson', 'csv', 'zip']) {
+    await expect(
+      pane.locator(`a[href="/settings/export?format=${format}"]`),
+    ).toHaveCount(1);
+  }
+});
+
+test('export link downloads the file the API streams, name intact', async ({
+  page,
+  request,
+}) => {
+  const filename = 'starstats-export-starstatsdemo-20260907.ndjson';
+  await setScenario(
+    request,
+    scenarioFor('settings-export', {
+      ...FIXTURES,
+      'GET /v1/me/export': {
+        status: 200,
+        rawBody: '{"kind":"export","format_version":1}\n{"kind":"account"}\n',
+        headers: {
+          'content-type': 'application/x-ndjson; charset=utf-8',
+          'content-disposition': `attachment; filename="${filename}"`,
+        },
+      },
+    }),
+  );
+  await page.goto('/settings');
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.locator('a[href="/settings/export?format=ndjson"]').click(),
+  ]);
+  expect(download.suggestedFilename()).toBe(filename);
+  const saved = await download.path();
+  const text = readFileSync(saved, 'utf8');
+  expect(text).toContain('"kind":"export"');
+  expect(text).toContain('"kind":"account"');
+  // The page itself did not navigate away from settings.
+  await expect(page).toHaveURL(/\/settings/);
+});
+
+test('export cooldown comes back as a settings notice, not a broken download', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('settings-export-429', {
+      ...FIXTURES,
+      'GET /v1/me/export': {
+        status: 429,
+        body: { error: 'too_many_requests' },
+      },
+    }),
+  );
+  await page.goto('/settings');
+  await page.locator('a[href="/settings/export?format=zip"]').click();
+  await expect(page).toHaveURL(/\/settings\?error=export_too_soon/);
+  await expect(page.locator('.hp-settings')).toContainText(/less than a minute ago/i);
 });
