@@ -48,3 +48,30 @@ if (typeof Element !== 'undefined') {
     Element.prototype.scrollIntoView = () => {};
   }
 }
+
+/**
+ * jsdom is configured here without a storage area, so `window.localStorage` is
+ * `undefined` rather than an empty store — which is NOT the shape browsers
+ * give you, and not the shape components guard for. `EmitterPrompt` remembers
+ * its dismissal there, so without this its tests exercise the throw path only
+ * and never the real one.
+ *
+ * Backed by a Map on `Storage.prototype`'s own methods so `vi.spyOn(
+ * Storage.prototype, 'getItem')` still works for the blocked-storage tests.
+ */
+if (typeof window !== 'undefined' && !window.localStorage) {
+  const store = new Map<string, string>();
+  const area: Storage = {
+    get length() {
+      return store.size;
+    },
+    key: (i: number) => Array.from(store.keys())[i] ?? null,
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+  };
+  Object.setPrototypeOf(area, Storage.prototype);
+  Object.defineProperty(window, 'localStorage', { value: area, configurable: true });
+  Object.defineProperty(window, 'sessionStorage', { value: area, configurable: true });
+}

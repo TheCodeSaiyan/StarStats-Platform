@@ -667,9 +667,55 @@ const NON_DESTINATION_PATTERNS: RegExp[] = [
 type SyntheticMatcher = (parts: string[], raw: string) => LocationParts | null;
 
 const SYNTHETIC_MATCHERS: SyntheticMatcher[] = [
+  matchGateway,
   matchJumpPoint,
   matchCommArray,
 ];
+
+/** Match a jump-gate terminal station. The engine names these after
+ *  their DESTINATION system: `JP_Stanton_Pyro` is "Pyro Gateway",
+ *  physically in Stanton. The station's R&R loadout ships the pair as
+ *  one fused token behind the rest-stop prefix (`RR_JP_StantonPyro`),
+ *  which used to reach the rest-stop fallback as "Rest Stop Jp Stanton
+ *  Pyro". Mirrors `match_gateway` in starstats-core's
+ *  `location_classifier.rs`. A `jp<N>` token (digit) is a jump point,
+ *  not a gateway — that stays with `matchJumpPoint`. */
+function matchGateway(parts: string[], raw: string): LocationParts | null {
+  const start = parts[0]?.toLowerCase() === 'rr' ? 1 : 0;
+  if (parts[start]?.toLowerCase() !== 'jp') return null;
+  const pair = knownSystemPair(parts.slice(start + 1));
+  if (!pair) return null;
+  const [origin, destination] = pair;
+  // Synthetic body so the rollup keeps its three-level shape, the way
+  // `rr` files rest stops under 'Rest Stops'.
+  return { system: origin, body: 'Gateways', place: `${destination} Gateway`, raw };
+}
+
+/** Two known systems from the head of `tokens`: either two tokens
+ *  (`Stanton`, `Pyro`) or one fused token (`StantonPyro`) split at
+ *  the single boundary where both halves are known. Anything else is
+ *  `null` so the caller keeps an honest generic label. */
+function knownSystemPair(tokens: string[]): [string, string] | null {
+  const first = tokens[0]?.toLowerCase();
+  if (!first) return null;
+  const second = tokens[1]?.toLowerCase();
+  if (second && KNOWN_SYSTEMS[first] && gatewayNamesake(second)) {
+    return [KNOWN_SYSTEMS[first], gatewayNamesake(second)!];
+  }
+  for (let i = 1; i < first.length; i++) {
+    const head = KNOWN_SYSTEMS[first.slice(0, i)];
+    const tail = gatewayNamesake(first.slice(i));
+    if (head && tail) return [head, tail];
+  }
+  return null;
+}
+
+/** The system a gateway is named after: any known system, plus Magnus,
+ *  whose gateway stands in Stanton even though the system itself is
+ *  not flyable — so it is deliberately NOT in `KNOWN_SYSTEMS`. */
+function gatewayNamesake(key: string): string | null {
+  return KNOWN_SYSTEMS[key] ?? (key === 'magnus' ? 'Magnus' : null);
+}
 
 /** Match an engine `rs_ext_<a>-<b>_jp<N>` jump-point identifier and
  *  build a LocationParts using the `Jump Points` pseudo-system. The

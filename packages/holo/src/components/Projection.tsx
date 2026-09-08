@@ -37,6 +37,21 @@ export interface ProjectionProps
   chrome?: React.ReactNode;
   crumb?: React.ReactNode;
   lens?: React.ReactNode;
+  /**
+   * Where the lens rail sits.
+   *
+   * `bottom` (the default) is the volume's own language: on a ring surface the
+   * stage never scrolls, the eye is already at the centre, and a floating rail
+   * reads as instrumentation around the volume.
+   *
+   * `top` is for READING surfaces — anything whose content scrolls. A reader
+   * told us they never found the rail on the Emitter and went hunting for
+   * pairing on another page entirely (2026-09-08); with a scrolling document
+   * the rail is off the bottom of the reading position and looks like a footer.
+   * Under the crumb, left-aligned, it reads as tabs, which is where a reader
+   * looks for sections.
+   */
+  lensPlacement?: 'top' | 'bottom';
   hint?: React.ReactNode;
   overlay?: React.ReactNode;
   parallax?: boolean;
@@ -57,6 +72,7 @@ export function Projection({
   chrome,
   crumb,
   lens,
+  lensPlacement = 'bottom',
   hint,
   overlay,
   parallax = true,
@@ -117,6 +133,9 @@ export function Projection({
       data-mode={mode}
       data-cal={calibration}
       data-surface={surface}
+      // The scroll region's insets depend on which end the rail occupies, and
+      // the region is a descendant, so the stage has to carry the answer.
+      data-lens={lens ? lensPlacement : undefined}
       data-editing={editing ? 'true' : undefined}
       data-recal={recal ? '' : undefined}
       onMouseMove={live ? onMove : undefined}
@@ -165,7 +184,11 @@ export function Projection({
       {/* One centred stack: the hint is a line beneath the rail, never a
           separately anchored element that can cross it. */}
       {lens || hint ? (
-        <div className="hp-railstack">
+        <div
+          className={
+            lensPlacement === 'top' ? 'hp-railstack hp-railstack--top' : 'hp-railstack'
+          }
+        >
           {lens}
           {hint ? <div className="hp-hint">{hint}</div> : null}
         </div>

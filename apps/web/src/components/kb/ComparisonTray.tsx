@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
+import { SearchPicker } from './SearchPicker';
 
 export interface CatalogItem {
   slug: string;
@@ -26,7 +27,6 @@ export interface ComparisonTrayProps {
 }
 
 export function ComparisonTray(props: ComparisonTrayProps) {
-  const [query, setQuery] = useState('');
   const count = props.selected.length + 1; // + anchor
   const atCap = count >= props.max;
 
@@ -34,13 +34,19 @@ export function ComparisonTray(props: ComparisonTrayProps) {
     () => new Set([props.anchorSlug, ...props.selected.map((s) => s.slug)]),
     [props.anchorSlug, props.selected],
   );
-  const suggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return props.catalog
-      .filter((c) => !taken.has(c.slug) && c.display_name.toLowerCase().includes(q))
-      .slice(0, 8);
-  }, [query, props.catalog, taken]);
+  // Both pick-lists are fuzzy-ranked and portaled by `SearchPicker` — see
+  // its header for why an in-card list was unusable here.
+  const shipItems = useMemo(
+    () =>
+      props.catalog
+        .filter((c) => !taken.has(c.slug))
+        .map((c) => ({ key: c.slug, label: c.display_name })),
+    [props.catalog, taken],
+  );
+  const cohortItems = useMemo(
+    () => (props.cohorts ?? []).map((c) => ({ key: c.key, label: c.label, hint: c.kind })),
+    [props.cohorts],
+  );
 
   const chipStyle = (anchor: boolean): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12,
@@ -84,72 +90,25 @@ export function ComparisonTray(props: ComparisonTrayProps) {
           </span>
         ))}
 
-        <div style={{ position: 'relative' }}>
-          <input
-            type="search"
-            role="searchbox"
-            aria-label="Add ship to comparison"
-            placeholder={atCap ? `Max ${props.max} reached` : '⌕ Add ship…'}
-            disabled={atCap}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setQuery(''); }}
-            style={{
-              fontSize: 12, padding: '6px 12px',
-              background: 'transparent', color: 'var(--beam)',
-              border: '1px dashed var(--border, rgba(255,255,255,.18))', minWidth: 160,
-            }}
-          />
-          {suggestions.length > 0 && (
-            <ul
-              role="listbox"
-              style={{
-                position: 'absolute', top: '110%', left: 0, zIndex: 10, listStyle: 'none',
-                margin: 0, padding: 4, minWidth: 200, maxHeight: 240, overflowY: 'auto',
-                background: 'var(--void)',
-                border: '1px solid rgba(var(--bR), var(--bG), var(--bB), 0.28)',
-              }}
-            >
-              {suggestions.map((c) => (
-                <li
-                  key={c.slug}
-                  role="option"
-                  aria-selected={false}
-                  tabIndex={0}
-                  onClick={() => { props.onAdd(c.slug); setQuery(''); }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      props.onAdd(c.slug);
-                      setQuery('');
-                    }
-                  }}
-                  style={{ color: 'var(--beam)', fontSize: 13, padding: '6px 8px', cursor: 'pointer' }}
-                >
-                  {c.display_name}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <SearchPicker
+          label="Add ship to comparison"
+          placeholder={atCap ? `Max ${props.max} reached` : '⌕ Add ship…'}
+          disabled={atCap}
+          items={shipItems}
+          onPick={props.onAdd}
+        />
 
-        {props.cohorts && props.cohorts.length > 0 && props.onAddCohort && (
-          <select
-            aria-label="Add cohort to comparison"
-            value=""
+        {cohortItems.length > 0 && props.onAddCohort && (
+          <SearchPicker
+            label="Add cohort to comparison"
+            placeholder="+ Add cohort…"
             disabled={atCap}
-            onChange={(e) => {
-              const v = e.target.value;
-              if (v) props.onAddCohort!(v);
-              e.target.value = '';
-            }}
-            style={{ fontSize: 12, padding: '6px 10px', background: 'transparent', color: 'var(--dim)', border: '1px dashed rgba(var(--bR), var(--bG), var(--bB), 0.28)' }}
-          >
-            <option value="">+ Add cohort…</option>
-            {props.cohorts.map((c) => (
-              <option key={c.key} value={c.key}>{c.label}</option>
-            ))}
-          </select>
+            items={cohortItems}
+            onPick={props.onAddCohort}
+            browseWhenEmpty
+            limit={12}
+            minWidth={140}
+          />
         )}
 
         <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--fg-muted)' }}>

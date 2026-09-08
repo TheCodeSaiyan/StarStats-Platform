@@ -526,6 +526,18 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   display: flex; flex-direction: column; align-items: center; gap: 7px; max-width: calc(100% - 68px); }
 .hp-railstack .hp-lens { position: static; bottom: auto; left: auto; transform: none; max-width: 100%; }
 .hp-railstack .hp-hint { position: static; bottom: auto; right: auto; text-align: center; }
+/* Reading surfaces put the rail under the crumb instead — see `lensPlacement`
+ * on Projection. Left-aligned and rule-underlined so it reads as tabs: a
+ * centred row at the top would read as a title, and a reader who does not
+ * recognise it as navigation is the whole reason this placement exists. */
+.hp-railstack--top {
+  top: 76px; bottom: auto; left: 34px; right: 34px; transform: none;
+  align-items: flex-start; gap: 4px; max-width: none;
+  border-bottom: 1px solid rgba(var(--bR),var(--bG),var(--bB),.16);
+}
+.hp-railstack--top .hp-lens { justify-content: flex-start; gap: 26px; row-gap: 0; }
+.hp-railstack--top .hp-lens button { padding: 6px 2px 8px; }
+.hp-railstack--top .hp-hint { text-align: left; padding-bottom: 6px; }
 .hp-lens button { font: inherit; background: none; border: 0; cursor: pointer; font-size: var(--fs-xs); font-weight: 500; letter-spacing: var(--placard-tracking); text-transform: uppercase; color: var(--label); padding: 9px 2px; position: relative; transition: color 180ms; }
 .hp-lens button::after { content: ""; position: absolute; left: 50%; bottom: 0; width: 0; height: 1px; background: var(--hot); box-shadow: 0 0 8px var(--hot); transition: width 260ms var(--ease-out), margin-left 260ms; }
 .hp-lens button:hover { color: var(--beam); }
@@ -814,6 +826,8 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
     top: calc(92px + var(--hp-ring) + 18px); bottom: 74px; max-height: none;
   }
   .hp-lens { bottom: 15px; gap: 15px; max-width: calc(100% - 24px); }
+  .hp-railstack--top { top: 62px; left: 16px; right: 16px; }
+  .hp-railstack--top .hp-lens { gap: 15px; }
   .hp-hint { display: none; }
   .hp-layout { left: 12px; right: 12px; width: auto; top: auto; bottom: 74px; max-height: 60%; overflow-y: auto; overflow-x: hidden; }
   /* Dense content reflows rather than clipping. */

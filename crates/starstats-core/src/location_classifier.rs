@@ -185,7 +185,12 @@ pub fn classify(raw: &str, catalog: &LocationCatalog) -> LocationClassification 
     // 1. Synthetic patterns. Engine-only constructs that don't
     //    belong in the wiki — match these first so a token like
     //    `jp1` doesn't accidentally hit a catalog row.
-    if let Some(c) = SYNTHETIC_MATCHERS.iter().find_map(|m| m(&parts, raw)) {
+    if let Some(mut c) = SYNTHETIC_MATCHERS.iter().find_map(|m| m(&parts, raw)) {
+        // Gateways are synthetic (the engine never carries the wiki
+        // name) but ARE catalogued, so give the match its KB slug.
+        if c.subtype.as_deref() == Some("gateway") {
+            c.slug = gateway_slug(&c, catalog);
+        }
         return c;
     }
 
@@ -584,28 +589,28 @@ fn match_nyx_qv_extraction_station(parts: &[String], raw: &str) -> Option<Locati
 ///   * `JP_Stanton_Pyro`  → "Pyro Gateway"  (physically in Stanton)
 ///   * `JP_Pyro_Stanton`  → "Stanton Gateway" (physically in Pyro)
 ///
-/// Gate: first token is exactly `jp` (case-insensitive, **no** trailing
-/// digit — `jp1` belongs to [`match_jump_point`], not here), followed
-/// by exactly two tokens that both resolve in [`KNOWN_SYSTEMS`].
+/// The station's R&R loadout ships the same pair as ONE fused token
+/// behind the rest-stop prefix — `RR_JP_StantonPyro` (LIVE, 2026-09-08).
+/// Left to the rest-stop title-caser that rendered as
+/// "Rest Stop (Jp Stantonpyro)", so a fused token is split at the one
+/// boundary where both halves are known systems.
+///
+/// Gate: an optional leading `rr`, then a token that is exactly `jp`
+/// (case-insensitive, **no** trailing digit — `jp1` belongs to
+/// [`match_jump_point`], not here), followed by two systems from
+/// [`KNOWN_SYSTEMS`] as either two tokens or one fused token.
 ///
 /// Must be registered **before** `match_jump_point` so that the two-
 /// system `JP_<A>_<B>` form is consumed here while the digit-suffixed
 /// `rs_*_jpN` / `<sys>_jpN` forms fall through untouched.
 fn match_gateway(parts: &[String], raw: &str) -> Option<LocationClassification> {
-    // Require at least 3 tokens: [jp, sysA, sysB] (any extras are noise).
-    if parts.len() < 3 {
+    let start = usize::from(parts.first()?.eq_ignore_ascii_case("rr"));
+    // The `jp` token must be exact — no digits.
+    if !parts.get(start)?.eq_ignore_ascii_case("jp") {
         return None;
     }
-    // First token must be exactly "jp" — no digits.
-    let first = parts[0].to_ascii_lowercase();
-    if first != "jp" {
-        return None;
-    }
-    // The two tokens immediately after "jp" must both be known systems.
-    let key_a = parts[1].to_ascii_lowercase();
-    let key_b = parts[2].to_ascii_lowercase();
-    let sys_a = KNOWN_SYSTEMS.get(key_a.as_str())?; // origin system (physical location)
-    let sys_b = KNOWN_SYSTEMS.get(key_b.as_str())?; // destination system (namesake)
+    // origin system (physical location), destination system (namesake)
+    let (sys_a, sys_b) = known_system_pair(&parts[start + 1..])?;
     let display = format!("{} Gateway", sys_b);
     Some(LocationClassification {
         display_name: display,
@@ -621,6 +626,59 @@ fn match_gateway(parts: &[String], raw: &str) -> Option<LocationClassification> 
         raw: raw.to_string(),
         source: ClassificationSource::Synthetic,
     })
+}
+
+/// Two known systems read from the head of `tokens`: either two
+/// separate tokens (`Stanton`, `Pyro`) or one fused token
+/// (`StantonPyro`) split at the single boundary where both halves are
+/// in [`KNOWN_SYSTEMS`]. Extra trailing tokens are ignored; anything
+/// that does not resolve is `None` so the caller keeps an honest
+/// generic classification rather than guessing.
+fn known_system_pair(tokens: &[String]) -> Option<(&'static str, &'static str)> {
+    let first = tokens.first()?.to_ascii_lowercase();
+    if let Some(second) = tokens.get(1) {
+        let second = second.to_ascii_lowercase();
+        if let (Some(a), Some(b)) = (KNOWN_SYSTEMS.get(first.as_str()), gateway_namesake(&second)) {
+            return Some((a, b));
+        }
+    }
+    (1..first.len()).find_map(|i| {
+        let (head, tail) = first.split_at(i);
+        Some((*KNOWN_SYSTEMS.get(head)?, gateway_namesake(tail)?))
+    })
+}
+
+/// The system a gateway is named after. Every [`KNOWN_SYSTEMS`] entry
+/// qualifies, plus Magnus: its gateway station stands in Stanton
+/// (`RR_JP_StantonMagnus`, catalogued as "Magnus Gateway") even though
+/// the system itself is not flyable, so it is deliberately NOT in
+/// `KNOWN_SYSTEMS` — a bare `magnus` token must not claim a system.
+fn gateway_namesake(key: &str) -> Option<&'static str> {
+    KNOWN_SYSTEMS
+        .get(key)
+        .copied()
+        .or((key == "magnus").then_some("Magnus"))
+}
+
+/// Catalog slug for a synthetic gateway match. The wiki catalogues each
+/// gateway once per system it stands in, under `<dest>-gateway` and
+/// `<dest>-gateway-2` ("Pyro Gateway" is `pyro-gateway` in Stanton and
+/// `pyro-gateway-2` in Nyx), so the candidate whose `system` matches
+/// the station's physical system is the right row. `None` when the
+/// catalog has neither — the synthetic name still stands on its own.
+fn gateway_slug(c: &LocationClassification, catalog: &LocationCatalog) -> Option<String> {
+    let dest = c
+        .display_name
+        .strip_suffix(" Gateway")?
+        .to_ascii_lowercase();
+    let system = c.system.as_deref()?;
+    [format!("{dest}-gateway"), format!("{dest}-gateway-2")]
+        .into_iter()
+        .find(|slug| {
+            catalog
+                .lookup_by_slug(slug)
+                .is_some_and(|e| e.system.as_deref() == Some(system))
+        })
 }
 
 /// Jump-point detection. The shape gating the matcher is simply the
@@ -1626,6 +1684,74 @@ mod tests {
         assert_eq!(stanton_station_slug("S2", "L1"), cases[9].2.into());
         assert_eq!(stanton_station_slug("S3", "L1"), cases[12].2.into());
         assert_eq!(stanton_station_slug("S4", "L1"), cases[17].2.into());
+    }
+
+    #[test]
+    fn gateway_rest_stop_loadout_with_fused_route_token_is_the_gateway() {
+        // LIVE: the R&R loadout at the Stanton→Pyro jump-gate terminal is
+        // shipped as `RR_JP_StantonPyro` — one fused route token, not the
+        // `JP_Stanton_Pyro` form match_gateway was written for. It used
+        // to fall through to the rest-stop title-caser and render as
+        // "Rest Stop (Jp Stantonpyro)" (reported 2026-09-08).
+        for raw in ["RR_JP_StantonPyro", "LOC_RR_JP_StantonPyro"] {
+            let c = classify(raw, &empty_catalog());
+            assert_eq!(c.display_name, "Pyro Gateway", "{raw}");
+            assert_eq!(c.tier, LocationTier::SpaceStation, "{raw}");
+            assert_eq!(c.subtype.as_deref(), Some("gateway"), "{raw}");
+            assert_eq!(c.system.as_deref(), Some("Stanton"), "{raw}");
+            assert_eq!(c.source, ClassificationSource::Synthetic, "{raw}");
+        }
+        // Reverse direction: physically in Pyro, named for Stanton.
+        let c = classify("RR_JP_PyroStanton", &empty_catalog());
+        assert_eq!(c.display_name, "Stanton Gateway");
+        assert_eq!(c.system.as_deref(), Some("Pyro"));
+        // Bare fused form without the loadout prefix.
+        let c = classify("JP_StantonPyro", &empty_catalog());
+        assert_eq!(c.display_name, "Pyro Gateway");
+        assert_eq!(c.system.as_deref(), Some("Stanton"));
+    }
+
+    #[test]
+    fn gateway_named_for_magnus_stands_in_stanton() {
+        // Magnus is not a flyable system (not in KNOWN_SYSTEMS) but its
+        // gateway station is real and catalogued in Stanton.
+        let c = classify("RR_JP_StantonMagnus", &empty_catalog());
+        assert_eq!(c.display_name, "Magnus Gateway");
+        assert_eq!(c.subtype.as_deref(), Some("gateway"));
+        assert_eq!(c.system.as_deref(), Some("Stanton"));
+        // ...and a bare Magnus token still claims no system.
+        let c = classify("RR_JP_MagnusStanton", &empty_catalog());
+        assert_eq!(c.subtype.as_deref(), Some("rest_stop"));
+    }
+
+    #[test]
+    fn gateway_takes_the_catalog_slug_for_its_own_system() {
+        // The wiki lists "Pyro Gateway" twice: `pyro-gateway` in Stanton
+        // and `pyro-gateway-2` in Nyx. The Stanton→Pyro station must
+        // link to the Stanton row, and the Nyx→Pyro one to the other.
+        let cat = catalog_with(vec![
+            station_entry_in_system("pyro-gateway", "Pyro Gateway", "Stanton", "Stanton"),
+            station_entry_in_system("pyro-gateway-2", "Pyro Gateway", "Nyx", "Nyx"),
+        ]);
+        let c = classify("RR_JP_StantonPyro", &cat);
+        assert_eq!(c.slug.as_deref(), Some("pyro-gateway"));
+        assert_eq!(c.display_name, "Pyro Gateway");
+        assert_eq!(c.source, ClassificationSource::Synthetic);
+        let c = classify("JP_Nyx_Pyro", &cat);
+        assert_eq!(c.slug.as_deref(), Some("pyro-gateway-2"));
+        // No matching row → no slug, name still stands.
+        let c = classify("RR_JP_StantonTerra", &cat);
+        assert!(c.slug.is_none());
+        assert_eq!(c.display_name, "Terra Gateway");
+    }
+
+    #[test]
+    fn gateway_fused_token_that_is_not_two_systems_stays_a_rest_stop() {
+        // A fused token that does not split into two known systems must
+        // not be guessed at — keep the honest generic classification.
+        let c = classify("RR_JP_Stantonia", &empty_catalog());
+        assert_eq!(c.subtype.as_deref(), Some("rest_stop"));
+        assert!(c.display_name.starts_with("Rest Stop"));
     }
 
     #[test]

@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { bucketSeries } from './series';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
+import { EmitterPrompt } from '@/components/projection/EmitterPrompt';
 import { useShellData } from '@/components/projection/ShellData';
 import { useRouter } from 'next/navigation';
 import { chromeLink } from '@/components/projection/chromeLink';
@@ -81,6 +82,10 @@ export interface MeProjectionProps {
     /** Derivation for K/D when some deaths were reconstructed. */
     kdNote?: string;
   };
+  /** No event has ever reached this account, so there is nothing to project
+   *  and the reader's next action is to install the Emitter. Drives the
+   *  first-run prompt. */
+  needsEmitter: boolean;
   calibration: Calibration;
   range: RangeId;
   /** Element ids the reader has enabled, in their saved order. */
@@ -122,6 +127,7 @@ export function MeProjection({
   supporterTier,
   enlistmentYear,
   lifetime,
+  needsEmitter,
   calibration,
   range,
   enabledIds,
@@ -508,7 +514,11 @@ export function MeProjection({
       }
       hint="Move cursor · 1–6 lenses · E layout · Esc back"
       overlay={
-        editing ? (
+        // First run beats the layout editor: an account with no events cannot
+        // have opened the editor, so the two never actually contend.
+        needsEmitter ? (
+          <EmitterPrompt />
+        ) : editing ? (
           <LayoutEditor
             catalogue={PROJECTION_CATALOGUE.map((e) => ({
               id: e.id,

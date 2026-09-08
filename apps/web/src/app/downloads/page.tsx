@@ -229,7 +229,12 @@ export default async function EmitterPage(props: {
           />
           <p className="hp-prose">
             {session ? (
-              <>Pairing lives under <b>Pair</b>, above.</>
+              // Linked, not just named: `#pair` opens the Pair lens and
+              // scrolls to its first section (PaneSurface's hash wiring), so
+              // the sentence works whether or not the reader has spotted the
+              // rail. A reader took the old "above" literally and went hunting
+              // on Calibrate (2026-09-08); the rail now sits at the top here.
+              <>Pairing lives under <a href="#pair"><b>Pair</b></a>, in the tabs above.</>
             ) : (
               <>
                 <Link href={'/auth/login?next=/downloads' as Route}>

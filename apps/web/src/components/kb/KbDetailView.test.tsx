@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import { KbDetailView } from './KbDetailView';
 
 vi.mock('@/app/kb/actions', () => ({ saveKbPrefs: vi.fn() }));
@@ -70,8 +70,8 @@ describe('KbDetailView', () => {
         groups={{ 'family:combat': { 'speed.scm': { min: 200, p10: 205, p25: 210, p50: 222, p75: 240, p90: 270, max: 275, n: 84 } } }}
       />,
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: /add ship/i }), { target: { value: 'glad' } });
-    fireEvent.click(screen.getByText('Gladius'));
+    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'glad' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Gladius' }));
     expect(await screen.findByRole('button', { name: /comparison/i })).toBeTruthy();
     expect(vi.mocked(fetchCompareVectors)).toHaveBeenCalled();
   });
@@ -86,8 +86,8 @@ describe('KbDetailView', () => {
         groups={{ 'family:combat': { 'speed.scm': { min: 200, p10: 205, p25: 210, p50: 222, p75: 240, p90: 270, max: 275, n: 84 } } }}
       />,
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: /add ship/i }), { target: { value: 'glad' } });
-    fireEvent.click(screen.getByText('Gladius'));
+    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'glad' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Gladius' }));
     // In comparison mode now.
     expect(await screen.findByRole('button', { name: /^comparison$/i })).toBeTruthy();
     // Remove via the chip's "Remove Gladius" control.
@@ -133,8 +133,11 @@ describe('KbDetailView', () => {
         cohorts={[{ key: 'type:interceptor', kind: 'type', label: 'Interceptors' }]}
       />,
     );
-    // Pick the cohort from the tray's "Add cohort" select.
-    fireEvent.change(screen.getByRole('combobox', { name: /add cohort/i }), { target: { value: 'type:interceptor' } });
+    // Pick the cohort from the tray's "Add cohort" picker.
+    fireEvent.change(screen.getByRole('combobox', { name: /add cohort/i }), { target: { value: 'inter' } });
+    // Scoped to the picker's list: the "Compared to" select offers the same label.
+    const list = screen.getByRole('listbox', { name: /add cohort/i });
+    fireEvent.click(within(list).getByRole('option', { name: /Interceptors/ }));
     // 12 candidates, only 9 fit (anchor + 9 = 10) — notice reports the cap.
     const notice = await screen.findByRole('status');
     expect(notice.textContent).toMatch(/Added 9 of 12/);

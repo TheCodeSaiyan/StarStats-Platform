@@ -214,6 +214,11 @@ export default async function MePage(props: PageProps) {
   return (
     <MeProjection
       handle={session.claimedHandle}
+      // Nothing has EVER arrived for this account, so there is nothing to
+      // project and the reader's next step is off this page: install the
+      // Emitter. A failed summary fetch is not an empty account, so a null
+      // summary deliberately does not trigger the prompt.
+      needsEmitter={summary != null && (summary.total ?? 0) === 0}
       supporterTier={supporterTier}
       enlistmentYear={enlistmentYear(profile?.enlistment_date ?? null)}
       lifetime={{

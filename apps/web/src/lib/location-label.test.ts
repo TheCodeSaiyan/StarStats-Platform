@@ -29,6 +29,17 @@ describe('prettyLocationLabel', () => {
     );
   });
 
+  it('names a jump-gate terminal after its destination system', () => {
+    // LIVE: the R&R loadout at the Stanton→Pyro gate ships as one fused
+    // route token. It rendered as "Rest Stop Jp Stantonpyro" (2026-09-08).
+    expect(prettyLocationLabel('RR_JP_StantonPyro')).toBe('Pyro Gateway');
+    expect(prettyLocationLabel('LOC_RR_JP_StantonPyro')).toBe('Pyro Gateway');
+    expect(prettyLocationLabel('RR_JP_PyroStanton')).toBe('Stanton Gateway');
+    expect(prettyLocationLabel('JP_Stanton_Pyro')).toBe('Pyro Gateway');
+    // Magnus is not a flyable system, but its gateway stands in Stanton.
+    expect(prettyLocationLabel('RR_JP_StantonMagnus')).toBe('Magnus Gateway');
+  });
+
   it('keeps the object type when labelling a comm array', () => {
     expect(prettyLocationLabel('OOC_Stanton2c_CommArray')).toBe(
       'Stanton Comm Array 2c',

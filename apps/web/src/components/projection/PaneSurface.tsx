@@ -302,6 +302,12 @@ export function PaneSurface({
         // is the case: the paperdoll and the carried gear are one view of one
         // kit, and splitting them behind a rail would be worse than the flat
         // page it replaces.
+        // Every surface built on PaneSurface is a scrolling document, and a
+        // rail floating at the bottom of one reads as a footer — a reader went
+        // looking for pairing on another page entirely because of it. Tabs
+        // under the crumb is where a reader looks for sections. The ring
+        // surfaces (/me, /u/[handle]) keep the bottom rail: they do not scroll.
+        lensPlacement="top"
         lens={
           liveGroups.length > 1 ? (
             <LensRail

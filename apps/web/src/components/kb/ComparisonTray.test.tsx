@@ -38,12 +38,16 @@ describe('ComparisonTray', () => {
 
   it('suggests catalog matches excluding anchor + already-selected, and adds on click', () => {
     const { onAdd } = setup();
-    fireEvent.change(screen.getByRole('searchbox', { name: /add ship/i }), { target: { value: 'arr' } });
-    fireEvent.click(screen.getByText('Arrow'));
+    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'arr' } });
+    fireEvent.click(screen.getByRole('option', { name: 'Arrow' }));
     expect(onAdd).toHaveBeenCalledWith('arrow');
-    // 'avenger' (anchor) must not appear as a suggestion <li>
-    fireEvent.change(screen.getByRole('searchbox', { name: /add ship/i }), { target: { value: 'a' } });
+    // 'avenger' (anchor) and 'gladius' (selected) must not be offered.
+    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'a' } });
     expect(screen.queryByRole('option', { name: 'Avenger Stalker' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Gladius' })).toBeNull();
+    // Fuzzy: a one-letter typo still finds the ship.
+    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'arow' } });
+    expect(screen.getByRole('option', { name: 'Arrow' })).toBeInTheDocument();
   });
 
   it('offers cohort bulk-add and calls back with the selected key', () => {
@@ -62,7 +66,9 @@ describe('ComparisonTray', () => {
         onAddCohort={onAddCohort}
       />,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: /add cohort/i }), { target: { value: 'type:interceptor' } });
+    // The cohort list is searchable: a partial, fuzzy query narrows it.
+    fireEvent.change(screen.getByRole('combobox', { name: /add cohort/i }), { target: { value: 'intrcep' } });
+    fireEvent.click(screen.getByRole('option', { name: /Interceptors/ }));
     expect(onAddCohort).toHaveBeenCalledWith('type:interceptor');
   });
 });
