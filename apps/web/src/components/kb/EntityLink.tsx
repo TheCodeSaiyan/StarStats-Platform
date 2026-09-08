@@ -17,9 +17,31 @@
  * misses, the prettifier still produces a readable string via the
  * existing heuristic (`toFriendlyName`) — the same behaviour
  * `prettyClass` provides in non-React render paths.
+ *
+ * WHY THE HOVER CARD IS PORTALED
+ * ------------------------------
+ * The card used to be an absolutely-positioned child of the link's
+ * wrapper. Inside a widget tile it opened correctly and was still
+ * invisible: `.hud-tile` (overflow:hidden), `.hud-tile__body`
+ * (overflow-y:auto) and the row's `.hud-trunc` all clipped it — the
+ * same defect `InfoTip` had. Opening those containers is NOT the fix
+ * (hud.css records that clipping silently swallowed travel's
+ * routes+map once, so the overflow stays). The card leaves the
+ * container instead: it renders into `document.body` with
+ * `position: fixed` at coordinates measured from the link, and is
+ * re-placed on scroll and resize because `fixed` does not follow its
+ * anchor.
  */
 
-import React, { useId, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import type { Route } from 'next';
 import type {
@@ -28,8 +50,13 @@ import type {
 } from '@/lib/reference-types';
 import { resolveReferenceEntry } from '@/lib/reference-types';
 import { toFriendlyName } from '@/lib/heuristic-name';
-import { EntityHoverCard } from './EntityHoverCard';
+import { EntityHoverCard, HOVER_CARD_WIDTH, type HoverCardPos } from './EntityHoverCard';
 import { TierChip } from './TierChip';
+
+/** Gap between the link text and the card edge. */
+const GAP = 6;
+/** Minimum distance the card keeps from any viewport edge. */
+const PAD = 8;
 
 interface EntityLinkProps {
   /** Which catalog to look the raw identifier up in. */
@@ -81,10 +108,84 @@ export function EntityLink({
   resolvedLabel,
 }: EntityLinkProps) {
   const [hovered, setHovered] = useState(false);
+  const [pos, setPos] = useState<HoverCardPos | null>(null);
   // Stable id to wire the trigger's `aria-describedby` to the hover
   // card so screen-reader users get the detail on focus, not just
   // sighted hover (M-W10).
   const cardId = useId();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const cardRef = useRef<HTMLSpanElement>(null);
+
+  // Portal target only exists on the client. Gate on a mounted flag
+  // rather than `typeof document`, so the server render and the first
+  // client render agree and hydration doesn't mismatch.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const place = useCallback(() => {
+    const anchor = anchorRef.current;
+    const card = cardRef.current;
+    if (!anchor || !card) return;
+    const a = anchor.getBoundingClientRect();
+    const c = card.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    const width = c.width || HOVER_CARD_WIDTH;
+
+    // Left-align with the link text, then pull back inside the
+    // viewport. Clamping the low end last matters: on a narrow screen
+    // the card can be wider than the space available, and pinning the
+    // left edge beats losing the start of every value.
+    let left = a.left;
+    left = Math.min(left, vw - PAD - width);
+    left = Math.max(PAD, left);
+
+    // Prefer below the link (where it always was); flip above when
+    // there isn't room, which is the common case for rows at the
+    // bottom of a scrolled tile or the page.
+    let top = a.bottom + GAP;
+    if (top + c.height > vh - PAD) {
+      top = Math.max(PAD, a.top - c.height - GAP);
+    }
+
+    setPos({ top: Math.round(top), left: Math.round(left) });
+  }, []);
+
+  // Measure before paint so the card never shows at a stale position.
+  useLayoutEffect(() => {
+    if (!hovered) {
+      setPos(null);
+      return;
+    }
+    place();
+  }, [hovered, place]);
+
+  // `position: fixed` does not follow the anchor, so track it while
+  // open. Capture phase catches scrolls in the tile body and
+  // `.ss-main`, not just the window.
+  useEffect(() => {
+    if (!hovered) return;
+    const onMove = () => place();
+    window.addEventListener('scroll', onMove, true);
+    window.addEventListener('resize', onMove);
+    return () => {
+      window.removeEventListener('scroll', onMove, true);
+      window.removeEventListener('resize', onMove);
+    };
+  }, [hovered, place]);
+
+  // Escape dismisses the card without moving the pointer (WCAG 1.4.13,
+  // content-on-hover-or-focus dismissable) — M-W10. Listened for on
+  // the document: a pointer hover never gives the link focus, so a
+  // handler on the wrapper would only ever fire for keyboard users.
+  useEffect(() => {
+    if (!hovered) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHovered(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [hovered]);
 
   // A tray-resolved label can stand in even when there's no classKey
   // (a fuzzy match produced a display name from a raw the catalog
@@ -139,22 +240,32 @@ export function EntityLink({
   // as-is. (L3)
   const href = `/kb/${category}/${encodeURIComponent(effectiveSlug)}` as Route;
 
+  // Hover card needs a catalog entry for its detail fields; a
+  // tray-resolved-only link (fuzzy match, no catalog entry) links
+  // fine but has nothing to populate the card, so skip it.
+  const card =
+    hovered && entry ? (
+      <EntityHoverCard
+        ref={cardRef}
+        id={cardId}
+        category={category}
+        entry={entry}
+        pos={pos}
+      />
+    ) : null;
+
   return (
     <span
+      ref={anchorRef}
       style={{ position: 'relative', display: 'inline-block' }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
-      // Escape dismisses the hover card without moving the pointer
-      // (WCAG 1.4.13, content-on-hover-or-focus dismissable) — M-W10.
-      onKeyDown={(e) => {
-        if (e.key === 'Escape' && hovered) setHovered(false);
-      }}
     >
       <Link
         href={href}
-        aria-describedby={hovered && entry ? cardId : undefined}
+        aria-describedby={card ? cardId : undefined}
         // Disable viewport prefetch: EntityLink is rendered in bulk on
         // feeds, timelines, and dashboards (dozens per page), and each
         // prefetch runs a KB detail SSR render that hits the per-IP
@@ -172,12 +283,7 @@ export function EntityLink({
         {text}
       </Link>
       {tierNode}
-      {/* Hover card needs a catalog entry for its detail fields; a
-          tray-resolved-only link (fuzzy match, no catalog entry) links
-          fine but has nothing to populate the card, so skip it. */}
-      {hovered && entry && (
-        <EntityHoverCard id={cardId} category={category} entry={entry} />
-      )}
+      {card && (mounted ? createPortal(card, document.body) : card)}
     </span>
   );
 }

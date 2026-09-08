@@ -6,8 +6,14 @@
  * no per-hover fetch is needed — the data is already in the
  * component tree.
  *
- * The popover positions itself directly below the linked text via
- * absolute positioning. Width is fixed (~260px) so multi-row hovers
+ * The card is `position: fixed` and rendered into `document.body` by
+ * `EntityLink`, which measures the link and passes the coordinates in
+ * as `pos`. It used to be an absolutely-positioned child of the link,
+ * and inside a widget tile that made it invisible: `.hud-tile`
+ * (overflow:hidden), `.hud-tile__body` (overflow-y:auto) and
+ * `.ss-main` all clipped it — the same defect `InfoTip` had. Until
+ * `pos` is known the card renders hidden so it can be measured without
+ * flashing at (0,0). Width is fixed (~260px) so multi-row hovers
  * don't shift layout; long values wrap inside their cell.
  *
  * Field set per category mirrors `build_summary` in
@@ -15,6 +21,7 @@
  * sides together when the field set changes.
  */
 
+import React, { forwardRef } from 'react';
 import {
   type ReferenceCategory,
   type ReferenceEntry,
@@ -24,11 +31,22 @@ import {
   placementLabel,
 } from '@/lib/reference-types';
 
+/** Viewport coordinates for the card's top-left corner. */
+export interface HoverCardPos {
+  top: number;
+  left: number;
+}
+
+/** Fixed card width; `EntityLink` clamps placement against it. */
+export const HOVER_CARD_WIDTH = 260;
+
 interface EntityHoverCardProps {
   category: ReferenceCategory;
   entry: ReferenceEntry;
   /** Stable id so the triggering EntityLink can `aria-describedby` it. */
   id?: string;
+  /** Measured viewport position. `null` until the first layout pass. */
+  pos: HoverCardPos | null;
 }
 
 interface Field {
@@ -89,68 +107,74 @@ function fieldsFor(_category: ReferenceCategory, entry: ReferenceEntry): Field[]
   return out;
 }
 
-export function EntityHoverCard({ category, entry, id }: EntityHoverCardProps) {
-  const fields = fieldsFor(category, entry);
-  // Everything here is phrasing content (spans, not <dl>/<dt>/<dd> or
-  // <div>) because the popover is rendered INSIDE EntityLink's inline
-  // <span> wrapper — block/description-list elements there are an
-  // invalid content model (M-W10). The CSS grid + `display:contents`
-  // rows reproduce the label/value table visually. The trigger wires
-  // `aria-describedby` to this `id`, so screen readers still announce
-  // the detail on focus.
-  return (
-    <span
-      id={id}
-      role="tooltip"
-      aria-label={`${entry.display_name} details`}
-      style={{
-        position: 'absolute',
-        top: 'calc(100% + 6px)',
-        left: 0,
-        width: 260,
-        padding: '10px 12px',
-        background: 'var(--bg-elev)',
-        border: '1px solid var(--border)',
-        borderRadius: 0,
-        boxShadow: '0 6px 24px rgba(0,0,0,0.25)',
-        zIndex: 50,
-        fontSize: 12,
-        lineHeight: 1.45,
-        color: 'var(--fg)',
-        pointerEvents: 'none',
-      }}
-    >
+export const EntityHoverCard = forwardRef<HTMLSpanElement, EntityHoverCardProps>(
+  function EntityHoverCard({ category, entry, id, pos }, ref) {
+    const fields = fieldsFor(category, entry);
+    // Everything here is phrasing content (spans, not <dl>/<dt>/<dd> or
+    // <div>): the card is portaled to <body> now, but it is still
+    // declared inside EntityLink's inline <span>, and keeping the
+    // content model valid costs nothing (M-W10). The CSS grid +
+    // `display:contents` rows reproduce the label/value table
+    // visually. The trigger wires `aria-describedby` to this `id`, so
+    // screen readers still announce the detail on focus.
+    return (
       <span
+        ref={ref}
+        id={id}
+        role="tooltip"
+        aria-label={`${entry.display_name} details`}
         style={{
-          display: 'block',
-          fontWeight: 600,
-          fontSize: 13,
-          marginBottom: 6,
+          position: 'fixed',
+          top: pos?.top ?? 0,
+          left: pos?.left ?? 0,
+          visibility: pos ? 'visible' : 'hidden',
+          width: HOVER_CARD_WIDTH,
+          padding: '10px 12px',
+          background: 'var(--bg-elev)',
+          border: '1px solid var(--border)',
+          borderRadius: 0,
+          boxShadow: '0 6px 24px rgba(0,0,0,0.25)',
+          // Above the tile grid and the sticky chrome, matching
+          // `.infotip__pop`.
+          zIndex: 200,
+          fontSize: 12,
+          lineHeight: 1.45,
+          color: 'var(--fg)',
+          pointerEvents: 'none',
         }}
       >
-        {entry.display_name}
-      </span>
-      {fields.length === 0 ? (
-        <span style={{ color: 'var(--fg-dim)' }}>No metadata available.</span>
-      ) : (
         <span
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(70px, max-content) 1fr',
-            columnGap: 10,
-            rowGap: 4,
+            display: 'block',
+            fontWeight: 600,
+            fontSize: 13,
+            marginBottom: 6,
           }}
         >
-          {fields.map((f) => (
-            <span key={f.label} style={{ display: 'contents' }}>
-              <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}>
-                {f.label}
-              </span>
-              <span>{f.value}</span>
-            </span>
-          ))}
+          {entry.display_name}
         </span>
-      )}
-    </span>
-  );
-}
+        {fields.length === 0 ? (
+          <span style={{ color: 'var(--fg-dim)' }}>No metadata available.</span>
+        ) : (
+          <span
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(70px, max-content) 1fr',
+              columnGap: 10,
+              rowGap: 4,
+            }}
+          >
+            {fields.map((f) => (
+              <span key={f.label} style={{ display: 'contents' }}>
+                <span style={{ color: 'var(--fg-muted)', fontSize: 11 }}>
+                  {f.label}
+                </span>
+                <span>{f.value}</span>
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
+    );
+  },
+);
