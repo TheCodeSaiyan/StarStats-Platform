@@ -195,5 +195,13 @@ test('export cooldown comes back as a settings notice, not a broken download', a
   await page.goto('/settings');
   await page.locator('a[href="/settings/export?format=zip"]').click();
   await expect(page).toHaveURL(/\/settings\?error=export_too_soon/);
-  await expect(page.locator('.hp-settings')).toContainText(/less than a minute ago/i);
+  // Filter + count, not a bare strict locator: while the redirected page
+  // streams in, the loading boundary's `.hp-settings` and the arriving one
+  // coexist for a moment, and a strict-mode violation is thrown rather than
+  // retried — which is why this went red on slower runs (CI and a loaded
+  // desktop) with the notice visibly on screen. Waiting for exactly one
+  // element carrying the notice retries through the transition.
+  await expect(
+    page.locator('.hp-settings').filter({ hasText: /less than a minute ago/i }),
+  ).toHaveCount(1);
 });
