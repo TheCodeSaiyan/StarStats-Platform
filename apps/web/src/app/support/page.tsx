@@ -83,6 +83,14 @@ export default function SupportPage() {
           <a href={NEW_ISSUE}>issue templates</a> (bug report or
           parser-rule request) so it lands with the context we need.
         </p>
+        <p style={{ color: 'var(--fg-muted)' }}>
+          A log makes it land much faster. The{' '}
+          <Link href={'/docs/troubleshooting#logs' as Route}>
+            troubleshooting page
+          </Link>{' '}
+          says where the app writes them on Linux and Windows — including
+          what to do when the window is too blank to reach Settings.
+        </p>
       </section>
 
       <section className="ss-about-section">

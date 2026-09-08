@@ -6,7 +6,7 @@ import Link from 'next/link';
 export const metadata: Metadata = {
   title: 'Troubleshooting',
   description:
-    'No Game.log found, channel mismatch, sync refused, kills not tracked, and Test connection rejecting your host — what each one means.',
+    'No Game.log found, channel mismatch, sync refused, kills not tracked, a white window on Linux, and Test connection rejecting your host — what each one means, plus where the logs are.',
 };
 
 /* Every item here exists in code today; nothing is hypothetical.
@@ -24,7 +24,23 @@ export const metadata: Metadata = {
  *    is NOT CVar-gated — there is no verbosity that brings it back, and
  *    telling users to enable CVars is false advice. inference.rs:371-384
  *    synthesizes PlayerDeath from VehicleDestruction + ResolveSpawn at
- *    0.85 confidence precisely because the branch is gone. */
+ *    0.85 confidence precisely because the branch is gone.
+ *
+ * 3. Section 07 names 0.1.14 as the first build that sets
+ *    WEBKIT_DISABLE_DMABUF_RENDERER itself. That is the one
+ *    forward-looking claim on the page: the code is in main.rs
+ *    (`dmabuf_workaround_value`) but the TRAY ships on its own track, so
+ *    this page can deploy before the binary does. 0.1.14 is right
+ *    because live was 0.1.13 and 0.1.14 was the open alpha when the fix
+ *    landed — if the fix slips to a later version, move the number.
+ *    The workaround above it is true either way.
+ *
+ * 4. Log paths in "Sending a log" come from
+ *    `directories::ProjectDirs::from("app", "StarStats", "tray")`
+ *    (config.rs:1227). On Linux the crate IGNORES qualifier and
+ *    organization and uses the lowercased application name alone —
+ *    hence `~/.local/share/tray`, not `.../StarStats/tray`. Don't
+ *    "correct" it to the branded path. */
 export default function TroubleshootingPage() {
   return (
     <MarketingSurface
@@ -65,7 +81,7 @@ export default function TroubleshootingPage() {
           maxWidth: '60ch',
         }}
       >
-        Six things account for most of it. Two of them aren&apos;t bugs and
+        Seven things account for most of it. Two of them aren&apos;t bugs and
         never will be — the first one leads, because knowing that saves you
         the hour.
       </p>
@@ -166,6 +182,66 @@ export default function TroubleshootingPage() {
           whenever RSI ends the session. Paste a fresh one — see{' '}
           <Link href={'/docs/rsi-cookie' as Route}>the cookie page</Link>{' '}
           for where to find it.
+        </p>
+      </section>
+
+      <section className="ss-about-section" id="linux-white-screen">
+        <div className="ss-about-section-eyebrow">07 — Linux</div>
+        <h2>The window opens white and stays white.</h2>
+        <p>
+          The title bar draws, the tray icon works, and the inside of the
+          window is a blank white rectangle. Nothing has crashed — the page
+          is there, it just never gets painted.
+        </p>
+        <p>
+          This is the webview, not StarStats. WebKitGTK renders through a
+          buffer-sharing path that some graphics drivers can&apos;t accept,
+          and when that handshake fails you get a white page and no error.
+          Arch-family distros and NVIDIA&apos;s proprietary driver hit it
+          most. The AppImage is more exposed than the <code>.deb</code>,
+          because it carries its own copy of WebKitGTK and meets whatever
+          driver your machine happens to have.
+        </p>
+        <p>
+          Run it once with that path switched off:
+        </p>
+        <p>
+          <code>
+            WEBKIT_DISABLE_DMABUF_RENDERER=1 ./StarStats_*_amd64.AppImage
+          </code>
+        </p>
+        <p>
+          If it renders, that was it. 0.1.14 is the first build that sets
+          this for itself on Linux, so you only need the variable on 0.1.13
+          and earlier — and setting it to <code>0</code> puts the faster
+          path back if you ever want to test whether your driver has caught
+          up.
+        </p>
+      </section>
+
+      <section className="ss-about-section" id="logs">
+        <div className="ss-about-section-eyebrow">Sending a log</div>
+        <h2>Where the app writes things down.</h2>
+        <p>
+          On Linux everything lands in{' '}
+          <code>~/.local/share/tray/</code> (or{' '}
+          <code>$XDG_DATA_HOME/tray/</code> if you&apos;ve set that). On
+          Windows it&apos;s{' '}
+          <code>%APPDATA%\StarStats\tray\data\</code>. Two files matter:
+        </p>
+        <p>
+          <code>panic.log</code> is always written — every crash appends to
+          it, with the version that crashed. <code>client.log.YYYY-MM-DD</code>{' '}
+          is the detailed one and is <strong>off by default</strong>; turn on{' '}
+          <em>Debug logging</em> in Settings, restart, and reproduce the
+          problem to fill it.
+        </p>
+        <p style={{ color: 'var(--fg-muted)' }}>
+          The catch: if your window is blank you can&apos;t reach Settings to
+          turn that on. Start the app from a terminal instead — it prints the
+          same log to the terminal whether or not the file is enabled, and
+          that output is the useful thing to paste into a{' '}
+          <Link href={'/support' as Route}>bug report</Link>.
         </p>
       </section>
 
