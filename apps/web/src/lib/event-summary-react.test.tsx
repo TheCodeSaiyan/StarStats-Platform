@@ -197,3 +197,21 @@ describe('renderEventSummary: what the live log showed', () => {
     expect(container.textContent).not.toMatch(/816633546929/);
   });
 });
+
+describe('renderEventSummary: procedural landing pads', () => {
+  it('drops the braced engine GUID a procedural pad name carries', () => {
+    const { container } = render(
+      <>
+        {renderEventSummary({
+          type: 'vehicle_stowed',
+          timestamp: '2026-09-06T14:00:06.515Z',
+          vehicle_id: '816082288190',
+          landing_area: '[PROC]LandingArea_Pad_MedB-001_{4E778C54-496B-4CD9-9298-AC947973B4BB}',
+          landing_area_id: '1',
+          zone_host_id: '2',
+        })}
+      </>,
+    );
+    expect(container.textContent).toBe('Stowed a ship at Pad Med B-001');
+  });
+});

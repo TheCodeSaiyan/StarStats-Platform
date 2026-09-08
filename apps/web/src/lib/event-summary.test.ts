@@ -164,3 +164,20 @@ describe('formatEventSummary: what the live log showed', () => {
     ).toBe('Stowed a ship at Ship Elevator Hangar Medium Front');
   });
 });
+
+describe('formatEventSummary: procedural landing pads', () => {
+  it('drops the braced engine GUID a procedural pad name carries', () => {
+    // Seen live: "Stowed a ship at Pad Med B-001 {4e778c54-…}". The suffix
+    // is the pad's runtime id, not part of its name.
+    expect(
+      formatEventSummary({
+        type: 'vehicle_stowed',
+        timestamp: ts,
+        vehicle_id: '816082288190',
+        landing_area: '[PROC]LandingArea_Pad_MedB-001_{4E778C54-496B-4CD9-9298-AC947973B4BB}',
+        landing_area_id: '1',
+        zone_host_id: '2',
+      }),
+    ).toBe('Stowed a ship at Pad Med B-001');
+  });
+});

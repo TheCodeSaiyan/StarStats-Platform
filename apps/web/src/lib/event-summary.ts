@@ -223,6 +223,19 @@ const ENGINE_GUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
+ * A landing area as the log names it, reduced to the part a reader would
+ * call it. Drops the `[PROC]` / `LandingArea_` prefixes and, on procedural
+ * pads, the trailing `_{GUID}` runtime id:
+ * `[PROC]LandingArea_Pad_MedB-001_{4E77…}` → `Pad_MedB-001`.
+ */
+export function cleanLandingArea(area: string): string {
+  return area
+    .replace(/^\[PROC\]/, '')
+    .replace(/^LandingArea_/, '')
+    .replace(/_?\{[0-9a-f-]{36}\}$/i, '');
+}
+
+/**
  * Shop events carry the item as an engine GUID rather than a class name
  * (`72b91153-5a3e-…`), which no catalogue resolves and which
  * `toFriendlyName` would print verbatim. Treat such a value as "no item"
@@ -349,9 +362,7 @@ function formatKnown(
     case 'attachment_received':
       return `Attached ${prettyClass(event.item_class, lookup.items)} to ${event.port}`;
     case 'vehicle_stowed': {
-      const cleaned = event.landing_area
-        .replace(/^\[PROC\]/, '')
-        .replace(/^LandingArea_/, '');
+      const cleaned = cleanLandingArea(event.landing_area);
       const label = prettyClass(cleaned, lookup.locations);
       // `vehicle_id` is an engine handle with no class behind it, so it
       // cannot be resolved to a ship and is not worth a reader's eye.

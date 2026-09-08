@@ -35,7 +35,7 @@ import {
   prettyClass,
 } from './reference-types';
 import { toFriendlyName } from './heuristic-name';
-import { namedClass, objectiveStateWord } from './event-summary';
+import { cleanLandingArea, namedClass, objectiveStateWord } from './event-summary';
 import { EntityLink } from '@/components/kb/EntityLink';
 
 // Re-export the payload union from event-summary so consumers don't
@@ -421,9 +421,7 @@ function renderKnown(
         </>
       );
     case 'vehicle_stowed': {
-      const cleaned = event.landing_area
-        .replace(/^\[PROC\]/, '')
-        .replace(/^LandingArea_/, '');
+      const cleaned = cleanLandingArea(event.landing_area);
       // `vehicle_id` is an engine handle with no class behind it, so it
       // cannot be resolved to a ship and is not worth a reader's eye.
       return (
