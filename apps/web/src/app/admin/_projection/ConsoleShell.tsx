@@ -15,6 +15,7 @@ import {
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
 import { useShellData } from '@/components/projection/ShellData';
 import { AdminNav } from '../_components/AdminNav';
+import { signOut } from '@/lib/sign-out';
 
 /**
  * `/admin/**` — the **Console**, in the projection.
@@ -101,6 +102,7 @@ export function ConsoleShell({
               },
               { id: 'settings', label: 'Calibrate', href: '/settings' },
             ]}
+            onSignOut={signOut}
             onNavigate={(id) => router.push(`/${id}` as Route)}
           />
         }

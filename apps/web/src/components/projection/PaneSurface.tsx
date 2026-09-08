@@ -6,6 +6,7 @@ import { chromeLink } from '@/components/projection/chromeLink';
 import type { Route } from 'next';
 import { SiteLegalPlate } from './SiteLegalPlate';
 import { useShellData } from './ShellData';
+import { signOut } from '@/lib/sign-out';
 import {
   Projection,
   Pane,
@@ -274,6 +275,7 @@ export function PaneSurface({
             onSignIn={
               handle ? undefined : () => router.push('/auth/login' as Route)
             }
+            onSignOut={handle ? signOut : undefined}
             // "Projection live" claims an uplink is streaming. A signed-out
             // visitor has no uplink, so the chrome must not say so.
             live={Boolean(handle)}

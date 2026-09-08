@@ -29,7 +29,7 @@ import React from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plane, LogRow, Flatline, BeamAlert, type Calibration } from 'holo';
+import { Plane, HoloKV, Flatline, BeamAlert, type Calibration } from 'holo';
 import { RecordsIndex } from '@/components/projection/RecordsIndex';
 import { getSession } from '@/lib/session';
 import { listEvents, statusOf, type ListEventsResponse } from '@/lib/api';
@@ -43,6 +43,7 @@ import {
   hrefFor,
   type ActivityQuery,
 } from './_lib/query';
+import { eventDetailItems } from './_lib/details';
 import { loadAllReferenceBundles } from '@/lib/reference';
 import { formatEventType } from '@/lib/event-types';
 import { navSections } from '@/lib/nav';
@@ -96,6 +97,10 @@ export default async function ActivityPage(props: PageProps) {
       since: rangeToSinceIso(q.range),
       event_type: q.type,
       before_seq: q.before,
+      // The raw page, so a full one can be told from a short one. The
+      // movement types it keeps are low-signal below, so the default view
+      // is unchanged.
+      include_movement: true,
     });
   } catch (err) {
     logger.warn(
@@ -224,15 +229,24 @@ export default async function ActivityPage(props: PageProps) {
                 {rows.length === 0 ? (
                   <Flatline reason="no-data" />
                 ) : (
-                  <Plane tilt="flat" cap="Events" hint="newest first">
+                  <Plane tilt="flat" cap="Events" hint="newest first · open a row for the record">
+                    {/* Each row is a `<details>` whose summary IS the log row
+                        (`.hp-lg`, the same grid `LogRow` draws), so it opens
+                        into the record with no client state and every
+                        selector that reads `.hp-lg .ev` still holds. */}
                     {rows.map((r) => (
-                      <LogRow
-                        key={r.key}
-                        time={r.time}
-                        event={r.event}
-                        tone={r.tone}
-                        mark={r.mark}
-                      />
+                      <details key={r.key} className="hp-lg-x">
+                        <summary className="hp-lg">
+                          <span className="t">{r.time}</span>
+                          <span className={['ev', r.tone].filter(Boolean).join(' ')}>
+                            {r.event}
+                          </span>
+                          <span className="mx">{r.mark}</span>
+                        </summary>
+                        <div className="hp-lg-x__body">
+                          <HoloKV items={eventDetailItems(r.source)} />
+                        </div>
+                      </details>
                     ))}
                   </Plane>
                 )}

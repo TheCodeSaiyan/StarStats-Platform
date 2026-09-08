@@ -38,6 +38,10 @@ export interface RecentRow {
   event: React.ReactNode;
   tone?: 'bad';
   mark: React.ReactNode;
+  /** The event behind the row — the newest member when a run was folded. */
+  source: RecentActivityEvent;
+  /** How many events the row stands for (1 unless folded). */
+  count: number;
 }
 
 const MISSING = '—';
@@ -205,6 +209,8 @@ export function recentActivityRows(
       ),
       tone: meta.group === 'combat' ? 'bad' : undefined,
       mark: groupLabel(meta.group),
+      source: e,
+      count: n,
     };
   });
 }

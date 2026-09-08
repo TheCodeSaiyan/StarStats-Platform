@@ -185,6 +185,37 @@ describe('ActivityPage', () => {
     expect(screen.getByRole('link', { name: '← Newest' })).toBeInTheDocument();
   });
 
+  it('asks for the raw server page and offers Older whenever that page was full', async () => {
+    // The client used to drop movement rows before the page counted them, so
+    // a full server page arrived as 99 and "Older" never appeared. Seen live:
+    // 31 shown, 68 hidden, no way to the previous 300k events.
+    const full = Array.from({ length: PAGE_SIZE }, (_, i) =>
+      i % 10 === 0 ? ev(1000 - i, 'join_pu', { address: 'a', port: 1, shard: 's', location_id: 'l' }) : death(1000 - i),
+    );
+    mockListEvents.mockResolvedValue({ events: full, next_after: null });
+    await renderPage();
+    expect(mockListEvents).toHaveBeenCalledWith('test-token', expect.objectContaining({ include_movement: true }));
+    expect(screen.getByRole('link', { name: 'Older →' })).toBeInTheDocument();
+    // Movement rows still hide by default on the page itself.
+    expect(screen.getByText(/10 hidden on this page/)).toBeInTheDocument();
+  });
+
+  it('lets each row open into the event itself', async () => {
+    mockListEvents.mockResolvedValue({ events: [stow(3)], next_after: null });
+    const { container } = await renderPage();
+    const details = container.querySelectorAll('details.hp-lg-x');
+    expect(details).toHaveLength(1);
+    // The sentence is the summary; the body carries every field the log
+    // wrote, plus where it came from.
+    expect(details[0].querySelector('summary .ev')?.textContent).toMatch(/Stowed a ship at/);
+    const body = details[0].textContent ?? '';
+    expect(body).toMatch(/Landing area/);
+    expect(body).toMatch(/LandingArea_ShipElevator_HangarMediumFront/);
+    expect(body).toMatch(/Source/);
+    expect(body).toMatch(/live/i);
+    expect(body).toMatch(/vehicle_stowed/);
+  });
+
   it('does not offer Older on a short page', async () => {
     mockListEvents.mockResolvedValue({ events: [death(1)], next_after: null });
     await renderPage();

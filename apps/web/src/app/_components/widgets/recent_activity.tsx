@@ -2,6 +2,7 @@ import React from 'react';
 import { listEvents } from '@/lib/api';
 import { formatEventType } from '@/lib/event-types';
 import type { ResolvedLocationLike } from '@/lib/event-summary-react';
+import { IN_TRANSIT_HIDDEN_TYPES } from '@/lib/event-filter';
 import { logger } from '@/lib/logger';
 import { rangeToSinceIso } from '@/lib/range';
 import { defineWidget } from './kit/defineWidget';
@@ -36,6 +37,8 @@ export interface RecentActivityEvent {
   event_timestamp?: string | null;
   payload?: unknown;
   resolved_location?: ResolvedLocationLike | null;
+  /** Channel the tray read it from (`live`, `ptu`, …). */
+  log_source?: string;
 }
 
 export interface RecentActivityData {
@@ -80,6 +83,11 @@ const LOW_SIGNAL_TYPES: ReadonlySet<string> = new Set([
   'location_inventory_requested',
   // The server's reply to `shop_buy_request`, which is the row that matters.
   'shop_flow_response',
+  // The In-Transit set. `listEvents` already drops these unless asked not to
+  // (`include_movement`), which the paging log page does — so they have to
+  // count as low-signal here as well, or "hide instrumentation" would show
+  // them while the digest never did.
+  ...IN_TRANSIT_HIDDEN_TYPES,
 ]);
 
 /** The one burst rule that summarises activity rather than noise. */

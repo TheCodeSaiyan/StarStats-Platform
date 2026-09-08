@@ -19,7 +19,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import type { Route } from 'next';
-import { redirect } from 'next/navigation';
 import { Pane, Plane, SubStats, MeterRow, BeamChip, type Calibration } from 'holo';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
 import { getSession } from '@/lib/session';
@@ -141,8 +140,10 @@ const FEATURES: ReadonlyArray<{ title: string; body: string }> = [
 
 
 export default async function HomePage() {
+  // The front page is a destination for signed-in readers too. It used to
+  // redirect them to `/me`, which made the nav's own "Overview" entry bounce
+  // straight back to the page they were on.
   const session = await getSession();
-  if (session) redirect('/me');
 
   let calibration: Calibration = 'terra';
   try {
@@ -189,7 +190,20 @@ export default async function HomePage() {
   return (
     <LandingProjection
       calibration={calibration}
-      nav={navSections({ signedIn: false }, 'home')}
+      nav={navSections(
+        { signedIn: Boolean(session), staffRoles: session?.staffRoles },
+        'home',
+      )}
+      handle={session?.claimedHandle}
+      account={
+        session
+          ? [
+              { id: 'me', label: 'Projection', href: '/me' },
+              { id: 'sharing', label: 'Sharing', href: '/sharing' },
+              { id: 'settings', label: 'Calibrate', href: '/settings' },
+            ]
+          : undefined
+      }
       tagline="Track your Star Citizen play."
       words={HERO_WORDS}
       detail="Reads the log the game already writes. Stays on your PC until you turn on sync."
