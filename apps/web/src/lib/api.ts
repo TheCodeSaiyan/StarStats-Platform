@@ -313,6 +313,14 @@ export interface ListEventsParams {
   /** ISO-8601 upper bound on event_timestamp. */
   until?: string;
   limit?: number;
+  /**
+   * Client-only: return the server's page as-is instead of dropping the
+   * In-Transit movement types (see `event-filter.ts`). A caller that pages
+   * needs the raw count to tell a full page from a short one — with the
+   * filter applied, a full page of 100 comes back as ~94 and "older" never
+   * appears. Never forwarded to the server.
+   */
+  include_movement?: boolean;
 }
 
 export async function listEvents(
@@ -343,8 +351,8 @@ export async function listEvents(
   // When the caller explicitly asks for one of those types via
   // `event_type`, respect that and skip the filter — they want it.
   if (
-    params.event_type &&
-    IN_TRANSIT_HIDDEN_TYPES.has(params.event_type)
+    params.include_movement ||
+    (params.event_type && IN_TRANSIT_HIDDEN_TYPES.has(params.event_type))
   ) {
     return resp;
   }

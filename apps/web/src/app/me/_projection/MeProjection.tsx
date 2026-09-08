@@ -41,6 +41,7 @@ import type { WidgetId } from '@/app/_components/widgets/types';
 import { fmtNum } from '@/app/_components/widgets/kit/format';
 import type { CalloutVM } from './elements';
 import { PROJECTION_CATALOGUE } from './catalogue';
+import { signOut } from '@/lib/sign-out';
 
 /**
  * `/me` — the reader's own projection.
@@ -487,6 +488,7 @@ export function MeProjection({
             },
             { id: 'downloads', label: 'Emitter', href: '/downloads' },
           ]}
+          onSignOut={signOut}
           onNavigate={(id) => {
             if (id === 'edit-layout') {
               setEditing((v) => !v);

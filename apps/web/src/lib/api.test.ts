@@ -13,6 +13,7 @@ import {
   getLives,
   exportManifest,
   isExportFormat,
+  listEvents,
 } from './api';
 
 // `api.ts` reads STARSTATS_API_URL at call time via apiBase().
@@ -337,5 +338,30 @@ describe('getLives', () => {
     expect(res.total_lives).toBe(5);
     expect(res.deaths_per_session).toBe(1.3);
     expect(res.recent_lives).toEqual([]);
+  });
+});
+
+describe('listEvents', () => {
+  const page = {
+    events: [
+      { seq: 3, source_offset: 3, log_source: 'live', event_type: 'join_pu', event_timestamp: null, payload: { type: 'join_pu' } },
+      { seq: 2, source_offset: 2, log_source: 'live', event_type: 'vehicle_stowed', event_timestamp: null, payload: { type: 'vehicle_stowed' } },
+    ],
+    next_after: null,
+  };
+
+  it('hides movement noise by default', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(page), { status: 200 }));
+    const out = await listEvents('tok', { limit: 2 });
+    expect(out.events.map((e) => e.event_type)).toEqual(['vehicle_stowed']);
+  });
+
+  it('returns the whole server page when the caller asks, so it can tell a full page from a short one', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(page), { status: 200 }));
+    const out = await listEvents('tok', { limit: 2, include_movement: true });
+    expect(out.events.map((e) => e.event_type)).toEqual(['join_pu', 'vehicle_stowed']);
+    // Client-only switch — never forwarded to the server.
+    const [url] = fetchMock.mock.calls[0] as [string];
+    expect(url).not.toContain('include_movement');
   });
 });

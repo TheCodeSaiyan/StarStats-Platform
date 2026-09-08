@@ -93,9 +93,11 @@ describe('recentActivityWidget H9 label formatting', () => {
   it('renders a humanised label, never the raw snake_case event_type', async () => {
     (listEvents as ReturnType<typeof vi.fn>).mockResolvedValue({
       events: [
+        // A type the widget shows: `quantum_target_selected` (the original
+        // fixture) is In-Transit noise and is now hidden with the rest.
         {
           seq: 1,
-          event_type: 'quantum_target_selected',
+          event_type: 'vehicle_destruction',
           event_timestamp: '2026-05-22T12:00:00Z',
         },
       ],
@@ -106,7 +108,7 @@ describe('recentActivityWidget H9 label formatting', () => {
     render(el as React.ReactElement);
 
     // The raw key stays addressable via the title tooltip...
-    const label = screen.getByTitle('quantum_target_selected');
+    const label = screen.getByTitle('vehicle_destruction');
     // ...but the visible label is humanised — no snake_case underscores.
     expect(label.textContent ?? '').not.toContain('_');
     expect(label.textContent?.trim()).toBeTruthy();
@@ -145,6 +147,13 @@ describe('recentActivityWidget low-signal filter', () => {
     expect(isLowSignal(ev('burst_summary', { rule_id: 'terrain_load_burst', size: 40 }))).toBe(true);
     expect(isLowSignal(ev('burst_summary', { rule_id: 'hud_notification_burst', size: 5 }))).toBe(true);
   });
+
+  it.each(['join_pu', 'change_server', 'quantum_target_selected', 'seed_solar_system', 'resolve_spawn'])(
+    '%s (movement noise) is low-signal here too, so a raw server page filters the same way',
+    (type) => {
+      expect(isLowSignal(ev(type))).toBe(true);
+    },
+  );
 
   it.each(['vehicle_stowed', 'player_death', 'mission_objective', 'session_end', 'shop_buy_request'])(
     '%s is activity',

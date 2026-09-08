@@ -3260,3 +3260,52 @@ html[data-wave-speed='off'] .hp-stage::after {
    * of /downloads is the one this was measured on. */
   .hp-prose > a:only-child { padding: 12px 0; display: inline-block; }
 }
+
+/* ---- Activity log rows that open into the event -------------------------
+   `<details>` for the same reasons as `.hp-disclose`: closed by default,
+   keyboard-operable, no client state. The summary IS the log row (`.hp-lg`,
+   the grid `LogRow` draws), so every selector and test that reads
+   `.hp-lg .ev` keeps working, and the row keeps its border until it opens,
+   when the body takes it over. The marker is drawn by the hover/open colour
+   on the sentence rather than a UA triangle, as with `.hp-disclose`. */
+.hp-lg-x > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.hp-lg-x > summary::-webkit-details-marker {
+  display: none;
+}
+
+.hp-lg-x > summary:hover .ev,
+.hp-lg-x > summary:focus-visible .ev,
+.hp-lg-x[open] > summary .ev {
+  color: var(--hot);
+}
+
+.hp-lg-x[open] > summary.hp-lg {
+  border-bottom: 0;
+}
+
+/* Indented to the sentence column (64px time cell + 12px gap). */
+.hp-lg-x__body {
+  padding: 4px 0 14px 76px;
+  border-bottom: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.08);
+}
+
+.hp-lg-x__body .hp-kv {
+  font-size: var(--fs-sm);
+}
+
+/* The record, not the sentence: raw values in the beam colour, and a long
+   engine id may break anywhere rather than push the grid wide. */
+.hp-lg-x__body .hp-kv dd {
+  color: var(--beam);
+  word-break: break-all;
+}
+
+@media (max-width: 720px) {
+  .hp-lg-x__body {
+    padding-left: 0;
+  }
+}

@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { chromeLink } from '@/components/projection/chromeLink';
+import { signOut } from '@/lib/sign-out';
 import type { Route } from 'next';
 import {
   Projection,
@@ -57,6 +58,8 @@ export interface LandingCallout {
 export function LandingProjection({
   calibration,
   nav,
+  handle,
+  account,
   words,
   tagline,
   detail,
@@ -66,6 +69,14 @@ export function LandingProjection({
 }: {
   calibration: Calibration;
   nav: NavSection[];
+  /**
+   * The signed-in reader, or undefined for a visitor. The front page used to
+   * bounce every signed-in visit to `/me`, so it only ever drew the signed-out
+   * chrome; now it is a real destination for both, and the chrome has to know
+   * which it is drawing for.
+   */
+  handle?: string;
+  account?: { id: string; label: string; href?: string }[];
   words: readonly string[];
   tagline: string;
   detail: string;
@@ -117,7 +128,12 @@ export function LandingProjection({
             calibration={cal}
             onCalibrate={calibrate}
             sections={nav}
-            onSignIn={() => router.push('/auth/login' as Route)}
+            handle={handle}
+            account={handle ? account : undefined}
+            onSignIn={
+              handle ? undefined : () => router.push('/auth/login' as Route)
+            }
+            onSignOut={handle ? signOut : undefined}
             onNavigate={(id) => router.push(`/${id}` as Route)}
           />
         }

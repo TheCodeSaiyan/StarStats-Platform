@@ -25,6 +25,7 @@ import {
 } from 'holo';
 import { chromeLink } from '@/components/projection/chromeLink';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
+import { signOut } from '@/lib/sign-out';
 
 /**
  * `/u/[handle]` — the public profile, as a volume.
@@ -165,6 +166,7 @@ export function PublicProjection({
             onSignIn={
               handle ? undefined : () => router.push('/auth/login' as Route)
             }
+            onSignOut={handle ? signOut : undefined}
           />
         }
         crumb={
