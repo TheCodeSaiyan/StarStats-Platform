@@ -70,7 +70,7 @@ describe('KbDetailView', () => {
         groups={{ 'family:combat': { 'speed.scm': { min: 200, p10: 205, p25: 210, p50: 222, p75: 240, p90: 270, max: 275, n: 84 } } }}
       />,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'glad' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /add vehicle/i }), { target: { value: 'glad' } });
     fireEvent.click(screen.getByRole('option', { name: 'Gladius' }));
     expect(await screen.findByRole('button', { name: /comparison/i })).toBeTruthy();
     expect(vi.mocked(fetchCompareVectors)).toHaveBeenCalled();
@@ -86,7 +86,7 @@ describe('KbDetailView', () => {
         groups={{ 'family:combat': { 'speed.scm': { min: 200, p10: 205, p25: 210, p50: 222, p75: 240, p90: 270, max: 275, n: 84 } } }}
       />,
     );
-    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'glad' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /add vehicle/i }), { target: { value: 'glad' } });
     fireEvent.click(screen.getByRole('option', { name: 'Gladius' }));
     // In comparison mode now.
     expect(await screen.findByRole('button', { name: /^comparison$/i })).toBeTruthy();

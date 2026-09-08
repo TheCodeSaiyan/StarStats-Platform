@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import { rankFuzzy } from '@/lib/fuzzy';
 
 /**
- * Text box with a fuzzy-ranked pick-list underneath: the "Add ship…" and
+ * Text box with a fuzzy-ranked pick-list underneath: the "Add vehicle…" / "Add weapon…" and
  * "Add cohort…" controls on the comparison tray.
  *
  * WHY THE LIST IS PORTALED

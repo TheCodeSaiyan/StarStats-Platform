@@ -1,5 +1,5 @@
 /**
- * Client-safe types + pure model builders for the multi-ship comparison
+ * Client-safe types + pure model builders for the multi-entry comparison
  * view. No `server-only` import — these run in the client `KbDetailView`.
  * Reuses the metric group specs from `kb-detail` and `kb-viz`'s value
  * formatting.
@@ -119,9 +119,9 @@ export interface ComparisonRadar {
 }
 
 /** Per-axis fractions scaled to the selected set's min–max (floor 0.06). */
-export function buildComparisonRadar(ships: CompareEntry[], axes: string[]): ComparisonRadar {
+export function buildComparisonRadar(entries: CompareEntry[], axes: string[]): ComparisonRadar {
   const ranges = axes.map((k) => {
-    const vals = ships
+    const vals = entries
       .map((s) => s.metrics[k])
       .filter((v): v is number => typeof v === 'number');
     return {
@@ -130,7 +130,7 @@ export function buildComparisonRadar(ships: CompareEntry[], axes: string[]): Com
     };
   });
 
-  const series: RadarSeries[] = ships.map((s) => ({
+  const series: RadarSeries[] = entries.map((s) => ({
     slug: s.slug,
     name: s.display_name,
     values: axes.map((k, i) => {
@@ -170,7 +170,10 @@ const SUPERLATIVES: Partial<
     { key: 'personal_weapon.rof', label: 'Fastest fire rate', unit: 'rpm' },
   ],
   item: [
-    { key: 'durability.health', label: 'Toughest armor', unit: 'hp' },
+    // NOT "Toughest armor": the item category spans components, attachments
+    // and gear as well as armour, and `durability.health` is the generic
+    // durability field for all of them.
+    { key: 'durability.health', label: 'Most durable', unit: 'hp' },
     { key: 'mass', label: 'Heaviest', unit: 'kg' },
     { key: 'dimension.volume_converted', label: 'Largest volume', unit: 'µSCU' },
   ],
@@ -183,18 +186,18 @@ const SUPERLATIVES: Partial<
 
 export function buildLeaderboard(
   category: ReferenceCategory,
-  ships: CompareEntry[],
+  entries: CompareEntry[],
   units: Units,
 ): LeaderCard[] {
   const out: LeaderCard[] = [];
   for (const s of SUPERLATIVES[category] ?? []) {
     let best: CompareEntry | undefined;
     let bestVal = -Infinity;
-    for (const ship of ships) {
-      const v = ship.metrics[s.key];
+    for (const entry of entries) {
+      const v = entry.metrics[s.key];
       if (typeof v === 'number' && v > bestVal) {
         bestVal = v;
-        best = ship;
+        best = entry;
       }
     }
     if (!best) continue;

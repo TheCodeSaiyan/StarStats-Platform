@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react';
 import { SearchPicker } from './SearchPicker';
+import { vocabularyFor } from '@/lib/kb-vocabulary';
+import type { ReferenceCategory } from '@/lib/reference-types';
 
 export interface CatalogItem {
   slug: string;
   display_name: string;
 }
 
-export interface SelectedShip {
+export interface SelectedEntry {
   slug: string;
   name: string;
   color: string;
@@ -14,9 +16,12 @@ export interface SelectedShip {
 }
 
 export interface ComparisonTrayProps {
+  /** Drives every noun on this control. Without it the tray asked a reader
+   *  browsing weapons to "Add ship…". */
+  category: ReferenceCategory;
   anchorSlug: string;
   anchorName: string;
-  selected: SelectedShip[];
+  selected: SelectedEntry[];
   catalog: CatalogItem[];
   max: number;
   onAdd: (slug: string) => void;
@@ -27,6 +32,7 @@ export interface ComparisonTrayProps {
 }
 
 export function ComparisonTray(props: ComparisonTrayProps) {
+  const vocab = vocabularyFor(props.category);
   const count = props.selected.length + 1; // + anchor
   const atCap = count >= props.max;
 
@@ -36,7 +42,7 @@ export function ComparisonTray(props: ComparisonTrayProps) {
   );
   // Both pick-lists are fuzzy-ranked and portaled by `SearchPicker` — see
   // its header for why an in-card list was unusable here.
-  const shipItems = useMemo(
+  const entryItems = useMemo(
     () =>
       props.catalog
         .filter((c) => !taken.has(c.slug))
@@ -91,10 +97,10 @@ export function ComparisonTray(props: ComparisonTrayProps) {
         ))}
 
         <SearchPicker
-          label="Add ship to comparison"
-          placeholder={atCap ? `Max ${props.max} reached` : '⌕ Add ship…'}
+          label={`Add ${vocab.one} to comparison`}
+          placeholder={atCap ? `Max ${props.max} reached` : `⌕ Add ${vocab.one}…`}
           disabled={atCap}
-          items={shipItems}
+          items={entryItems}
           onPick={props.onAdd}
         />
 

@@ -14,6 +14,7 @@ function setup(overrides = {}) {
   const onRemove = vi.fn();
   render(
     <ComparisonTray
+      category="vehicle"
       anchorSlug="avenger"
       anchorName="Avenger Stalker"
       selected={[{ slug: 'gladius', name: 'Gladius', color: '#5BC8C0', onRadar: true }]}
@@ -38,15 +39,15 @@ describe('ComparisonTray', () => {
 
   it('suggests catalog matches excluding anchor + already-selected, and adds on click', () => {
     const { onAdd } = setup();
-    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'arr' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /add vehicle/i }), { target: { value: 'arr' } });
     fireEvent.click(screen.getByRole('option', { name: 'Arrow' }));
     expect(onAdd).toHaveBeenCalledWith('arrow');
     // 'avenger' (anchor) and 'gladius' (selected) must not be offered.
-    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'a' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /add vehicle/i }), { target: { value: 'a' } });
     expect(screen.queryByRole('option', { name: 'Avenger Stalker' })).toBeNull();
     expect(screen.queryByRole('option', { name: 'Gladius' })).toBeNull();
     // Fuzzy: a one-letter typo still finds the ship.
-    fireEvent.change(screen.getByRole('combobox', { name: /add ship/i }), { target: { value: 'arow' } });
+    fireEvent.change(screen.getByRole('combobox', { name: /add vehicle/i }), { target: { value: 'arow' } });
     expect(screen.getByRole('option', { name: 'Arrow' })).toBeInTheDocument();
   });
 
@@ -54,6 +55,7 @@ describe('ComparisonTray', () => {
     const onAddCohort = vi.fn();
     render(
       <ComparisonTray
+        category="vehicle"
         anchorSlug="avenger"
         anchorName="Avenger Stalker"
         selected={[]}
@@ -70,5 +72,33 @@ describe('ComparisonTray', () => {
     fireEvent.change(screen.getByRole('combobox', { name: /add cohort/i }), { target: { value: 'intrcep' } });
     fireEvent.click(screen.getByRole('option', { name: /Interceptors/ }));
     expect(onAddCohort).toHaveBeenCalledWith('type:interceptor');
+  });
+});
+
+describe('ComparisonTray vocabulary', () => {
+  // The whole comparison surface was written for vehicles and reused
+  // verbatim, so a reader browsing weapons was asked to "Add ship…".
+  it.each([
+    ['vehicle', /add vehicle to comparison/i],
+    ['weapon', /add weapon to comparison/i],
+    ['item', /add item to comparison/i],
+    ['location', /add location to comparison/i],
+  ] as const)('names its own category (%s)', (category, name) => {
+    render(
+      <ComparisonTray
+        category={category}
+        anchorSlug="a"
+        anchorName="Anchor"
+        selected={[]}
+        catalog={[]}
+        max={10}
+        onAdd={vi.fn()}
+        onRemove={vi.fn()}
+        onToggleRadar={vi.fn()}
+      />,
+    );
+    const box = screen.getByRole('combobox', { name });
+    expect(box).toBeInTheDocument();
+    expect(box.getAttribute('placeholder')).not.toMatch(/ship/i);
   });
 });

@@ -41,6 +41,8 @@ import { ssrIdentityHeaders } from './ssr-identity';
 import {
   CATEGORIES,
   emptySummary,
+  catalogueDisplayName,
+  isCatalogueItemType,
   type CategoryBundle,
   type EntityDetailOutcome,
   type LocationCatalog,
@@ -158,7 +160,7 @@ function toReferenceEntry(
   return {
     category,
     class_name: e.className,
-    display_name: e.displayName,
+    display_name: catalogueDisplayName(e.className, e.displayName),
     slug: e.slug ?? null,
     summary: (e.summary as Summary | undefined) ?? emptySummary(category),
   };
@@ -189,6 +191,17 @@ export async function getCategoryBundle(
   const list: ReferenceEntry[] = [];
   for (const row of rows) {
     if (!row.className || !row.displayName) continue;
+    // Ship furniture and wiring are not equipment. Filtered HERE rather than
+    // per surface so the listing, the landing tiles' counts and every
+    // `<EntityLink>` lookup agree about what the catalogue contains.
+    if (
+      category === 'item' &&
+      !isCatalogueItemType(
+        (row.summary as { item_type?: string } | undefined)?.item_type,
+      )
+    ) {
+      continue;
+    }
     const classKey = row.className.toLowerCase();
     const entry = toReferenceEntry(category, row);
     map.set(classKey, entry.display_name);

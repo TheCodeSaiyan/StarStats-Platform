@@ -11,7 +11,8 @@ import { StatBar } from './StatBar';
 import { HandlingRadar } from './HandlingRadar';
 import { HeadlineCallouts } from './HeadlineCallouts';
 import { DetailGroups } from './DetailGroups';
-import { ComparisonTray, type SelectedShip } from './ComparisonTray';
+import { ComparisonTray, type SelectedEntry } from './ComparisonTray';
+import { vocabularyFor } from '@/lib/kb-vocabulary';
 import { ComparisonRadar } from './ComparisonRadar';
 import { ComparisonMatrix } from './ComparisonMatrix';
 import { ComparisonLeaderboard } from './ComparisonLeaderboard';
@@ -92,6 +93,9 @@ export function KbDetailView(props: KbDetailViewProps) {
   const [showComparison, setShowComparison] = useState(true);
   const [sort, setSort] = useState<SortSpec>(DEFAULT_SORT[props.category] ?? { key: 'speed.scm', dir: 'desc' });
   const [cohortNotice, setCohortNotice] = useState<string | null>(null);
+  // Every user-facing noun and the radar's caption come from here — the whole
+  // comparison surface was written for vehicles and reused verbatim.
+  const vocab = vocabularyFor(props.category);
 
   const comparing = selectedSlugs.length > 0;
 
@@ -105,11 +109,11 @@ export function KbDetailView(props: KbDetailViewProps) {
     return () => { cancelled = true; };
   }, [props.category, props.anchorSlug, selectedSlugs]);
 
-  const addShip = (slug: string) => {
+  const addEntry = (slug: string) => {
     setSelectedSlugs((prev) => (prev.includes(slug) || prev.length >= 9 ? prev : [...prev, slug]));
     setOnRadar((prev) => ({ ...prev, [slug]: Object.keys(prev).filter((k) => prev[k]).length < 5 }));
   };
-  const removeShip = (slug: string) => {
+  const removeEntry = (slug: string) => {
     setSelectedSlugs((prev) => prev.filter((s) => s !== slug));
     setOnRadar((prev) => {
       const next = { ...prev };
@@ -127,16 +131,16 @@ export function KbDetailView(props: KbDetailViewProps) {
       .filter((s) => s !== props.anchorSlug && !selectedSlugs.includes(s));
     const toAdd = candidates.slice(0, Math.max(0, room));
     // Surface the cap to the user instead of silently dropping excess members;
-    // addShip also enforces the 9-others hard cap as a secondary guard.
+    // addEntry also enforces the 9-others hard cap as a secondary guard.
     setCohortNotice(
       toAdd.length < candidates.length
-        ? `Added ${toAdd.length} of ${candidates.length} — comparison holds 10 ships.`
+        ? `Added ${toAdd.length} of ${candidates.length} — comparison holds 10 ${vocab.many}.`
         : null,
     );
-    toAdd.forEach(addShip);
+    toAdd.forEach(addEntry);
   };
 
-  const selectedChips: SelectedShip[] = selectedSlugs.map((slug, i) => ({
+  const selectedChips: SelectedEntry[] = selectedSlugs.map((slug, i) => ({
     slug,
     name: props.catalog.find((c) => c.slug === slug)?.display_name ?? slug,
     color: SERIES_COLORS[i % SERIES_COLORS.length],
@@ -149,13 +153,14 @@ export function KbDetailView(props: KbDetailViewProps) {
       {prefs.view === 'visual' ? (
         <>
           <ComparisonTray
+            category={props.category}
             anchorSlug={props.anchorSlug}
             anchorName={props.displayName}
             selected={selectedChips}
             catalog={props.catalog}
             max={10}
-            onAdd={addShip}
-            onRemove={removeShip}
+            onAdd={addEntry}
+            onRemove={removeEntry}
             onToggleRadar={toggleRadar}
             cohorts={props.cohorts}
             onAddCohort={handleAddCohort}
@@ -206,15 +211,16 @@ export function KbDetailView(props: KbDetailViewProps) {
                 selectedChips.forEach((c) => colorBySlug.set(c.slug, c.color));
                 const matrix = buildComparisonMatrix(props.category, anchor, others, prefs.units, sort);
                 const leaderboard = buildLeaderboard(props.category, vectors, prefs.units);
-                const radarShips = [anchor, ...others.filter((o) => onRadar[o.slug] ?? true)].slice(0, 6);
-                const axisKeys = (RADAR_KEYS[props.category] ?? []).filter((k) => radarShips.some((s) => typeof s.metrics[k] === 'number'));
-                const radarModel = buildComparisonRadar(radarShips, axisKeys);
+                const radarEntries = [anchor, ...others.filter((o) => onRadar[o.slug] ?? true)].slice(0, 6);
+                const axisKeys = (RADAR_KEYS[props.category] ?? []).filter((k) => radarEntries.some((s) => typeof s.metrics[k] === 'number'));
+                const radarModel = buildComparisonRadar(radarEntries, axisKeys);
                 return (
                   <>
                     <ComparisonLeaderboard cards={leaderboard} />
                     {radarModel.axes.length >= 3 && (
-                      <Plane tilt="flat" cap="Handling" style={{ marginTop: 16 }}>
+                      <Plane tilt="flat" cap={vocab.radarCap} style={{ marginTop: 16 }}>
                         <ComparisonRadar
+                          label={`${vocab.radarCap} comparison across ${radarModel.series.length} ${vocab.many}`}
                           axisLabels={radarModel.axes.map((k) => RADAR_LABELS[k] ?? k)}
                           series={radarModel.series.map((s, i) => ({
                             ...s,
@@ -252,7 +258,7 @@ export function KbDetailView(props: KbDetailViewProps) {
                         {c.label}
                       </option>
                     ))}
-                    <option value="__all__">All {props.category}s</option>
+                    <option value="__all__">{vocab.manyTitle}</option>
                   </select>
                 </label>
               )}
@@ -277,7 +283,7 @@ export function KbDetailView(props: KbDetailViewProps) {
                 </Plane>
               )}
               {visual.radarAxes.length >= 3 && (
-                <Plane tilt="flat" cap="Handling" style={{ marginTop: 16 }}>
+                <Plane tilt="flat" cap={vocab.radarCap} style={{ marginTop: 16 }}>
                   <div className="hp-center">
                     <HandlingRadar axes={visual.radarAxes} />
                   </div>

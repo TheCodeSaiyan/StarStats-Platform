@@ -445,6 +445,85 @@ export function isNonLinkableItemClass(classKey: string): boolean {
 }
 
 /**
+ * Item types that are ship FIXTURES or engine plumbing rather than gear
+ * anyone browses, compares or owns.
+ *
+ * The item catalogue carries 12k rows straight from the wiki, and roughly
+ * 1,600 of them are the furniture and wiring inside ships. They are not
+ * merely uninteresting — they arrive with duplicate placeholder names
+ * scraped from the model, so the catalogue listed 837 entries called
+ * "Seat", 249 called "TRGT. STATUS" (a seat's screen label, not a name),
+ * 138 "Bed", 81 "Access" and 56 "Weapon Rack". Browsing items meant paging
+ * through those.
+ *
+ * Deliberately a list of TYPES, not a name blocklist: the junk names are a
+ * symptom. Ship COMPONENTS a player can buy or compare (fuel tanks, shields,
+ * radars, quantum drives, turrets, ore pods) are equipment and stay in, even
+ * where several share a generic name.
+ */
+const NON_CATALOGUE_ITEM_TYPES: ReadonlySet<string> = new Set(
+  [
+    // Seating and its attachments: "TRGT. STATUS", "Access", "Dashboard".
+    'Seat',
+    'SeatAccess',
+    'SeatDashboard',
+    // Beds, benches, weapon racks, medical beds.
+    'Usable',
+    // Doors, lifts and their controllers.
+    'Door',
+    'DoorController',
+    'DockingAnimator',
+    'Elevator',
+    // Interior screens and switches.
+    'Display',
+    'ControlPanel',
+    'Relay',
+    // Ship-internal subsystem controllers with no standalone identity.
+    'LightController',
+    'CommsController',
+    'CoolerController',
+    'EnergyController',
+    'TargetSelector',
+    'AIModule',
+    'SalvageFillerStation',
+    // Structural hull parts (`rsi_scorpius_spine`, `..._gills`).
+    'AttachedPart',
+  ].map((t) => t.toLowerCase()),
+);
+
+/**
+ * True when an item row is real equipment and belongs in the browsable
+ * catalogue. Non-item categories are always catalogued. Pure.
+ */
+export function isCatalogueItemType(itemType: string | null | undefined): boolean {
+  if (!itemType) return true;
+  return !NON_CATALOGUE_ITEM_TYPES.has(itemType.toLowerCase());
+}
+
+/**
+ * The name to show for a catalogue row.
+ *
+ * The wiki leaves a minority of rows un-named, shipping the engine
+ * identifier as the "display name" (`armr_rsi_lynx`,
+ * `paint_perseus_beige_blue_brown`). Rendering that raw is the same fault
+ * `toFriendlyName` exists to fix everywhere else, so it is applied here
+ * too rather than at each surface. A name the wiki DID write is never
+ * touched — the heuristic must not rewrite "IFR-A77 Turret".
+ */
+export function catalogueDisplayName(
+  className: string,
+  displayName: string | null | undefined,
+): string {
+  const name = (displayName ?? '').trim();
+  if (name.length === 0) return toFriendlyName(className);
+  // An engine token, not a name: underscores, or the class identifier
+  // echoed back verbatim.
+  const isEngineToken =
+    name.includes('_') || name.toLowerCase() === className.toLowerCase();
+  return isEngineToken ? toFriendlyName(className) : name;
+}
+
+/**
  * Item *ports* that hold avatar customisation or structural sockets
  * rather than meaningful equipment (`Eyes_ItemPort`, `Hair_ItemPort`,
  * `Body_ItemPort`). Exposed so event-rendering surfaces can suppress

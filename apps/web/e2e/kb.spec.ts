@@ -30,10 +30,15 @@ import { kbDetail, resetScenario, setScenario } from './helpers/api-mock';
 // Real committed counts — mirror packages/reference-data/snapshots/manifest.json
 // (version 2026-07-21). If the snapshots are regenerated with a
 // different vintage, update these to the new manifest counts.
+//
+// `item` is the manifest count MINUS the ship fixtures the catalogue drops
+// (`isCatalogueItemType`): 12,282 rows in the snapshot, 1,619 of them seats,
+// beds, doors and screens that arrived with duplicate placeholder names. So
+// this figure moves when either the snapshot OR that filter changes.
 const REAL_COUNTS = {
   vehicle: '295 entries',
   weapon: '409 entries',
-  item: '12,282 entries', // toLocaleString inserts the thousands separator
+  item: '10,663 entries', // toLocaleString inserts the thousands separator
   location: '1,954 entries',
 } as const;
 

@@ -25,18 +25,18 @@ const DETAIL = kbDetail({
 });
 
 async function openPicker(page: import('@playwright/test').Page, query: string) {
-  const box = page.getByRole('combobox', { name: 'Add ship to comparison' });
+  const box = page.getByRole('combobox', { name: 'Add vehicle to comparison' });
   await expect(box).toBeVisible();
   // Hover first so the card's :hover transform (the stacking-context
   // trap) is in effect while the list is open.
   await box.hover();
   await box.fill(query);
-  const list = page.getByRole('listbox', { name: 'Add ship to comparison' });
+  const list = page.getByRole('listbox', { name: 'Add vehicle to comparison' });
   await expect(list).toBeVisible();
   return list;
 }
 
-test('comparison ship picker is neither clipped nor painted over', async ({ page, request }) => {
+test('comparison picker is neither clipped nor painted over', async ({ page, request }) => {
   await setScenario(request, {
     __id: 'comparison_picker_unclipped',
     routes: { 'GET /v1/reference/vehicle/slug/aegis-avenger-stalker': DETAIL },
@@ -80,7 +80,7 @@ test('comparison ship picker is neither clipped nor painted over', async ({ page
   expect(report.onTop).toBe(true);
 });
 
-test('comparison ship picker is fuzzy and adds on Enter', async ({ page, request }) => {
+test('comparison picker is fuzzy and adds on Enter', async ({ page, request }) => {
   await setScenario(request, {
     __id: 'comparison_picker_fuzzy',
     routes: { 'GET /v1/reference/vehicle/slug/aegis-avenger-stalker': DETAIL },

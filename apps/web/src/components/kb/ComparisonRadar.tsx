@@ -8,7 +8,7 @@ export interface RadarSeriesView {
 }
 
 /**
- * Multi-series radar: one polygon per ship over shared axes, with a
+ * Multi-series radar: one polygon per entry over shared axes, with a
  * legend. Each `values[i]` is a 0..1 fraction already scaled to the
  * compared set (see `buildComparisonRadar`). Renders nothing for <3 axes
  * (a radar needs a polygon).
@@ -16,10 +16,15 @@ export interface RadarSeriesView {
 export function ComparisonRadar({
   axisLabels,
   series,
+  label,
   size = 280,
 }: {
   axisLabels: string[];
   series: RadarSeriesView[];
+  /** Accessible name. The chart is `role="img"`, so this is the ONLY thing a
+   *  screen reader gets from it — it used to be the hardcoded "Multi-ship
+   *  comparison radar" on a page that might be comparing weapons. */
+  label?: string;
   size?: number;
 }) {
   if (axisLabels.length < 3) return null;
@@ -35,7 +40,7 @@ export function ComparisonRadar({
   ));
   return (
     <div style={{ display: 'flex', gap: 20, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
-      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label="Multi-ship comparison radar">
+      <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} role="img" aria-label={label ?? 'Comparison radar'}>
         {rings}
         {axisLabels.map((lab, i) => {
           const ang = -Math.PI / 2 + (i * 2 * Math.PI) / n;
