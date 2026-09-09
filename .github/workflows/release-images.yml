@@ -431,7 +431,18 @@ jobs:
           ${{ env.REGISTRY }}/starstats/api:${{ steps.meta.outputs.tag }}
           ${{ env.REGISTRY }}/starstats/api:${{ github.sha }}
         cache-from: type=gha,scope=starstats-api
-        cache-to: type=gha,mode=max,scope=starstats-api
+        # ignore-error: a GHA cache EXPORT failure must not fail a build
+        # whose image already pushed. On 2026-09-08 the web build pushed
+        # :latest and every other tag successfully, then died on
+        # "exporting to GitHub Actions Cache ... ERROR: not_found" — buildx
+        # exits non-zero on a cache-write error, so the job went red after
+        # the artifact had shipped. That also skipped `config-images`,
+        # which is gated on `needs.images.result == 'success'`; nothing
+        # under infra/ had changed that day, but on a run that did change
+        # it the sidecars would silently not rebuild behind a red X that
+        # looks like total failure. The cache is an optimisation; losing a
+        # write costs a slower next build and nothing else.
+        cache-to: type=gha,mode=max,scope=starstats-api,ignore-error=true
 
     # Retag path — the `:<full-sha>` API manifest already exists, so point
     # this event's tags at it by digest (no layer transfer, no rebuild).
@@ -476,7 +487,18 @@ jobs:
         build-args: |
           NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
         cache-from: type=gha,scope=starstats-web
-        cache-to: type=gha,mode=max,scope=starstats-web
+        # ignore-error: a GHA cache EXPORT failure must not fail a build
+        # whose image already pushed. On 2026-09-08 the web build pushed
+        # :latest and every other tag successfully, then died on
+        # "exporting to GitHub Actions Cache ... ERROR: not_found" — buildx
+        # exits non-zero on a cache-write error, so the job went red after
+        # the artifact had shipped. That also skipped `config-images`,
+        # which is gated on `needs.images.result == 'success'`; nothing
+        # under infra/ had changed that day, but on a run that did change
+        # it the sidecars would silently not rebuild behind a red X that
+        # looks like total failure. The cache is an optimisation; losing a
+        # write costs a slower next build and nothing else.
+        cache-to: type=gha,mode=max,scope=starstats-web,ignore-error=true
 
     - name: Retag existing Web manifest
       if: steps.preflight.outputs.web == 'retag'
@@ -588,7 +610,18 @@ jobs:
           ${{ env.REGISTRY }}/starstats/${{ matrix.image }}:${{ steps.meta.outputs.tag }}
           ${{ env.REGISTRY }}/starstats/${{ matrix.image }}:${{ github.sha }}
         cache-from: type=gha,scope=starstats-${{ matrix.image }}
-        cache-to: type=gha,mode=max,scope=starstats-${{ matrix.image }}
+        # ignore-error: a GHA cache EXPORT failure must not fail a build
+        # whose image already pushed. On 2026-09-08 the web build pushed
+        # :latest and every other tag successfully, then died on
+        # "exporting to GitHub Actions Cache ... ERROR: not_found" — buildx
+        # exits non-zero on a cache-write error, so the job went red after
+        # the artifact had shipped. That also skipped `config-images`,
+        # which is gated on `needs.images.result == 'success'`; nothing
+        # under infra/ had changed that day, but on a run that did change
+        # it the sidecars would silently not rebuild behind a red X that
+        # looks like total failure. The cache is an optimisation; losing a
+        # write costs a slower next build and nothing else.
+        cache-to: type=gha,mode=max,scope=starstats-${{ matrix.image }},ignore-error=true
     # Retag path — same digest-copy approach as the `images` job; keeps
     # provenance/SBOM attestations intact.
     - name: Retag existing ${{ matrix.image }} manifest

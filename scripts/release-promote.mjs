@@ -843,6 +843,45 @@ export const CARGO_LOCK_REFRESH_ATTEMPTS = [
   ["update", "--workspace"],
 ];
 
+/**
+ * The same ladder for the tray track, which bumps only
+ * `crates/starstats-client`.
+ *
+ * The tray branch used to make ONE `--offline` attempt marked
+ * `critical: false`, with no fallback and no warning — so a cold registry
+ * cache left Cargo.lock recording the previous version and said nothing.
+ * That is exactly the v1.8.68 platform drift, and it happened again on the
+ * tray side at tray-v0.1.16 (Cargo.toml said 0.1.16, Cargo.lock said 0.1.15,
+ * and any `--locked` build would have failed on it). Same shape of ladder,
+ * same reason: end on a rung that may reach the network, because every
+ * offline rung shares the failure it is meant to rescue.
+ */
+export const TRAY_CARGO_LOCK_REFRESH_ATTEMPTS = [
+  ["update", "-p", "starstats-client", "--offline"],
+  ["update", "--workspace", "--offline"],
+  ["update", "-p", "starstats-client"],
+];
+
+/**
+ * Walk a refresh ladder, returning whether any rung succeeded.
+ *
+ * Each rung is non-fatal; we move on. Never fail silently: a stale lock is
+ * not release-blocking (nothing builds with --locked, so cargo re-resolves
+ * at build time and the drift self-heals) but it lands a wrong Cargo.lock in
+ * git and dirties the tree on the next local build, so it must be visible.
+ */
+function refreshCargoLock(runner, attempts, newVersion) {
+  for (const args of attempts) {
+    if (runner.tryRun("cargo", args)) return true;
+  }
+  console.log(
+    `::warning::Cargo.lock refresh failed for ${newVersion} — every cargo update attempt failed. ` +
+      `The manifest is bumped but Cargo.lock still records the previous version. ` +
+      `Not release-blocking (no build uses --locked), but commit a re-synced lock.`,
+  );
+  return false;
+}
+
 export function bumpVersionFiles(runner, track, newVersion) {
   if (track === "platform") {
     const cargoPath = path.join(repoRoot(), "Cargo.toml");
@@ -852,27 +891,8 @@ export function bumpVersionFiles(runner, track, newVersion) {
     //
     // This used to be a try/catch around a `critical: false` call, which is
     // dead code: run() only rethrows when `critical` is true, so the catch
-    // could never fire and the fallback never ran. Walk the ladder
-    // explicitly instead, treating each rung as non-fatal and moving on.
-    let refreshed = false;
-    for (const args of CARGO_LOCK_REFRESH_ATTEMPTS) {
-      if (runner.tryRun("cargo", args)) {
-        refreshed = true;
-        break;
-      }
-    }
-
-    // Never fail silently. A stale lock is not release-blocking (nothing
-    // builds with --locked, so cargo re-resolves at build time and the drift
-    // self-heals), but it lands a wrong Cargo.lock in git and dirties the
-    // tree on the next local build — so it must be visible, not swallowed.
-    if (!refreshed) {
-      console.log(
-        `::warning::Cargo.lock refresh failed for ${newVersion} — every cargo update attempt failed. ` +
-          `Cargo.toml is bumped but Cargo.lock still records the previous version. ` +
-          `Not release-blocking (no build uses --locked), but commit a re-synced lock.`,
-      );
-    }
+    // could never fire and the fallback never ran.
+    refreshCargoLock(runner, CARGO_LOCK_REFRESH_ATTEMPTS, newVersion);
     return;
   }
   if (track === "tray") {
@@ -890,11 +910,7 @@ export function bumpVersionFiles(runner, track, newVersion) {
     );
     runner.writeFile(clientCargoPath, bumpClientCargo(readClientCargo(), newVersion));
     runner.writeFile(tauriPath, bumpTauriConf(readTauriConf(), newVersion));
-    runner.run(
-      "cargo",
-      ["update", "-p", "starstats-client", "--offline"],
-      { critical: false },
-    );
+    refreshCargoLock(runner, TRAY_CARGO_LOCK_REFRESH_ATTEMPTS, newVersion);
     return;
   }
   throw new Error(`unknown track: ${JSON.stringify(track)}`);

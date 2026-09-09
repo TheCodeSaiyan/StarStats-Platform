@@ -18,6 +18,7 @@ import {
   previousTrackTagBelow,
   bumpVersionFiles,
   CARGO_LOCK_REFRESH_ATTEMPTS,
+  TRAY_CARGO_LOCK_REFRESH_ATTEMPTS,
 } from "./release-promote.mjs";
 
 // ---------------------------------------------------------------------------
@@ -897,6 +898,48 @@ test("cargo lock refresh: all attempts fail → stops, does not loop forever", (
 
 test("cargo lock refresh ladder: at least one attempt is not --offline", () => {
   const hasOnline = CARGO_LOCK_REFRESH_ATTEMPTS.some(
+    (a) => !a.includes("--offline"),
+  );
+  assert.ok(hasOnline, "an all-offline ladder cannot survive a cold registry cache");
+});
+
+// The TRAY track had the same two defects for longer, and they bit at
+// tray-v0.1.16: one `--offline` attempt, `critical: false`, no fallback and
+// no warning, so Cargo.toml went to 0.1.16 while Cargo.lock stayed at 0.1.15
+// and nothing said so. Any `--locked` build would have failed on the drift.
+// These mirror the platform cover above.
+
+test("tray cargo lock refresh: first attempt succeeds → no fallback work", () => {
+  const r = fakeRunner(0);
+  bumpVersionFiles(r, "tray", "9.9.9");
+  assert.equal(r.calls.length, 1);
+  assert.equal(r.calls[0], "cargo update -p starstats-client --offline");
+});
+
+test("tray cargo lock refresh: first attempt fails → fallback IS reached", () => {
+  const r = fakeRunner(1);
+  bumpVersionFiles(r, "tray", "9.9.9");
+  assert.equal(r.calls.length, 2, "second attempt must run when the first fails");
+});
+
+test("tray cargo lock refresh: offline attempts exhausted → falls back to ONLINE", () => {
+  const r = fakeRunner(2);
+  bumpVersionFiles(r, "tray", "9.9.9");
+  assert.equal(r.calls.length, 3);
+  assert.ok(
+    !r.calls[2].includes("--offline"),
+    "last resort must not be offline-only — a cold cache fails every offline rung",
+  );
+});
+
+test("tray cargo lock refresh: all attempts fail → stops, does not loop forever", () => {
+  const r = fakeRunner(99);
+  bumpVersionFiles(r, "tray", "9.9.9");
+  assert.equal(r.calls.length, TRAY_CARGO_LOCK_REFRESH_ATTEMPTS.length);
+});
+
+test("tray cargo lock refresh ladder: at least one attempt is not --offline", () => {
+  const hasOnline = TRAY_CARGO_LOCK_REFRESH_ATTEMPTS.some(
     (a) => !a.includes("--offline"),
   );
   assert.ok(hasOnline, "an all-offline ladder cannot survive a cold registry cache");
