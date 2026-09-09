@@ -31,11 +31,19 @@ import {
 const RELEASES_ENDPOINT = process.env.STARSTATS_RELEASES_API || RELEASES_API;
 
 export async function fetchTrayReleases(): Promise<TrayReleaseSet> {
-  // Env-gated cache: prod keeps a 30-min data cache; CI/e2e disables it so
+  // Env-gated cache: prod keeps a 5-min data cache; CI/e2e disables it so
   // mock fixtures don't leak across scenarios (see reference.ts precedent).
+  //
+  // Was 1800 (30 min). That is the window right after a release when the
+  // page is most read and most wrong: tray 0.1.15 shipped and /downloads
+  // went on offering 0.1.13 for a measured 30 minutes, flipping at exactly
+  // 1800s. Five minutes is 12 requests/hour against GitHub's 60/hour
+  // unauthenticated limit — still an order of magnitude of headroom, and
+  // React's per-render dedup means one render never costs more than one
+  // upstream call regardless.
   const cacheOpts = process.env.STARSTATS_DISABLE_FETCH_CACHE
     ? { cache: 'no-store' as const }
-    : { next: { revalidate: 1800 } };
+    : { next: { revalidate: 300 } };
 
   const res = await fetch(`${RELEASES_ENDPOINT}?per_page=30`, {
     headers: {

@@ -43,10 +43,21 @@ vi.mock('@/lib/session', () => ({
   getSession: vi.fn(),
 }));
 
-// Mock api functions
+// Mock api functions.
+//
+// `apiBase` is load-bearing even though nothing here asserts on it:
+// `lib/contracts.ts` builds its resolve URL from it, and a factory mock
+// that omits an export makes the access throw. That throw lands in the
+// catch at contracts.ts:143, so the page still renders and these tests
+// still pass — but the name-resolution step is skipped entirely and the
+// suite silently covers the degraded path instead of the real one.
+// vitest 3 hid this (missing exports read as undefined, and calling
+// undefined threw the same way); vitest 4 names it. Either way it was
+// never exercising resolution.
 vi.mock('@/lib/api', () => ({
   getContracts: vi.fn(),
   statusOf: vi.fn(() => undefined),
+  apiBase: vi.fn(() => 'http://api.test'),
 }));
 
 import { redirect } from 'next/navigation';
@@ -114,6 +125,20 @@ function makeResponse(runs: ContractRunRow[]): ContractsResponse {
 beforeEach(() => {
   vi.clearAllMocks();
   mockGetSession.mockResolvedValue({ token: 'test-token', claimedHandle: 'pilot' });
+  // Stub the resolve call rather than leaving it to hit the network.
+  // With `apiBase` mocked above, contracts.ts now actually reaches its
+  // fetch; unstubbed that would be a real request from a unit test.
+  // An empty `resolved` list keeps the rendered output identical to what
+  // these assertions were written against, while the code path under it
+  // is genuinely executed instead of aborting on a missing export.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ resolved: [] }),
+    })),
+  );
 });
 
 describe('ContractsPage', () => {
