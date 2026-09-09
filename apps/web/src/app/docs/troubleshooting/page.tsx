@@ -26,14 +26,18 @@ export const metadata: Metadata = {
  *    synthesizes PlayerDeath from VehicleDestruction + ResolveSpawn at
  *    0.85 confidence precisely because the branch is gone.
  *
- * 3. Section 07 names 0.1.14 as the first build that sets
- *    WEBKIT_DISABLE_DMABUF_RENDERER itself. That is the one
- *    forward-looking claim on the page: the code is in main.rs
- *    (`dmabuf_workaround_value`) but the TRAY ships on its own track, so
- *    this page can deploy before the binary does. 0.1.14 is right
- *    because live was 0.1.13 and 0.1.14 was the open alpha when the fix
- *    landed — if the fix slips to a later version, move the number.
- *    The workaround above it is true either way.
+ * 3. Section 07 documents a LIVE, UNFIXED bug — do not soften it into a
+ *    workaround. An earlier version of this section blamed WebKitGTK's
+ *    DMABUF renderer and told readers to set
+ *    WEBKIT_DISABLE_DMABUF_RENDERER=1. That was wrong, and 0.1.14
+ *    shipped a main.rs change on the strength of it that fixes nothing.
+ *    The real failure is EGL display creation inside the bundled Ubuntu
+ *    WebKit against newer Mesa, reproduced 2026-09-08 in a clean Arch
+ *    container (Mesa 26.2.2) — so it is not GPU-, driver- or
+ *    session-specific. Six env vars were measured against that repro and
+ *    none help; removing the bundled WebKit only trades the blank window
+ *    for a symbol-lookup crash in libavif/gstreamer. Do NOT re-add a
+ *    suggested workaround here unless it has been watched to work.
  *
  * 4. Log paths in "Sending a log" come from
  *    `directories::ProjectDirs::from("app", "StarStats", "tray")`
@@ -187,35 +191,47 @@ export default function TroubleshootingPage() {
 
       <section className="ss-about-section" id="linux-white-screen">
         <div className="ss-about-section-eyebrow">07 — Linux</div>
-        <h2>The window opens white and stays white.</h2>
+        <h2>The AppImage opens a white window and stays white.</h2>
         <p>
           The title bar draws, the tray icon works, and the inside of the
-          window is a blank white rectangle. Nothing has crashed — the page
-          is there, it just never gets painted.
-        </p>
-        <p>
-          This is the webview, not StarStats. WebKitGTK renders through a
-          buffer-sharing path that some graphics drivers can&apos;t accept,
-          and when that handshake fails you get a white page and no error.
-          Arch-family distros and NVIDIA&apos;s proprietary driver hit it
-          most. The AppImage is more exposed than the <code>.deb</code>,
-          because it carries its own copy of WebKitGTK and meets whatever
-          driver your machine happens to have.
-        </p>
-        <p>
-          Run it once with that path switched off:
+          window is a blank white rectangle. Start it from a terminal and
+          the reason is there:
         </p>
         <p>
           <code>
-            WEBKIT_DISABLE_DMABUF_RENDERER=1 ./StarStats_*_amd64.AppImage
+            Could not create default EGL display: EGL_BAD_PARAMETER.
+            Aborting...
           </code>
         </p>
         <p>
-          If it renders, that was it. 0.1.14 is the first build that sets
-          this for itself on Linux, so you only need the variable on 0.1.13
-          and earlier — and setting it to <code>0</code> puts the faster
-          path back if you ever want to test whether your driver has caught
-          up.
+          The AppImage carries its own copy of WebKitGTK, built on Ubuntu,
+          and runs it against whatever graphics drivers your machine has.
+          On distros shipping a much newer Mesa — Arch and its family, and
+          rolling releases generally — that WebKit cannot create an EGL
+          display, so the process that paints the page exits before drawing
+          anything. The rest of the app carries on, which is why the window
+          and the tray icon survive an empty page.
+        </p>
+        <p>
+          <strong>
+            This is a known bug, it is ours, and there is no workaround
+            yet.
+          </strong>{' '}
+          The environment variables that turn up in searches for
+          similar-looking problems do not fix it:{' '}
+          <code>WEBKIT_DISABLE_DMABUF_RENDERER</code> and{' '}
+          <code>WEBKIT_DISABLE_COMPOSITING_MODE</code> were both measured
+          against a reproduction of this exact failure and changed nothing,
+          and neither did forcing software rendering or an X11 backend. The
+          bundled WebKit is the cause, so the fix belongs in how the
+          AppImage is built rather than in anything you can set.
+        </p>
+        <p style={{ color: 'var(--fg-muted)' }}>
+          The <code>.deb</code> is unaffected — it uses the WebKitGTK your
+          system already has, which by definition matches your drivers. If
+          you are on a distro that cannot take a <code>.deb</code>, there is
+          nothing that works today — <Link href={'/support' as Route}>say
+          so on support</Link> and you will be told when there is.
         </p>
       </section>
 
