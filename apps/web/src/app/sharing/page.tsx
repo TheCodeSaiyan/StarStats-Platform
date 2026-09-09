@@ -30,6 +30,7 @@ import {
   ApiCallError,
   addShare,
   getProfileViews,
+  isSpicedbOutage,
   getVisibility,
   listOrgs,
   listShares,
@@ -267,18 +268,18 @@ export default async function SharingPage(props: {
     }
   }
 
-  // SpiceDB 503 on any call -> show the temporarily-unavailable
+  // A SpiceDB outage on any call -> show the temporarily-unavailable
   // banner. Don't try to render partial state in that case — the
   // page leans on ReBAC for almost every section. (profile-views
-  // doesn't depend on SpiceDB, so it's not in the 503 set, but we
+  // doesn't depend on SpiceDB, so it's not in the outage set, but we
   // include it anyway for symmetry — its 503 would still be a
   // server-side outage worth surfacing.)
+  //
+  // `isSpicedbOutage` covers 500 `spicedb_error` as well as 503: a
+  // failing RPC reports the former, and matching only on 503 dropped
+  // the whole page into the generic error fallback. (2026-09-09.)
   for (const r of [visRes, sharesRes, inboundRes, orgsRes, viewsRes]) {
-    if (
-      r.status === 'rejected' &&
-      r.reason instanceof ApiCallError &&
-      r.reason.status === 503
-    ) {
+    if (r.status === 'rejected' && isSpicedbOutage(r.reason)) {
       degraded = 'spicedb_unavailable';
       break;
     }
@@ -346,8 +347,7 @@ export default async function SharingPage(props: {
         redirect('/auth/login?next=/sharing');
       if (e instanceof ApiCallError && e.status === 403)
         redirect('/sharing?error=rsi_handle_not_verified');
-      if (e instanceof ApiCallError && e.status === 503)
-        redirect('/sharing?error=spicedb_unavailable');
+      if (isSpicedbOutage(e)) redirect('/sharing?error=spicedb_unavailable');
       logger.error({ err: e }, 'set visibility failed');
       redirect('/sharing?error=unexpected');
     }
@@ -391,8 +391,7 @@ export default async function SharingPage(props: {
         redirect('/auth/login?next=/sharing');
       if (e instanceof ApiCallError && e.status === 403)
         redirect('/sharing?error=rsi_handle_not_verified');
-      if (e instanceof ApiCallError && e.status === 503)
-        redirect('/sharing?error=spicedb_unavailable');
+      if (isSpicedbOutage(e)) redirect('/sharing?error=spicedb_unavailable');
       logger.error({ err: e }, 'set listing_opt_out failed');
       redirect('/sharing?error=unexpected');
     }
@@ -461,7 +460,8 @@ export default async function SharingPage(props: {
         if (e.status === 404) redirect('/sharing?error=recipient_not_found');
         if (e.status === 400)
           redirect(`/sharing?error=${encodeURIComponent(e.body.error)}`);
-        if (e.status === 503) redirect('/sharing?error=spicedb_unavailable');
+        if (isSpicedbOutage(e))
+          redirect('/sharing?error=spicedb_unavailable');
       }
       logger.error({ err: e }, 'add share failed');
       redirect('/sharing?error=unexpected');
@@ -480,7 +480,8 @@ export default async function SharingPage(props: {
     } catch (e) {
       if (e instanceof ApiCallError) {
         if (e.status === 401) redirect('/auth/login?next=/sharing');
-        if (e.status === 503) redirect('/sharing?error=spicedb_unavailable');
+        if (isSpicedbOutage(e))
+          redirect('/sharing?error=spicedb_unavailable');
       }
       logger.error({ err: e }, 'remove share failed');
       redirect('/sharing?error=unexpected');
@@ -503,7 +504,8 @@ export default async function SharingPage(props: {
         if (e.status === 404) redirect('/sharing?error=org_not_found');
         if (e.status === 400)
           redirect(`/sharing?error=${encodeURIComponent(e.body.error)}`);
-        if (e.status === 503) redirect('/sharing?error=spicedb_unavailable');
+        if (isSpicedbOutage(e))
+          redirect('/sharing?error=spicedb_unavailable');
       }
       logger.error({ err: e }, 'share with org failed');
       redirect('/sharing?error=unexpected');
@@ -522,7 +524,8 @@ export default async function SharingPage(props: {
     } catch (e) {
       if (e instanceof ApiCallError) {
         if (e.status === 401) redirect('/auth/login?next=/sharing');
-        if (e.status === 503) redirect('/sharing?error=spicedb_unavailable');
+        if (isSpicedbOutage(e))
+          redirect('/sharing?error=spicedb_unavailable');
       }
       logger.error({ err: e }, 'remove org share failed');
       redirect('/sharing?error=unexpected');

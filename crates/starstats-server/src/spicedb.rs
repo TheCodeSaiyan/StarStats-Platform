@@ -10,7 +10,9 @@
 //!   is unreachable. Callers should treat that as **degraded mode** —
 //!   log a warning and continue without SpiceDB rather than fail boot.
 //! - [`SpicedbClient::ping`] performs a real round-trip (read schema)
-//!   so `/readyz` can flag a misconfigured deployment.
+//!   so `/readyz` can flag a misconfigured deployment. A sidecar that
+//!   answers but has **no schema** fails the ping: nothing authz-related
+//!   works in that state, so it is not readiness.
 //! - [`SpicedbClient::check_permission`] wraps `CheckPermission` and
 //!   returns a `bool`. Conditional / caveated permissions are reported
 //!   as deny — the StarStats schema does not currently use caveats.
@@ -23,7 +25,7 @@
 //! is significantly more wiring for the same surface area we need.
 
 use crate::config::SpicedbConfig;
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
 use spicedb_client::builder::{
     ReadRelationshipsRequestBuilder, RelationshipFilterBuilder, SubjectFilterBuilder,
@@ -31,10 +33,11 @@ use spicedb_client::builder::{
 };
 use spicedb_grpc::authzed::api::v1::{
     check_permission_response::Permissionship, consistency::Requirement as ConsistencyRequirement,
-    CheckPermissionRequest, Consistency, DeleteRelationshipsRequest, ObjectReference,
-    ReadRelationshipsRequest, RelationshipFilter, SubjectFilter, SubjectReference,
-    WriteRelationshipsRequest,
+    schema_service_client::SchemaServiceClient, CheckPermissionRequest, Consistency,
+    DeleteRelationshipsRequest, ObjectReference, ReadRelationshipsRequest, ReadSchemaRequest,
+    RelationshipFilter, SubjectFilter, SubjectReference, WriteRelationshipsRequest,
 };
+use tonic::{metadata::MetadataValue, Code, Status};
 
 /// Reference to a SpiceDB object (resource or subject).
 ///
@@ -65,6 +68,25 @@ impl From<ObjectRef> for ObjectReference {
     }
 }
 
+/// Turn the outcome of the `ReadSchema` readiness probe into a
+/// ready/not-ready verdict.
+///
+/// Split out from [`SpicedbClient::ping`] so the classification is
+/// testable without a live sidecar. `NotFound` — SpiceDB's "No schema
+/// has been defined" — is a failure, not a pass; see `ping`'s docs.
+fn classify_schema_probe(outcome: std::result::Result<(), Status>) -> Result<()> {
+    match outcome {
+        Ok(()) => Ok(()),
+        Err(status) if status.code() == Code::NotFound => Err(anyhow!(
+            "SpiceDB has no schema — apply infra/spicedb/schema.zed \
+             (`zed schema write`). Sharing, discover and public profiles \
+             cannot work until it is. SpiceDB said: {}",
+            status.message()
+        )),
+        Err(status) => Err(anyhow!("SpiceDB ping failed: {status}")),
+    }
+}
+
 /// Thin wrapper over `spicedb_client::SpicedbClient`.
 ///
 /// `Clone` is cheap — the inner type wraps an `Arc<Channel>`-style
@@ -72,6 +94,11 @@ impl From<ObjectRef> for ObjectReference {
 #[derive(Clone)]
 pub struct SpicedbClient {
     inner: spicedb_client::SpicedbClient,
+    /// Kept so [`SpicedbClient::ping`] can build its own
+    /// `SchemaServiceClient` over `inner`'s channel — see that method
+    /// for why it can't use the wrapper's `read_schema`. Never logged;
+    /// this type deliberately does not derive `Debug`.
+    preshared_key: String,
 }
 
 impl SpicedbClient {
@@ -82,6 +109,7 @@ impl SpicedbClient {
     /// sidecar is unreachable or the URL is malformed. Callers should
     /// log + degrade rather than panic.
     pub async fn connect(cfg: SpicedbConfig) -> Result<Self> {
+        let preshared_key = cfg.preshared_key.clone();
         let inner = spicedb_client::SpicedbClient::from_url_and_preshared_key(
             cfg.endpoint.clone(),
             cfg.preshared_key,
@@ -89,43 +117,52 @@ impl SpicedbClient {
         .await
         .with_context(|| format!("connect to SpiceDB at {}", cfg.endpoint))?;
 
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            preshared_key,
+        })
     }
 
-    /// Confirm the channel is live by issuing a read-only RPC.
+    /// Confirm the sidecar is live AND has a schema, by issuing
+    /// `ReadSchema` — the cheapest call that exercises authn (preshared
+    /// key), the gRPC plumbing, and the one piece of state without
+    /// which every authz decision fails.
     ///
-    /// Uses `ReadSchema`, which is the cheapest call that exercises
-    /// authn (preshared key) and the gRPC plumbing. A `NotFound` from
-    /// SpiceDB (no schema written yet) is still a successful ping —
-    /// the server is reachable, the schema just hasn't been applied.
+    /// ## Why this doesn't call `spicedb_client`'s `read_schema`
+    ///
+    /// That wrapper `.unwrap()`s the RPC result (`spicedb-client
+    /// 0.1.1`, `client.rs:72`) — including the `NotFound` its own doc
+    /// comment lists as an expected error. A schema-less SpiceDB
+    /// therefore panics the tokio worker rather than returning, which
+    /// drops the connection mid-response: `/readyz` served a 502 from
+    /// the edge instead of the 503 it documents, and readiness went
+    /// blind in exactly the outage it exists to catch (2026-09-09,
+    /// production). So we drive the generated `SchemaServiceClient`
+    /// over the same channel and handle the `Status` ourselves.
+    ///
+    /// ## Why a missing schema is a FAILED ping
+    ///
+    /// This previously reported `NotFound` as healthy, reasoning that
+    /// the server is reachable and the schema just hasn't been applied
+    /// yet. That is true of a fresh deployment and false of everything
+    /// after it: with no schema, sharing, discover and public profiles
+    /// all fail, and `/readyz` said `spicedb: "ok"` throughout. A
+    /// SpiceDB the application cannot use is not ready.
     pub async fn ping(&self) -> Result<()> {
-        // `read_schema` takes `&mut self` on the inner client, but the
-        // inner client is internally `Clone` over a shared channel —
-        // so a per-call clone is the standard pattern.
-        let mut inner = self.inner.clone();
-        match inner.read_schema().await {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                // Treat NotFound (schema absent) as a successful ping
-                // — the server is reachable, the schema just hasn't
-                // been applied yet. We match on the gRPC status code
-                // string rather than pulling tonic into our direct
-                // deps; the error variant is stable.
-                if let spicedb_client::result::Error::TonicStatus(status) = &e {
-                    // `code()` returns a `tonic::Code` whose Display
-                    // for NotFound is the literal "NotFound".
-                    let code_str = format!("{:?}", status.code());
-                    if code_str == "NotFound" {
-                        tracing::debug!(
-                            "SpiceDB ping: schema not yet written (NotFound), \
-                             treating as reachable"
-                        );
-                        return Ok(());
-                    }
-                }
-                Err(anyhow::anyhow!("SpiceDB ping failed: {e}"))
-            }
-        }
+        // The generated client wants the preshared key on every call;
+        // the wrapper's own interceptor is private to it, so build one.
+        let token: MetadataValue<_> = format!("bearer {}", self.preshared_key)
+            .parse()
+            .context("SpiceDB preshared key is not a valid HTTP header value")?;
+        let mut schemas = SchemaServiceClient::with_interceptor(
+            self.inner.channel.clone(),
+            move |mut req: tonic::Request<()>| {
+                req.metadata_mut().insert("authorization", token.clone());
+                Ok(req)
+            },
+        );
+
+        classify_schema_probe(schemas.read_schema(ReadSchemaRequest {}).await.map(|_| ()))
     }
 
     /// Check whether `subject` has `permission` on `resource`.
@@ -953,5 +990,122 @@ mod tests {
             Some(ConsistencyRequirement::FullyConsistent(v)) => assert!(v),
             other => panic!("expected FullyConsistent(true), got {other:?}"),
         }
+    }
+
+    // -- Readiness probe (2026-09-09 production outage) ----------------
+
+    /// Verbatim from the production panic, so the fixture can't drift
+    /// away from what SpiceDB actually says.
+    const NO_SCHEMA_MESSAGE: &str = "No schema has been defined; please call WriteSchema to start";
+
+    /// A gRPC server that answers every RPC with SpiceDB's "no schema"
+    /// status. A Trailers-Only error response carries no protobuf body,
+    /// so this needs none of the generated server code (which
+    /// `spicedb-grpc` doesn't ship anyway).
+    #[derive(Clone)]
+    struct AlwaysNoSchema;
+
+    impl tonic::server::NamedService for AlwaysNoSchema {
+        const NAME: &'static str = "authzed.api.v1.SchemaService";
+    }
+
+    impl tonic::codegen::Service<tonic::codegen::http::Request<tonic::body::BoxBody>>
+        for AlwaysNoSchema
+    {
+        type Response = tonic::codegen::http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = std::future::Ready<std::result::Result<Self::Response, Self::Error>>;
+
+        fn poll_ready(
+            &mut self,
+            _cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<std::result::Result<(), Self::Error>> {
+            std::task::Poll::Ready(Ok(()))
+        }
+
+        fn call(
+            &mut self,
+            _req: tonic::codegen::http::Request<tonic::body::BoxBody>,
+        ) -> Self::Future {
+            std::future::ready(Ok(Status::not_found(NO_SCHEMA_MESSAGE).into_http()))
+        }
+    }
+
+    async fn spawn_schemaless_spicedb() -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind an ephemeral port");
+        let addr = listener.local_addr().expect("read back the bound port");
+        let incoming = tonic::transport::server::TcpIncoming::from_listener(listener, true, None)
+            .expect("wrap the bound listener");
+
+        tokio::spawn(async move {
+            tonic::transport::Server::builder()
+                .add_service(AlwaysNoSchema)
+                .serve_with_incoming(incoming)
+                .await
+        });
+
+        addr
+    }
+
+    /// Regression for the outage that took every sharing surface down
+    /// on 2026-09-09: SpiceDB reachable, but with no schema.
+    ///
+    /// Against the previous implementation this doesn't merely fail —
+    /// it aborts the worker. `spicedb-client 0.1.1`'s `read_schema`
+    /// `.unwrap()`s the RPC result (client.rs:72), so the `NotFound`
+    /// below panicked instead of returning. That panic dropped the
+    /// HTTP connection mid-response, which is why `/readyz` served a
+    /// 502 from the edge instead of the 503 it documents.
+    #[tokio::test]
+    async fn ping_fails_when_spicedb_has_no_schema() {
+        let addr = spawn_schemaless_spicedb().await;
+
+        let client = SpicedbClient::connect(SpicedbConfig {
+            endpoint: format!("http://{addr}"),
+            preshared_key: "test-preshared-key".to_string(),
+        })
+        .await
+        .expect("the sidecar is reachable — it just has no schema");
+
+        let err = client
+            .ping()
+            .await
+            .expect_err("a SpiceDB with no schema is not ready");
+
+        assert!(
+            err.to_string().contains("no schema"),
+            "readiness failure should name the cause so an operator can \
+             act on it; got: {err}"
+        );
+    }
+
+    #[test]
+    fn schema_probe_passes_when_schema_is_present() {
+        assert!(classify_schema_probe(Ok(())).is_ok());
+    }
+
+    /// The semantic flip: this used to report `Ok` — "server reachable,
+    /// schema just not applied yet" — so `/readyz` said `spicedb: "ok"`
+    /// through an outage in which nothing authz-related worked.
+    #[test]
+    fn schema_probe_fails_when_schema_is_missing() {
+        let err = classify_schema_probe(Err(Status::not_found(NO_SCHEMA_MESSAGE)))
+            .expect_err("a schema-less SpiceDB is not ready");
+        assert!(
+            err.to_string().contains("zed schema write"),
+            "the message should tell the operator how to fix it; got: {err}"
+        );
+    }
+
+    #[test]
+    fn schema_probe_fails_on_other_statuses() {
+        let err = classify_schema_probe(Err(Status::unauthenticated("bad preshared key")))
+            .expect_err("an auth failure is not ready either");
+        assert!(
+            err.to_string().contains("SpiceDB ping failed"),
+            "got: {err}"
+        );
     }
 }

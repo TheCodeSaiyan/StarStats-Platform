@@ -153,3 +153,40 @@ test('no console errors across every group', async ({ page }) => {
   }
   expect(consoleErrors).toEqual([]);
 });
+
+test('a SpiceDB outage says the authorisation service is offline, not "something went wrong"', async ({
+  page,
+  request,
+}) => {
+  // Regression for the 2026-09-09 production outage. SpiceDB had no
+  // schema, so every RPC failed `FailedPrecondition` and the handlers
+  // returned 500 `spicedb_error` — NOT the 503 this page used to match
+  // on. All four load-bearing calls then landed in the all-failed
+  // branch and the page rendered the generic "couldn't load your
+  // sharing state" fallback, which tells the user nothing and reads
+  // like a bug in their account rather than a service being down.
+  //
+  // The assertion that actually differs is WHICH banner shows: both
+  // paths render a `bad`-toned BeamAlert and hide every section, so
+  // asserting "an error is visible" passes on the broken code too.
+  const outage = { status: 500, body: { error: 'spicedb_error' } };
+  await setScenario(
+    request,
+    scenarioFor('sharing-projection', {
+      ...FIXTURES,
+      'GET /v1/me/visibility': outage,
+      'GET /v1/me/shares': outage,
+      'GET /v1/me/shared-with-me': outage,
+      'GET /v1/orgs': outage,
+    }),
+  );
+
+  await page.goto('/sharing');
+
+  await expect(
+    page.getByText('the authorisation service is offline'),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Couldn't load your sharing state"),
+  ).toHaveCount(0);
+});

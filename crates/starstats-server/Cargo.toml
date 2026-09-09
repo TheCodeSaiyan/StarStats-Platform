@@ -67,6 +67,7 @@ reqwest.workspace = true
 scraper.workspace = true
 spicedb-client.workspace = true
 spicedb-grpc.workspace = true
+tonic.workspace = true
 aws-sdk-s3.workspace = true
 aws-credential-types.workspace = true
 aws-smithy-runtime-api.workspace = true

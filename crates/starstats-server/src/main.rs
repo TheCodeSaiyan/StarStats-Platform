@@ -294,6 +294,22 @@ async fn main() -> anyhow::Result<()> {
         Some(sc) => match SpicedbClient::connect(sc).await {
             Ok(c) => {
                 tracing::info!("SpiceDB client connected");
+                // Connecting proves the sidecar accepted a TCP/gRPC
+                // handshake, and nothing more. It says nothing about
+                // whether the schema is present — and with no schema
+                // every sharing, discover and public-profile call
+                // fails on `object definition ... not found` while
+                // boot logs look perfectly healthy. That is how a
+                // schema-less SpiceDB stayed invisible for an hour in
+                // production (2026-09-09). Probe once, loudly, and
+                // still boot: the rest of the API is unaffected and
+                // degraded mode is the established posture here.
+                if let Err(e) = c.ping().await {
+                    tracing::error!(
+                        error = %format!("{e:#}"),
+                        "SpiceDB reachable but NOT usable; sharing surfaces will fail until this is fixed"
+                    );
+                }
                 Arc::new(Some(c))
             }
             Err(e) => {
