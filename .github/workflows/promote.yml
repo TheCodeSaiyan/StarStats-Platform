@@ -116,6 +116,15 @@ jobs:
             - 'packages/design-tokens/**'
             - 'Cargo.toml'
             - 'Cargo.lock'
+            # The JS manifests were in NEITHER track. A dependency-only
+            # security fix — a pnpm.overrides bump with no source change —
+            # therefore merged, reported SUCCESS and tagged nothing, the
+            # same silent-no-ship shape recorded for `holo` below and for a
+            # `docs:` prefix on app code. The lockfile decides what goes
+            # into the tray-ui bundle as much as the web image, so it
+            # belongs in both. (2026-09-09, after the sharp/js-yaml patch.)
+            - 'package.json'
+            - 'pnpm-lock.yaml'
             - '.github/workflows/release.yml'
             - '.github/workflows/promote.yml'
           platform:
@@ -134,6 +143,10 @@ jobs:
             - 'packages/design-tokens/**'
             - 'Cargo.toml'
             - 'Cargo.lock'
+            # See the note on the tray filter above — deps-only commits
+            # must tag something.
+            - 'package.json'
+            - 'pnpm-lock.yaml'
             - '.github/workflows/release-images.yml'
             - '.github/workflows/promote.yml'
     - id: decide
