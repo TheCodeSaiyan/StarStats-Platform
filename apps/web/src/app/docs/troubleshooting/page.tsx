@@ -26,18 +26,16 @@ export const metadata: Metadata = {
  *    synthesizes PlayerDeath from VehicleDestruction + ResolveSpawn at
  *    0.85 confidence precisely because the branch is gone.
  *
- * 3. Section 07 documents a LIVE, UNFIXED bug — do not soften it into a
- *    workaround. An earlier version of this section blamed WebKitGTK's
- *    DMABUF renderer and told readers to set
- *    WEBKIT_DISABLE_DMABUF_RENDERER=1. That was wrong, and 0.1.14
- *    shipped a main.rs change on the strength of it that fixes nothing.
- *    The real failure is EGL display creation inside the bundled Ubuntu
- *    WebKit against newer Mesa, reproduced 2026-09-08 in a clean Arch
- *    container (Mesa 26.2.2) — so it is not GPU-, driver- or
- *    session-specific. Six env vars were measured against that repro and
- *    none help; removing the bundled WebKit only trades the blank window
- *    for a symbol-lookup crash in libavif/gstreamer. Do NOT re-add a
- *    suggested workaround here unless it has been watched to work.
+ * 3. Section 07 is a FIXED bug kept on the page because people still
+ *    arrive on old builds. Cause was the AppImage bundling
+ *    libwayland-client.so.0 ahead of the host's, breaking Mesa's EGL;
+ *    fixed in tray 0.1.15 by stripping it in release.yml (see the long
+ *    comment there, and issue #88). Two earlier versions of this section
+ *    were WRONG — they blamed WebKitGTK's DMABUF renderer and told
+ *    readers to set WEBKIT_DISABLE_DMABUF_RENDERER=1, which 0.1.14 also
+ *    shipped as a default. It fixes nothing. Do not reintroduce an env
+ *    var workaround here; every one of them was measured against a
+ *    reproduction and none worked.
  *
  * 4. Log paths in "Sending a log" come from
  *    `directories::ProjectDirs::from("app", "StarStats", "tray")`
@@ -191,11 +189,12 @@ export default function TroubleshootingPage() {
 
       <section className="ss-about-section" id="linux-white-screen">
         <div className="ss-about-section-eyebrow">07 — Linux</div>
-        <h2>The AppImage opens a white window and stays white.</h2>
+        <h2>The AppImage opened a white window. Fixed in 0.1.15.</h2>
         <p>
-          The title bar draws, the tray icon works, and the inside of the
-          window is a blank white rectangle. Start it from a terminal and
-          the reason is there:
+          If the title bar draws, the tray icon works, and the inside of the
+          window is a blank white rectangle, you are on 0.1.14 or earlier.
+          Update and it goes away. Started from a terminal, the old builds
+          say why:
         </p>
         <p>
           <code>
@@ -204,34 +203,21 @@ export default function TroubleshootingPage() {
           </code>
         </p>
         <p>
-          The AppImage carries its own copy of WebKitGTK, built on Ubuntu,
-          and runs it against whatever graphics drivers your machine has.
-          On distros shipping a much newer Mesa — Arch and its family, and
-          rolling releases generally — that WebKit cannot create an EGL
-          display, so the process that paints the page exits before drawing
-          anything. The rest of the app carries on, which is why the window
-          and the tray icon survive an empty page.
-        </p>
-        <p>
-          <strong>
-            This is a known bug, it is ours, and there is no workaround
-            yet.
-          </strong>{' '}
-          The environment variables that turn up in searches for
-          similar-looking problems do not fix it:{' '}
-          <code>WEBKIT_DISABLE_DMABUF_RENDERER</code> and{' '}
-          <code>WEBKIT_DISABLE_COMPOSITING_MODE</code> were both measured
-          against a reproduction of this exact failure and changed nothing,
-          and neither did forcing software rendering or an X11 backend. The
-          bundled WebKit is the cause, so the fix belongs in how the
-          AppImage is built rather than in anything you can set.
+          We were shipping a copy of <code>libwayland-client</code> inside the
+          AppImage and putting it ahead of yours. Your graphics driver needs
+          its own, so on any distro with a newer one than our build machine —
+          Arch and its family, rolling releases generally — the driver failed
+          to load and the part of the app that paints the page gave up. The
+          window and the tray survived, which is why it looked like nothing
+          was wrong.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
-          The <code>.deb</code> is unaffected — it uses the WebKitGTK your
-          system already has, which by definition matches your drivers. If
-          you are on a distro that cannot take a <code>.deb</code>, there is
-          nothing that works today — <Link href={'/support' as Route}>say
-          so on support</Link> and you will be told when there is.
+          The <code>.deb</code> was never affected, and neither was Windows.
+          If you are still stuck on 0.1.15 or later, that is a different
+          fault and worth{' '}
+          <Link href={'/support' as Route}>telling us about</Link> — start it
+          from a terminal first, because the first line of output is usually
+          the whole answer.
         </p>
       </section>
 
