@@ -483,6 +483,7 @@ async fn resolve_user<U: UserStore>(
 )]
 pub async fn change_password<U: UserStore>(
     State(users): State<Arc<U>>,
+    Extension(devices): Extension<Arc<dyn DeviceStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     auth: AuthenticatedUser,
     Json(req): Json<ChangePasswordRequest>,
@@ -515,6 +516,16 @@ pub async fn change_password<U: UserStore>(
     if let Err(e) = users.update_password(user.id, &new_phc).await {
         tracing::error!(error = %e, user_id = %user.id, "update password failed");
         return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
+    }
+
+    // Force a re-pair on every device, exactly as the reset path does.
+    // Someone changing their password is usually changing it because
+    // they think another party has it, and a device JWT is good for 90
+    // days; leaving those live would mean the attacker outlasts the
+    // remedy. Best-effort, like the reset path: the rotation itself was
+    // the critical step and must not fail on a revocation hiccup.
+    if let Err(e) = devices.revoke_all_for_user(user.id).await {
+        tracing::warn!(error = %e, user_id = %user.id, "device revocation after password change failed");
     }
 
     // Audit AFTER the change so a row only exists when the password
@@ -1322,6 +1333,10 @@ mod tests {
             .layer(Extension(mailer))
             .layer(Extension(audit_dyn))
             .layer(Extension(staff_roles_dyn))
+            .layer(Extension(
+                Arc::new(crate::devices::test_support::MemoryDeviceStore::new())
+                    as Arc<dyn DeviceStore>,
+            ))
             .with_state(users);
 
         (app, issuer_arc, audit_mem, staff_roles_mem)
@@ -1769,6 +1784,74 @@ mod tests {
     ) -> crate::users::User {
         let phc = hash_password(password).expect("hash");
         users.create(email, &phc, handle).await.expect("seed user")
+    }
+
+    #[tokio::test]
+    /// Changing your password is what you do when you think someone
+    /// else has it. `password_reset_complete` already forces a re-pair
+    /// on every device; this path did not, so a 90-day device token
+    /// minted by an attacker survived the very action taken to lock
+    /// them out. The `iat` vs `password_changed_at` check that the
+    /// reset path's comment anticipates is still unwired, so
+    /// server-side revocation is the only thing that ends those
+    /// sessions today. `list_for_user` omits revoked rows, so an empty
+    /// list is the revocation.
+    async fn changing_a_password_revokes_every_paired_device() {
+        let users = Arc::new(MemoryUserStore::new());
+        let user = seed_user(
+            users.as_ref(),
+            "compromised@example.com",
+            "supersecret-1234",
+            "TheCodeSaiyan",
+        )
+        .await;
+
+        let devices = Arc::new(crate::devices::test_support::MemoryDeviceStore::new());
+        let pairing = devices
+            .create_pairing(user.id, "attacker-laptop", chrono::Duration::minutes(10))
+            .await
+            .expect("pairing");
+        devices.redeem(&pairing.code).await.expect("redeem");
+        assert_eq!(
+            devices.list_for_user(user.id).await.expect("list").len(),
+            1,
+            "precondition: one live paired device"
+        );
+
+        let (issuer, verifier) = fresh_pair();
+        let issuer_arc = Arc::new(issuer);
+        let devices_dyn: Arc<dyn DeviceStore> = devices.clone();
+        let audit_dyn: Arc<dyn AuditLog> = Arc::new(MemoryAuditLog::default());
+        let mailer: Arc<dyn Mailer> = Arc::new(NoopMailer);
+        let app = Router::new()
+            .route(
+                "/v1/auth/me/password",
+                post(change_password::<MemoryUserStore>),
+            )
+            .layer(Extension(issuer_arc.clone()))
+            .layer(Extension(Arc::new(verifier)))
+            .layer(Extension(mailer))
+            .layer(Extension(audit_dyn))
+            .layer(Extension(devices_dyn))
+            .with_state(users);
+
+        let token = token_for(&issuer_arc, &user);
+        let body = serde_json::json!({
+            "current_password": "supersecret-1234",
+            "new_password": "another-strong-password",
+        });
+        let (status, _) =
+            request_with_bearer(&app, "POST", "/v1/auth/me/password", &token, Some(&body)).await;
+        assert_eq!(status, StatusCode::OK);
+
+        assert!(
+            devices
+                .list_for_user(user.id)
+                .await
+                .expect("list")
+                .is_empty(),
+            "device token survived the password change"
+        );
     }
 
     #[tokio::test]

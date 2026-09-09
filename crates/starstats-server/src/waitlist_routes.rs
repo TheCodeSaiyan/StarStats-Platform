@@ -20,15 +20,45 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
+use tower_governor::{
+    governor::GovernorConfigBuilder, key_extractor::SmartIpKeyExtractor, GovernorLayer,
+};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 /// Build the waitlist sub-router. `WaitlistStore` + `Mailer` extensions
 /// are layered on the outer router in `main`.
+/// Sustained per-IP allowance for the public waitlist routes.
+const WAITLIST_PER_SECOND: u64 = 1;
+
+/// Per-IP burst for the public waitlist routes. `join` mails an invite
+/// and writes a row, so an unmetered caller is both a mail cannon and
+/// unbounded anonymous DB growth.
+const WAITLIST_BURST_SIZE: u32 = 5;
+
 pub fn routes() -> Router {
-    Router::new()
+    let governor = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(WAITLIST_PER_SECOND)
+            .burst_size(WAITLIST_BURST_SIZE)
+            .key_extractor(SmartIpKeyExtractor)
+            .finish()
+            .expect("waitlist governor config builder produced no config"),
+    );
+
+    // Split on purpose. The limiter belongs on the public pair and
+    // nowhere near the moderator console, which would otherwise be
+    // throttled while paging the queue. Note it is attached to the
+    // router that HOLDS those routes: a tower layer covers only the
+    // routes of the router it was applied to, never a sibling that
+    // merely shares a path prefix. `/v1/auth/magic/*` went unmetered
+    // for exactly that reason.
+    let public = Router::new()
         .route("/v1/waitlist", post(join))
         .route("/v1/waitlist/status", get(status))
+        .layer(GovernorLayer { config: governor });
+
+    let admin = Router::new()
         .route("/v1/admin/waitlist", get(admin_list))
         .route("/v1/admin/waitlist/admit", post(admin_admit))
         .route("/v1/admin/waitlist/resend", post(admin_resend))
@@ -36,7 +66,9 @@ pub fn routes() -> Router {
         .route(
             "/v1/admin/waitlist/config",
             get(admin_get_config).put(admin_set_config),
-        )
+        );
+
+    public.merge(admin)
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1090,5 +1122,47 @@ mod tests {
         let queued = store.list(QueueStatus::Queued, 10).await.unwrap();
         assert_eq!(queued.len(), 1);
         assert_eq!(queued[0].id, id);
+    }
+}
+
+#[cfg(test)]
+mod rate_limit_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    /// `POST /v1/waitlist` takes an arbitrary address with no auth and
+    /// mails an invite, so it has to be metered. The burst requests
+    /// that reach the handler 500 on the missing store/mailer
+    /// extensions, which is fine — 500 is not the status under test.
+    #[tokio::test]
+    async fn public_join_is_rate_limited_per_ip() {
+        let app = routes();
+        let mut saw_429 = false;
+        for _ in 0..(WAITLIST_BURST_SIZE + 4) {
+            let status = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/v1/waitlist")
+                        .header("content-type", "application/json")
+                        .header("x-forwarded-for", "203.0.113.9")
+                        .body(Body::from(r#"{"email":"probe@example.com"}"#))
+                        .unwrap(),
+                )
+                .await
+                .expect("router responds")
+                .status();
+            if status == StatusCode::TOO_MANY_REQUESTS {
+                saw_429 = true;
+                break;
+            }
+        }
+        assert!(
+            saw_429,
+            "POST /v1/waitlist was never rate limited — anonymous callers can              mail-bomb and grow the table without bound"
+        );
     }
 }

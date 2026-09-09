@@ -197,9 +197,20 @@ pub struct TotpQrResponse {
     responses(
         (status = 200, description = "QR as a data URI", body = TotpQrResponse),
         (status = 400, description = "Not a TOTP provisioning URI"),
-    )
+        (status = 401, description = "Missing or invalid bearer"),
+    ),
+    security(("BearerAuth" = []))
 )]
-pub async fn render_qr(Json(req): Json<TotpQrRequest>) -> Response {
+/// Render a TOTP provisioning URI as a QR data URI.
+///
+/// Auth is required even though the handler reads nothing from the
+/// token: without it, anyone can have the API's own origin render an
+/// `otpauth://` QR of their choosing, which is the raw material for a
+/// "scan this to secure your account" lure. Every caller already sends
+/// a bearer, so the gate costs nothing. The `otpauth://` prefix check
+/// below stays — it stops the endpoint being a general-purpose QR
+/// generator for arbitrary content.
+pub async fn render_qr(_auth: AuthenticatedUser, Json(req): Json<TotpQrRequest>) -> Response {
     // Only ever encode an otpauth URI. Without this the endpoint is a
     // free QR generator for arbitrary attacker-supplied content served
     // from our origin.
@@ -745,19 +756,36 @@ mod qr_tests {
     async fn refuses_anything_but_a_provisioning_uri() {
         // Without this the endpoint is a free QR generator for arbitrary
         // attacker-supplied content, served from our own origin.
-        let resp = render_qr(Json(TotpQrRequest {
-            provisioning_uri: "https://evil.example/phish".into(),
-        }))
+        let resp = render_qr(
+            a_caller(),
+            Json(TotpQrRequest {
+                provisioning_uri: "https://evil.example/phish".into(),
+            }),
+        )
         .await;
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    /// The handler ignores the caller, but the extractor is part of
+    /// the signature now, so the direct-invocation tests need one.
+    fn a_caller() -> AuthenticatedUser {
+        AuthenticatedUser {
+            sub: "00000000-0000-0000-0000-000000000001".into(),
+            preferred_username: "tester".into(),
+            token_type: crate::auth::TokenType::User,
+            device_id: None,
+        }
     }
 
     #[tokio::test]
     async fn returns_a_self_contained_data_uri() {
         let uri = crate::totp::provisioning_uri("JBSWY3DPEHPK3PXP", "StarStats", "a@b.c");
-        let resp = render_qr(Json(TotpQrRequest {
-            provisioning_uri: uri,
-        }))
+        let resp = render_qr(
+            a_caller(),
+            Json(TotpQrRequest {
+                provisioning_uri: uri,
+            }),
+        )
         .await;
         assert_eq!(resp.status(), StatusCode::OK);
 
@@ -824,5 +852,47 @@ mod limiter_tests {
         }
         assert!(lim.is_locked(a));
         assert!(!lim.is_locked(b), "one user's failures never lock another");
+    }
+}
+
+#[cfg(test)]
+mod qr_auth_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::{Request, StatusCode};
+    use tower::ServiceExt;
+
+    /// `render_qr` was the only handler on the TOTP router taking no
+    /// `AuthenticatedUser`, so anyone could mint `otpauth://` QR images
+    /// served from the API's own origin — handy for a "scan this to
+    /// secure your account" lure. Every caller already sends a bearer
+    /// (`apps/web/src/lib/api.ts::totpQr`), so requiring one costs
+    /// nothing. The extractor rejects a missing Authorization header
+    /// before it looks for the verifier extension, so no key material
+    /// is needed to prove the gate is on.
+    #[tokio::test]
+    async fn qr_render_refuses_an_unauthenticated_caller() {
+        let app = Router::new().route("/v1/auth/totp/qr", post(render_qr));
+
+        let status = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/auth/totp/qr")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        r#"{"provisioning_uri":"otpauth://totp/StarStats:victim?secret=AAAA&issuer=StarStats"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .expect("router responds")
+            .status();
+
+        assert_eq!(
+            status,
+            StatusCode::UNAUTHORIZED,
+            "anonymous QR rendering is still open"
+        );
     }
 }

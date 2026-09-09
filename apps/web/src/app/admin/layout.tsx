@@ -1,5 +1,7 @@
+import React from 'react';
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { getMe } from '@/lib/api';
 import { getTheme } from '@/lib/theme';
 import { navSections } from '@/lib/nav';
 import type { Calibration } from 'holo';
@@ -14,13 +16,22 @@ export const metadata = { title: 'Admin' };
 /**
  * Server-component gate for the /admin surface, and its Console frame.
  *
- * Runs before any /admin/** page renders. Uses the `staffRoles` field
- * mirrored into the session cookie at sign-in time, so role checks
- * don't pay an extra `/v1/auth/me` round trip per nav.
+ * Runs before any /admin/** page renders, and asks `/v1/auth/me` who
+ * the bearer token says this is. It deliberately does NOT read the
+ * `staffRoles` mirror on the session cookie: that cookie is unsigned
+ * JSON, and `httpOnly` stops page scripts from reading it, not the
+ * person holding it from editing it. Anyone could set `r:["admin"]`
+ * and draw the entire console. Roles on the token are signed by the
+ * API, so they are the ones worth believing.
  *
- * Note: this is UX gating only. The API endpoints under
- * `/v1/admin/...` enforce the same check server-side via
- * `StaffRoleSet::has`, so a tampered cookie can't escalate.
+ * That costs one round trip per /admin nav, which the cookie mirror
+ * existed to avoid. It buys the gate back its meaning, and the mirror
+ * still serves every non-admin surface where being wrong is cosmetic.
+ *
+ * The API endpoints under `/v1/admin/...` enforce the same check
+ * server-side via `StaffRoleSet::has`, so this was never the only
+ * thing standing between a forged cookie and admin data — it is the
+ * thing standing between it and the admin UI.
  *
  * Admin implies moderator on the server side, so we accept either.
  *
@@ -44,9 +55,18 @@ export default async function AdminLayout({
   if (!session) {
     redirect('/auth/login?next=/admin');
   }
-  const isStaff = session.staffRoles.some(
-    (r) => r === 'admin' || r === 'moderator',
-  );
+  // Fail closed: a token the API won't vouch for gets no console.
+  let staffRoles: string[] = [];
+  let lookupFailed = false;
+  try {
+    staffRoles = (await getMe(session.token)).staff_roles ?? [];
+  } catch {
+    lookupFailed = true;
+  }
+  if (lookupFailed) {
+    redirect('/auth/login?next=/admin');
+  }
+  const isStaff = staffRoles.some((r) => r === 'admin' || r === 'moderator');
   if (!isStaff) {
     redirect('/me');
   }
@@ -63,7 +83,7 @@ export default async function AdminLayout({
       handle={session.claimedHandle}
       calibration={calibration}
       nav={navSections(
-        { signedIn: true, staffRoles: session.staffRoles },
+        { signedIn: true, staffRoles },
         'admin',
       )}
       onCalibrate={async (id: string) => {

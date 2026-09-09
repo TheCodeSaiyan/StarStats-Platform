@@ -189,6 +189,7 @@ impl Modify for SecurityAddon {
         totp_routes::disable,
         totp_routes::regenerate_recovery,
         totp_routes::verify_login,
+        totp_routes::render_qr,
         sharing_routes::set_visibility,
         sharing_routes::get_visibility,
         sharing_routes::add_share,
@@ -657,6 +658,8 @@ impl Modify for SecurityAddon {
         totp_routes::RegenerateRecoveryRequest,
         totp_routes::RegenerateRecoveryResponse,
         totp_routes::VerifyLoginRequest,
+        totp_routes::TotpQrRequest,
+        totp_routes::TotpQrResponse,
         // Sharing
         sharing_routes::VisibilityRequest,
         sharing_routes::VisibilityResponse,

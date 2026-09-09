@@ -1322,6 +1322,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/totp/qr": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Render a provisioning URI as a QR code.
+         * @description Exists because the enrolment payload lives in a ~4 KB cookie and a
+         *     QR data URI is roughly 9 KB — storing it there would silently drop
+         *     the cookie and lose enrolment state. The caller keeps the small URI
+         *     and asks for the picture when it needs to draw it.
+         *
+         *     This replaced a third-party image service (`api.qrserver.com`), which
+         *     received the shared secret on every enrolment.
+         *     Render a TOTP provisioning URI as a QR data URI.
+         *
+         *     Auth is required even though the handler reads nothing from the
+         *     token: without it, anyone can have the API's own origin render an
+         *     `otpauth://` QR of their choosing, which is the raw material for a
+         *     "scan this to secure your account" lure. Every caller already sends
+         *     a bearer, so the gate costs nothing. The `otpauth://` prefix check
+         *     below stays — it stops the endpoint being a general-purpose QR
+         *     generator for arbitrary content.
+         */
+        post: operations["render_qr"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/totp/recovery/regenerate": {
         parameters: {
             query?: never;
@@ -7726,6 +7761,18 @@ export interface components {
         TotpDisableResponse: {
             disabled: boolean;
         };
+        TotpQrRequest: {
+            /**
+             * @description The `otpauth://` URI to encode. Sent in the BODY, never a query
+             *     string: it carries the shared secret, which must not reach an
+             *     access log or a `Referer` header.
+             */
+            provisioning_uri: string;
+        };
+        TotpQrResponse: {
+            /** @description `data:image/svg+xml;base64,...` */
+            data_uri: string;
+        };
         TotpSetupResponse: {
             /**
              * @description Human-readable label used in the URI, surfaced so the
@@ -12432,6 +12479,44 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
+            };
+        };
+    };
+    render_qr: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TotpQrRequest"];
+            };
+        };
+        responses: {
+            /** @description QR as a data URI */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TotpQrResponse"];
+                };
+            };
+            /** @description Not a TOTP provisioning URI */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
