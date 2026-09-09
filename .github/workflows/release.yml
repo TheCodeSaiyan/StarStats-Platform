@@ -373,6 +373,85 @@ jobs:
           pnpm exec tauri build
         fi
 
+    # The AppImage bundles libwayland-client.so.0 from the build runner and
+    # puts it first on LD_LIBRARY_PATH. Mesa's EGL links against
+    # libwayland-client even on an X11 session, so on a distro carrying a
+    # newer Mesa -- Arch and its family, any rolling release -- the driver
+    # resolves that soname to the stale bundled copy, fails to load, and
+    # WebKit aborts the process that paints the page with
+    # `Could not create default EGL display: EGL_BAD_PARAMETER`. The window
+    # opens, the tray works, and nothing is ever drawn. That is the blank
+    # white window reported against 0.1.14 on CachyOS.
+    #
+    # Measured 2026-09-09 against the shipped 0.1.14 AppImage in an
+    # Arch / Mesa 26.2.2 container: removing this ONE file takes the render
+    # from 1 unique colour (blank) to 1595 (the UI). It really is the only
+    # one that matters -- libXau, libXdmcp, libxcb-shm and the LLVM trio
+    # (libelf, libffi, libzstd) all collide by soname too and were each
+    # bisected out with no effect. The other libwayland-* stay; only
+    # -client is load-bearing. Do not widen or drop this without re-running
+    # that bisect.
+    #
+    # Things that do NOT fix it, so nobody re-tries them: every
+    # WEBKIT_* env var (DMABUF renderer, compositing mode), forcing
+    # software rendering or an X11 backend, building on a newer base
+    # (Debian trixie ships the same WebKit 2.52.6 and the same sonames),
+    # and dropping the bundled WebKit (cascades into libavif/gstreamer
+    # symbol errors).
+    #
+    # Repack from the AppDir tauri leaves beside the bundle, then RE-SIGN:
+    # createUpdaterArtifacts signed the pre-repack bytes, so shipping the
+    # new AppImage with the old .sig makes every installed client reject
+    # the update -- a worse failure than the bug, since it breaks the
+    # channel that delivers the fix. Order is repack -> re-sign -> upload.
+    - name: Strip bundled libwayland-client from the AppImage
+      if: matrix.os == 'ubuntu-latest'
+      shell: bash
+      env:
+        TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+      run: |
+        set -euo pipefail
+        BUNDLE="$GITHUB_WORKSPACE/target/release/bundle/appimage"
+        APPDIR="$BUNDLE/StarStats.AppDir"
+        IMG="$(ls "$BUNDLE"/StarStats_*_amd64.AppImage)"
+        echo "AppImage: $IMG"
+
+        # A future tauri that stops bundling it must not fail the release.
+        if [ ! -e "$APPDIR/usr/lib/libwayland-client.so.0" ]; then
+          echo "::warning::libwayland-client.so.0 is not in the AppDir - tauri's bundling changed. Leaving the AppImage as built; re-check the Linux blank-window bug before trusting it."
+          exit 0
+        fi
+        rm -f "$APPDIR"/usr/lib/libwayland-client.so.0*
+
+        # appimagetool lives inside the plugin tauri already downloaded for
+        # this build, so repacking adds no new dependency and stays pinned
+        # to whatever tauri itself used.
+        PLUGIN="$HOME/.cache/tauri/linuxdeploy-plugin-appimage.AppImage"
+        test -f "$PLUGIN" || { echo "expected $PLUGIN after tauri build"; exit 1; }
+        chmod +x "$PLUGIN"
+        WORK="$(mktemp -d)"
+        ( cd "$WORK" && APPIMAGE_EXTRACT_AND_RUN=1 "$PLUGIN" --appimage-extract >/dev/null )
+        TOOL="$(find "$WORK" -type f -name appimagetool | head -1)"
+        test -n "$TOOL" || { echo "appimagetool not found inside $PLUGIN"; exit 1; }
+
+        # Same output filename: generate-updater-manifest.mjs matches
+        # *_amd64.AppImage and the release upload globs StarStats*.
+        APPIMAGE_EXTRACT_AND_RUN=1 ARCH=x86_64 "$TOOL" --no-appstream "$APPDIR" "$IMG"
+        rm -rf "$WORK"
+        echo "repacked: $(du -h "$IMG" | cut -f1)"
+
+        # Key comes from the environment, never argv - argv is world-readable
+        # in /proc on the runner.
+        if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+          rm -f "$IMG.sig"
+          ( cd "$GITHUB_WORKSPACE/crates/starstats-client" && pnpm exec tauri signer sign "$IMG" >/dev/null )
+          test -s "$IMG.sig" || { echo "re-sign produced no signature"; exit 1; }
+          echo "re-signed: $(wc -c < "$IMG.sig") bytes"
+        else
+          echo "no signing key set; tauri produced no .sig either, so there is none to invalidate"
+        fi
+
     # Runs even when the bundle failed — that is precisely when the signer's
     # output is needed. Never fails the job itself: this is diagnostics, and
     # a missing log must not mask the real error above.
