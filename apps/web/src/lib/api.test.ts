@@ -14,6 +14,7 @@ import {
   exportManifest,
   isExportFormat,
   listEvents,
+  isSpicedbOutage,
 } from './api';
 
 // `api.ts` reads STARSTATS_API_URL at call time via apiBase().
@@ -363,5 +364,34 @@ describe('listEvents', () => {
     // Client-only switch — never forwarded to the server.
     const [url] = fetchMock.mock.calls[0] as [string];
     expect(url).not.toContain('include_movement');
+  });
+});
+
+describe('isSpicedbOutage', () => {
+  it('treats a 503 as an outage', () => {
+    expect(
+      isSpicedbOutage(new ApiCallError(503, { error: 'spicedb_unavailable' })),
+    ).toBe(true);
+  });
+
+  // The shape the 2026-09-09 outage actually produced: SpiceDB had no
+  // schema, so every RPC failed and the handlers returned 500
+  // `spicedb_error`. /sharing matched only on 503 and fell through to
+  // the generic "couldn't load your sharing state" fallback.
+  it('treats a 500 spicedb_error as an outage', () => {
+    expect(
+      isSpicedbOutage(new ApiCallError(500, { error: 'spicedb_error' })),
+    ).toBe(true);
+  });
+
+  it('leaves an unrelated 500 alone, so real bugs still surface as bugs', () => {
+    expect(
+      isSpicedbOutage(new ApiCallError(500, { error: 'internal_error' })),
+    ).toBe(false);
+  });
+
+  it('ignores non-API errors', () => {
+    expect(isSpicedbOutage(new Error('network down'))).toBe(false);
+    expect(isSpicedbOutage(undefined)).toBe(false);
   });
 });

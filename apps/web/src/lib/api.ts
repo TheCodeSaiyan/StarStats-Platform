@@ -132,6 +132,32 @@ export function statusOf(e: unknown): number | undefined {
   return e instanceof ApiCallError ? e.status : undefined;
 }
 
+/**
+ * Whether a rejection is the authorisation service being unusable, so
+ * the caller can show the "temporarily unavailable" banner instead of
+ * a generic failure.
+ *
+ * Two shapes, because the server reports the same outage two ways:
+ *  - **503 `spicedb_unavailable`** — SpiceDB isn't configured, or the
+ *    handler classified it as an outage.
+ *  - **500 `spicedb_error`** — a SpiceDB RPC failed. Structurally an
+ *    unexpected error, but from the user's side it's the same outage.
+ *
+ * Surfaced 2026-09-09: a SpiceDB with no schema failed every RPC, so
+ * `/v1/discover/profiles` and `POST /v1/me/visibility` returned 500
+ * `spicedb_error`. `/sharing` matched only on 503, so the whole page
+ * fell through to "Something went wrong" while the API was telling us
+ * precisely what was wrong.
+ *
+ * A bare 500 is deliberately NOT an outage — only the explicit
+ * `spicedb_error` code — so this doesn't swallow unrelated bugs.
+ */
+export function isSpicedbOutage(e: unknown): boolean {
+  if (!(e instanceof ApiCallError)) return false;
+  if (e.status === 503) return true;
+  return e.status === 500 && e.body.error === 'spicedb_error';
+}
+
 export function apiBase(): string {
   const raw = process.env.STARSTATS_API_URL;
   if (!raw) {

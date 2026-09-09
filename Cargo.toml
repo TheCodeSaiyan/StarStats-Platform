@@ -160,6 +160,15 @@ lettre = { version = "0.11", default-features = false, features = ["tokio1-rustl
 # (proto types) and `tonic` 0.12 transitively.
 spicedb-client = "0.1"
 spicedb-grpc = "0.1"
+# Direct, because `spicedb-client 0.1.1`'s `read_schema` calls `.unwrap()`
+# on the RPC result (client.rs:72) — including on the `NotFound` its own
+# doc comment documents ("no schema has been defined"). That panics the
+# tokio worker instead of returning an error, which is how a schema-less
+# SpiceDB turned `/readyz` into a dropped connection (502) rather than the
+# 503 it promises. `SpicedbClient::ping` therefore drives the generated
+# `SchemaServiceClient` itself. Must stay on the same 0.12 line as
+# `spicedb-grpc`'s generated code or the types don't unify.
+tonic = "0.12"
 
 # Object storage (MinIO via S3 protocol)
 # We deliberately avoid `aws-config`'s default credential chain (no SSO,
