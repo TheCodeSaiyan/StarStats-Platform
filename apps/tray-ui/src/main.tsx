@@ -14,9 +14,16 @@ import '@fontsource/ibm-plex-mono/500.css';
 import '@fontsource/ibm-plex-mono/600.css';
 import '@fontsource/michroma/400.css';
 import App from './App';
+import { BootErrorBoundary } from './components/BootErrorBoundary';
 
+// The boundary wraps App INSIDE StrictMode rather than outside it, so a
+// throw from any pane is caught while StrictMode's double-invoke still
+// applies in development. It only catches render errors — see the note in
+// BootErrorBoundary for what a blank window still means.
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <BootErrorBoundary>
+      <App />
+    </BootErrorBoundary>
   </React.StrictMode>
 );
