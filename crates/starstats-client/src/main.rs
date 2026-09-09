@@ -60,47 +60,6 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{fmt, EnvFilter, Registry};
 
-/// Env var WebKitGTK reads to turn off its DMABUF-backed renderer.
-/// Only read on Linux; `dmabuf_workaround_value` below decides the
-/// value and is compiled everywhere so its tests run on every leg.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-const DMABUF_ENV: &str = "WEBKIT_DISABLE_DMABUF_RENDERER";
-
-/// The value to force `DMABUF_ENV` to, or `None` when the environment
-/// already carries an opinion we should not overwrite.
-///
-/// WebKitGTK 2.42 turned on a DMABUF-based rendering path by default.
-/// On a good number of Linux GPU stacks — Arch-family rolling distros
-/// and NVIDIA's proprietary driver especially — the compositor cannot
-/// import the buffers it produces, and the webview paints nothing at
-/// all: the window opens, the tray menu works, and the page is a flat
-/// white rectangle with no error anywhere (tauri-apps/tauri#9304).
-///
-/// Shipping an AppImage makes this *more* likely rather than less. The
-/// bundle carries the WebKitGTK the CI runner had (Ubuntu's) and runs
-/// it against whatever driver the host happens to have, so the two
-/// halves of the DMABUF handshake were never built against each other.
-/// The `.deb` inherits the same fix by virtue of living in the same
-/// binary.
-///
-/// The fallback is the older shared-memory compositing path, which for
-/// a tray app costs nothing anyone will measure. Set it only when the
-/// variable is absent, so a bug reporter can put the accelerated path
-/// back with `WEBKIT_DISABLE_DMABUF_RENDERER=0` and tell us what
-/// changed.
-///
-/// Kept a pure decision over the *current* value — rather than
-/// reading and writing the environment itself — so it is testable
-/// without mutating the test process's environment, which races
-/// across threads.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn dmabuf_workaround_value(existing: Option<&str>) -> Option<&'static str> {
-    match existing {
-        Some(_) => None,
-        None => Some("1"),
-    }
-}
-
 fn main() {
     let debug_logging = config::load().map(|c| c.debug_logging).unwrap_or(false);
     init_telemetry(debug_logging);
@@ -109,24 +68,6 @@ fn main() {
         version = env!("CARGO_PKG_VERSION"),
         "starstats-client starting"
     );
-
-    // Must happen before the webview is created — WebKitGTK reads this
-    // when it initialises compositing, which Tauri does while building
-    // the window, not here.
-    #[cfg(target_os = "linux")]
-    {
-        let existing = std::env::var(DMABUF_ENV).ok();
-        match dmabuf_workaround_value(existing.as_deref()) {
-            Some(value) => {
-                std::env::set_var(DMABUF_ENV, value);
-                tracing::info!(value, "{DMABUF_ENV} set — WebKitGTK blank-page workaround");
-            }
-            None => tracing::info!(
-                existing = existing.as_deref().unwrap_or_default(),
-                "{DMABUF_ENV} already set — leaving the environment's choice alone"
-            ),
-        }
-    }
 
     tauri::Builder::default()
         // Intercept the main window's close button — without this,
@@ -949,27 +890,4 @@ fn start_log_tail(
         .await
     })?;
     Ok(Some(watcher))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn dmabuf_workaround_disables_renderer_when_unset() {
-        assert_eq!(dmabuf_workaround_value(None), Some("1"));
-    }
-
-    #[test]
-    fn dmabuf_workaround_leaves_an_explicit_setting_alone() {
-        // `=0` is how a bug reporter puts the accelerated path back;
-        // an empty value is still someone having touched it.
-        for existing in ["0", "1", ""] {
-            assert_eq!(
-                dmabuf_workaround_value(Some(existing)),
-                None,
-                "should defer to an existing {existing:?}"
-            );
-        }
-    }
 }
