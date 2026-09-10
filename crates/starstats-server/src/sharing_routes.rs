@@ -208,6 +208,17 @@ pub struct ShareScope {
     /// list, regardless of whether it's also in `allow_widgets`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deny_widgets: Option<Vec<String>>,
+    /// Keep only the N busiest event types in a summary's `by_type`.
+    ///
+    /// The allow/deny lists answer "which types may they see"; this
+    /// answers "how much of the shape". A complete type histogram with
+    /// counts is a detailed portrait of how someone plays, and until
+    /// this existed the public summary emitted all of it — every type
+    /// ever logged, with totals — because the public path had no scope
+    /// to clamp. `None` = uncapped, which stays the behaviour for user
+    /// shares that don't set it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_event_types: Option<u32>,
 }
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]
@@ -612,6 +623,62 @@ fn apply_event_type_filter(
     (total, filtered)
 }
 
+/// The clamp a profile gets the first time it is made public.
+///
+/// Until this existed the public path had NO scope, so one toggle
+/// published the complete event-type histogram with counts — every type
+/// ever logged and how often — plus the running total and a heatmap the
+/// caller could widen to 90 days. That is a detailed portrait of how
+/// somebody plays, handed to anyone, from a single switch.
+///
+/// `kind` is `full` and that is not an oversight: kinds name SURFACES,
+/// and both public surfaces (summary, heatmap) are aggregates already —
+/// there is no public event list to withhold. The narrowing is done by
+/// the clamps, which is where it belongs and where the owner can widen
+/// it deliberately:
+///  * `max_event_types: 5` — the shape of what they do, not a full
+///    histogram of it.
+///  * `window_days: 30` — a month, not the 90 the endpoint would allow.
+///
+/// Applied only when turning public ON with nothing stored, so it is a
+/// default rather than a policy: an owner who widens it keeps their
+/// choice, and turning public off and on again does not silently
+/// re-narrow it.
+pub fn default_public_scope() -> ShareScope {
+    ShareScope {
+        kind: "full".to_string(),
+        tabs: None,
+        window_days: Some(30),
+        allow_event_types: None,
+        deny_event_types: None,
+        allow_widgets: None,
+        deny_widgets: None,
+        max_event_types: Some(5),
+    }
+}
+
+/// Keep only the N busiest types, per `scope.max_event_types`.
+///
+/// Applied AFTER the allow/deny filter and deliberately AFTER `total`
+/// has been computed: the cap hides the long tail of the histogram, it
+/// does not misreport how much the pilot has done. A viewer sees "top 5
+/// types" and a truthful total, not a total that silently equals the
+/// five rows shown.
+///
+/// Sorts by count descending, then by type name, so a tie doesn't
+/// reorder between requests and make the page look unstable.
+fn apply_type_cap(
+    mut by_type: Vec<(String, u64)>,
+    scope: Option<&ShareScope>,
+) -> Vec<(String, u64)> {
+    let Some(max) = scope.and_then(|s| s.max_event_types) else {
+        return by_type;
+    };
+    by_type.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+    by_type.truncate(max as usize);
+    by_type
+}
+
 /// Best-effort audit emission for a `share.viewed` row. Logged + not
 /// fatal — a hiccup in the audit pipeline must never block a friend
 /// read. Owner + recipient are in the payload because the actor on
@@ -680,6 +747,7 @@ pub async fn set_visibility<U: UserStore>(
     State(users): State<Arc<U>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    Extension(scopes): Extension<Arc<dyn crate::share_scopes::ShareScopesStore>>,
     guard: RequireUnrestricted<PublicProfile>,
     Json(req): Json<VisibilityRequest>,
 ) -> Response {
@@ -710,6 +778,40 @@ pub async fn set_visibility<U: UserStore>(
     if let Err(e) = result {
         tracing::error!(error = %e, handle = %auth.preferred_username, "set visibility failed");
         return err(StatusCode::INTERNAL_SERVER_ERROR, "spicedb_error");
+    }
+
+    // Seed the public clamp the first time somebody goes public.
+    //
+    // Only when nothing is stored: this is a DEFAULT, not a policy. An
+    // owner who has widened their public scope keeps that choice, and
+    // toggling public off and back on does not quietly re-narrow it
+    // behind them.
+    //
+    // Best-effort, like the audit append below. Failing the request
+    // would mean a profile that is public in SpiceDB but reports an
+    // error to the owner, and the read path already treats a missing
+    // clamp as "no clamp" — the same state as before this existed.
+    if req.public {
+        match scopes.get_public(&auth.preferred_username).await {
+            Ok(Some(_)) => {}
+            Ok(None) => match serde_json::to_value(default_public_scope()) {
+                Ok(v) => {
+                    if let Err(e) = scopes.put_public(&auth.preferred_username, &v).await {
+                        tracing::warn!(
+                            error = %e,
+                            handle = %auth.preferred_username,
+                            "seeding the default public scope failed"
+                        );
+                    }
+                }
+                Err(e) => tracing::warn!(error = %e, "default public scope did not serialise"),
+            },
+            Err(e) => tracing::warn!(
+                error = %e,
+                handle = %auth.preferred_username,
+                "reading the public scope failed; leaving it unset"
+            ),
+        }
     }
 
     // Piece 4 — apply the listing_opt_out delta when the request
@@ -1583,14 +1685,6 @@ where
     }
 }
 
-async fn render_summary<Q: EventQuery>(
-    query: &Q,
-    supporters: &dyn SupporterStore,
-    handle: &str,
-) -> Response {
-    render_summary_scoped(query, supporters, handle, None).await
-}
-
 /// Map a `SupporterStatus` (raw store shape, full field set) to a
 /// `PublicSupporterInfo` (chip projection, public-safe fields only).
 /// Returns `None` for `SupporterState::None` so callers can drop the
@@ -1606,7 +1700,7 @@ fn supporter_to_public(status: SupporterStatus) -> Option<PublicSupporterInfo> {
     }
 }
 
-/// Same as [`render_summary`] but applies a per-share scope clamp to
+/// Renders a summary, applying a per-share scope clamp to
 /// the result. The clamp drops disallowed event types from `by_type`
 /// and recomputes `total` so the returned shape is internally
 /// consistent (no `sum(by_type) != total` mismatch on the client).
@@ -1627,6 +1721,10 @@ async fn render_summary_scoped<Q: EventQuery>(
             } else {
                 (total, by_type)
             };
+            // Cap the histogram's length last, so `total` above stays
+            // the honest figure for everything the viewer is allowed to
+            // see rather than the sum of the rows that survived.
+            let by_type = apply_type_cap(by_type, scope);
             // Supporter chip — fail-soft on lookup error so a
             // supporter-store hiccup doesn't 5xx the whole summary
             // (the chip is decorative; the by_type render is the
@@ -1681,7 +1779,7 @@ async fn render_timeline_scoped<Q: EventQuery>(
 ) -> Response {
     let allow = scope.and_then(|s| s.allow_event_types.as_deref());
     let deny = scope.and_then(|s| s.deny_event_types.as_deref());
-    // `_shared` variant — see `render_summary` for the rationale.
+    // `_shared` variant — see `render_summary_scoped` for the rationale.
     let result = if allow.is_none() && deny.is_none() {
         query.timeline_shared(handle, days).await
     } else {
@@ -1758,6 +1856,7 @@ pub async fn public_summary<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(supporters): Extension<Arc<dyn SupporterStore>>,
+    Extension(scopes): Extension<Arc<dyn crate::share_scopes::ShareScopesStore>>,
     Extension(restrictions): Extension<
         Arc<dyn crate::account_restrictions::AccountRestrictionStore>,
     >,
@@ -1782,9 +1881,20 @@ pub async fn public_summary<Q: EventQuery>(
             .into_response();
     };
 
+    // The owner's public clamp. A profile made public before this
+    // existed has nothing stored, and `None` keeps the old uncapped
+    // behaviour rather than silently narrowing a page somebody may be
+    // pointing people at — narrowing is a decision, taken at the toggle.
+    let scope = scopes
+        .get_public(&handle)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| scope_from_value(&v));
+
     let check = check_public(client, &handle).await;
     render_or_404(check, || async {
-        render_summary(query.as_ref(), supporters.as_ref(), &handle).await
+        render_summary_scoped(query.as_ref(), supporters.as_ref(), &handle, scope.as_ref()).await
     })
     .await
 }
@@ -1806,6 +1916,7 @@ pub async fn public_summary<Q: EventQuery>(
 pub async fn public_timeline<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(scopes): Extension<Arc<dyn crate::share_scopes::ShareScopesStore>>,
     Extension(restrictions): Extension<
         Arc<dyn crate::account_restrictions::AccountRestrictionStore>,
     >,
@@ -1834,6 +1945,17 @@ pub async fn public_timeline<Q: EventQuery>(
             .into_response();
     };
     let check = check_public(client, &handle).await;
+    // Same clamp the summary reads. Without this the default's
+    // `window_days` would be inert on the heatmap — the one public
+    // surface where a wide window actually shows a pattern of life.
+    let scope = scopes
+        .get_public(&handle)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|v| scope_from_value(&v));
+    let days = clamp_days(days, scope.as_ref());
+
     render_or_404(check, || async {
         render_timeline(query.as_ref(), &handle, days).await
     })
@@ -2904,6 +3026,15 @@ mod tests {
                     );
                 s
             }))
+            .layer(Extension({
+                // `set_visibility` seeds the default public clamp through
+                // this store the first time a profile goes public.
+                let s: std::sync::Arc<dyn crate::share_scopes::ShareScopesStore> =
+                    std::sync::Arc::new(
+                        crate::share_scopes::test_support::MemoryShareScopesStore::default(),
+                    );
+                s
+            }))
     }
 
     /// Seed a user, mark their RSI handle verified, and return the
@@ -3297,6 +3428,7 @@ mod tests {
             deny_event_types: deny,
             allow_widgets: None,
             deny_widgets: None,
+            max_event_types: None,
         }
     }
 
@@ -3320,6 +3452,7 @@ mod tests {
             deny_event_types: None,
             allow_widgets: allow,
             deny_widgets: deny,
+            max_event_types: None,
         }
     }
 
@@ -3444,6 +3577,7 @@ mod tests {
             deny_event_types: None,
             allow_widgets: None,
             deny_widgets: None,
+            max_event_types: None,
         };
         let json = serde_json::to_value(&legacy).unwrap();
         assert!(!json.as_object().unwrap().contains_key("allow_widgets"));
@@ -3648,6 +3782,14 @@ mod public_restriction_tests {
             .layer(Extension(spicedb))
             .layer(Extension(supporters))
             .layer(Extension(restrictions))
+            .layer(Extension({
+                // `public_summary` reads the owner's public clamp here.
+                // Empty store = nothing stored = no clamp, which is the
+                // state these restriction tests are actually about.
+                let s: Arc<dyn crate::share_scopes::ShareScopesStore> =
+                    Arc::new(crate::share_scopes::test_support::MemoryShareScopesStore::default());
+                s
+            }))
     }
 
     async fn get_status(app: Router, uri: &str) -> StatusCode {
@@ -3785,6 +3927,7 @@ mod shared_events_tests {
             deny_event_types: None,
             allow_widgets: None,
             deny_widgets: None,
+            max_event_types: None,
         };
         assert!(
             !scope_allows_timeline(&scope),
@@ -3803,6 +3946,7 @@ mod shared_events_tests {
                 deny_event_types: None,
                 allow_widgets: None,
                 deny_widgets: None,
+                max_event_types: None,
             };
             assert!(scope_allows_timeline(&scope), "{kind} should reach it");
         }
@@ -3820,8 +3964,104 @@ mod shared_events_tests {
             deny_event_types: None,
             allow_widgets: None,
             deny_widgets: None,
+            max_event_types: None,
         };
         assert_eq!(clamp_days(90, Some(&scope)), 7);
         assert_eq!(clamp_days(3, Some(&scope)), 3, "narrower request wins");
+    }
+}
+
+/// Tests for the public clamp — the scope the public path never had.
+#[cfg(test)]
+mod public_scope_tests {
+    use super::*;
+
+    fn hist() -> Vec<(String, u64)> {
+        vec![
+            ("actor_death".into(), 5),
+            ("quantum_target_selected".into(), 90),
+            ("vehicle_stowed".into(), 40),
+            ("join_pu".into(), 40),
+            ("shop_purchase".into(), 1),
+        ]
+    }
+
+    fn scope_with_cap(max: Option<u32>) -> ShareScope {
+        ShareScope {
+            kind: "full".into(),
+            tabs: None,
+            window_days: None,
+            allow_event_types: None,
+            deny_event_types: None,
+            allow_widgets: None,
+            deny_widgets: None,
+            max_event_types: max,
+        }
+    }
+
+    #[test]
+    fn the_cap_keeps_the_busiest_types() {
+        let scope = scope_with_cap(Some(2));
+        let out = apply_type_cap(hist(), Some(&scope));
+        let names: Vec<&str> = out.iter().map(|(t, _)| t.as_str()).collect();
+        assert_eq!(names, vec!["quantum_target_selected", "join_pu"]);
+    }
+
+    #[test]
+    fn a_tie_breaks_on_name_so_the_page_does_not_reshuffle() {
+        // `vehicle_stowed` and `join_pu` are both 40. Without a stable
+        // tiebreak the two swap between requests and the profile looks
+        // like it is changing when nothing has happened.
+        let scope = scope_with_cap(Some(3));
+        let first = apply_type_cap(hist(), Some(&scope));
+        let mut reordered = hist();
+        reordered.reverse();
+        let second = apply_type_cap(reordered, Some(&scope));
+        assert_eq!(first, second, "cap must not depend on input order");
+    }
+
+    #[test]
+    fn no_cap_leaves_the_histogram_alone() {
+        let scope = scope_with_cap(None);
+        assert_eq!(apply_type_cap(hist(), Some(&scope)).len(), 5);
+        assert_eq!(apply_type_cap(hist(), None).len(), 5);
+    }
+
+    #[test]
+    fn a_cap_larger_than_the_histogram_is_harmless() {
+        let scope = scope_with_cap(Some(50));
+        assert_eq!(apply_type_cap(hist(), Some(&scope)).len(), 5);
+    }
+
+    /// The load-bearing one. `total` is computed BEFORE the cap, so a
+    /// capped profile still reports how much the pilot has actually
+    /// done. If the cap fed the total, a public profile would quietly
+    /// under-report — a different lie from the one we were fixing.
+    #[test]
+    fn the_cap_hides_the_tail_without_misreporting_the_total() {
+        let scope = scope_with_cap(Some(2));
+        let (total, filtered) = apply_event_type_filter(hist(), Some(&scope));
+        let capped = apply_type_cap(filtered, Some(&scope));
+        assert_eq!(total, 176, "total counts every type the viewer may see");
+        assert_eq!(capped.len(), 2, "but only the busiest two are listed");
+        assert!(
+            capped.iter().map(|(_, c)| *c).sum::<u64>() < total,
+            "the listed rows are a subset, and the total says so"
+        );
+    }
+
+    #[test]
+    fn the_default_public_scope_is_narrower_than_the_endpoint_allows() {
+        // What the toggle used to publish: every type, and whatever
+        // window the caller asked for up to 90 days.
+        let d = default_public_scope();
+        assert_eq!(d.max_event_types, Some(5));
+        assert_eq!(d.window_days, Some(30));
+        assert_eq!(clamp_days(90, Some(&d)), 30, "a 90-day ask is clamped");
+        // Both public surfaces stay reachable — the narrowing is the
+        // clamps, not the kind. A kind that blocked one would 404 the
+        // heatmap rather than shrink it.
+        assert!(scope_allows_aggregates(&d));
+        assert!(scope_allows_timeline(&d));
     }
 }
