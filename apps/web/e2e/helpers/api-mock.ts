@@ -99,12 +99,27 @@ export async function loginAs(
     staffRoles?: string[];
   } = {},
 ): Promise<void> {
+  // Staff grants ride the TOKEN, not just the cookie.
+  //
+  // `/admin` no longer trusts the cookie's `staffRoles` mirror — it is
+  // unsigned — and asks `GET /v1/auth/me` instead, reading roles off the
+  // token. Setting only the cookie left the layout reading `[]`, so it
+  // failed closed and every admin test failed. Encoding the roles here
+  // keeps ONE source of truth: the mock decodes them off the bearer, the
+  // way the real server reads them off a signed one.
+  //
+  // The cookie still carries them because the nav renders the admin link
+  // from `session.staffRoles`; the gate and the chrome read different
+  // things, and both are legitimate.
+  const roles = opts.staffRoles ?? [];
+  const token =
+    opts.token ?? (roles.length > 0 ? `test-token~staff=${roles.join(',')}` : 'test-token');
   const value = JSON.stringify({
-    t: opts.token ?? 'test-token',
+    t: token,
     u: opts.userId ?? 'user_test',
     h: opts.handle ?? 'TestPilot',
     v: opts.emailVerified ?? true,
-    r: opts.staffRoles ?? [],
+    r: roles,
   });
   await page.context().addCookies([
     {
@@ -147,6 +162,11 @@ export const currentUser = {
     email: 'pilot@example.test',
     email_verified: true,
     claimed_handle: 'TestPilot',
+    // Present and empty on purpose: `MeResponse.staff_roles` is not
+    // optional, and a fixture missing it let `/admin` read `undefined`
+    // where the real API always sends an array. `loginAs` supplies the
+    // non-empty case via the token.
+    staff_roles: [] as string[],
   },
 };
 

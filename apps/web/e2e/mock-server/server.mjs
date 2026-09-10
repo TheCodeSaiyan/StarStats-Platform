@@ -29,6 +29,9 @@ import { URL } from 'node:url';
 const PORT = Number(process.env.MOCK_PORT ?? 3199);
 
 let scenario = { __id: 'default', routes: {} };
+
+/** Shared with `loginAs` in e2e/helpers/api-mock.ts — keep the two in step. */
+const STAFF_TOKEN_MARKER = '~staff=';
 const calls = [];
 
 function readBody(req) {
@@ -200,8 +203,46 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  sendStub(res, stub);
+  sendStub(res, applyStaffRoles(key, stub, req));
 });
+
+/**
+ * Carry the caller's staff grants onto `GET /v1/auth/me`.
+ *
+ * `/admin` stopped trusting the session cookie's `staffRoles` mirror
+ * (that cookie is unsigned) and now asks this endpoint, reading roles
+ * off the token. The e2e harness still granted staff by writing the
+ * cookie, so the layout read `[]`, failed closed exactly as designed,
+ * and all 23 admin tests failed — a break nobody saw because the Web
+ * E2E job was skipped or cancelled on every run of `next` after it.
+ *
+ * Rather than adding a second source of truth to every admin spec, the
+ * roles ride the bearer, which is what the real server does: `loginAs`
+ * encodes them into the test token and they arrive here. A fixture that
+ * sets `staff_roles` itself still wins — this only fills a gap.
+ */
+function applyStaffRoles(key, stub, req) {
+  if (key !== 'GET /v1/auth/me') return stub;
+  if (!stub.body || typeof stub.body !== 'object') return stub;
+  if (Array.isArray(stub.body.staff_roles) && stub.body.staff_roles.length > 0) {
+    return stub;
+  }
+  const roles = rolesFromBearer(req.headers.authorization);
+  if (roles.length === 0) return stub;
+  return { ...stub, body: { ...stub.body, staff_roles: roles } };
+}
+
+/** Decode `test-token~staff=admin,moderator`. Returns [] for anything else. */
+function rolesFromBearer(header) {
+  if (typeof header !== 'string') return [];
+  const marker = header.indexOf(STAFF_TOKEN_MARKER);
+  if (marker === -1) return [];
+  return header
+    .slice(marker + STAFF_TOKEN_MARKER.length)
+    .split(',')
+    .map((r) => r.trim())
+    .filter(Boolean);
+}
 
 function findWildcard(routes, method, pathOnly) {
   for (const k of Object.keys(routes)) {
