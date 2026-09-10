@@ -52,9 +52,11 @@ if (typeof Element !== 'undefined') {
 /**
  * jsdom is configured here without a storage area, so `window.localStorage` is
  * `undefined` rather than an empty store — which is NOT the shape browsers
- * give you, and not the shape components guard for. `EmitterPrompt` remembers
- * its dismissal there, so without this its tests exercise the throw path only
- * and never the real one.
+ * give you, and not the shape components guard for. Anything remembering a
+ * per-viewer preference there — a collapsed section, a remembered tab — would
+ * otherwise have its tests exercise the throw path only and never the real
+ * one. (`EmitterPrompt` was the original reason; it has since been replaced
+ * by the outstanding-task banner, which deliberately stores nothing.)
  *
  * Backed by a Map on `Storage.prototype`'s own methods so `vi.spyOn(
  * Storage.prototype, 'getItem')` still works for the blocked-storage tests.

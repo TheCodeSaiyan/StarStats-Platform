@@ -257,6 +257,21 @@ export const eventsFilteredLogin = {
   },
 };
 
+/**
+ * A HEALTHY paired uplink — the default state for every scenario that is
+ * not about pairing.
+ *
+ * `sync_enabled` is present because `DeviceDto` does not make it optional;
+ * omitting it read as "paired but not syncing" and put an outstanding-task
+ * banner on every `/me` scenario in the suite. Same class of gap as the
+ * `staff_roles` one that failed the admin tests.
+ *
+ * `last_seen_at` is RELATIVE for the same reason. The outstanding-task
+ * list calls an uplink quiet after seven days, so a hard-coded date is
+ * healthy on the day it is written and starts failing the suite a week
+ * later — a fixture with an expiry date on it. Scenarios that want a
+ * stale uplink say so explicitly.
+ */
 export const deviceList = {
   status: 200,
   body: {
@@ -265,7 +280,8 @@ export const deviceList = {
         id: 'dev_1',
         label: "Daisy's PC",
         created_at: '2026-04-01T08:00:00Z',
-        last_seen_at: '2026-05-04T07:00:00Z',
+        last_seen_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        sync_enabled: true,
       },
     ],
   },

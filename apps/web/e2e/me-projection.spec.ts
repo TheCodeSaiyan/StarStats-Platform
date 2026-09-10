@@ -254,3 +254,70 @@ test('no timeline means no trace, not a flat line', async ({ page, request }) =>
   await page.locator('.hp-lens button', { hasText: 'Combat' }).click();
   await expect(page.locator('.hp-graf')).toHaveCount(0);
 });
+
+test('an account with no uplink is told to pair one, and told why', async ({
+  page,
+  request,
+}) => {
+  // The state the first-run modal used to cover, now derived from live
+  // state instead of `summary.total === 0`. The second assertion is the
+  // one that matters: a row that only said "Pair an uplink" would leave a
+  // reader staring at an empty projection without connecting the two.
+  await setScenario(
+    request,
+    scenarioFor('me-no-uplink', {
+      'GET /v1/auth/devices': { status: 200, body: { devices: [] } },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+
+  await expect(page.getByText('Pair an uplink')).toBeVisible();
+  await expect(page.getByText(/Nothing is reading your Game\.log/)).toBeVisible();
+});
+
+test('a paired uplink that is not syncing is named, not just counted', async ({
+  page,
+  request,
+}) => {
+  // The gap the old modal could not see at all: this account HAS events and
+  // a paired device, so `summary.total === 0` was false and it said nothing
+  // — while the uplink read the log and uploaded none of it.
+  await setScenario(
+    request,
+    scenarioFor('me-sync-off', {
+      'GET /v1/auth/devices': {
+        status: 200,
+        body: {
+          devices: [
+            {
+              id: 'dev_1',
+              label: 'Gaming Rig',
+              created_at: '2026-04-01T08:00:00Z',
+              last_seen_at: new Date().toISOString(),
+              sync_enabled: false,
+            },
+          ],
+        },
+      },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+
+  await expect(page.getByText('Turn sync on')).toBeVisible();
+  await expect(page.getByText(/Gaming Rig is paired but not syncing/)).toBeVisible();
+});
+
+test('a healthy account is not nagged', async ({ page, request }) => {
+  // The banner has no dismiss control, so "renders nothing when there is
+  // nothing to do" is the only thing standing between it and permanent
+  // furniture.
+  await setScenario(request, scenarioFor('me-healthy'));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/me');
+
+  await expect(page.getByText('Pair an uplink')).toHaveCount(0);
+  await expect(page.getByText('Turn sync on')).toHaveCount(0);
+  await expect(page.getByText(/Needs doing/)).toHaveCount(0);
+});

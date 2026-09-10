@@ -4,7 +4,8 @@ import React from 'react';
 import Link from 'next/link';
 import { bucketSeries } from './series';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
-import { EmitterPrompt } from '@/components/projection/EmitterPrompt';
+import { OutstandingTasks } from '@/components/projection/OutstandingTasks';
+import type { OutstandingTask } from '@/lib/outstanding-tasks';
 import { useShellData } from '@/components/projection/ShellData';
 import { useRouter } from 'next/navigation';
 import { chromeLink } from '@/components/projection/chromeLink';
@@ -82,10 +83,10 @@ export interface MeProjectionProps {
     /** Derivation for K/D when some deaths were reconstructed. */
     kdNote?: string;
   };
-  /** No event has ever reached this account, so there is nothing to project
-   *  and the reader's next action is to install the Emitter. Drives the
-   *  first-run prompt. */
-  needsEmitter: boolean;
+  /** What still needs doing before this account works — pairing an uplink,
+   *  turning sync on, verifying an RSI handle. Empty when nothing does, and
+   *  the banner is then not rendered at all. */
+  tasks: OutstandingTask[];
   calibration: Calibration;
   range: RangeId;
   /** Element ids the reader has enabled, in their saved order. */
@@ -127,7 +128,7 @@ export function MeProjection({
   supporterTier,
   enlistmentYear,
   lifetime,
-  needsEmitter,
+  tasks,
   calibration,
   range,
   enabledIds,
@@ -514,11 +515,7 @@ export function MeProjection({
       }
       hint="Move cursor · 1–6 lenses · E layout · Esc back"
       overlay={
-        // First run beats the layout editor: an account with no events cannot
-        // have opened the editor, so the two never actually contend.
-        needsEmitter ? (
-          <EmitterPrompt />
-        ) : editing ? (
+        editing ? (
           <LayoutEditor
             catalogue={PROJECTION_CATALOGUE.map((e) => ({
               id: e.id,
@@ -544,6 +541,15 @@ export function MeProjection({
           onSelectSegment={openLens}
           onSelectNode={setRecord}
         />
+      </Depth>
+
+      {/* Outstanding work reads ABOVE the projection rather than over it.
+          It is not urgent enough to interrupt: a reader can see their empty
+          projection and the reason it is empty at the same time, which is
+          exactly what the modal this replaces prevented. Renders nothing
+          when nothing is outstanding. */}
+      <Depth depth={36}>
+        <OutstandingTasks tasks={tasks} />
       </Depth>
 
       <Depth depth={36}>
