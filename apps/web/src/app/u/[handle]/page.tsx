@@ -19,6 +19,7 @@ import Link from 'next/link';
 import type { Route } from 'next';
 import {
   ApiCallError,
+  getFriendEvents,
   getFriendScope,
   getFriendSummary,
   getMyShareScopes,
@@ -26,10 +27,12 @@ import {
   getPublicShareScopes,
   getPublicSummary,
   getSummary,
+  statusOf,
   getSupporterStatus,
   type ProfileResponse,
   type PublicSummaryResponse,
   type ShareScope,
+  type SharedEventDto,
   type SupporterStatusDto,
   type WidgetShareScopesApi,
 } from '@/lib/api';
@@ -37,6 +40,9 @@ import { formatEventType } from '@/lib/event-types';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
 import { ProfileProjection } from './_projection/ProfileProjection';
+import { SharedEventFeed } from './_projection/SharedEventFeed';
+import { loadAllReferenceBundles } from '@/lib/reference';
+import type { RecentRefs } from '@/app/me/_projection/recent-activity-rows';
 import {
   PublicProjection,
   type PublicCalloutVM,
@@ -348,6 +354,43 @@ export default async function PublicProfilePage(props: PageProps) {
   }
 
   /*
+   * The events behind the share.
+   *
+   * Recipient only. A public viewer has no such endpoint by design, and
+   * the owner has `/me/activity`, which is richer (filters, paging, the
+   * show-everything switch) than anything that belongs on a profile.
+   *
+   * Both fetches degrade rather than fail the page. A share clamped to
+   * `aggregates` 404s the feed — that is the owner's instruction being
+   * honoured, not an error — and a missing catalogue costs entity links,
+   * not rows.
+   */
+  let sharedEvents: SharedEventDto[] = [];
+  let sharedRefs: RecentRefs | undefined;
+  if (view.kind === 'shared' && token) {
+    try {
+      const page = await getFriendEvents(token, handle, { limit: 50 });
+      sharedEvents = page.events;
+    } catch (err) {
+      logger.warn(
+        { err, call: 'friend.events', status: statusOf(err) },
+        'shared events fetch failed',
+      );
+    }
+    if (sharedEvents.length > 0) {
+      try {
+        const bundle = await loadAllReferenceBundles();
+        sharedRefs = { lookup: bundle.lookup, catalogs: bundle.catalogs };
+      } catch (err) {
+        logger.warn(
+          { err, call: 'friend.events.catalogs' },
+          'catalogue load failed',
+        );
+      }
+    }
+  }
+
+  /*
    * What this pilot publishes, and what they withhold.
    *
    * `Profile.jsx` states both — "Economy and Flight time are private", with the
@@ -551,6 +594,9 @@ export default async function PublicProfilePage(props: PageProps) {
               activity heatmap only. The detailed timeline is only visible to
               handles or orgs the owner has explicitly shared with.
             </p>
+          )}
+          {view.kind === 'shared' && (
+            <SharedEventFeed events={sharedEvents} refs={sharedRefs} />
           )}
           {view.kind === 'shared' && (
             <p className="hp-note">
