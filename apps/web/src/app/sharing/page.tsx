@@ -47,6 +47,10 @@ import {
   type VisibilityResponse,
 } from '@/lib/api';
 import { localInputToUtcIso } from '@/lib/expiry';
+import {
+  describePublicScope,
+  summarisePublicScope,
+} from '@/lib/public-scope';
 import { logger } from '@/lib/logger';
 import { Plane, BeamAlert, BeamButton, BeamChip, BeamInput, BeamSelect, SubStats } from 'holo';
 import { navSections } from '@/lib/nav';
@@ -547,6 +551,24 @@ export default async function SharingPage(props: {
   // that contains the editor being scrolled to.
   // ---------------------------------------------------------------------
   const isPublic = visibility?.public === true;
+  /*
+   * The scope the share being edited ALREADY has.
+   *
+   * The editor prefills from URL params, which carry handle, note and
+   * expiry but never the scope — so it rendered its own defaults and
+   * saving rewrote a deliberately narrow share to the full manifest.
+   * A form that silently widens a grant while claiming to edit it is
+   * worse than one that refuses to edit at all.
+   */
+  const editingScope = isEditing
+    ? (shares?.shares.find(
+        (s) =>
+          s.recipient_handle.toLowerCase() === prefilledHandle.toLowerCase(),
+      )?.scope ?? null)
+    : null;
+  // Derived once: both the chip and the list below describe the STORED
+  // clamp, so they cannot disagree with each other.
+  const publicScopeDescription = describePublicScope(visibility?.public_scope);
   const isOptedOut = visibility?.listing_opt_out === true;
   const now = Date.now();
   const shareEntries = shares?.shares ?? [];
@@ -615,11 +637,42 @@ export default async function SharingPage(props: {
             <BeamChip tone={isPublic ? 'good' : undefined} dot={isPublic}>
               {isPublic ? 'Public' : 'Private'}
             </BeamChip>
-            <span>
-              When public, anyone can view your summary and timeline at the URL
-              below.
-            </span>
+            <span>{summarisePublicScope(visibility?.public_scope)}</span>
           </div>
+
+          {/* What a stranger actually gets, in words.
+              The old copy said "your summary and timeline", which is true
+              of almost any setting and so told the owner nothing — while
+              the public path had no clamp at all, making the honest
+              version "every event type you have ever logged, with
+              counts". Read from the stored scope, so it describes what
+              IS published rather than what the form is about to send. */}
+          <Plane
+            tilt="flat"
+            cap={isPublic ? 'What anyone can see' : 'What going public would publish'}
+            style={{ marginTop: 16 }}
+          >
+            <ul className="hp-prose" style={{ margin: 0, paddingLeft: 20 }}>
+              {publicScopeDescription.published.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            {publicScopeDescription.uncapped ? (
+              <p className="hp-note" style={{ marginTop: 12 }}>
+                Nothing is currently narrowing this profile. New public
+                profiles are limited to their five busiest event types and a
+                30-day window; yours predates that and still publishes the
+                full history.
+              </p>
+            ) : null}
+            <p className="hp-note" style={{ marginTop: 12 }}>
+              Per-widget switches are separate —{' '}
+              <Link href={'/settings/widget-sharing' as Route}>
+                widget sharing
+              </Link>{' '}
+              decides which panels a visitor sees.
+            </p>
+          </Plane>
           <form action={visibilityAction} className="hp-formcol">
             <input
               type="hidden"
@@ -848,6 +901,7 @@ export default async function SharingPage(props: {
             prefilledHandle={prefilledHandle}
             prefilledNote={prefilledNote}
             prefilledExpires={prefilledExpires}
+            prefilledScope={editingScope}
           />
         </>
       ),

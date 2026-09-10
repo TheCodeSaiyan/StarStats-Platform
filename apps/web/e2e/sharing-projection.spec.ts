@@ -190,3 +190,89 @@ test('a SpiceDB outage says the authorisation service is offline, not "something
     page.getByText("Couldn't load your sharing state"),
   ).toHaveCount(0);
 });
+
+test('the visibility toggle states what a stranger actually gets', async ({
+  page,
+  request,
+}) => {
+  // The old copy — "anyone can view your summary and timeline" — is true
+  // of almost any setting, so it told the owner nothing, while the public
+  // path had no clamp at all. Asserting "some copy is present" would have
+  // passed on that. Assert the SPECIFIC clamp instead.
+  await setScenario(
+    request,
+    scenarioFor('sharing-projection', {
+      ...FIXTURES,
+      'GET /v1/me/visibility': {
+        status: 200,
+        body: {
+          public: true,
+          listing_opt_out: false,
+          public_scope: { kind: 'full', max_event_types: 5, window_days: 30 },
+        },
+      },
+    }),
+  );
+
+  await page.goto('/sharing');
+
+  await expect(
+    page.getByText('Your 5 busiest event types, with counts'),
+  ).toBeVisible();
+  await expect(
+    page.getByText('An activity heatmap covering the last 30 days'),
+  ).toBeVisible();
+});
+
+test('an unclamped public profile is told it publishes everything', async ({
+  page,
+  request,
+}) => {
+  // A profile made public before the clamp existed still publishes its
+  // full history. The owner cannot decide whether that is what they
+  // wanted unless the page says so in those words, so this is the case
+  // that most needs stating — and the one a cheerful default would hide.
+  await setScenario(
+    request,
+    scenarioFor('sharing-projection', {
+      ...FIXTURES,
+      'GET /v1/me/visibility': {
+        status: 200,
+        body: { public: true, listing_opt_out: false },
+      },
+    }),
+  );
+
+  await page.goto('/sharing');
+
+  await expect(
+    page.getByText('Every event type you have logged, with counts'),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Nothing is currently narrowing this profile/),
+  ).toBeVisible();
+});
+
+test('editing a share keeps the scope it already has', async ({ page }) => {
+  // The editor prefilled from URL params, which carry handle, note and
+  // expiry but never the scope — so it rendered its own defaults and
+  // saving rewrote a deliberately narrow share to the full manifest.
+  // SSDemoWingman is fixtured with `scope: { kind: 'timeline' }`; before
+  // the fix this select read "full", so a round-trip through the edit
+  // form silently widened the grant.
+  await page.goto(
+    '/sharing?handle=SSDemoWingman&expires=2026-09-30T12%3A00%3A00.000Z&note=flight+lead#share-editor',
+  );
+
+  await expect(page.locator('#scope-kind')).toHaveValue('timeline');
+});
+
+test('a new share is time-boxed by default', async ({ page }) => {
+  // The old default was the widest thing the form could express: full
+  // manifest, no window, reached by typing a handle and pressing the
+  // button. Narrow by default, widen deliberately.
+  await page.goto('/sharing');
+  await openGroup(page, 'Outbound');
+
+  await expect(page.locator('#scope-window-days')).toHaveValue('30');
+});

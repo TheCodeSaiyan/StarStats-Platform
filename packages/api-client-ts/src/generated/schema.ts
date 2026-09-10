@@ -8107,6 +8107,7 @@ export interface components {
              */
             listing_opt_out?: boolean | null;
             public: boolean;
+            public_scope?: null | components["schemas"]["ShareScope"];
         };
         VisibilityResponse: {
             /**
@@ -8117,6 +8118,7 @@ export interface components {
              */
             listing_opt_out: boolean;
             public: boolean;
+            public_scope?: null | components["schemas"]["ShareScope"];
         };
         VoteRequest: {
             /** @description `true` to record / keep a vote; `false` to retract one. */
