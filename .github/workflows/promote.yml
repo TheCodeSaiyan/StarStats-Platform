@@ -100,7 +100,28 @@ jobs:
       tray:     ${{ steps.decide.outputs.tray }}
       platform: ${{ steps.decide.outputs.platform }}
     steps:
+    # `fetch-depth: 0`, and the reason is a spurious release.
+    #
+    # The default shallow checkout gives `dorny/paths-filter` no history
+    # to resolve the push's base against, so on a push it compares
+    # against something wider than the push and reports files that
+    # arrived in EARLIER, already-released commits.
+    #
+    # That tagged four tray alphas — 0.1.18-alpha.1 through .4 — whose
+    # diff against tray-v0.1.17 is two version lines and nothing else.
+    # The run for 83d509d reported "Detected 17 changed files" and
+    # matched `tray` on `Cargo.toml`/`Cargo.lock`, neither of which that
+    # push contained; they came from the `tonic` dependency added days
+    # earlier and were re-counted on every push after it. The same range
+    # also carried files from a different PR entirely.
+    #
+    # A track that re-fires on work it already shipped is worse than one
+    # that misses: the tray has an auto-update manifest, so each of those
+    # alphas is an update offered to installed clients for a build
+    # identical to the one they are running.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        fetch-depth: 0
     # Path detection — only runs on push events. dorny/paths-filter
     # on push compares against the parent commit, which is what we
     # want (incremental detection per commit).

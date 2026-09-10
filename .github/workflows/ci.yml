@@ -219,7 +219,19 @@ jobs:
       tauri:   ${{ steps.decide.outputs.tauri }}
       scripts: ${{ steps.decide.outputs.scripts }}
     steps:
+    # `fetch-depth: 0` for the same reason promote.yml's detect job needs
+    # it: a shallow checkout leaves `dorny/paths-filter` unable to
+    # resolve a push's base, so it compares against something wider and
+    # reports files from earlier commits as changed.
+    #
+    # In promote.yml that over-reporting tagged four tray releases with
+    # no tray content in them. Here the failure is quieter and worse in
+    # its own way — jobs RUN when they need not, so the gate stays
+    # honest and just costs more. The under-reporting direction is the
+    # dangerous one, and it is the same root cause.
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        fetch-depth: 0
     # Only meaningful when there is something to diff against. A
     # schedule has no base commit, so the filter is skipped there and
     # `decide` forces everything on instead.
