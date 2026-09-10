@@ -6,6 +6,17 @@ on:
   push:
     branches: [main, next]
 
+# Least privilege for the whole workflow. Nothing here writes to the
+# repository: no `gh` CLI, no `github-script`, no SARIF upload, no
+# pushes — this file only builds and tests. Without an explicit block
+# every job inherits whatever the repository default is, which is how
+# eleven `actions/missing-workflow-permissions` alerts were raised
+# against it.
+#
+# A job that needs more declares it itself; `changed` does, below.
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   # Cancel superseded runs on branches, but NEVER on main: main pushes
@@ -149,6 +160,15 @@ jobs:
   changed:
     name: Detect changed areas
     runs-on: ubuntu-latest
+    # The only job that needs more than the workflow default.
+    # `dorny/paths-filter` diffs locally on a push, but on a
+    # pull_request it asks the API which files changed — which a
+    # `contents: read` token cannot do. Without this the filter returns
+    # nothing on every PR and each downstream job quietly skips, so the
+    # gate would go green having run none of the tests.
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       rust:    ${{ steps.f.outputs.rust }}
       web:     ${{ steps.f.outputs.web }}
