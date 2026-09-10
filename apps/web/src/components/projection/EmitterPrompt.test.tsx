@@ -60,28 +60,58 @@ describe('EmitterPrompt', () => {
   });
 
   it('still shows when localStorage throws, rather than staying hidden', async () => {
-    // A private window / blocked site data throws on ACCESS. Spied on the
-    // instance, not `Storage.prototype`: the value under test has to be the one
-    // the component actually reads.
-    const get = vi
-      .spyOn(window.localStorage, 'getItem')
-      .mockImplementation(() => {
-        throw new Error('blocked');
-      });
-    const set = vi
-      .spyOn(window.localStorage, 'setItem')
-      .mockImplementation(() => {
-        throw new Error('blocked');
-      });
-    const user = userEvent.setup();
-    render(<EmitterPrompt />);
-    expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(get).toHaveBeenCalled();
-    // Dismissal must not blow up just because it cannot be remembered.
-    await user.click(screen.getByRole('button', { name: /look around first/i }));
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(set).toHaveBeenCalled();
-    get.mockRestore();
-    set.mockRestore();
+    // A private window / blocked site data throws on ACCESS.
+    //
+    // The whole `localStorage` property is REPLACED rather than spied on with
+    // `vi.spyOn(window.localStorage, 'getItem')`. jsdom implements Storage
+    // behind a Proxy so that `localStorage.foo = 1` writes a stored item, and
+    // that Proxy's `defineProperty` trap swallows the own-property vitest
+    // installs to shadow the prototype method — so the spy is never the
+    // function the component calls, and `toHaveBeenCalled()` fails while the
+    // component works fine.
+    //
+    // It failed on CI (Node 24) and passed on Node 26, where a native
+    // `localStorage` shadows the jsdom one and takes the spy normally. The
+    // version skew is what kept it hidden; replacing the property is correct
+    // under both. `readDismissed` reads `window.localStorage` at call time, so
+    // the stub is what it gets.
+    const get = vi.fn(() => {
+      throw new Error('blocked');
+    });
+    const set = vi.fn(() => {
+      throw new Error('blocked');
+    });
+    const original = Object.getOwnPropertyDescriptor(window, 'localStorage');
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      value: { getItem: get, setItem: set },
+    });
+
+    try {
+      const user = userEvent.setup();
+      render(<EmitterPrompt />);
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+      expect(get).toHaveBeenCalled();
+      // Dismissal must not blow up just because it cannot be remembered.
+      await user.click(
+        screen.getByRole('button', { name: /look around first/i }),
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(set).toHaveBeenCalled();
+    } finally {
+      // Restore in `finally`: leaking the throwing stub would break the
+      // `beforeEach` clear() of every test that runs after this one in
+      // the same file.
+      //
+      // `localStorage` may be an own accessor or inherited from the window
+      // prototype depending on the runtime, so put back what was actually
+      // there — and when there was no own property, delete ours so the
+      // inherited one resurfaces rather than staying shadowed.
+      if (original) {
+        Object.defineProperty(window, 'localStorage', original);
+      } else {
+        delete (window as { localStorage?: unknown }).localStorage;
+      }
+    }
   });
 });
