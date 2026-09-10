@@ -134,7 +134,7 @@ export default function SettingsGuidePage() {
         <div className="ss-about-section-eyebrow">Elsewhere</div>
         <h2>Adjacent pages people look for here.</h2>
         <p>
-          <Link href={'/downloads' as Route}>Connected uplinks</Link> — paired
+          <Link href={'/downloads' as Route}>Emitter</Link> — paired
           machines, and where you generate a pairing code or revoke one.{' '}
           <Link href={'/guides/sharing' as Route}>Sharing</Link> — who can
           see your profile, which is deliberately not a settings card.

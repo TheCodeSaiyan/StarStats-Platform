@@ -148,7 +148,7 @@ export default function TroubleshootingPage() {
         </h2>
         <p>
           The app is sending and the server is refusing, because cloud sync
-          is off for that uplink. Turn it on from Connected Uplinks on the
+          is off for that uplink. Turn it on from the Emitter page on the
           web, or tick <strong>Sync settings with your account</strong> in
           the app and press Save.
         </p>
