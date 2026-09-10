@@ -1,5 +1,5 @@
 import React from 'react';
-import { listEvents } from '@/lib/api';
+import { getFriendEvents, listEvents } from '@/lib/api';
 import { formatEventType } from '@/lib/event-types';
 import type { ResolvedLocationLike } from '@/lib/event-summary-react';
 import { IN_TRANSIT_HIDDEN_TYPES } from '@/lib/event-filter';
@@ -12,11 +12,17 @@ import { fmtRelative } from './kit/format';
 /**
  * `recent_activity` — the owner's most recent individual events.
  *
- * Owner-only (C2, 2026-07-09): the only source is me-scoped `/v1/me/events`;
- * there is NO friend-scoped event-list equivalent (getFriendTimeline returns
- * aggregated heatmap buckets), so rendering for a visitor would surface the
- * VIEWER's own events on the owner's profile. Gate to owner-only until a
- * `/v1/u/{handle}/events` endpoint exists.
+ * Owner-only from C2 (2026-07-09) until the endpoint it was waiting for
+ * arrived: the only source was me-scoped `/v1/me/events`, with no
+ * friend-scoped event list (getFriendTimeline returns aggregated heatmap
+ * buckets), so rendering for a visitor would have surfaced the VIEWER's own
+ * events on the owner's profile.
+ *
+ * `GET /v1/u/{handle}/events` now exists, so the gate is the pilot's own
+ * "Recent activity" share switch — which named this widget all along — and
+ * a visitor's read goes through the shared feed, where the server has
+ * already applied the owner's hide list and the share's clamps. The switch
+ * defaults to off.
  *
  * Migrated to the kit: `defineWidget` owns fetch/empty/gate; `RankedList`
  * owns the bounded top-N (compact 3, expanded 12 — no see-more link, as
@@ -124,19 +130,36 @@ export const recentActivityWidget = defineWidget<RecentActivityData>({
   id: 'recent_activity',
   eyebrow: 'Recent activity',
   rangeAware: true,
-  visibility: 'owner',
+  // Gated on the pilot's own "Recent activity" switch rather than owner-
+  // only. That switch already existed and named exactly this widget; what
+  // was missing was a friend-scoped event list to render, which is why
+  // the comment above said owner-only "until a /v1/u/{handle}/events
+  // endpoint exists". It does now. Default is off, so nothing becomes
+  // visible until the owner says so.
+  visibility: { shareScope: 'recent_activity' },
   async load(ctx) {
-    // Owner-only (see visibility). Defensive: never fetch me-scoped events
-    // with a visitor's token even if load is reached directly.
-    if (!ctx.isOwner || !ctx.token) return null;
+    if (!ctx.token) return null;
     let events = null;
     try {
-      events = await listEvents(ctx.token, {
-        limit: FETCH_LIMIT,
-        since: rangeToSinceIso(ctx.range),
-      });
+      // The owner's own read keeps `/v1/me/events`, which shows rows they
+      // have hidden so they can be un-hidden. A visitor gets the shared
+      // feed, where the server has already applied the hide list and the
+      // share's clamps. Fetching me-scoped events with a visitor's token
+      // would render the VIEWER's events under the owner's name — the
+      // failure this widget was gated to avoid.
+      events = ctx.isOwner
+        ? await listEvents(ctx.token, {
+            limit: FETCH_LIMIT,
+            since: rangeToSinceIso(ctx.range),
+          })
+        : await getFriendEvents(ctx.token, ctx.ownerHandle, {
+            limit: FETCH_LIMIT,
+          });
     } catch (err) {
-      logger.warn({ err, call: 'widget.recent_activity' }, 'fetch failed');
+      logger.warn(
+        { err, call: 'widget.recent_activity', handle: ctx.ownerHandle },
+        'fetch failed',
+      );
       return null;
     }
     const rows = (events?.events ?? []).filter((e) => !isLowSignal(e));
