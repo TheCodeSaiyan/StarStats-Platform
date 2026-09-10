@@ -138,11 +138,11 @@ export default function RsiCookiePage() {
 
       <section className="ss-about-section">
         <div className="ss-about-section-eyebrow">05 — Taking it back</div>
-        <h2>Clear cookie, in the app.</h2>
+        <h2>Clearing it, in the app.</h2>
         <p>
-          The settings pane has a <strong>Clear cookie</strong> control. It
-          removes the cookie from your keychain, and it warns you what
-          you&apos;re giving up:{' '}
+          The RSI cookie card in the settings pane has a{' '}
+          <strong>Clear</strong> button. It removes the cookie from your
+          keychain, and it warns you what you&apos;re giving up:{' '}
           <em>
             &ldquo;Clear the stored RSI cookie? Hangar refresh will pause
             until you paste a new one.&rdquo;

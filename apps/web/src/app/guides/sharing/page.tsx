@@ -153,7 +153,7 @@ export default function SharingGuidePage() {
         </p>
         <p>
           Machines are separate from people:{' '}
-          <Link href={'/downloads' as Route}>connected uplinks</Link> lists
+          the <Link href={'/downloads' as Route}>Emitter page</Link> lists
           the desktop apps paired to your account, and revoking one there
           stops that machine sending. That is a different action from
           un-sharing your profile, and you may want both.

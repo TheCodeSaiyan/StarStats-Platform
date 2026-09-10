@@ -102,7 +102,7 @@ export default function DocsPage() {
         <h2>The website makes the code. The app takes it.</h2>
         <p>
           That&apos;s the way round people get wrong, so: on the web, go to
-          Connected Uplinks and press <strong>Generate pairing code</strong>.
+          the Emitter page and press <strong>Generate pairing code</strong>.
           You get eight characters. Type them into the desktop app.
         </p>
         <p>
@@ -169,7 +169,7 @@ export default function DocsPage() {
         <p>
           With it on, this app&apos;s theme and settings live on your
           account and follow you to other machines. You can revoke that
-          from Connected Uplinks on the web at any time.
+          from the Emitter page on the web at any time.
         </p>
         <p style={{ color: 'var(--fg-muted)' }}>
           What this checkbox does <em>not</em> mean is &ldquo;nothing

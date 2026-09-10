@@ -565,7 +565,7 @@ function SectionCloudSync() {
             body: 'Cloud sync is off by default on every device. Flip the toggle on the tray you actually want to sync. The others stay strictly local.',
           },
           {
-            title: 'Connected Uplinks page',
+            title: 'Emitter page',
             body: "See every paired tray under one roof on /devices. Toggle sync on or off per uplink from the web — the device picks it up on its next tick.",
           },
           {
