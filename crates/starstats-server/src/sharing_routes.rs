@@ -150,6 +150,18 @@ pub struct VisibilityRequest {
     /// to model "exclude from listing" as a ReBAC relation.
     #[serde(default)]
     pub listing_opt_out: Option<bool>,
+    /// The clamp applied to everything a stranger can read. `None`
+    /// means "leave it as it is" — the same "absent = unchanged"
+    /// reading `listing_opt_out` uses, so a client that only sends
+    /// `{"public": ...}` never silently rewrites a scope it did not
+    /// know about.
+    ///
+    /// Sending a scope does NOT turn the profile public on its own;
+    /// `public` still decides that. The two travel together so the UI
+    /// can offer "public, and here is exactly what that publishes" as
+    /// one decision instead of two screens.
+    #[serde(default)]
+    pub public_scope: Option<ShareScope>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -160,6 +172,12 @@ pub struct VisibilityResponse {
     /// the request) so the UI sub-toggle can render the live state
     /// without a second round-trip.
     pub listing_opt_out: bool,
+    /// The live public clamp, echoed so the toggle can state what it
+    /// publishes without a second round-trip. `None` = no clamp, which
+    /// is the pre-scope behaviour: everything the public endpoints
+    /// would return unaided.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub public_scope: Option<ShareScope>,
 }
 
 /// Per-share scope clamp — audit v2 §05.1+§05.5. `None` (= column
@@ -791,7 +809,24 @@ pub async fn set_visibility<U: UserStore>(
     // would mean a profile that is public in SpiceDB but reports an
     // error to the owner, and the read path already treats a missing
     // clamp as "no clamp" — the same state as before this existed.
-    if req.public {
+    // An explicit scope on the request wins over both the stored value
+    // and the default. This is the toggle saying "public, and exactly
+    // this much" in one call rather than leaving a window where the
+    // profile is public under the old clamp.
+    if let Some(requested) = req.public_scope.as_ref() {
+        match serde_json::to_value(requested) {
+            Ok(v) => {
+                if let Err(e) = scopes.put_public(&auth.preferred_username, &v).await {
+                    tracing::warn!(
+                        error = %e,
+                        handle = %auth.preferred_username,
+                        "writing the requested public scope failed"
+                    );
+                }
+            }
+            Err(e) => tracing::warn!(error = %e, "requested public scope did not serialise"),
+        }
+    } else if req.public {
         match scopes.get_public(&auth.preferred_username).await {
             Ok(Some(_)) => {}
             Ok(None) => match serde_json::to_value(default_public_scope()) {
@@ -874,6 +909,17 @@ pub async fn set_visibility<U: UserStore>(
         Json(VisibilityResponse {
             public: req.public,
             listing_opt_out,
+            // Read back rather than echoing what was sent: the chip and
+            // the "what a stranger sees" copy must describe what is
+            // actually stored, not what the client hoped for. A write
+            // that silently failed above would otherwise render as a
+            // clamp that is not there.
+            public_scope: scopes
+                .get_public(&auth.preferred_username)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|v| scope_from_value(&v)),
         }),
     )
         .into_response()
@@ -893,6 +939,7 @@ pub async fn set_visibility<U: UserStore>(
 pub async fn get_visibility<U: UserStore>(
     State(users): State<Arc<U>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(scopes): Extension<Arc<dyn crate::share_scopes::ShareScopesStore>>,
     auth: AuthenticatedUser,
 ) -> Response {
     let Some(client) = spicedb.as_ref() else {
@@ -949,6 +996,12 @@ pub async fn get_visibility<U: UserStore>(
         Json(VisibilityResponse {
             public,
             listing_opt_out,
+            public_scope: scopes
+                .get_public(&auth.preferred_username)
+                .await
+                .ok()
+                .flatten()
+                .and_then(|v| scope_from_value(&v)),
         }),
     )
         .into_response()

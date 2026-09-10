@@ -1047,6 +1047,34 @@
   margin-top: 10px;
 }
 
+/* Progressive-disclosure block for the long tail of a form. Native
+   <details> on purpose: the forms that use it work with scripting off,
+   and a JS disclosure would quietly stop being usable there.
+
+   The summary is styled as a control rather than left as a bare marker,
+   because a row that reads like body text does not invite the click that
+   reveals the rest of the form. */
+.hp-disclosure {
+  border-top: 1px solid rgba(var(--bR), var(--bG), var(--bB), 0.1);
+  padding-top: 14px;
+}
+.hp-disclosure > summary {
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--label);
+  padding: 6px 0;
+  list-style-position: inside;
+}
+.hp-disclosure > summary:hover {
+  color: var(--hot);
+}
+.hp-disclosure > summary:focus-visible {
+  outline: 1px solid var(--hot);
+  outline-offset: 3px;
+}
+
 /* Multi-line field. Vertical resize only — horizontal would let a reader drag
  * the control out past the pane containing it. */
 .hp-textarea {
