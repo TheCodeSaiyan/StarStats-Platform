@@ -1,15 +1,15 @@
 {
-  "version": "0.1.18-alpha.1",
-  "pub_date": "2026-09-10T00:35:19.244Z",
-  "notes": "See https://github.com/TheCodeSaiyan/StarStats-Platform/releases/tag/tray-v0.1.18-alpha.1",
+  "version": "0.1.18-alpha.2",
+  "pub_date": "2026-09-10T13:10:32.116Z",
+  "notes": "See https://github.com/TheCodeSaiyan/StarStats-Platform/releases/tag/tray-v0.1.18-alpha.2",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRQXZHNUVudHBSQXVTbFJqUHJIdytudU5iWFBuaFBPSDlSTnFXemlhQjVYTlpabFZqcUJxMWFkNTBpRGRFYmNhd2FJYkNBZmROZjBvMFlEVE5YMHhSb3lsN1ZoQVVub3drPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDAwNDg5CWZpbGU6U3RhclN0YXRzXzAuMS4xOF94NjQtc2V0dXAuZXhlCkJ3S2VidkQxd2xjcEpjT3UyYTQxQVRWRitPVnB5V0NkbVMyQnRPOUhsbXRXZ1NGOUtpbGhZNUFQaVkranFQQ3FBc0RJQjIvNU5NQ0pYU2ZROUZHTUFnPT0K",
-      "url": "https://github.com/TheCodeSaiyan/StarStats-Platform/releases/download/tray-v0.1.18-alpha.1/StarStats_0.1.18_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRQXZHNUVudHBSQWx5b05sZFFFdTNpYnRadHlMa3lrRHg3c05WTDU5SDVqelZHSk9vYTJncU9CWkxTOVNDdU0rVTdjcXBaTUVpSnY5b1hlWUxrSWU1cHpiSnpndjNwOUE4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDQ1NzkxCWZpbGU6U3RhclN0YXRzXzAuMS4xOF94NjQtc2V0dXAuZXhlCmFLVy82TVBwby9VTVhyVzI4T1c1QUFkc050Zm1NU3ZFN0k1K01uVUM3bW1VYjQzUENZbTZQamxlVEVtQW5CeUwzOG1nMTg1cnFkNmRnbVdWdEd2QUFnPT0K",
+      "url": "https://github.com/TheCodeSaiyan/StarStats-Platform/releases/download/tray-v0.1.18-alpha.2/StarStats_0.1.18_x64-setup.exe"
     },
     "linux-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRQXZHNUVudHBSQWlsUnZIeXJ6dFJHRFVST0FySE84dGhGcUtFMnFxZi9aeHpQZ0l0cUtrV0VUUmppS0xPcUJZOXk1ZENMV0RxWWpmRUJtZkFlTE84TWtoRFZCYmgvRkEwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDAwMTUxCWZpbGU6U3RhclN0YXRzXzAuMS4xOF9hbWQ2NC5BcHBJbWFnZQpqNXhqd3BsdTRzODQxZk1sQ0tkQ0VNcXNlT3BBaWtoOGF5Z3ZteitTbERncXlPTTNVdHFmK1hHMUY2UVlyaG1abS9RZng5Zm9iQStMVGlFUkZCWnBCZz09Cg==",
-      "url": "https://github.com/TheCodeSaiyan/StarStats-Platform/releases/download/tray-v0.1.18-alpha.1/StarStats_0.1.18_amd64.AppImage"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRQXZHNUVudHBSQXY3VWt6MXhDZzJscEJRUHZnZjJQUzVRZlhCNWx2cUF2OVJvOC9zem5RbWNjZlRKZitPemp2WnpRR3gyK0VSOUhyYzdDSXJvY2JHY29wVE9FQ1oxb0EwPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MDQ1MzI3CWZpbGU6U3RhclN0YXRzXzAuMS4xOF9hbWQ2NC5BcHBJbWFnZQp4TFVUcWxYQTZIMkNuUktIekU1SWk1SlNnejd2TFZpWGlKUUliV3NOdzJ1UVkwOG51STdvdEFjcUVCM3JNQitGTDRCWGxsRW1sL1lKS0ZXejA0cjNEZz09Cg==",
+      "url": "https://github.com/TheCodeSaiyan/StarStats-Platform/releases/download/tray-v0.1.18-alpha.2/StarStats_0.1.18_amd64.AppImage"
     }
   }
 }
