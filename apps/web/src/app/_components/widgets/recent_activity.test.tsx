@@ -4,9 +4,10 @@ import { render, screen } from '@testing-library/react';
 
 vi.mock('@/lib/api', () => ({
   listEvents: vi.fn(),
+  getFriendEvents: vi.fn(),
 }));
 
-import { listEvents } from '@/lib/api';
+import { getFriendEvents, listEvents } from '@/lib/api';
 import {
   recentActivityWidget,
   isLowSignal,
@@ -53,7 +54,7 @@ describe('recentActivityWidget range-awareness', () => {
   });
 });
 
-describe('recentActivityWidget C2 owner-only gating', () => {
+describe('recentActivityWidget share-scope gating', () => {
   const visitorCtx: ViewerCtx = {
     ownerHandle: 'alice',
     viewerHandle: 'bob',
@@ -72,16 +73,42 @@ describe('recentActivityWidget C2 owner-only gating', () => {
     expect(recentActivityWidget.isAvailable(ownerCtx('7d'))).toBe(true);
   });
 
-  it('is UNavailable to a visitor even with the recent_activity share scope on', () => {
-    // /v1/me/events has no friend-scoped event-list equivalent, so the
-    // widget must not render for a visitor (would show the viewer's events).
-    expect(recentActivityWidget.isAvailable(visitorCtx)).toBe(false);
+  // THIS TEST REPLACES ONE ASSERTING THE OPPOSITE. The C2 rule was
+  // "unavailable to a visitor even with the share scope on", and the
+  // reason was written down: `/v1/me/events` had no friend-scoped
+  // equivalent, so rendering for a visitor would have shown the VIEWER
+  // their own events under the owner's name. `GET /v1/u/{handle}/events`
+  // now exists, which removes the reason rather than overriding it. The
+  // pilot's own switch — which named this widget all along — is the gate.
+  it('is available to a visitor the pilot has turned the switch on for', () => {
+    expect(recentActivityWidget.isAvailable(visitorCtx)).toBe(true);
   });
 
-  it('render returns null for a visitor without calling the me endpoint', async () => {
-    const result = await recentActivityWidget.render(visitorCtx, 'compact');
-    expect(result).toBeNull();
+  it('stays hidden from a visitor when the switch is off', () => {
+    // The default. Nothing becomes visible until the owner says so.
+    expect(
+      recentActivityWidget.isAvailable({
+        ...visitorCtx,
+        shareScopes: { ...DEFAULT_SHARE_SCOPES, recent_activity: false },
+      }),
+    ).toBe(false);
+  });
+
+  it('never reads the me-scoped endpoint on a visitor render', async () => {
+    // The failure the old gate existed to prevent, pinned directly:
+    // whatever the gate says, a visitor's render must not fetch
+    // `/v1/me/events` with the visitor's token, because that returns the
+    // VIEWER's events and would render them as the owner's.
+    (getFriendEvents as ReturnType<typeof vi.fn>).mockResolvedValue({
+      owner_handle: 'alice',
+      events: [],
+      next_before: null,
+    });
+    await recentActivityWidget.render(visitorCtx, 'compact');
     expect(listEvents).not.toHaveBeenCalled();
+    expect(getFriendEvents).toHaveBeenCalledWith('bob-tok', 'alice', {
+      limit: expect.any(Number),
+    });
   });
 });
 
