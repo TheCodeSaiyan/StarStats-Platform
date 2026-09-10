@@ -246,3 +246,50 @@ test('the profile pane is actually painted, not just present', async ({
   // Nothing overlays it: a click at the pane's own centre reaches the pane.
   expect(report.hit).toBe(true);
 });
+
+test('a recipient sees the events behind the share, not just the aggregates', async ({
+  page,
+  request,
+}) => {
+  // Before `GET /v1/u/{handle}/events` existed this page could tell you a
+  // pilot had logged thousands of events across a dozen types and still
+  // not show you one of them — every friend-scoped read returned buckets.
+  //
+  // The assertion that actually differs is the SECOND one. Asserting a row
+  // is present would pass on a feed that printed raw `actor_death`, which
+  // is precisely what the headline rules exist to prevent; the row has to
+  // read as a sentence, the way `/me/activity` and the tray render it.
+  await loginAs(page, { handle: 'TestPilot' });
+  await setScenario(request, {
+    __id: 'shared_event_feed',
+    routes: {
+      'GET /v1/public/JohnSomeone/summary': notFound,
+      'GET /v1/u/JohnSomeone/summary': publicSummaryShared,
+      'GET /v1/u/JohnSomeone/events': {
+        status: 200,
+        body: {
+          owner_handle: 'JohnSomeone',
+          events: [
+            {
+              seq: 42,
+              event_type: 'actor_death',
+              event_timestamp: '2026-09-09T18:00:00Z',
+              log_source: 'live',
+              payload: { type: 'actor_death' },
+            },
+          ],
+          next_before: null,
+        },
+      },
+    },
+  });
+
+  await page.goto('/u/JohnSomeone');
+
+  const rows = page.locator('.hp-lg-x');
+  await expect(rows.first()).toBeVisible();
+
+  const headline = rows.first().locator('.ev');
+  await expect(headline).not.toHaveText('actor_death');
+  await expect(headline).not.toHaveText('');
+});
