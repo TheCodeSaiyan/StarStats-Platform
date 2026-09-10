@@ -25,6 +25,8 @@ import {
   getLocationsVisited,
   getMyProfile,
   getSummary,
+  getMe,
+  listDevices,
   getSupporterStatus,
   getPlaytime,
   statusOf,
@@ -37,6 +39,7 @@ import {
   getTimeline,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
+import { outstandingTasks } from '@/lib/outstanding-tasks';
 import { getSession } from '@/lib/session';
 import { parseRange } from '@/lib/range';
 import { getTheme } from '@/lib/theme';
@@ -109,6 +112,8 @@ export default async function MePage(props: PageProps) {
     combatResult,
     themeResult,
     timelineResult,
+    devicesResult,
+    meResult,
   ] = await Promise.allSettled([
     getMyProfile(token),
     getSupporterStatus(token),
@@ -124,6 +129,13 @@ export default async function MePage(props: PageProps) {
     // and a faked one here would be a chart of nothing presented as the
     // reader's own history.
     getTimeline(token, { days: TRACE_DAYS }),
+    // Both feed the outstanding-task list. In the same `allSettled` as
+    // everything else on purpose: if either fails the page still renders
+    // and the affected task simply is not asserted — a failed fetch is not
+    // evidence that something is wrong, and telling somebody to fix an
+    // uplink because a request timed out would be worse than silence.
+    listDevices(token),
+    getMe(token),
   ]);
 
   const settledOr = <T,>(
@@ -150,6 +162,27 @@ export default async function MePage(props: PageProps) {
     'me.locations',
   );
   const combat: CombatStatsResponse | null = settledOr(combatResult, 'me.combat');
+
+  /*
+   * What still needs doing, worked out from live state.
+   *
+   * Each input degrades to "cannot assert this" rather than to a default.
+   * A failed device list is not an empty one, so a timeout must not tell
+   * somebody to pair an uplink they already have — and `eventTotal` stays
+   * null on a failed summary so a working account is never sent off to
+   * check its Game.log folder.
+   */
+  const devices = settledOr(devicesResult, 'me.devices');
+  const me = settledOr(meResult, 'me.identity');
+  const tasks =
+    devices == null
+      ? []
+      : outstandingTasks({
+          devices: devices.devices ?? [],
+          eventTotal: summary == null ? null : (summary.total ?? 0),
+          rsiVerified: me?.rsi_verified ?? true,
+          now: new Date(),
+        });
   // The calibration falls back to the system default rather than failing the
   // page — a beam colour is not worth a 500.
   // Which lens to open on — remembered per device, overview on a first
@@ -214,11 +247,9 @@ export default async function MePage(props: PageProps) {
   return (
     <MeProjection
       handle={session.claimedHandle}
-      // Nothing has EVER arrived for this account, so there is nothing to
-      // project and the reader's next step is off this page: install the
-      // Emitter. A failed summary fetch is not an empty account, so a null
-      // summary deliberately does not trigger the prompt.
-      needsEmitter={summary != null && (summary.total ?? 0) === 0}
+      // What still needs doing. Empty when nothing does, and the projection
+      // renders no banner at all in that case.
+      tasks={tasks}
       supporterTier={supporterTier}
       enlistmentYear={enlistmentYear(profile?.enlistment_date ?? null)}
       lifetime={{
