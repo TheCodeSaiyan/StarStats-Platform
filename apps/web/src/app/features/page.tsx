@@ -1,4 +1,5 @@
 import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -44,6 +45,7 @@ export default async function FeaturesPage() {
       title="Features"
       ctx="What StarStats does, in detail"
     >
+      <DocsIndex active="/features" />
     <div className="ss-landing" style={{ minHeight: '100%', position: 'relative' }}>
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 'none', margin: 0, padding: 0 }}>
         <HeroComparison />

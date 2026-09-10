@@ -1,4 +1,5 @@
 import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata, Route } from 'next';
 import Link from 'next/link';
 import { CompassStar } from '@/components/CompassStar';
@@ -52,6 +53,7 @@ export default function AboutPage() {
       title="About"
       ctx="What StarStats is, and who makes it"
     >
+      <DocsIndex active="/about" />
     <div className="ss-about">
       <div
         className="ss-about-lockup"

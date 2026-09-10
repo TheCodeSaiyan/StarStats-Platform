@@ -1,4 +1,5 @@
 import { MarketingSurface } from '@/components/projection/MarketingSurface';
+import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 
@@ -68,6 +69,7 @@ export default async function StarPlatformPage() {
       title="StarPlatform"
       ctx="The self-hosted companion for a whole group"
     >
+      <DocsIndex active="/star-platform" />
     <div className="ss-landing" style={{ minHeight: '100%', position: 'relative' }}>
       <div
         style={{

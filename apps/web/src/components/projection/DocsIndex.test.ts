@@ -52,4 +52,30 @@ describe('DocsIndex', () => {
     const all = hrefs();
     expect(new Set(all).size).toBe(all.length);
   });
+
+  /**
+   * Every page the index links also RENDERS the index.
+   *
+   * Being in the list and using it are different things, and the gap is
+   * invisible from anywhere except the page itself. `/features`, `/about`
+   * and `/star-platform` were linked from all twelve other docs pages and
+   * rendered none of it — so a reader who followed one of those links
+   * arrived at precisely the dead end the index exists to remove, and the
+   * only way to notice was to be standing on it.
+   *
+   * A filesystem check for the same reason as the one above: the claim is
+   * about what the source does, and the Playwright version of this was the
+   * thing timing out under load.
+   */
+  it('every listed page renders the index', () => {
+    const notRendering = hrefs().filter((h) => {
+      const page = join(APP, h.replace(/^\//, ''), 'page.tsx');
+      // `<DocsIndex`, not `DocsIndex`: a stale import satisfies the
+      // looser check while the component renders nowhere, which is a
+      // test that passes either way and would have missed the very
+      // drift it is here to catch.
+      return !existsSync(page) || !readFileSync(page, 'utf8').includes('<DocsIndex');
+    });
+    expect(notRendering).toEqual([]);
+  });
 });

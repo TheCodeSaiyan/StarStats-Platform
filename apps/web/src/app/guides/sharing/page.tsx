@@ -59,9 +59,9 @@ export default function SharingGuidePage() {
           maxWidth: '60ch',
         }}
       >
-        Private until you say otherwise. There are two levels, they live on
-        two different pages, and knowing that is the whole point of this
-        one.
+        Private until you say otherwise. Who gets in and what they see are
+        two different decisions, set on two different pages — knowing that
+        is most of what this guide is for.
       </p>
 
       <section className="ss-about-section" id="who">
@@ -72,8 +72,14 @@ export default function SharingGuidePage() {
           decide who gets in. Your profile starts private.
         </p>
         <p>
-          <strong>Public</strong> — anyone with the link sees your summary
-          and timeline. The page gives you the URL once it&apos;s on.
+          <strong>Public</strong> — anyone with the link sees a summary:
+          how many events you have logged, your busiest event types, and an
+          activity heatmap. New public profiles are held to the top five
+          types and the last 30 days, and{' '}
+          <Link href={'/sharing' as Route}>/sharing</Link> spells out what
+          that publishes before you turn it on. Widen it if you want to; it
+          will not widen on its own. The page gives you the URL once
+          it&apos;s on.
         </p>
         <p>
           <strong>Specific handles</strong> — stay private, but let named
@@ -89,8 +95,31 @@ export default function SharingGuidePage() {
         </p>
       </section>
 
+      <section className="ss-about-section" id="feed">
+        <div className="ss-about-section-eyebrow">02 — What a share shows</div>
+        <h2>People you let in see the log, not just the shape.</h2>
+        <p>
+          Someone you have shared with opens your profile and gets your
+          actual events, in the same words you read them in on{' '}
+          <Link href={'/me/activity' as Route}>your own activity log</Link>.
+          Until recently a share showed only counts and a heatmap — enough
+          to tell that you had been playing, never what happened.
+        </p>
+        <p>
+          <strong>New shares cover the last 30 days.</strong> That is a
+          starting point rather than a ceiling: widen the window, or narrow
+          a share down to particular event types, under{' '}
+          <em>More options</em> when you grant it.
+        </p>
+        <p style={{ color: 'var(--fg-muted)' }}>
+          Events you have hidden stay hidden, whatever a share says. That
+          one outranks everything else here — it is the control that decides
+          what exists to be shared in the first place.
+        </p>
+      </section>
+
       <section className="ss-about-section" id="what">
-        <div className="ss-about-section-eyebrow">02 — What they see</div>
+        <div className="ss-about-section-eyebrow">03 — Which categories</div>
         <h2>Category visibility is a separate page.</h2>
         <p>
           <Link href={'/settings/widget-sharing' as Route}>
@@ -115,7 +144,7 @@ export default function SharingGuidePage() {
       </section>
 
       <section className="ss-about-section" id="revoke">
-        <div className="ss-about-section-eyebrow">03 — Taking it back</div>
+        <div className="ss-about-section-eyebrow">04 — Taking it back</div>
         <h2>Every grant is reversible.</h2>
         <p>
           Going private again, dropping a handle, or leaving an org share
