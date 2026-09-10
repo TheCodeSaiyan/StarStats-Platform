@@ -241,6 +241,12 @@ pub async fn list_events<Q: EventQuery>(
         since: params.since,
         until: params.until,
         limit: limit as i64,
+        // The owner sees their own hidden rows — that is the only way
+        // to un-hide one. Every read on someone else's behalf takes the
+        // fail-closed default instead.
+        exclude_hidden: false,
+        allow_event_types: None,
+        deny_event_types: None,
     };
 
     match query.list_filtered(&user.preferred_username, filters).await {
@@ -3728,6 +3734,9 @@ pub async fn stats_biggest_trade<Q: EventQuery>(
             since: None,
             until: None,
             limit: PER_TYPE_LIMIT,
+            exclude_hidden: false,
+            allow_event_types: None,
+            deny_event_types: None,
         };
         match query.list_filtered(&user.preferred_username, filters).await {
             Ok(rows) => game_events.extend(
@@ -3917,6 +3926,9 @@ pub async fn commerce_recent<Q: EventQuery>(
             since,
             until: None,
             limit: per_type_limit,
+            exclude_hidden: false,
+            allow_event_types: None,
+            deny_event_types: None,
         };
         match query.list_filtered(&user.preferred_username, filters).await {
             Ok(rows) => game_events.extend(

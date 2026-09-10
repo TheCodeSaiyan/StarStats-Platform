@@ -202,6 +202,7 @@ impl Modify for SecurityAddon {
         sharing_routes::public_timeline,
         sharing_routes::friend_summary,
         sharing_routes::friend_timeline,
+        sharing_routes::friend_events,
         sharing_routes::friend_scope,
         sharing_routes::preview_summary,
         sharing_routes::preview_timeline,
@@ -679,6 +680,8 @@ impl Modify for SecurityAddon {
         sharing_routes::PublicSupporterInfo,
         sharing_routes::PublicTypeCount,
         sharing_routes::PublicTimelineResponse,
+        sharing_routes::SharedEventDto,
+        sharing_routes::SharedEventsResponse,
         sharing_routes::PublicTimelineBucket,
         // Orgs
         org_routes::CreateOrgRequest,

@@ -211,13 +211,50 @@ pub enum SeqCursor {
 ///  * `None` -> newest-first (DESC by seq).
 ///  * `Some(SeqCursor::Before(n))` -> rows with seq < n, DESC by seq.
 ///  * `Some(SeqCursor::After(n))`  -> rows with seq > n, ASC by seq.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct EventFilters {
     pub cursor: Option<SeqCursor>,
     pub event_type: Option<String>,
     pub since: Option<DateTime<Utc>>,
     pub until: Option<DateTime<Utc>>,
     pub limit: i64,
+    /// Drop rows the owner has hidden (`hidden_at IS NOT NULL`).
+    ///
+    /// `false` for the owner's own `/v1/me/events`, which must keep
+    /// showing hidden rows so they can be un-hidden. Every read on
+    /// behalf of somebody else sets this — hiding a row is exactly the
+    /// owner saying "not for shared or public views".
+    pub exclude_hidden: bool,
+    /// Per-share scope allowlist. `Some(types)` keeps only those types;
+    /// `Some(vec![])` therefore matches nothing, which is the same
+    /// reading `apply_event_type_filter` gives an empty allowlist.
+    /// `None` = no allowlist.
+    pub allow_event_types: Option<Vec<String>>,
+    /// Per-share scope denylist, applied after the allowlist.
+    pub deny_event_types: Option<Vec<String>>,
+}
+
+impl Default for EventFilters {
+    /// Fail-closed: `exclude_hidden` defaults to `true`.
+    ///
+    /// Deliberately the opposite of the owner's own read. A caller who
+    /// forgets this field is reading on somebody else's behalf far more
+    /// often than not, and the failure modes are not symmetric — the
+    /// safe default withholds a row the owner hid, the unsafe one
+    /// publishes it. `/v1/me/events` opts out explicitly, in one place,
+    /// with a comment saying why.
+    fn default() -> Self {
+        Self {
+            cursor: None,
+            event_type: None,
+            since: None,
+            until: None,
+            limit: 100,
+            exclude_hidden: true,
+            allow_event_types: None,
+            deny_event_types: None,
+        }
+    }
 }
 
 /// Idle gap (in minutes) between two adjacent events that splits a
@@ -357,6 +394,11 @@ pub trait EventQuery: Send + Sync + 'static {
                 since: None,
                 until: None,
                 limit,
+                // Owner's own read: keep hidden rows so they stay
+                // un-hideable. See `EventFilters::default`.
+                exclude_hidden: false,
+                allow_event_types: None,
+                deny_event_types: None,
             },
         )
         .await
@@ -1305,6 +1347,18 @@ pub mod test_support {
                 .filter(|r| r.claimed_handle.eq_ignore_ascii_case(claimed_handle))
                 .filter(|r| match &filters.event_type {
                     Some(t) => &r.event_type == t,
+                    None => true,
+                })
+                .filter(|r| !filters.exclude_hidden || r.hidden_at.is_none())
+                // Allowlist first, then denylist — the same precedence
+                // `apply_event_type_filter` uses on the aggregate path,
+                // so the two surfaces can't disagree about a scope.
+                .filter(|r| match &filters.allow_event_types {
+                    Some(allow) => allow.iter().any(|t| t == &r.event_type),
+                    None => true,
+                })
+                .filter(|r| match &filters.deny_event_types {
+                    Some(deny) => !deny.iter().any(|t| t == &r.event_type),
                     None => true,
                 })
                 .filter(|r| match (filters.since, r.event_timestamp) {
@@ -2694,6 +2748,24 @@ impl EventQuery for PostgresStore {
         if let Some(t) = &filters.event_type {
             qb.push(" AND event_type = ");
             qb.push_bind(t.clone());
+        }
+        if filters.exclude_hidden {
+            qb.push(" AND hidden_at IS NULL");
+        }
+        // Scope allow/deny. `= ANY($1)` rather than an interpolated IN
+        // list so the array rides the wire as one bound parameter.
+        // `NOT (x = ANY(...))` is safe from the NOT IN / NULL trap here:
+        // `event_type` is NOT NULL and the arrays come from the owner's
+        // own scope, never from a nullable subquery.
+        if let Some(allow) = &filters.allow_event_types {
+            qb.push(" AND event_type = ANY(");
+            qb.push_bind(allow.clone());
+            qb.push(")");
+        }
+        if let Some(deny) = &filters.deny_event_types {
+            qb.push(" AND NOT (event_type = ANY(");
+            qb.push_bind(deny.clone());
+            qb.push("))");
         }
         if let Some(s) = filters.since {
             qb.push(" AND event_timestamp >= ");
@@ -4718,6 +4790,9 @@ mod tests {
             until: None,
             cursor: None,
             limit: 50,
+            exclude_hidden: false,
+            allow_event_types: None,
+            deny_event_types: None,
         };
         let results = store.list_filtered("thecodesaiyan", filters).await.unwrap();
         assert_eq!(
@@ -6281,5 +6356,157 @@ mod tests {
             .execute(&pool)
             .await
             .expect("clean up probe rows");
+    }
+}
+
+/// Store-level tests for the scope clamps `EventFilters` grew so a
+/// share can expose an event LIST (`GET /v1/u/{handle}/events`) and not
+/// just the per-day counts the heatmap reads.
+///
+/// Against the Memory impl, per the store-first convention: these pin
+/// the filtering semantics before any route depends on them. The
+/// Postgres impl mirrors each of these as a SQL predicate.
+#[cfg(test)]
+mod shared_event_scope_tests {
+    use super::test_support::MemoryQuery;
+    use super::*;
+    use chrono::TimeZone;
+
+    fn evt(seq: i64, ty: &str, hidden: bool) -> StoredQueryEvent {
+        StoredQueryEvent {
+            seq,
+            claimed_handle: "owner".into(),
+            event_type: ty.into(),
+            event_timestamp: Some(Utc.with_ymd_and_hms(2026, 9, 1, 12, 0, 0).unwrap()),
+            log_source: "live".into(),
+            source_offset: seq,
+            payload: serde_json::json!({ "type": ty }),
+            resolved_location: None,
+            hidden_at: if hidden {
+                Some(Utc.with_ymd_and_hms(2026, 9, 2, 12, 0, 0).unwrap())
+            } else {
+                None
+            },
+        }
+    }
+
+    fn store() -> MemoryQuery {
+        MemoryQuery::new(vec![
+            evt(1, "actor_death", false),
+            evt(2, "quantum_target_selected", false),
+            evt(3, "vehicle_stowed", true),
+            evt(4, "actor_death", true),
+        ])
+    }
+
+    async fn types_for(filters: EventFilters) -> Vec<String> {
+        let rows = store().list_filtered("owner", filters).await.unwrap();
+        rows.into_iter().map(|r| r.event_type).collect()
+    }
+
+    fn base() -> EventFilters {
+        EventFilters {
+            limit: 50,
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test]
+    async fn owner_read_keeps_hidden_rows() {
+        // The owner has to see a hidden row to un-hide it.
+        let rows = types_for(EventFilters {
+            exclude_hidden: false,
+            ..base()
+        })
+        .await;
+        assert_eq!(rows.len(), 4, "owner sees every row, got {rows:?}");
+    }
+
+    #[tokio::test]
+    async fn shared_read_drops_hidden_rows() {
+        // Hiding a row IS the owner saying "not in shared views".
+        let rows = types_for(base()).await;
+        assert_eq!(rows.len(), 2, "hidden rows must not escape, got {rows:?}");
+        assert!(!rows.contains(&"vehicle_stowed".to_string()));
+    }
+
+    #[tokio::test]
+    async fn default_is_fail_closed_on_hidden() {
+        // The whole point of the custom Default: a caller that forgets
+        // withholds rather than publishes.
+        assert!(EventFilters::default().exclude_hidden);
+    }
+
+    #[tokio::test]
+    async fn allowlist_keeps_only_listed_types() {
+        let rows = types_for(EventFilters {
+            allow_event_types: Some(vec!["quantum_target_selected".into()]),
+            ..base()
+        })
+        .await;
+        assert_eq!(rows, vec!["quantum_target_selected".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn empty_allowlist_matches_nothing() {
+        // An allowlist of nothing means nothing — the same reading
+        // `apply_event_type_filter` gives it on the aggregate path. The
+        // alternative (treating empty as "no filter") would silently
+        // widen a share.
+        let rows = types_for(EventFilters {
+            allow_event_types: Some(vec![]),
+            ..base()
+        })
+        .await;
+        assert!(rows.is_empty(), "expected nothing, got {rows:?}");
+    }
+
+    #[tokio::test]
+    async fn denylist_drops_listed_types() {
+        let rows = types_for(EventFilters {
+            deny_event_types: Some(vec!["actor_death".into()]),
+            ..base()
+        })
+        .await;
+        assert_eq!(rows, vec!["quantum_target_selected".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn deny_wins_over_allow_for_a_type_in_both() {
+        // Allowlist is applied first, then the denylist — so naming a
+        // type in both withholds it. The owner's more restrictive
+        // instruction is the one that survives.
+        let rows = types_for(EventFilters {
+            allow_event_types: Some(vec!["actor_death".into()]),
+            deny_event_types: Some(vec!["actor_death".into()]),
+            ..base()
+        })
+        .await;
+        assert!(rows.is_empty(), "expected nothing, got {rows:?}");
+    }
+
+    #[tokio::test]
+    async fn hidden_beats_an_allowlist_that_names_the_type() {
+        // A scope naming `actor_death` still must not resurrect seq 4,
+        // which the owner hid. The two clamps compose; neither
+        // overrides the other.
+        let rows = store()
+            .list_filtered(
+                "owner",
+                EventFilters {
+                    allow_event_types: Some(vec!["actor_death".into()]),
+                    ..base()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(rows.len(), 1, "only the visible actor_death, got {rows:?}");
+        assert_eq!(rows[0].seq, 1);
+    }
+
+    #[tokio::test]
+    async fn no_scope_returns_everything_visible() {
+        let rows = types_for(base()).await;
+        assert_eq!(rows.len(), 2);
     }
 }
