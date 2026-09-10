@@ -120,6 +120,10 @@ const STATUS_MESSAGES: Record<
     text: 'Listed on the public profile listings.',
     tone: 'ok',
   },
+  public_scope_saved: {
+    text: 'Saved — that is what a stranger sees now.',
+    tone: 'ok',
+  },
   share_added: { text: 'Share granted.', tone: 'ok' },
   share_revoked: { text: 'Share revoked.', tone: 'ok' },
   report_filed: {
@@ -330,6 +334,65 @@ export default async function SharingPage(props: {
   }
 
   // -- Server actions --------------------------------------------------
+
+  /**
+   * Change what a public profile publishes.
+   *
+   * The clamp existed server-side from the moment public gained a scope,
+   * and nothing could set it — the page stated the settings and offered
+   * no way to choose them, which is a worse answer than not showing them
+   * at all. These controls are live whether or not the profile is public,
+   * so the decision can be made BEFORE going public rather than announced
+   * afterwards.
+   *
+   * `public` is passed through unchanged: this form edits the clamp, it
+   * does not flip the toggle.
+   */
+  async function publicScopeAction(formData: FormData) {
+    'use server';
+    const s = await getSession();
+    if (!s) redirect('/auth/login?next=/sharing');
+
+    const rawTypes = String(formData.get('public_max_types') ?? '').trim();
+    const rawWindow = String(formData.get('public_window_days') ?? '').trim();
+    const isCurrentlyPublic =
+      String(formData.get('currently_public') ?? 'false') === 'true';
+
+    const windowDays = Number.parseInt(rawWindow, 10);
+    if (!Number.isFinite(windowDays) || windowDays < 1 || windowDays > 90) {
+      redirect('/sharing?error=invalid_scope_window');
+    }
+    // "all" is the deliberate absence of a cap, not a large number —
+    // the wire shape says "no clamp" by leaving the field off.
+    const maxTypes = rawTypes === 'all' ? undefined : Number.parseInt(rawTypes, 10);
+    if (maxTypes !== undefined && (!Number.isFinite(maxTypes) || maxTypes < 1)) {
+      redirect('/sharing?error=unexpected');
+    }
+
+    let response!: VisibilityResponse;
+    try {
+      response = await setVisibility(s.token, isCurrentlyPublic, undefined, {
+        kind: 'full',
+        window_days: windowDays,
+        ...(maxTypes === undefined ? {} : { max_event_types: maxTypes }),
+      } as ShareScope);
+    } catch (e) {
+      if (e instanceof ApiCallError && e.status === 401)
+        redirect('/auth/login?next=/sharing');
+      if (e instanceof ApiCallError && e.status === 403)
+        redirect('/sharing?error=rsi_handle_not_verified');
+      if (isSpicedbOutage(e)) redirect('/sharing?error=spicedb_unavailable');
+      logger.error({ err: e }, 'set public scope failed');
+      redirect('/sharing?error=unexpected');
+    }
+    // Read back from the response, never from the submitted intent —
+    // the same rule the visibility chip follows.
+    redirect(
+      response.public_scope
+        ? '/sharing?status=public_scope_saved'
+        : '/sharing?error=unexpected',
+    );
+  }
 
   async function visibilityAction(formData: FormData) {
     'use server';
@@ -657,6 +720,45 @@ export default async function SharingPage(props: {
                 <li key={line}>{line}</li>
               ))}
             </ul>
+
+            {/* The controls, not just the readout.
+                Stating the settings without offering them is a worse
+                answer than showing nothing: it tells the reader a
+                decision was made on their behalf and gives them no way
+                to make it themselves. Live while private too, so the
+                choice happens BEFORE going public. */}
+            <form action={publicScopeAction} className="hp-formrow" style={{ marginTop: 16 }}>
+              <input
+                type="hidden"
+                name="currently_public"
+                value={isPublic ? 'true' : 'false'}
+              />
+              <BeamSelect
+                id="public-max-types"
+                name="public_max_types"
+                label="Event types shown"
+                defaultValue={String(visibility?.public_scope?.max_event_types ?? 'all')}
+              >
+                <option value="3">Top 3</option>
+                <option value="5">Top 5</option>
+                <option value="10">Top 10</option>
+                <option value="all">Every type</option>
+              </BeamSelect>
+              <BeamSelect
+                id="public-window-days"
+                name="public_window_days"
+                label="Window"
+                defaultValue={String(visibility?.public_scope?.window_days ?? 90)}
+              >
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </BeamSelect>
+              <BeamButton type="submit" variant="ghost">
+                Save
+              </BeamButton>
+            </form>
+
             {publicScopeDescription.uncapped ? (
               <p className="hp-note" style={{ marginTop: 12 }}>
                 Nothing is currently narrowing this profile. New public

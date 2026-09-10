@@ -276,3 +276,64 @@ test('a new share is time-boxed by default', async ({ page }) => {
 
   await expect(page.locator('#scope-window-days')).toHaveValue('30');
 });
+
+test('the public clamp is a control, not an announcement', async ({
+  page,
+  request,
+}) => {
+  // The clamp was enforced server-side from the moment public gained a
+  // scope, and nothing in the UI could set it — the page listed the
+  // settings and offered no way to choose them. Stating a decision made
+  // on someone's behalf is a worse answer than showing nothing.
+  //
+  // Both assertions matter: the controls exist, AND they carry the stored
+  // values rather than defaults, so the page describes what is actually
+  // published.
+  await setScenario(
+    request,
+    scenarioFor('public-scope-controls', {
+      ...FIXTURES,
+      'GET /v1/me/visibility': {
+        status: 200,
+        body: {
+          public: true,
+          listing_opt_out: false,
+          public_scope: { kind: 'full', window_days: 30, max_event_types: 5 },
+        },
+      },
+    }),
+  );
+
+  await page.goto('/sharing');
+
+  await expect(page.locator('#public-max-types')).toHaveValue('5');
+  await expect(page.locator('#public-window-days')).toHaveValue('30');
+});
+
+test('the clamp can be chosen before the profile is ever public', async ({
+  page,
+  request,
+}) => {
+  // A private profile still gets the controls. Choosing what going public
+  // would publish BEFORE going public is the whole point — otherwise the
+  // first thing that happens is a stranger can read something you have
+  // not agreed to yet.
+  await setScenario(
+    request,
+    scenarioFor('public-scope-while-private', {
+      ...FIXTURES,
+      'GET /v1/me/visibility': {
+        status: 200,
+        body: { public: false, listing_opt_out: false },
+      },
+    }),
+  );
+
+  await page.goto('/sharing');
+
+  await expect(page.locator('#public-max-types')).toBeVisible();
+  await expect(page.locator('#public-window-days')).toBeVisible();
+  // No stored clamp yet, so the controls show the unclamped truth rather
+  // than pre-selecting the default the server would seed.
+  await expect(page.locator('#public-max-types')).toHaveValue('all');
+});
