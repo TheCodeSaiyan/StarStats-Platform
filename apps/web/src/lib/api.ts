@@ -2315,12 +2315,24 @@ export async function setVisibility(
    * through the same endpoint that flips the SpiceDB public toggle.
    */
   listingOptOut?: boolean,
+  /**
+   * The clamp applied to everything a stranger can read. `undefined`
+   * leaves the stored one alone — the same "absent means unchanged"
+   * reading `listingOptOut` uses, so a caller that only flips the
+   * toggle never silently rewrites a scope it did not ask about.
+   *
+   * The server has accepted this since the public path gained a scope;
+   * until now nothing could send it, which made the clamp real and
+   * unreachable at the same time.
+   */
+  publicScope?: ShareScope,
 ): Promise<VisibilityResponse> {
   return postJson<VisibilityResponse>(
     '/v1/me/visibility',
     {
       public: isPublic,
       listing_opt_out: listingOptOut,
+      public_scope: publicScope,
     } satisfies VisibilityRequest,
     bearer,
   );
