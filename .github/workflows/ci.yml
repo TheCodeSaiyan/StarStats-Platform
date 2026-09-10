@@ -5,6 +5,36 @@ on:
     branches: [main, next]
   push:
     branches: [main, next]
+  # Nightly full sweep, and the reason it exists:
+  #
+  # A job that SKIPS and a job that PASSES report the same green. Twice
+  # in two days a real break sat on `next` unseen because of it — the
+  # EmitterPrompt localStorage test (#91) and the /admin staff-roles
+  # gate (#94). Both were caught by a job that then never ran again:
+  # every following push was either a bot commit (`should-run` says no)
+  # or touched no web paths (`changed` says no), and the branch went on
+  # reporting green.
+  #
+  # `cancel-in-progress` is the second hole. A push to `next` cancels
+  # the run under it, so a commit's slowest jobs — Web E2E takes ~33
+  # minutes — may never reach a conclusion at all. That is exactly how
+  # the /admin break shipped: the run for 9067d7b was cancelled.
+  #
+  # This trigger ignores both gates and runs everything, so anything
+  # hiding surfaces within a day rather than on whichever unlucky PR
+  # next touches that area.
+  #
+  # SCOPE, because the limitation is easy to misread: GitHub only fires
+  # `schedule` on the DEFAULT branch, which here is `main`. So the sweep
+  # covers the live channel, not `next`. It is the backstop — it catches
+  # a break that already shipped, and drift that no commit caused at all
+  # (a new browser build, a rebuilt dependency). Catching a break BEFORE
+  # it ships is the concurrency change below, which stops `next` runs
+  # being cancelled. Use `workflow_dispatch` against `next` to sweep it
+  # on demand.
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
 
 # Least privilege for the whole workflow. Nothing here writes to the
 # repository: no `gh` CLI, no `github-script`, no SARIF upload, no
@@ -19,11 +49,23 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Cancel superseded runs on branches, but NEVER on main: main pushes
-  # (release-manifest auto-commits, docs catch-ups, fmt fixes) arrive in
-  # bursts and cancelling mid-run leaves the gate red for the commit
-  # that matters, and would fight required-check branch protection (L10).
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  # Cancel superseded PR runs only. Pushing a fixup to a PR should stop
+  # the run under it — nobody wants the previous commit's answer.
+  #
+  # BRANCH pushes are never cancelled, and `next` is now included in
+  # that. It used to be: `github.ref != 'refs/heads/main'`, which
+  # cancelled `next` runs whenever another commit landed on top. Web E2E
+  # takes ~33 minutes, so a busy hour on `next` meant its slowest jobs
+  # routinely never reached a conclusion — and a cancelled run reports
+  # no failure. That is exactly how the /admin staff-roles break (#94)
+  # reached production: the run for 9067d7b was cancelled, so nothing
+  # ever said the 23 admin tests were failing.
+  #
+  # The original reasoning for exempting main — bursts of bot commits,
+  # and not fighting required-check branch protection — applies to
+  # `next` for the same reason. It is an integration branch whose whole
+  # job is to be the thing that has been tested.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -170,16 +212,20 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      rust:    ${{ steps.f.outputs.rust }}
-      web:     ${{ steps.f.outputs.web }}
-      tray:    ${{ steps.f.outputs.tray }}
-      openapi: ${{ steps.f.outputs.openapi }}
-      tauri:   ${{ steps.f.outputs.tauri }}
-      scripts: ${{ steps.f.outputs.scripts }}
+      rust:    ${{ steps.decide.outputs.rust }}
+      web:     ${{ steps.decide.outputs.web }}
+      tray:    ${{ steps.decide.outputs.tray }}
+      openapi: ${{ steps.decide.outputs.openapi }}
+      tauri:   ${{ steps.decide.outputs.tauri }}
+      scripts: ${{ steps.decide.outputs.scripts }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    # Only meaningful when there is something to diff against. A
+    # schedule has no base commit, so the filter is skipped there and
+    # `decide` forces everything on instead.
     - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
       id: f
+      if: github.event_name == 'pull_request' || github.event_name == 'push'
       with:
         filters: |
           rust:
@@ -224,6 +270,39 @@ jobs:
             # Without it here, editing the workflow would not run the tests
             # that guard it — a gate can be reintroduced with CI green.
             - '.github/workflows/release-images.yml'
+    # One place decides what runs, so a caller cannot half-apply the
+    # override. On a PR or push these are the filter's answers; on the
+    # nightly sweep and a manual dispatch they are all true, because the
+    # point of those runs is to check the areas nobody touched.
+    - id: decide
+      shell: bash
+      env:
+        FORCE: ${{ github.event_name != 'pull_request' && github.event_name != 'push' }}
+        F_RUST: ${{ steps.f.outputs.rust }}
+        F_WEB: ${{ steps.f.outputs.web }}
+        F_TRAY: ${{ steps.f.outputs.tray }}
+        F_OPENAPI: ${{ steps.f.outputs.openapi }}
+        F_TAURI: ${{ steps.f.outputs.tauri }}
+        F_SCRIPTS: ${{ steps.f.outputs.scripts }}
+      run: |
+        set -euo pipefail
+        emit() {
+          if [ "$FORCE" = "true" ]; then
+            echo "$1=true" >> "$GITHUB_OUTPUT"
+          else
+            # An unset filter output means "did not match", not "unknown".
+            echo "$1=${2:-false}" >> "$GITHUB_OUTPUT"
+          fi
+        }
+        emit rust    "$F_RUST"
+        emit web     "$F_WEB"
+        emit tray    "$F_TRAY"
+        emit openapi "$F_OPENAPI"
+        emit tauri   "$F_TAURI"
+        emit scripts "$F_SCRIPTS"
+        if [ "$FORCE" = "true" ]; then
+          echo "::notice::full sweep ($GITHUB_EVENT_NAME): every area forced on"
+        fi
 
   rust:
     name: Rust ${{ matrix.os }}
