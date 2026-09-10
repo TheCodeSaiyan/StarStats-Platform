@@ -7297,6 +7297,19 @@ export interface components {
              */
             kind: string;
             /**
+             * Format: int32
+             * @description Keep only the N busiest event types in a summary's `by_type`.
+             *
+             *     The allow/deny lists answer "which types may they see"; this
+             *     answers "how much of the shape". A complete type histogram with
+             *     counts is a detailed portrait of how someone plays, and until
+             *     this existed the public summary emitted all of it — every type
+             *     ever logged, with totals — because the public path had no scope
+             *     to clamp. `None` = uncapped, which stays the behaviour for user
+             *     shares that don't set it.
+             */
+            max_event_types?: number | null;
+            /**
              * @description Only relevant when `kind = "tabs"` — which named profile tabs
              *     the recipient may load. Validated against the same allowlist
              *     the frontend renders so a stale client can't smuggle a tab.

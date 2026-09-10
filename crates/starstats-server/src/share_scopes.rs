@@ -73,6 +73,30 @@ pub trait ShareScopesStore: Send + Sync + 'static {
         owner_handle: &str,
         scopes: &WidgetShareScopes,
     ) -> Result<(), ShareScopesError>;
+
+    /// Read the PUBLIC share scope — the clamp applied to reads of this
+    /// pilot's profile by anyone at all, including signed-out visitors.
+    ///
+    /// `Ok(None)` means no clamp is stored, which is the pre-existing
+    /// state for anyone who went public before the public path had a
+    /// scope. Callers decide what that means; the store does not guess.
+    ///
+    /// Deliberately `serde_json::Value` rather than the `ShareScope`
+    /// type: that type lives in the route layer, and a store reaching
+    /// up into it to parse its own column would invert the dependency
+    /// for no gain. The handler owns the shape.
+    async fn get_public(
+        &self,
+        owner_handle: &str,
+    ) -> Result<Option<serde_json::Value>, ShareScopesError>;
+
+    /// Persist the public share scope, merging only the `"public"`
+    /// sub-key so the widget toggles beside it are untouched.
+    async fn put_public(
+        &self,
+        owner_handle: &str,
+        scope: &serde_json::Value,
+    ) -> Result<(), ShareScopesError>;
 }
 
 impl WidgetShareScopes {
@@ -166,6 +190,53 @@ impl ShareScopesStore for PostgresShareScopesStore {
 
         Ok(())
     }
+
+    async fn get_public(
+        &self,
+        owner_handle: &str,
+    ) -> Result<Option<serde_json::Value>, ShareScopesError> {
+        let row: Option<(Option<serde_json::Value>,)> = sqlx::query_as(
+            r#"
+            SELECT share_scopes
+              FROM users
+             WHERE lower(claimed_handle) = lower($1)
+             LIMIT 1
+            "#,
+        )
+        .bind(owner_handle)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(match row {
+            None | Some((None,)) => None,
+            Some((Some(root),)) => root.get("public").cloned(),
+        })
+    }
+
+    async fn put_public(
+        &self,
+        owner_handle: &str,
+        scope: &serde_json::Value,
+    ) -> Result<(), ShareScopesError> {
+        // Same merge-patch as `put`: set only `.public` so the widget
+        // toggles stored beside it survive.
+        sqlx::query(
+            r#"
+            UPDATE users
+               SET share_scopes = jsonb_set(
+                       COALESCE(share_scopes, '{}'),
+                       '{public}',
+                       $1
+                   )
+             WHERE lower(claimed_handle) = lower($2)
+            "#,
+        )
+        .bind(scope)
+        .bind(owner_handle)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -183,6 +254,10 @@ pub mod test_support {
     #[derive(Default)]
     pub struct MemoryShareScopesStore {
         inner: Mutex<HashMap<String, WidgetShareScopes>>,
+        /// Kept in its own map rather than beside the widget toggles,
+        /// mirroring the Postgres side where the two are separate
+        /// sub-keys and writing one must not disturb the other.
+        public: Mutex<HashMap<String, serde_json::Value>>,
     }
 
     #[async_trait]
@@ -202,6 +277,24 @@ pub mod test_support {
         ) -> Result<(), ShareScopesError> {
             let mut inner = self.inner.lock().unwrap();
             inner.insert(owner_handle.to_lowercase(), scopes.clone());
+            Ok(())
+        }
+
+        async fn get_public(
+            &self,
+            owner_handle: &str,
+        ) -> Result<Option<serde_json::Value>, ShareScopesError> {
+            let inner = self.public.lock().unwrap();
+            Ok(inner.get(&owner_handle.to_lowercase()).cloned())
+        }
+
+        async fn put_public(
+            &self,
+            owner_handle: &str,
+            scope: &serde_json::Value,
+        ) -> Result<(), ShareScopesError> {
+            let mut inner = self.public.lock().unwrap();
+            inner.insert(owner_handle.to_lowercase(), scope.clone());
             Ok(())
         }
     }
