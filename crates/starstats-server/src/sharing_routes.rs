@@ -21,8 +21,10 @@
 use crate::api_error::ApiErrorBody;
 use crate::audit::{AuditEntry, AuditLog, AuditQuery};
 use crate::auth::AuthenticatedUser;
+use crate::location_catalog_cache::LocationCatalogCache;
 use crate::orgs::{OrgStore, PostgresOrgStore};
-use crate::repo::{EventQuery, PostgresStore};
+use crate::query::derive_resolved_location;
+use crate::repo::{EventFilters, EventQuery, PostgresStore, SeqCursor};
 use crate::restriction_guard::{PublicProfile, RequireUnrestricted, Sharing};
 use crate::share_metadata::{ShareMetadataStore, NOTE_MAX_LEN};
 use crate::share_reports::{
@@ -103,6 +105,10 @@ pub fn routes(
             "/v1/u/:handle/timeline",
             get(friend_timeline::<PostgresStore>),
         )
+        // The event LIST behind a share. Everything else on `/v1/u/*`
+        // returns aggregates, which is why a recipient could see that
+        // someone played but not what they did.
+        .route("/v1/u/:handle/events", get(friend_events::<PostgresStore>))
         // Plan 3b Option B foundation — exposes the caller's per-
         // recipient ShareScope so the web framework can populate
         // ViewerCtx.recipientScopes once at page load instead of
@@ -1969,6 +1975,231 @@ pub async fn friend_timeline<Q: EventQuery>(
     .await
 }
 
+/// Hard cap on one page of a shared event feed.
+///
+/// Lower than the owner's own 500: this is somebody else's data being
+/// read on a share, and the surface that consumes it is a scrolling
+/// feed, not an export.
+const SHARED_EVENTS_LIMIT_MAX: u32 = 200;
+const SHARED_EVENTS_LIMIT_DEFAULT: u32 = 50;
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FriendEventsParams {
+    /// Page size. Clamped to 1..=200.
+    #[serde(default)]
+    pub limit: Option<u32>,
+    /// Newest-first cursor: return rows with `seq` strictly below this.
+    /// Pass back the `next_before` from the previous page.
+    #[serde(default)]
+    pub before_seq: Option<i64>,
+    /// Window in days, clamped against the share's `window_days`.
+    #[serde(default)]
+    pub days: Option<u32>,
+}
+
+/// One row of a shared event feed.
+///
+/// Deliberately NOT [`crate::query::EventDto`]: that type carries
+/// `hidden_at`, which is the owner's own moderation state and has no
+/// business on a recipient's response. Rows the owner hid never reach
+/// here at all (`exclude_hidden`), so the field would always be `null`
+/// — and a field that is always null is an invitation to start
+/// populating it.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SharedEventDto {
+    pub seq: i64,
+    pub event_type: String,
+    pub event_timestamp: Option<DateTime<Utc>>,
+    pub log_source: String,
+    /// Free-form JSON — variant of `starstats_core::events::GameEvent`.
+    #[schema(value_type = Object)]
+    pub payload: serde_json::Value,
+    /// Re-derived server-side from the payload, never echoed from the
+    /// collector-supplied column — same rule as `/v1/me/events` (F4).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<crate::ingest::ResolvedLocationSchema>)]
+    pub resolved_location: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct SharedEventsResponse {
+    pub owner_handle: String,
+    pub events: Vec<SharedEventDto>,
+    /// Cursor for the next (older) page, or `null` at the end.
+    pub next_before: Option<i64>,
+}
+
+/// Cursor for the next (older) page of a shared event feed.
+///
+/// `list_filtered` returns seq DESC here, so the last row is the oldest
+/// on the page. A SHORT page means the query had nothing more to give,
+/// so the cursor is `None` — returning the last seq regardless would
+/// hand the client a cursor that always fetches an empty page and a
+/// feed that never admits it has ended.
+fn next_before_cursor(rows: &[crate::repo::StoredQueryEvent], limit: u32) -> Option<i64> {
+    if rows.len() as u32 == limit {
+        rows.last().map(|r| r.seq)
+    } else {
+        None
+    }
+}
+
+/// The recipient's view of an owner's individual events.
+///
+/// The gap this closes: every other friend-scoped read returns
+/// aggregates — per-day counts for the heatmap, per-type totals for the
+/// summary — so a recipient could see THAT someone played without
+/// seeing what happened. `recent_activity` stayed owner-only for want
+/// of this endpoint, because rendering it for a visitor would have
+/// shown the viewer their own events under the owner's name.
+///
+/// Gating is `friend_timeline`'s, in the same order, because divergence
+/// between two share-read paths is how a scope stops being enforced:
+/// handle validation, SpiceDB `view` + expiry, then the scope's kind,
+/// then its clamps. On top of those it applies the two clamps only an
+/// event LIST can leak through — per-event hides, and the type
+/// allow/deny lists — via `EventFilters`.
+#[utoipa::path(
+    get,
+    path = "/v1/u/{handle}/events",
+    tag = "sharing",
+    params(
+        ("handle" = String, Path, description = "Owner RSI handle"),
+        FriendEventsParams,
+    ),
+    responses(
+        (status = 200, description = "One page of the owner's events, newest first", body = SharedEventsResponse),
+        (status = 400, description = "Invalid window", body = ApiErrorBody),
+        (status = 401, description = "Missing or invalid bearer token"),
+        (status = 404, description = "Not shared with you, or the scope excludes the timeline"),
+        (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
+    ),
+    security(("BearerAuth" = []))
+)]
+// Eight axum extractors, one past the lint's threshold. Each is a
+// distinct dependency the gate needs — the store, SpiceDB, the share
+// metadata, the audit log, the location catalog, the caller, the owner
+// and the query — and bundling them into a struct to satisfy a count
+// would hide the dependency list this handler is judged on.
+#[allow(clippy::too_many_arguments)]
+pub async fn friend_events<Q: EventQuery>(
+    State(query): State<Arc<Q>>,
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(audit): Extension<Arc<dyn AuditLog>>,
+    Extension(catalog_cache): Extension<LocationCatalogCache>,
+    auth: AuthenticatedUser,
+    Path(handle): Path<String>,
+    Query(params): Query<FriendEventsParams>,
+) -> Response {
+    if !validate_handle(&handle) {
+        return (StatusCode::NOT_FOUND, ()).into_response();
+    }
+    let Ok(days) = resolve_timeline_days(params.days) else {
+        return err(StatusCode::BAD_REQUEST, "invalid_days");
+    };
+    let Some(client) = spicedb.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiErrorBody {
+                error: "spicedb_unavailable".into(),
+                detail: None,
+            }),
+        )
+            .into_response();
+    };
+
+    let check = check_view_with_expiry(
+        client,
+        meta.as_ref(),
+        audit.as_ref(),
+        &handle,
+        &auth.preferred_username,
+    )
+    .await;
+
+    let scope = meta
+        .find(&handle, &auth.preferred_username)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| m.scope)
+        .and_then(|v| scope_from_value(&v));
+    if let Some(s) = scope.as_ref() {
+        if !scope_allows_timeline(s) {
+            return (StatusCode::NOT_FOUND, ()).into_response();
+        }
+    }
+
+    let clamped_days = clamp_days(days, scope.as_ref());
+    let since = Utc::now() - chrono::Duration::days(clamped_days as i64);
+    let limit = params
+        .limit
+        .unwrap_or(SHARED_EVENTS_LIMIT_DEFAULT)
+        .clamp(1, SHARED_EVENTS_LIMIT_MAX);
+
+    let filters = EventFilters {
+        cursor: params.before_seq.map(SeqCursor::Before),
+        event_type: None,
+        since: Some(since),
+        until: None,
+        limit: limit as i64,
+        // Not `..Default::default()` — the three clamps below are the
+        // entire reason a recipient may read this at all, so they are
+        // spelled out where a reviewer looks for them.
+        exclude_hidden: true,
+        allow_event_types: scope.as_ref().and_then(|s| s.allow_event_types.clone()),
+        deny_event_types: scope.as_ref().and_then(|s| s.deny_event_types.clone()),
+    };
+
+    render_or_404(check, || async {
+        emit_share_viewed(audit.as_ref(), &auth, &handle).await;
+        let rows = match query.list_filtered(&handle, filters).await {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::error!(error = %e, owner = %handle, "shared events query failed");
+                return err(StatusCode::INTERNAL_SERVER_ERROR, "query_failed");
+            }
+        };
+        let catalog = catalog_cache.snapshot().await;
+        // `list_filtered` with a `Before` cursor (or none) returns seq
+        // DESC, so the last row is the oldest on the page and its seq
+        // is the next cursor. `None` when the page came back short —
+        // there is nothing older to ask for.
+        let next_before = next_before_cursor(&rows, limit);
+        let events = rows
+            .into_iter()
+            .map(|e| {
+                let resolved_location = derive_resolved_location(
+                    &e.event_type,
+                    &e.payload,
+                    e.event_timestamp,
+                    &catalog,
+                )
+                .and_then(|c| serde_json::to_value(c).ok());
+                SharedEventDto {
+                    seq: e.seq,
+                    event_type: e.event_type,
+                    event_timestamp: e.event_timestamp,
+                    log_source: e.log_source,
+                    payload: e.payload,
+                    resolved_location,
+                }
+            })
+            .collect();
+        (
+            StatusCode::OK,
+            Json(SharedEventsResponse {
+                owner_handle: handle.clone(),
+                events,
+                next_before,
+            }),
+        )
+            .into_response()
+    })
+    .await
+}
+
 // -- Plan 3b Option B foundation -----------------------------------
 //
 // The web framework reads the caller's per-recipient ShareScope once
@@ -3491,5 +3722,106 @@ mod public_restriction_tests {
             get_status(app(store), "/v1/public/Limited/summary").await,
             StatusCode::SERVICE_UNAVAILABLE
         );
+    }
+}
+
+/// Tests for the shared event feed (`GET /v1/u/{handle}/events`).
+///
+/// The SpiceDB gate itself is not reachable here — these handlers take
+/// a concrete `SpicedbClient`, which is why every existing `/v1/u/*`
+/// test exercises the render helpers directly rather than the router.
+/// The clamps that decide what a recipient may see are pinned at the
+/// store layer (`repo::shared_event_scope_tests`); what is left, and
+/// what these cover, is the scope-kind gate and the paging contract.
+#[cfg(test)]
+mod shared_events_tests {
+    use super::*;
+    use crate::repo::StoredQueryEvent;
+
+    fn row(seq: i64) -> StoredQueryEvent {
+        StoredQueryEvent {
+            seq,
+            claimed_handle: "owner".into(),
+            event_type: "actor_death".into(),
+            event_timestamp: None,
+            log_source: "live".into(),
+            source_offset: seq,
+            payload: serde_json::json!({ "type": "actor_death" }),
+            resolved_location: None,
+            hidden_at: None,
+        }
+    }
+
+    #[test]
+    fn a_full_page_hands_back_the_oldest_seq_as_the_cursor() {
+        let rows = vec![row(30), row(20), row(10)];
+        assert_eq!(next_before_cursor(&rows, 3), Some(10));
+    }
+
+    #[test]
+    fn a_short_page_ends_the_feed() {
+        // The bug this pins: returning `Some(10)` on a short page gives
+        // the client a cursor whose next fetch is always empty, so the
+        // feed never admits it has ended and the reader keeps pulling.
+        let rows = vec![row(30), row(20)];
+        assert_eq!(next_before_cursor(&rows, 3), None);
+    }
+
+    #[test]
+    fn an_empty_page_ends_the_feed() {
+        assert_eq!(next_before_cursor(&[], 50), None);
+    }
+
+    #[test]
+    fn an_aggregates_only_share_cannot_read_the_event_list() {
+        // The whole point of the `aggregates` kind is "counts, not
+        // detail". The event feed is the detail, so it rides the same
+        // gate as the timeline rather than inventing its own.
+        let scope = ShareScope {
+            kind: "aggregates".into(),
+            tabs: None,
+            window_days: None,
+            allow_event_types: None,
+            deny_event_types: None,
+            allow_widgets: None,
+            deny_widgets: None,
+        };
+        assert!(
+            !scope_allows_timeline(&scope),
+            "an aggregates share must not reach the event list"
+        );
+    }
+
+    #[test]
+    fn timeline_and_full_shares_can_read_the_event_list() {
+        for kind in ["full", "timeline", "tabs"] {
+            let scope = ShareScope {
+                kind: kind.into(),
+                tabs: None,
+                window_days: None,
+                allow_event_types: None,
+                deny_event_types: None,
+                allow_widgets: None,
+                deny_widgets: None,
+            };
+            assert!(scope_allows_timeline(&scope), "{kind} should reach it");
+        }
+    }
+
+    #[test]
+    fn the_share_window_clamps_a_wider_request() {
+        // A recipient asking for 90 days on a 7-day share gets 7. The
+        // request can only ever narrow the window, never widen it.
+        let scope = ShareScope {
+            kind: "timeline".into(),
+            tabs: None,
+            window_days: Some(7),
+            allow_event_types: None,
+            deny_event_types: None,
+            allow_widgets: None,
+            deny_widgets: None,
+        };
+        assert_eq!(clamp_days(90, Some(&scope)), 7);
+        assert_eq!(clamp_days(3, Some(&scope)), 3, "narrower request wins");
     }
 }

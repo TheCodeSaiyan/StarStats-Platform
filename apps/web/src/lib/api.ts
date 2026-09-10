@@ -2266,6 +2266,9 @@ export type PublicSummaryResponse =
   apiSchema['schemas']['PublicSummaryResponse'];
 export type PublicTimelineResponse =
   apiSchema['schemas']['PublicTimelineResponse'];
+export type SharedEventDto = apiSchema['schemas']['SharedEventDto'];
+export type SharedEventsResponse =
+  apiSchema['schemas']['SharedEventsResponse'];
 
 export async function getVisibility(
   bearer: string,
@@ -2478,6 +2481,41 @@ export async function getFriendTimeline(
   return request<PublicTimelineResponse>(
     'GET',
     `/v1/u/${encodeURIComponent(handle)}/timeline${suffix}`,
+    undefined,
+    bearer,
+  );
+}
+
+/**
+ * One page of a friend's individual events, newest first.
+ *
+ * The counterpart to `listEvents` for somebody else's profile. Until
+ * this existed every friend-scoped read returned aggregates, so a
+ * recipient could see THAT someone played but not what happened —
+ * which is why `recent_activity` was gated to the owner.
+ *
+ * The server applies the share's clamps: rows the owner hid are gone,
+ * the scope's `allow_event_types` / `deny_event_types` are enforced,
+ * and `days` is clamped to the share's own window (asking for more
+ * than the share allows narrows to the share, never widens).
+ *
+ * Page with `next_before`: pass it back as `beforeSeq`. A `null`
+ * `next_before` means the feed has ended.
+ */
+export async function getFriendEvents(
+  bearer: string,
+  handle: string,
+  opts: { limit?: number; beforeSeq?: number; days?: number } = {},
+): Promise<SharedEventsResponse> {
+  const qs = new URLSearchParams();
+  if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+  if (opts.beforeSeq !== undefined)
+    qs.set('before_seq', String(opts.beforeSeq));
+  if (opts.days !== undefined) qs.set('days', String(opts.days));
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request<SharedEventsResponse>(
+    'GET',
+    `/v1/u/${encodeURIComponent(handle)}/events${suffix}`,
     undefined,
     bearer,
   );

@@ -2792,6 +2792,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/u/{handle}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The recipient's view of an owner's individual events.
+         * @description The gap this closes: every other friend-scoped read returns
+         *     aggregates — per-day counts for the heatmap, per-type totals for the
+         *     summary — so a recipient could see THAT someone played without
+         *     seeing what happened. `recent_activity` stayed owner-only for want
+         *     of this endpoint, because rendering it for a visitor would have
+         *     shown the viewer their own events under the owner's name.
+         *
+         *     Gating is `friend_timeline`'s, in the same order, because divergence
+         *     between two share-read paths is how a scope stops being enforced:
+         *     handle validation, SpiceDB `view` + expiry, then the scope's kind,
+         *     then its clamps. On top of those it applies the two clamps only an
+         *     event LIST can leak through — per-event hides, and the type
+         *     allow/deny lists — via `EventFilters`.
+         */
+        get: operations["friend_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/u/{handle}/scope": {
         parameters: {
             query?: never;
@@ -7278,6 +7310,36 @@ export interface components {
              *     beyond what the owner could request themselves.
              */
             window_days?: number | null;
+        };
+        /**
+         * @description One row of a shared event feed.
+         *
+         *     Deliberately NOT [`crate::query::EventDto`]: that type carries
+         *     `hidden_at`, which is the owner's own moderation state and has no
+         *     business on a recipient's response. Rows the owner hid never reach
+         *     here at all (`exclude_hidden`), so the field would always be `null`
+         *     — and a field that is always null is an invitation to start
+         *     populating it.
+         */
+        SharedEventDto: {
+            /** Format: date-time */
+            event_timestamp?: string | null;
+            event_type: string;
+            log_source: string;
+            /** @description Free-form JSON — variant of `starstats_core::events::GameEvent`. */
+            payload: Record<string, never>;
+            resolved_location?: null | components["schemas"]["ResolvedLocationSchema"];
+            /** Format: int64 */
+            seq: number;
+        };
+        SharedEventsResponse: {
+            events: components["schemas"]["SharedEventDto"][];
+            /**
+             * Format: int64
+             * @description Cursor for the next (older) page, or `null` at the end.
+             */
+            next_before?: number | null;
+            owner_handle: string;
         };
         /**
          * @description One inbound share: an owner who has granted the caller view
@@ -16592,6 +16654,71 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    friend_events: {
+        parameters: {
+            query?: {
+                /** @description Page size. Clamped to 1..=200. */
+                limit?: number | null;
+                /**
+                 * @description Newest-first cursor: return rows with `seq` strictly below this.
+                 *     Pass back the `next_before` from the previous page.
+                 */
+                before_seq?: number | null;
+                /** @description Window in days, clamped against the share's `window_days`. */
+                days?: number | null;
+            };
+            header?: never;
+            path: {
+                /** @description Owner RSI handle */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the owner's events, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedEventsResponse"];
+                };
+            };
+            /** @description Invalid window */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not shared with you, or the scope excludes the timeline */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SpiceDB not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
