@@ -205,3 +205,25 @@ test('export cooldown comes back as a settings notice, not a broken download', a
     page.locator('.hp-settings').filter({ hasText: /less than a minute ago/i }),
   ).toHaveCount(1);
 });
+
+test('the document sits in a reading column, not the full-width pane', async ({
+  page,
+}) => {
+  // Same fault and same fix as `/sharing` (see e2e/sharing-layout.spec.ts).
+  // Calibrate is eleven sections of prose and forms with no table in any of
+  // them, so it takes the same `measure="reading"` its sibling does — its copy
+  // was capped at 62ch (467px measured) inside a 1040px pane, ending every
+  // paragraph at 45% of its own panel. The width is the assertion because the
+  // wide render is perfectly visible.
+  //
+  // Appended rather than inserted: this suite runs single-worker against a
+  // `next dev` server, and several specs assert on FIRST PAINT with no settle
+  // (`lens-memory`, deliberately). Adding a navigation earlier in the file
+  // shifts every subsequent test's timing and surfaces those latent races —
+  // it did exactly that, in specs this change cannot touch.
+  await page.goto('/settings');
+  const inner = page.locator('.hp-settings__inner');
+  await expect(inner).toBeVisible();
+  const box = (await inner.boundingBox())!;
+  expect(box.width).toBeLessThanOrEqual(860);
+});

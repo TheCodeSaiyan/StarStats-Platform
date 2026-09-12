@@ -28,12 +28,19 @@ import {
 export type SettingsSection = SurfaceSection;
 export type SettingsGroup = SurfaceGroup;
 
-export type SettingsProjectionProps = Omit<PaneSurfaceProps, 'crumb' | 'account'>;
+export type SettingsProjectionProps = Omit<
+  PaneSurfaceProps,
+  'crumb' | 'account' | 'measure'
+>;
 
 export function SettingsProjection(props: SettingsProjectionProps) {
   return (
     <PaneSurface
       {...props}
+      // Eleven sections of prose and forms, no table in any of them — the same
+      // shape as `/sharing`, so the same reading measure. See `measure` on
+      // PaneSurface.
+      measure="reading"
       crumb={[{ label: 'Projection', href: '/me' }, { label: 'Calibrate' }]}
       account={[
         { id: 'me', label: 'Projection', href: '/me' },
