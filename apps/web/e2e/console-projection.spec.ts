@@ -15,6 +15,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 const consoleErrors: string[] = [];
 
@@ -57,7 +58,7 @@ test('the console renders in the projection, not the flat shell', async ({
   page,
 }) => {
   await page.goto('/admin');
-  await expect(page.locator('.hp-stage')).toBeVisible();
+  await expect(liveStage(page)).toBeVisible();
   // Hidden, not absent — a nested layout cannot remove a parent layout.
   await expect(page.locator('.ss-topbar')).toHaveCount(0);
   await expect(page.locator('.ss-rail')).toHaveCount(0);
@@ -68,7 +69,7 @@ test('the console surface kills the ambience', async ({ page }) => {
   // is that at eight hours a day the parallax, scanlines and floor are noise.
   // Assert the declaration reached the DOM rather than trusting the prop.
   await page.goto('/admin');
-  await expect(page.locator('.hp-stage')).toHaveAttribute(
+  await expect(liveStage(page)).toHaveAttribute(
     'data-surface',
     'console',
   );

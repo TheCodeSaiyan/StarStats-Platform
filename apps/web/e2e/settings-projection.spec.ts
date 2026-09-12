@@ -17,6 +17,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveIn, liveStage } from './helpers/shell';
 
 
 const consoleErrors: string[] = [];
@@ -77,11 +78,11 @@ test('picking a calibration repaints the beam in place', async ({ page }) => {
   // projection never sets) is what actually differs.
   await page.goto('/settings');
   await expect(page.locator('.hp-settings')).toBeVisible();
-  await expect(page.locator('.hp-stage')).toHaveAttribute('data-cal', 'terra');
+  await expect(liveStage(page)).toHaveAttribute('data-cal', 'terra');
 
   await page.locator('.hp-calchoice button', { hasText: 'Pyro' }).click();
 
-  await expect(page.locator('.hp-stage')).toHaveAttribute('data-cal', 'pyro');
+  await expect(liveStage(page)).toHaveAttribute('data-cal', 'pyro');
   // ...and without a navigation.
   await expect(page).toHaveURL(/\/settings$/);
 });
@@ -166,7 +167,13 @@ test('export link downloads the file the API streams, name intact', async ({
   );
   await page.goto('/settings');
   const [download] = await Promise.all([
-    page.waitForEvent('download'),
+    // Explicit timeout: `waitForEvent` otherwise inherits `actionTimeout`
+    // (5s), which is the right budget for a click and the wrong one for
+    // "wait while `next dev` compiles /settings/export and streams a file".
+    // It timed out on a cold route in a full-suite run on 2026-09-12 and
+    // passed in isolation every time, which is the shape of a budget that is
+    // too tight rather than a broken download.
+    page.waitForEvent('download', { timeout: 30_000 }),
     page.locator('a[href="/settings/export?format=ndjson"]').click(),
   ]);
   expect(download.suggestedFilename()).toBe(filename);
@@ -222,7 +229,7 @@ test('the document sits in a reading column, not the full-width pane', async ({
   // shifts every subsequent test's timing and surfaces those latent races —
   // it did exactly that, in specs this change cannot touch.
   await page.goto('/settings');
-  const inner = page.locator('.hp-settings__inner');
+  const inner = liveIn(page, '.hp-settings__inner');
   await expect(inner).toBeVisible();
   const box = (await inner.boundingBox())!;
   expect(box.width).toBeLessThanOrEqual(860);

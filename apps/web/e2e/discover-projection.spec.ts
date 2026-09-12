@@ -15,6 +15,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 const consoleErrors: string[] = [];
 
@@ -64,7 +65,7 @@ test('the directory renders in the projection, not the flat shell', async ({
   page,
 }) => {
   await page.goto('/discover');
-  await expect(page.locator('.hp-stage')).toBeVisible();
+  await expect(liveStage(page)).toBeVisible();
   // HIDDEN, not absent. A nested layout cannot remove a parent layout in the
   // App Router, so the flat chrome is still in the DOM and `projection-shell
   // .css` takes it out with `display: none` — which is what also removes it

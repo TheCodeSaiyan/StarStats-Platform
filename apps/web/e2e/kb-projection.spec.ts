@@ -16,6 +16,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 
 test.beforeEach(async ({ request }) => {
@@ -169,7 +170,7 @@ test('the detail sheet renders in the projection, not the flat shell', async ({
   // element that does not exist, which is the trap this suite has hit twice.
   // `.site-footer` still exists in `layout.tsx` and is still hidden by
   // `projection-shell.css`, so that is the assertion with something behind it.
-  await expect(page.locator('.hp-stage')).toBeVisible();
+  await expect(liveStage(page)).toBeVisible();
   await expect(page.locator('.site-footer')).toHaveCount(0);
 });
 

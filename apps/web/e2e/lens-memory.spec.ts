@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 /**
  * `/me` opens on the lens the reader last used.
@@ -23,7 +24,7 @@ test.describe('remembered lens', () => {
     await loginAs(page, { handle: 'TestPilot' });
     await page.setViewportSize({ width: 1600, height: 950 });
     await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 40_000 });
-    await expect(page.locator('.hp-stage')).toHaveAttribute('data-mode', 'overview', {
+    await expect(liveStage(page)).toHaveAttribute('data-mode', 'overview', {
       timeout: 20_000,
     });
   });
@@ -35,13 +36,13 @@ test.describe('remembered lens', () => {
     await expect(page.locator('.hp-lens button').first()).toBeVisible({ timeout: 20_000 });
 
     await page.locator('.hp-lens button', { hasText: 'Travel' }).click();
-    await expect(page.locator('.hp-stage')).toHaveAttribute('data-mode', 'detail');
+    await expect(liveStage(page)).toHaveAttribute('data-mode', 'detail');
 
     await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 40_000 });
     // `domcontentloaded` + no wait: this is the first paint, which is the
     // whole point of resolving the lens on the server.
     await expect(
-      page.locator('.hp-stage'),
+      liveStage(page),
       'the saved lens must be open on arrival, not after a client swap',
     ).toHaveAttribute('data-mode', 'detail', { timeout: 20_000 });
     await expect(page.locator('.hp-lens button[aria-pressed="true"]')).toHaveText(
@@ -55,15 +56,15 @@ test.describe('remembered lens', () => {
     await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 40_000 });
     await expect(page.locator('.hp-lens button').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('.hp-lens button', { hasText: 'Combat' }).click();
-    await expect(page.locator('.hp-stage')).toHaveAttribute('data-mode', 'detail');
+    await expect(liveStage(page)).toHaveAttribute('data-mode', 'detail');
 
     // Esc walks one depth out, back to overview.
     await page.keyboard.press('Escape');
-    await expect(page.locator('.hp-stage')).toHaveAttribute('data-mode', 'overview');
+    await expect(liveStage(page)).toHaveAttribute('data-mode', 'overview');
 
     await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 40_000 });
     await expect(
-      page.locator('.hp-stage'),
+      liveStage(page),
       'abandoning a lens must not re-open it next visit',
     ).toHaveAttribute('data-mode', 'overview', { timeout: 20_000 });
   });

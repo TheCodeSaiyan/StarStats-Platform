@@ -144,3 +144,57 @@ test('the shell fills the viewport with no projection root in the document', asy
   expect(m.display, 'shell reverted to the flat grid').toBe('block');
   expect(m.w, `.ss-main is ${m.w} of ${m.vw}`).toBeGreaterThan(m.vw * 0.9);
 });
+
+test('the pending shell is distinguishable from the real one', async ({
+  page,
+  request,
+}) => {
+  // `PageSkeleton` renders a COMPLETE second projection — its own `.hp-stage`,
+  // `.ss-projection-root`, `.hp-settings__inner` and `.hp-crumb h1`. Under
+  // React's streaming SSR the fallback stays in the DOM while the real content
+  // arrives in a hidden div and is swapped in by an inline script, so for a
+  // moment both stages are genuinely present.
+  //
+  // Every bare `page.locator('.hp-stage')` in this suite is a strict-mode
+  // violation waiting for that moment. It arrived on 2026-09-12 in
+  // `lens-memory.spec.ts`, which asserts on first paint by design:
+  //   strict mode violation: locator('.hp-stage') resolved to 2 elements:
+  //     1) <div class="hp-stage" ... data-surface="console"> aka 'Loading…'
+  //     2) <div class="hp-stage" ... data-lens="bottom">
+  //
+  // The fix is a marker on the pending one, so a locator can say which it
+  // means. This asserts the marker exists and actually separates the two —
+  // NOT that some stage is visible, which is true either way.
+  test.slow();
+  await resetScenario(request);
+  await setScenario(request, scenarioFor('pending-marker-warm', {}));
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.setViewportSize({ width: 1600, height: 950 });
+  await page.goto('/sharing', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForTimeout(500);
+
+  await setScenario(
+    request,
+    scenarioFor('pending-marker', {
+      // Holds the server render open so the fallback stays on screen.
+      'GET /v1/me/shares': { status: 200, body: { shares: [] }, delayMs: 6000 },
+    }),
+  );
+  await page.goto('/sharing', { waitUntil: 'commit', timeout: 60_000 });
+
+  // The fallback is on screen and carries the marker.
+  await expect(page.locator('.hp-stage[data-pending="true"]')).toBeAttached({
+    timeout: 20_000,
+  });
+  // ...and the live-stage locator does not match it. This is the assertion
+  // that fails without the marker: the skeleton IS an `.hp-stage`, so an
+  // unscoped locator counts it.
+  await expect(page.locator('.hp-stage:not([data-pending])')).toHaveCount(0);
+
+  // Once the real page lands, the live-stage locator resolves to exactly one
+  // and the pending one is gone.
+  await expect(page.locator('.hp-stage:not([data-pending])')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await expect(page.locator('.hp-stage[data-pending="true"]')).toHaveCount(0);
+});

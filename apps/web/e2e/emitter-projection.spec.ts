@@ -10,6 +10,7 @@
  */
 import { test, expect, type Page } from '@playwright/test';
 import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 const consoleErrors: string[] = [];
 
@@ -212,7 +213,7 @@ test('the Emitter renders in the projection, not the flat shell', async ({
   page,
 }) => {
   await page.goto('/downloads');
-  await expect(page.locator('.hp-stage')).toBeVisible();
+  await expect(liveStage(page)).toBeVisible();
   // HIDDEN, not absent — a nested layout cannot remove a parent layout, so the
   // flat chrome is still in the DOM and is taken out with `display: none`.
   await expect(page.locator('.ss-topbar')).toHaveCount(0);

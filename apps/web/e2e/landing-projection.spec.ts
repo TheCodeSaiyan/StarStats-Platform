@@ -10,6 +10,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 const consoleErrors: string[] = [];
 
@@ -28,7 +29,7 @@ test('the landing renders in the projection, not the flat shell', async ({
   page,
 }) => {
   await page.goto('/');
-  await expect(page.locator('.hp-stage')).toBeVisible();
+  await expect(liveStage(page)).toBeVisible();
   // Hidden, not absent — a nested layout cannot remove a parent layout. The
   // `MarketingNav` assertion that used to sit here was dropped when the
   // component was deleted: asserting a non-existent element is hidden proves
@@ -44,7 +45,7 @@ test('the brand surface is declared, which is what sizes the hero', async ({
   // `min(760px, 72vw)`, and `BrandHero` is sized FROM the ring. Without it the
   // lockup overflows the circle — and nothing else would fail.
   await page.goto('/');
-  await expect(page.locator('.hp-stage')).toHaveAttribute(
+  await expect(liveStage(page)).toHaveAttribute(
     'data-surface',
     'brand',
   );

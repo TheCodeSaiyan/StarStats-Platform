@@ -51,6 +51,17 @@ export function PageSkeleton({
       <Projection
         surface="console"
         parallax={false}
+        // MARKS THIS SHELL AS THE PENDING ONE, and it is load-bearing for the
+        // e2e suite. This component renders a COMPLETE second projection —
+        // its own `.hp-stage`, `.ss-projection-root`, `.hp-settings__inner`
+        // and `.hp-crumb h1` — and under React's streaming SSR the fallback
+        // stays in the DOM while the real content arrives in a hidden div and
+        // is swapped in. For that moment both stages are present, so any
+        // unscoped `.hp-stage` locator is a strict-mode violation waiting to
+        // happen (it happened: lens-memory, 2026-09-12). Tests select the real
+        // shell with `.hp-stage:not([data-pending])` — see `liveStage()` in
+        // e2e/helpers/shell.ts. Do not remove without updating those.
+        data-pending="true"
         crumb={<Crumb heading parts={[{ t: label }]} />}
       >
         <div className="hp-settings">

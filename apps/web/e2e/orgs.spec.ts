@@ -7,6 +7,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 test.beforeEach(async ({ request, page }) => {
   await resetScenario(request);
@@ -60,7 +61,7 @@ test('create_new_org_redirects_to_detail', async ({ page, request }) => {
   // lands before React has attached is swallowed rather than posted. It failed
   // only in a full-suite run and never in isolation, which is the signature of
   // that race and not of flake; the same shape has bitten this suite twice.
-  await expect(page.locator('.hp-stage')).toBeVisible();
+  await expect(liveStage(page)).toBeVisible();
   // Wait for the FORM, not just the surface. The projection shell renders
   // before the page body streams in, so `.hp-stage` being visible does not mean
   // the button exists yet — a retry loop around the click then spends its whole

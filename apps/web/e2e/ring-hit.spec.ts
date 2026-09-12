@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 /**
  * The ring is the projection's primary navigation, and it was not clickable.
@@ -78,7 +79,7 @@ test.describe('ring', () => {
     await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await expect(page.locator('.hp-seghit').first()).toBeAttached({ timeout: 20_000 });
     await page.waitForTimeout(400);
-    const stage = page.locator('.hp-stage');
+    const stage = liveStage(page);
     await expect(stage).toHaveAttribute('data-mode', 'overview');
     const pt = await page.evaluate(() => {
       const svg = document.querySelector('.hp-ringwrap svg') as SVGSVGElement;

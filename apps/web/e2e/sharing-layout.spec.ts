@@ -18,6 +18,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveIn } from './helpers/shell';
 
 const FIXTURES = {
   'GET /v1/auth/me': currentUser,
@@ -84,7 +85,7 @@ test('the crumb heading does not overlap the lens tabs on a phone', async ({
   // tells the two renders apart.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/sharing');
-  const heading = page.locator('.hp-crumb h1');
+  const heading = liveIn(page, '.hp-crumb h1');
   await expect(heading).toBeVisible();
   const h = (await heading.boundingBox())!;
   const tabs = page.locator('.hp-lens button');
@@ -145,7 +146,7 @@ test('the document sits in a reading column, not the full-width pane', async ({
   // one measure; this surface takes the narrower one.
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/sharing');
-  const inner = page.locator('.hp-settings__inner');
+  const inner = liveIn(page, '.hp-settings__inner');
   await expect(inner).toBeVisible();
   const box = (await inner.boundingBox())!;
   expect(box.width).toBeLessThanOrEqual(860);

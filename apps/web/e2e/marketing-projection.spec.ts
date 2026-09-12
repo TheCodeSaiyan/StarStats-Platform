@@ -15,6 +15,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 
 /**
@@ -69,7 +70,7 @@ for (const { route, h1 } of PAGES) {
     await page.goto(route);
 
     // The frame.
-    await expect(page.locator('.hp-stage')).toBeVisible();
+    await expect(liveStage(page)).toBeVisible();
     await expect(page.locator('header.ss-marketing-nav')).toHaveCount(0);
 
     // Exactly one main landmark, supplied by the pane — not by the page. Two

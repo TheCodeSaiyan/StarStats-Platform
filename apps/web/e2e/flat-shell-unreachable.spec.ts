@@ -26,6 +26,7 @@ import {
   scenarioFor,
   setScenario,
 } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 const SIGNED_IN = [
   '/me',
@@ -79,7 +80,7 @@ for (const route of SIGNED_IN) {
     await page.goto(route);
     await expect(page).toHaveURL(new RegExp(`${route}/?$`));
     // The volume is there…
-    await expect(page.locator('.hp-stage')).toHaveCount(1);
+    await expect(liveStage(page)).toHaveCount(1);
     // …and the chrome it replaced is GONE, not hidden. These components were
     // deleted once nothing could reach them, so `toHaveCount(0)` is the honest
     // assertion and `toBeHidden()` would be the vacuous one.
@@ -94,7 +95,7 @@ for (const route of SIGNED_IN) {
 for (const route of SIGNED_OUT) {
   test(`${route} shows no flat chrome`, async ({ page }) => {
     await page.goto(route);
-    await expect(page.locator('.hp-stage')).toHaveCount(1);
+    await expect(liveStage(page)).toHaveCount(1);
     await expect(page.locator('.site-footer')).toHaveCount(0);
     await expect(page.locator('header.ss-marketing-nav')).toHaveCount(0);
   });
@@ -108,7 +109,7 @@ test('the calibration pips replace the flat theme toggle', async ({ page }) => {
   // cannot leak onto anything that has not been ported.
   await loginAs(page, { handle: 'TestPilot' });
   await page.goto('/settings');
-  const stage = page.locator('.hp-stage');
+  const stage = liveStage(page);
   await expect(stage).toHaveAttribute('data-cal', 'terra');
   // Scoped to the CHROME's pips: `/settings` also renders a `CalibrationChoice`
   // in its own body, so an unscoped locator matches both.
@@ -130,7 +131,7 @@ test('the error and not-found boundaries are projections too', async ({
   // the flat chrome un-hides. Every route being ported did not cover it.
   await setScenario(request, scenarioFor('boundary-404'));
   await page.goto('/no-such-page-anywhere');
-  await expect(page.locator('.hp-stage')).toHaveCount(1);
+  await expect(liveStage(page)).toHaveCount(1);
   await expect(page.locator('.ss-topbar')).toHaveCount(0);
   await expect(page.locator('h1')).toHaveText('Page not found');
 
@@ -151,7 +152,7 @@ test('the error and not-found boundaries are projections too', async ({
   await expect(page.locator('h1')).toHaveText(
     'Couldn’t load the knowledge base',
   );
-  await expect(page.locator('.hp-stage')).toHaveCount(1);
+  await expect(liveStage(page)).toHaveCount(1);
   await expect(page.locator('.ss-topbar')).toHaveCount(0);
 });
 

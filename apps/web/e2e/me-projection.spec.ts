@@ -10,6 +10,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
+import { liveStage } from './helpers/shell';
 
 
 /** A reader with real-shaped travel telemetry, so the ring has a map to draw. */
@@ -111,11 +112,11 @@ test('picking a calibration repaints the beam in place', async ({ page }) => {
   // cannot reach the un-ported flat pages.
   await page.goto('/me');
   await expect(page.locator('.hp-core')).toBeVisible();
-  await expect(page.locator('.hp-stage')).toHaveAttribute('data-cal', 'terra');
+  await expect(liveStage(page)).toHaveAttribute('data-cal', 'terra');
 
   await page.locator('.hp-cal button[aria-label="Pyro calibration"]').click();
 
-  await expect(page.locator('.hp-stage')).toHaveAttribute('data-cal', 'pyro');
+  await expect(liveStage(page)).toHaveAttribute('data-cal', 'pyro');
 });
 
 test('the page has exactly one h1, naming the reader', async ({ page }) => {
@@ -134,7 +135,7 @@ test('the layout editor offers every registered widget', async ({ page }) => {
   // that becomes visible, so it is asserted here as well as in the unit guard.
   await page.goto('/me');
   await expect(page.locator('.hp-core')).toBeVisible();
-  await page.locator('.hp-stage').click({ position: { x: 5, y: 400 } });
+  await liveStage(page).click({ position: { x: 5, y: 400 } });
   await page.keyboard.press('e');
   await expect(page.locator('.hp-layout')).toBeVisible();
   for (const name of [
@@ -193,7 +194,7 @@ test('an open lens switches the ring to its bar field', async ({
   );
   await loginAs(page, { handle: 'StarStatsDemo' });
   await page.goto('/me');
-  const stage = page.locator('.hp-stage');
+  const stage = liveStage(page);
   await expect(stage).toBeVisible();
 
   // Asserted through the SEGMENTS, because the bars are unclassed `<line>`
