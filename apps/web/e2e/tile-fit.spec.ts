@@ -97,3 +97,69 @@ test('no widget tile hides its own content', async ({ page, request }) => {
   }
   expect(failures, failures.join('\n')).toEqual([]);
 });
+
+test('no widget tile header spills out of its tile', async ({ page, request }) => {
+  /**
+   * The vertical sibling of the check above, for the axis a narrow tile
+   * actually loses.
+   *
+   * `.hud-tile__hd` is a `flex-wrap: nowrap` row carrying an eyebrow and a
+   * title. In a full-width tile they fit; in a 6-column one they do not, and
+   * `nowrap` has nowhere to put the overflow — so the title runs past the tile
+   * edge and `.hud-tile { overflow: hidden }` cuts it. Measured on the public
+   * profile's default layout at 1440x900: the Affiliations tile ends at x=487
+   * and its "Orgs" title runs to x=501, and the Cross-session rollups tile
+   * loses the second line of its title entirely.
+   *
+   * A clipped label is not a visibility failure — every one of these elements
+   * reports `visible`, and the tile-fit check above only measures height — so
+   * the assertion is the geometry: no header child may end past its tile's
+   * content edge.
+   */
+  test.setTimeout(180_000);
+  await resetScenario(request);
+  await setScenario(request, scenarioFor('tile-fit'));
+  await loginAs(page, { handle: 'TestPilot' });
+
+  await page.goto('/u/TestPilot', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForTimeout(1500);
+
+  const spills = await page.evaluate(() => {
+    const tiles = Array.from(document.querySelectorAll<HTMLElement>('.hud-tile'));
+    const out: { id: string; label: string; by: number }[] = [];
+    for (const tile of tiles) {
+      const tb = tile.getBoundingClientRect();
+      const padRight = parseFloat(getComputedStyle(tile).paddingRight) || 0;
+      const limit = tb.right - padRight;
+      const hd = tile.querySelector<HTMLElement>('.hud-tile__hd');
+      if (!hd) continue;
+      for (const child of Array.from(hd.children)) {
+        const cb = child.getBoundingClientRect();
+        if (cb.width === 0) continue;
+        const by = Math.round(cb.right - limit);
+        if (by > 1) {
+          out.push({
+            id: tile.closest<HTMLElement>('[data-widget-id]')?.dataset.widgetId ?? '?',
+            label: (child.textContent ?? '').trim().slice(0, 24),
+            by,
+          });
+        }
+      }
+    }
+    return { count: tiles.length, out };
+  });
+
+  // Same vacuous-pass guard as above: no tiles is a perfect score.
+  expect(
+    spills.count,
+    `expected at least ${MIN_TILES} tiles to measure, saw ${spills.count}`,
+  ).toBeGreaterThanOrEqual(MIN_TILES);
+
+  expect(
+    spills.out,
+    `tile headers running past their tile: ${spills.out
+      .map((s) => `${s.id} "${s.label}" overflows by ${s.by}px`)
+      .join('; ')}`,
+  ).toEqual([]);
+});

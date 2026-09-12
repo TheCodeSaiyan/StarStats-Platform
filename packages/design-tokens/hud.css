@@ -142,7 +142,35 @@
     top left, top left, top right, top right,
     bottom left, bottom left, bottom right, bottom right;
 }
+/* The header is ONE LINE, always.
+   `.hud-tile` row counts are tuned to fit each widget's content exactly, with
+   zero slack by design (see grid-layout.ts and e2e/tile-fit.spec.ts), so
+   `flex-wrap: wrap` here is not free: it cost the Orgs tile 17px it did not
+   have (112px of content in a 95px body) and pushed the already-tight Entities
+   tile from 26px to 28px over. A horizontal clip cannot be paid for with a
+   vertical one.
+
+   So the NARROW tile drops the category eyebrow instead and keeps the title,
+   which is the half that names the widget. Measured at 1440x900 on the public
+   profile's default layout: "Orgs" ran 32px past its 6-column tile and
+   "Entities rollup" 14px, both cut by `.hud-tile { overflow: hidden }`.
+   A container query rather than a viewport one because what is too narrow here
+   is the TILE, and the same tile is roomy at 24 columns and cramped at 6 on
+   the very same screen.
+
+   SCOPED TO `.hud-freegrid >`, and that is load-bearing. `container-type`
+   implies `contain: layout`, which makes the element a containing block for
+   `position: fixed` descendants — the same trap `.claude/rules/tray-ui.md`
+   records for transforms, where a fixed drawer pinned to its wrapper instead
+   of the viewport. `apps/tray-ui` imports this stylesheet and renders bare
+   `.hud-tile` elements (primitives.tsx) alongside fixed-position panes, and it
+   uses no `.hud-freegrid` and no `.hud-tile__hd` at all. Scoping to the web's
+   widget grid leaves every tray tile untouched. */
+.hud-freegrid > .hud-tile { container-type: inline-size; }
 .hud-tile__hd { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
+@container (max-width: 320px) {
+  .hud-tile__hd > .hud-tile__eyebrow { display: none; }
+}
 .hud-tile__eyebrow { font-family: var(--font-display); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim); }
 
 /* Telemetry rail — persistent live-readout frames under the nav (bridge). */
