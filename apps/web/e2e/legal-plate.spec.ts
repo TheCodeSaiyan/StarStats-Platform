@@ -22,6 +22,7 @@
 import { test, expect } from '@playwright/test';
 import {
   loginAs,
+  publicSummaryShared,
   resetScenario,
   scenarioFor,
   setScenario,
@@ -185,4 +186,39 @@ test('the legal documents reach each other', async ({ page }) => {
   await expect(
     page.locator('.hp-legalindex [aria-current="page"]'),
   ).toHaveText('Trust');
+});
+
+test('the licence tag stays on one line', async ({ page, request }) => {
+  // `.hp-legal .meta` is a flex row: the link list, a spacer, then the licence.
+  // The links wrap, the list grows, and the licence — `flex: 0 1 auto` with
+  // `white-space: normal` — gets squeezed to its min-content width, which for
+  // "MPL-2.0" is a break at the hyphen. Measured on `/u/[handle]` in the 916px
+  // dock at 1440x900: the licence span rendered 65x36, i.e. "MPL-" over "2.0".
+  //
+  // A licence identifier broken across lines is no longer the identifier, and
+  // this surface is the one a stranger reads. Asserting the box height rather
+  // than visibility, because the broken version is perfectly visible.
+  await setScenario(request, {
+    __id: 'legal_licence_one_line',
+    routes: { 'GET /v1/public/JohnSomeone/summary': publicSummaryShared },
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/u/JohnSomeone');
+  const lic = page.locator('.hp-legal .meta .lic');
+  await expect(lic).toBeVisible();
+  const m = await lic.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const lh = parseFloat(cs.lineHeight);
+    return {
+      h: el.getBoundingClientRect().height,
+      lineHeight: Number.isFinite(lh) ? lh : parseFloat(cs.fontSize) * 1.2,
+      text: (el.textContent ?? '').trim(),
+    };
+  });
+  expect(
+    m.h,
+    `licence "${m.text}" is ${Math.round(m.h)}px tall against a ${Math.round(
+      m.lineHeight,
+    )}px line — it has wrapped`,
+  ).toBeLessThan(m.lineHeight * 1.6);
 });

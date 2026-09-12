@@ -49,7 +49,7 @@ export function LegalPlate({
       <div className="meta">
         {links ? <span className="lk">{links}</span> : null}
         <span className="sp" />
-        {licence ? <span>{licence}</span> : null}
+        {licence ? <span className="lic">{licence}</span> : null}
         {version ? <span>{version}</span> : null}
       </div>
     </footer>

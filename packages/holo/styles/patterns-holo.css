@@ -1073,6 +1073,12 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-legal .meta { display: flex; align-items: baseline; gap: 18px; margin-top: var(--s3);
   font-size: var(--fs-micro); letter-spacing: 0.18em; text-transform: uppercase; color: var(--label); }
 .hp-legal .meta .sp { flex: 1 1 auto; }
+/* The licence identifier NEVER breaks. `.meta` is a flex row and `.lk` wraps
+   and grows, which squeezes the licence to its min-content width — and the
+   min-content of "MPL-2.0" is a break at the hyphen. Measured in the 916px
+   dock on `/u/[handle]`: a 65x36 box reading "MPL-" over "2.0". A licence id
+   split across two lines is not the id any more. */
+.hp-legal .meta .lic { flex: 0 0 auto; white-space: nowrap; }
 .hp-legal .lk { display: flex; gap: 18px; }
 /* Sized by the container (`--fs-micro` / `--fs-xs`), so this rule carries no
  * font-size of its own and the small-text sweep could not see it — measured at
