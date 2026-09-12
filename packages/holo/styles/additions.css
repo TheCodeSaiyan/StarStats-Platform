@@ -1916,12 +1916,29 @@
 .hp-volume-below {
   position: relative;
   z-index: 20;
-  margin: 100vh auto 0;
+  /* NO top offset. `.hp-stage` is `height: 100%` and IN FLOW, so it already
+   * occupies exactly one viewport above this — the `margin-top: 100vh` this
+   * carried counted the volume twice and left a full blank screen between the
+   * holo and the content, which is what a reader hit when they scrolled past
+   * the ring and found nothing. */
+  margin: 0 auto;
   max-width: 980px;
   padding: 0 32px 40px;
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+/* The docked pane's header does NOT stick here.
+ *
+ * `.hp-pane > .hp-phd` is sticky so a section header stays put while its own
+ * pane scrolls — right on the pane surfaces, where `.hp-settings` is the
+ * scroller and the header travels only its own section. On this surface the
+ * DOCUMENT scrolls, so the header pinned to the viewport top and slid down
+ * over the content beneath it: "@handle" was drawn across the first tile's
+ * title with nothing hiding it. A header docked in page flow has nothing to
+ * stay above. */
+.hp-volume-below .hp-pane--static > .hp-phd {
+  position: static;
 }
 
 /* Badges beside the pane title: viewer relationship, RSI verification,

@@ -293,3 +293,74 @@ test('a recipient sees the events behind the share, not just the aggregates', as
   await expect(headline).not.toHaveText('actor_death');
   await expect(headline).not.toHaveText('');
 });
+
+test('the detail docked below the volume can actually be reached', async ({
+  page,
+  request,
+}) => {
+  /**
+   * `/u/[handle]` is the one projection that docks content BELOW its volume
+   * (`.hp-volume-below`): the ring is the headline, and the pane carrying the
+   * handle heading, the published/withheld scopes and the shared feed reads
+   * underneath it.
+   *
+   * It could not be read at all. `projection-shell.css` locks the document for
+   * every projection — `html, body { height: 100%; overflow: hidden }` — which
+   * is right for the pane surfaces, because they scroll inside `.hp-settings`.
+   * This surface has no inner scroller, so the lock applied to a page with
+   * 2165px of content past the fold. Measured at 1440x900 before the fix:
+   * `html.scrollHeight === html.clientHeight === 900`, `.hp-volume-below` at
+   * y 1800-3065, and 3000px of wheel moved `window.scrollY` not one pixel.
+   *
+   * On top of that the offset was counted twice. `.hp-stage` is `height: 100%`
+   * and IN FLOW, so it already occupies one viewport; `.hp-volume-below` then
+   * added `margin-top: 100vh` on top, leaving a full blank screen between the
+   * holo and the content even once the page could scroll.
+   *
+   * NOT a visibility assertion: Playwright's `toBeVisible` reads the box and
+   * `visibility`, never whether an element is reachable, so the whole docked
+   * pane asserted visible throughout. Geometry is the only thing that tells
+   * the two renders apart.
+   */
+  await setScenario(request, {
+    __id: 'public_below_volume_reachable',
+    routes: { 'GET /v1/public/JohnSomeone/summary': publicSummaryShared },
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/u/JohnSomeone');
+  await expect(page.locator('.hp-volume-below')).toBeAttached();
+
+  // 1. The document has somewhere to scroll.
+  const canScroll = await page.evaluate(
+    () =>
+      document.documentElement.scrollHeight >
+      document.documentElement.clientHeight + 40,
+  );
+  expect(canScroll, 'the page must be scrollable to reach the dock').toBe(true);
+
+  // 2. No blank viewport between the volume and the dock.
+  const gap = await page.evaluate(() => {
+    const stage = document.querySelector('.hp-stage:not([data-pending])')!;
+    const below = document.querySelector('.hp-volume-below')!;
+    return Math.round(
+      below.getBoundingClientRect().top - stage.getBoundingClientRect().bottom,
+    );
+  });
+  expect(gap, 'dock must start where the volume ends').toBeLessThanOrEqual(8);
+
+  // 3. Scrolling with the wheel, as a reader would, brings it on screen.
+  await page.mouse.move(720, 450);
+  for (let i = 0; i < 6; i += 1) {
+    await page.mouse.wheel(0, 500);
+    await page.waitForTimeout(120);
+  }
+  const onScreen = await page.evaluate(() => {
+    const r = document.querySelector('.hp-volume-below')!.getBoundingClientRect();
+    return { top: Math.round(r.top), vh: window.innerHeight };
+  });
+  expect(
+    onScreen.top,
+    `dock is at y=${onScreen.top} in a ${onScreen.vh}px viewport after scrolling`,
+  ).toBeLessThan(onScreen.vh);
+});

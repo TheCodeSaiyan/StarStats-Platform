@@ -114,3 +114,24 @@ body:has(.ss-projection-root) {
    * the chrome. */
   height: 100svh;
 }
+
+/* EXCEPT the one surface that docks content BELOW its volume.
+ *
+ * The lock above is right for every PANE surface, because those scroll inside
+ * `.hp-settings` and a second scrollbar on the document would be a bug. But
+ * `/u/[handle]` — the page a stranger or a share recipient reads — has no
+ * inner scroller: the ring is the headline and `.hp-volume-below` carries the
+ * handle heading, the published/withheld scopes and the shared feed underneath
+ * it. `overflow: hidden` on the document therefore hid all of it. Measured at
+ * 1440x900: `html.scrollHeight === html.clientHeight === 900` with the dock
+ * sitting at y 1800-3065, and 3000px of wheel moving `scrollY` by zero.
+ *
+ * The root keeps its `100svh` so `.hp-stage`'s `height: 100%` still resolves —
+ * the dock simply overflows it, and with the document unlocked that overflow
+ * is reachable. Keyed on `.hp-volume-below` rather than a route so the rule
+ * follows the layout that needs it. */
+html:has(.hp-volume-below),
+body:has(.hp-volume-below) {
+  height: auto;
+  overflow: visible;
+}
