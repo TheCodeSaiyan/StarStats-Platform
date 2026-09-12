@@ -131,7 +131,12 @@ export function ShareEditor({
           open={prefilledScope != null}
           style={{ marginTop: 14 }}
         >
-          <summary className="hp-lg" style={{ cursor: 'pointer' }}>
+          {/* No `.hp-lg` here: that is the event-log ROW
+              (`grid-template-columns: 64px 1fr 92px`), and it put this label
+              in the 64px track — one word per line, 104px tall for a single
+              line of text. `.hp-disclosure > summary` already styles it as a
+              control. */}
+          <summary style={{ cursor: 'pointer' }}>
             More options — scope, window, tabs, event types
           </summary>
 

@@ -131,6 +131,18 @@ export interface PaneSurfaceProps {
    * surface that genuinely has another copy of the plate on screen.
    */
   legal?: boolean;
+  /**
+   * Width of the document column.
+   *
+   * `wide` (1040px, the default) suits the surfaces built on this shell that
+   * are really tables — `/kb`, the admin console, the contract lists. `reading`
+   * (820px) suits the ones that are prose and forms: their copy is capped at
+   * 62ch and their form column at 520px, so the wide measure leaves every
+   * paragraph ending at 45% of its own panel while the controls run the full
+   * width. Opt in per surface rather than switching the default, because
+   * narrowing a table surface is a worse fault than the one being fixed.
+   */
+  measure?: 'wide' | 'reading';
 }
 
 export function PaneSurface({
@@ -148,6 +160,7 @@ export function PaneSurface({
   chromeTrailing,
   crumbHeading = true,
   legal = true,
+  measure = 'wide',
 }: PaneSurfaceProps) {
   const router = useRouter();
   const { inboundShares } = useShellData();
@@ -319,7 +332,13 @@ export function PaneSurface({
         }
       >
         <div className="hp-settings" ref={scrollRef}>
-          <div className="hp-settings__inner">
+          <div
+            className={
+              measure === 'reading'
+                ? 'hp-settings__inner hp-settings__inner--reading'
+                : 'hp-settings__inner'
+            }
+          >
             {notice ? (
               <BeamAlert tone={notice.tone}>{notice.message}</BeamAlert>
             ) : null}

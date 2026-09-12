@@ -663,13 +663,15 @@ export default async function SharingPage(props: {
       group: 'visibility',
       node: (
         <>
+          {/* Figures only. `SubStats` renders a word-valued cell small and
+              clamped on purpose (`isFigure` in holo's Pane.tsx) — right for a
+              long place name, wrong for "Public", which ended up as the
+              quietest cell in a row of 25px numerals while being the most
+              important fact on the page. It is stated three times in the pane
+              directly below (title, context line and a lit chip), so it does
+              not also need a figure slot it cannot fill. */}
           <SubStats
             items={[
-              {
-                k: 'Profile',
-                v: isPublic ? 'Public' : 'Private',
-                tone: isPublic ? 'good' : undefined,
-              },
               { k: 'Named grants', v: String(shareEntries.length) },
               { k: 'Org-only', v: String(orgShareCount) },
               {
@@ -702,6 +704,24 @@ export default async function SharingPage(props: {
             </BeamChip>
             <span>{summarisePublicScope(visibility?.public_scope)}</span>
           </div>
+
+          {/* The section's primary action, with the state it changes rather
+              than stranded between two panels further down — where it was the
+              least prominent control on a page about exactly this decision. */}
+          <form action={visibilityAction} className="hp-formcol">
+            <input
+              type="hidden"
+              name="public"
+              value={isPublic ? 'false' : 'true'}
+            />
+            <BeamButton
+              type="submit"
+              variant={isPublic ? 'ghost' : 'primary'}
+              style={{ alignSelf: 'flex-start' }}
+            >
+              {isPublic ? 'Make private' : 'Make public'}
+            </BeamButton>
+          </form>
 
           {/* What a stranger actually gets, in words.
               The old copy said "your summary and timeline", which is true
@@ -767,7 +787,10 @@ export default async function SharingPage(props: {
                 full history.
               </p>
             ) : null}
-            <p className="hp-note" style={{ marginTop: 12 }}>
+            {/* `.hp-prose`, not a second `.hp-note`: the note's left rule is
+                for a caveat, and two of them stacked read as a pair of
+                blockquotes rather than a warning followed by a pointer. */}
+            <p className="hp-prose" style={{ marginTop: 12 }}>
               Per-widget switches are separate —{' '}
               <Link href={'/settings/widget-sharing' as Route}>
                 widget sharing
@@ -775,21 +798,6 @@ export default async function SharingPage(props: {
               decides which panels a visitor sees.
             </p>
           </Plane>
-          <form action={visibilityAction} className="hp-formcol">
-            <input
-              type="hidden"
-              name="public"
-              value={isPublic ? 'false' : 'true'}
-            />
-            <BeamButton
-              type="submit"
-              variant={isPublic ? 'ghost' : 'primary'}
-              style={{ alignSelf: 'flex-start' }}
-            >
-              {isPublic ? 'Make private' : 'Make public'}
-            </BeamButton>
-          </form>
-
           {isPublic ? (
             <Plane tilt="flat" cap="Public URL" style={{ marginTop: 20 }}>
               <div className="hp-formrow" style={{ marginTop: 4 }}>
@@ -907,8 +915,11 @@ export default async function SharingPage(props: {
             </div>
           ) : null}
 
+          {/* No `hint` on the panel below: the section header already carries
+              "<n> active", and a bare total in the panel corner gave the reader
+              two different unlabelled numbers for the same list. */}
           {shareEntries.length > 0 ? (
-            <Plane tilt="flat" cap="Grants" hint={`${shareEntries.length}`} style={{ marginTop: 18 }}>
+            <Plane tilt="flat" cap="Grants" style={{ marginTop: 18 }}>
               {shareEntries.map((entry) => {
                 const expiryLabel = formatExpiry(entry.expires_at);
                 // Owner-visible activity hint. `view_count` and
@@ -964,8 +975,19 @@ export default async function SharingPage(props: {
                           so the editor pre-fills them, and it emits the expiry
                           as a UTC instant that `ExpiryField` localises back to
                           the wall-clock the owner originally picked. Rebuilding
-                          the link by hand silently drops both. */}
+                          the link by hand silently drops both.
+
+                          Both actions carry the same chrome, and the
+                          destructive one is the tinted one. Edit was a bare
+                          text link beside a bordered Revoke, which made the
+                          irreversible action the most prominent thing in every
+                          row. The ghost-button classes go on the Link rather
+                          than using `BeamButton as={Link}`, because BeamButton
+                          renders a raw anchor as soon as it is given an href
+                          and that would drop client-side navigation. Same
+                          shape as the "Open →" link on the public URL. */}
                       <Link
+                        className="hp-btn hp-btn--ghost"
                         href={
                           buildEditHref(
                             entry.recipient_handle,
@@ -982,7 +1004,7 @@ export default async function SharingPage(props: {
                           name="recipient_handle"
                           value={entry.recipient_handle}
                         />
-                        <BeamButton type="submit" variant="ghost">
+                        <BeamButton type="submit" variant="danger">
                           Revoke
                         </BeamButton>
                       </form>
@@ -1038,7 +1060,7 @@ export default async function SharingPage(props: {
                           name="org_slug"
                           value={entry.org_slug}
                         />
-                        <BeamButton type="submit" variant="ghost">
+                        <BeamButton type="submit" variant="danger">
                           Revoke
                         </BeamButton>
                       </form>

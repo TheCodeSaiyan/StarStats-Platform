@@ -32,7 +32,7 @@ export const SHARING_GROUPS: readonly SurfaceGroup[] = [
 
 export type SharingProjectionProps = Omit<
   PaneSurfaceProps,
-  'crumb' | 'account' | 'groups' | 'themeAction'
+  'crumb' | 'account' | 'groups' | 'themeAction' | 'measure'
 >;
 
 export function SharingProjection(props: SharingProjectionProps) {
@@ -40,6 +40,8 @@ export function SharingProjection(props: SharingProjectionProps) {
     <PaneSurface
       {...props}
       groups={SHARING_GROUPS}
+      // Prose and forms, not tables — see `measure` on PaneSurface.
+      measure="reading"
       crumb={[{ label: 'Projection', href: '/me' }, { label: 'Sharing' }]}
       account={[
         { id: 'me', label: 'Projection', href: '/me' },

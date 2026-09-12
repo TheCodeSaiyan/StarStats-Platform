@@ -839,7 +839,13 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
   .hp-lg { grid-template-columns: 52px 1fr; }
   .hp-lg .mx { display: none; }
   .hp-tbl { font-size: var(--fs-sm); }
-  .hp-phd h2 { font-size: 17px; }
+  /* Specificity raised and !important added to hold this against the legacy
+   * mobile heading clamp (`h2:not(.hud-tile__title) { font-size: 22px
+   * !important }`, design-tokens/starstats-tokens.css, ≤640px), which
+   * otherwise wins below 640 and renders every pane title 5px over its
+   * designed size — "Shared with specific handles" wrapped to two lines
+   * against its context line at 390px. */
+  .hp-stage .hp-phd h2 { font-size: 17px !important; }
 }
 
 /* ════ TOUCH & ACCESSIBILITY ═════════════════════════════════════════

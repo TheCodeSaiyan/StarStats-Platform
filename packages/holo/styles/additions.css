@@ -401,6 +401,17 @@
   flex-direction: column;
   gap: 26px;
 }
+/* A narrower measure, for a surface that is a DOCUMENT rather than a set of
+ * tables. Prose in here is capped at 62ch (467px measured) and the form column
+ * at 520px, so a 1040px pane left every paragraph stopping at 45% of its own
+ * panel while the controls ran edge to edge. 820px brings the two into the
+ * same conversation without squeezing a four-column `.hp-subs` row.
+ *
+ * Opt-in, not the default: `/kb`, the admin console and the contract tables
+ * are built on this same shell and genuinely want the width. */
+.hp-settings__inner--reading {
+  max-width: 820px;
+}
 /* Static panes stack in flow here rather than docking to a depth slot. */
 .hp-settings .hp-pane--static {
   position: static;
@@ -424,9 +435,17 @@
   flex-wrap: wrap;
   margin-top: 16px;
 }
-.hp-formrow > .hp-field {
-  flex: 1;
+/* Fields GROW to share the row but stop at a control's natural size. Without
+ * the cap, `flex: 1` handed a four-option select 453px and a read-only
+ * `/u/<handle>` field 1002px in a 1040px pane — nothing else on those pages is
+ * that wide, which is most of why they read as unfinished. `.hp-input` is
+ * listed too: `BeamInput` without a label renders bare rather than inside a
+ * `.hp-field`, so it is a flex child of the row in its own right. */
+.hp-formrow > .hp-field,
+.hp-formrow > .hp-input {
+  flex: 1 1 220px;
   min-width: 220px;
+  max-width: 340px;
 }
 .hp-formcol {
   display: flex;
@@ -1020,6 +1039,17 @@
   text-transform: inherit;
   color: inherit;
   display: inline;
+}
+/* …and defended against the legacy mobile heading clamp, which is `!important`
+ * and therefore beats the `inherit` above. `h1:not(.hud-tile__title) {
+ * font-size: 26px !important }` (design-tokens/starstats-tokens.css, ≤640px)
+ * grew this heading's box from ~13px to 34px tall; the crumb is absolutely
+ * positioned at top:42 and the lens rail at top:62, so the overflow landed on
+ * the tabs — a measured 61x14px collision with "Inbound" at 390px wide.
+ * Specificity is raised as well as the bang so the outcome does not depend on
+ * which stylesheet the bundler emits last. Same trap as M-W7, one shell up. */
+.hp-stage .hp-crumb h1 {
+  font-size: inherit !important;
 }
 
 /* A grouped set of checkboxes. `<fieldset>`/`<legend>` because the group has a
