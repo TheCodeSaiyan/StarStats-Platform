@@ -7,7 +7,7 @@
  * publicly trusted, so Windows names the publisher instead of saying
  * "Unknown publisher". The signing identity is configured in
  * `.github/workflows/release.yml` (signing path A) — see
- * `docs/RUNBOOK-ARTIFACT-SIGNING.md`.
+ * the artifact-signing runbook (operator material, kept out of this public repo).
  */
 
 /** Organisation Windows shows as the verified publisher. */

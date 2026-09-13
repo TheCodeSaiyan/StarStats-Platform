@@ -88,7 +88,7 @@ Migrations are **additive only AND byte-immutable post-deploy.**
 `sqlx`'s hash verification covers the entire file — don't even
 reformat comments on a shipped migration. This caused a production
 crash-loop in PR #37 on 2026-05-18; the rule was burned in afterward.
-See [`../../docs/ENGINEERING.md`](../../docs/ENGINEERING.md) §Architecture Invariants.
+See the engineering notes §Architecture Invariants.
 
 - Use `IF NOT EXISTS`.
 - Use NULL-able columns with no default for additive changes.
@@ -147,4 +147,4 @@ route-layer tests come next using `tower::ServiceExt::oneshot`.
   — the generated TS client this server's OpenAPI feeds
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md),
   [`../../docs/AUDIT.md`](../../docs/AUDIT.md),
-  [`../../docs/OBSERVABILITY.md`](../../docs/OBSERVABILITY.md)
+  the observability notes

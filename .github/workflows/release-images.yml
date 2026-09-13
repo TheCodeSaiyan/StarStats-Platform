@@ -241,7 +241,7 @@ jobs:
     #   but the live-tag preflight waits for the main run and normally
     #   turns the tag run into a cheap retag.
     #
-    #   Detection matches the documented rule (see docs/ENGINEERING.md, the
+    #   Detection matches the documented rule (see the engineering notes, the
     #   `release.yml` prerelease-flag pitfall): test for the CHANNEL
     #   suffixes, never `contains(ref_name, '-')` — since the tracks
     #   split, `tray-v1.8.8` contains a hyphen with no channel meaning.

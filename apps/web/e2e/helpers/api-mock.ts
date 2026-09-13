@@ -556,7 +556,7 @@ export function kbDetail(entry: {
  * Default playtime stats — `GET /v1/me/stats/playtime`. Bound into
  * scenarioFor's base map: the `/me` page (a widely-rendered authed
  * surface, reachable via the LeftRail "Me" entry) fetches this on
- * every render, so per the docs/ENGINEERING.md Playwright fixture-default rule it
+ * every render, so per the engineering-notes Playwright fixture-default rule it
  * needs a base fixture or any scenario that lands on `/me` 599s with
  * no_mock_fixture. Mirrors `PlaytimeStatsResponse`.
  */
@@ -590,7 +590,7 @@ export const locationsStats = {
 /**
  * Default combat stats — `GET /v1/me/stats/combat`. Bound into
  * scenarioFor's base map: the `/me` page now fetches this for the
- * identity header K/D row, so per the docs/ENGINEERING.md Playwright
+ * identity header K/D row, so per the engineering-notes Playwright
  * fixture-default rule it needs a base entry or any scenario that
  * renders `/me` 599s with no_mock_fixture. Mirrors
  * `CombatStatsResponse`.
@@ -609,7 +609,7 @@ export const combatStats = {
 /**
  * Default Player Facts — `GET /v1/me/facts` (#368). Bound into scenarioFor's
  * base map: the `facts` widget ships ENABLED in `HOME_DEFAULT_LAYOUT`, so
- * every scenario that renders `/me` now fetches this. Per the docs/ENGINEERING.md
+ * every scenario that renders `/me` now fetches this. Per the engineering-notes
  * Playwright fixture-default rule it needs a base entry or those scenarios
  * 599 with no_mock_fixture.
  *
@@ -629,7 +629,7 @@ export const noPlayerFacts = {
 /**
  * Default RSI profile snapshot — `GET /v1/me/profile`. Bound into
  * scenarioFor's base map: the `/me` page (Plan 4 redirect target)
- * fetches this on every render, so per the docs/ENGINEERING.md Playwright
+ * fetches this on every render, so per the engineering-notes Playwright
  * fixture-default rule it needs a base entry or any scenario that
  * lands on `/me` 599s with no_mock_fixture. Mirrors
  * `ProfileResponse` (all optional fields set to null/empty).

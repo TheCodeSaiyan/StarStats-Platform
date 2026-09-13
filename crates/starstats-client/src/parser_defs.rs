@@ -59,7 +59,7 @@ const FETCH_PATH: &str = "/v1/parser-definitions";
 /// cause of the original divergence turned out not to be a key change at all:
 /// a running container keeps the secret it was created with, so the server had
 /// been signing with a stale mount for weeks while the host file and 1Password
-/// were both correct. See docs/RUNBOOK-PARSER-SIGNING-KEY.md.
+/// were both correct. See the parser-signing-key runbook (operator material, kept out of this public repo).
 const PARSER_SIGNING_PUBKEY_B64: Option<&str> =
     Some("XNTqbZrqyZKQ0cYHY0M96uLW2EHk0ja8QUzmalUloe4=");
 

@@ -21,7 +21,7 @@ name: Release web (beta)
 #                                    ├─→ api:latest → live Postgres
 #   starstats.app      → web:latest ─┘
 #
-# See docs/RELEASING.md § "Beta staging site" for the container env and
+# See docs-internal/RELEASING.md § "Beta staging site" for the container env and
 # the DNS/proxy route.
 
 on:

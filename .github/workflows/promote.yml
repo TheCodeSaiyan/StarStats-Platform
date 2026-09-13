@@ -195,7 +195,7 @@ jobs:
             # Skip our own bump commits to break the auto-alpha loop
             # (mirrors the `should-run` job's prefix list in ci.yml)
             # AND skip docs-only commits (`docs:` / `docs(scope):`) so
-            # docs/ENGINEERING.md / memory/ / docs/ updates never trigger an
+            # docs/ updates never trigger an
             # auto-alpha. Belt-and-suspenders alongside paths-filter:
             # a docs commit that incidentally touches a tracked path
             # (e.g. Cargo workspace docs) would otherwise slip through.
@@ -209,7 +209,7 @@ jobs:
             # release.yml pushes these with GITHUB_TOKEN, which can't
             # trigger downstream workflows, so CI's own back-merges never
             # reach here. But the documented manual local-release path
-            # (docs/RELEASING.md §5 / when Actions are unavailable) pushes
+            # (docs-internal/RELEASING.md §5 / when Actions are unavailable) pushes
             # the same merges with a user PAT, which DOES re-enter this
             # workflow and would otherwise spawn a spurious extra alpha.
             FIRST_LINE="${MSG%%$'\n'*}"
@@ -455,7 +455,7 @@ jobs:
     # jobs push to `main` concurrently). `!cancelled()` lets it run when
     # live-tray is skipped (platform-only) or failed. NOTE: a true `both`
     # live promote also needs `next` rebased onto `main` between tracks
-    # (see docs/RELEASING.md §5) — that dance is still operator-driven.
+    # (see docs-internal/RELEASING.md §5) — that dance is still operator-driven.
     needs: [detect-tracks, live-tray]
     if: |
       !cancelled() &&

@@ -10,7 +10,7 @@
  *
  * MUST stay in sync with the equivalent set in
  * `apps/web/src/lib/event-filter.ts` — the "In-Transit hidden in BOTH apps"
- * invariant in docs/ENGINEERING.md. (Moved here from the now-deleted `src/timeline/`
+ * invariant in the engineering notes. (Moved here from the now-deleted `src/timeline/`
  * module, which was dead code, so the suppression was never actually applied
  * in the tray until M-U1 wired it into StatusPane.)
  */

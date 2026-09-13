@@ -68,7 +68,7 @@ pnpm --filter tray-ui test:run     # Vitest single run
 ## UI conventions (selected)
 
 These live more comprehensively in
-[`../../docs/ENGINEERING.md`](../../docs/ENGINEERING.md); the ones most likely to bite
+the engineering notes; the ones most likely to bite
 contributors here:
 
 - **Event headlines route through `humanTitleForEntry`**

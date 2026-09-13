@@ -54,7 +54,7 @@ Wire-format structs use `#[serde(default)]` on additive fields so
 older tray builds can keep ingesting after the server learns a new
 optional field. This is one half of an invariant pair — the other
 half is that database migrations are append-only and byte-immutable
-post-deploy (see [`../../docs/ENGINEERING.md`](../../docs/ENGINEERING.md) §Architecture
+post-deploy (see the engineering notes §Architecture
 Invariants).
 
 ## Related
@@ -64,5 +64,5 @@ Invariants).
 - [`../starstats-server/README.md`](../starstats-server/README.md) —
   consumes the wire format to validate and store ingest batches
 - [`../../docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md) §Data flow
-- [`../../docs/PARSER_DEFINITION_UPDATES.md`](../../docs/PARSER_DEFINITION_UPDATES.md)
+- the parser-definition design note
   — process for adding new event types

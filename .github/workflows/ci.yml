@@ -136,7 +136,7 @@ jobs:
     # publishing internal tooling notes. This asserts on what is
     # actually TRACKED, so it catches both a broken .gitignore and a
     # deliberate `git add -f`.
-    - name: Assert no agent tooling is tracked
+    - name: Assert no agent tooling or operator material is tracked
       shell: bash
       run: |
         set -euo pipefail
@@ -145,7 +145,7 @@ jobs:
           '.cursor/*' '.windsurf/*' '.aider*' '.mcp.json'
           'AGENTS.md' 'CLAUDE.md' 'CLAUDE.local.md'
           '.github/copilot-instructions.md'
-          'docs/superpowers/*' 'SECURITY_SETUP.md'
+          'docs/superpowers/*' 'SECURITY_SETUP.md' 'docs-internal/*'
         )
         found=$(git ls-files -- "${patterns[@]}")
         if [ -n "$found" ]; then
@@ -195,7 +195,7 @@ jobs:
   # `outputs` and gates itself via `if:`, so unchanged areas skip their
   # heavy steps while the job name still reports in the run (future-
   # proofs against required-status-check branch protection — see
-  # docs/RELEASING.md). `pull_request` events compare against the PR
+  # docs-internal/RELEASING.md). `pull_request` events compare against the PR
   # base; `push` events compare against the parent commit. Every filter
   # group includes `.github/workflows/ci.yml` itself so a workflow tweak
   # never silently skips its own validation.

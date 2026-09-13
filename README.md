@@ -191,7 +191,6 @@ StarStats/
 ├── infra/                      docker-compose configs for local development
 ├── docs/
 │   ├── ARCHITECTURE.md         end-to-end system design
-│   ├── OBSERVABILITY.md        per-component telemetry matrix
 │   └── AUDIT.md                tamper-evident audit log design
 ├── release-manifests/          per-channel updater manifests (alpha/rc/live)
     └── python-spike/           original Python prototype, retained for reference
@@ -226,12 +225,8 @@ StarStats and won't be merged.
 - [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — end-to-end system
   design, threat model, dataflow, auth, storage
-- [`docs/OBSERVABILITY.md`](docs/OBSERVABILITY.md) — per-component
-  telemetry matrix
 - [`docs/AUDIT.md`](docs/AUDIT.md) — hash-chained audit log, MinIO
   mirror, retention
-- [`docs/ENGINEERING.md`](docs/ENGINEERING.md) — working agreements, conventions, do/don't
-  (contributor-facing companion to `CONTRIBUTING.md`)
 - [`NOTICE`](NOTICE) — third-party acknowledgements
 - Per-package READMEs under `crates/`, `apps/`, and `packages/`
 

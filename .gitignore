@@ -150,3 +150,11 @@ apps/web/reports/
 # are 8 MB of local scratch. Ignored so they stay out of `git status`;
 # delete the directory when it has served its purpose.
 apps/web/.playwright-captures/
+
+# Operator material, on a PUBLIC repo.
+# Release procedure, signing-key and secret-recovery runbooks, and the parser
+# recovery snapshot. These are for whoever runs the service, not for anyone
+# reading the project — and the runbooks in particular describe key handling,
+# which is the last thing worth publishing. They stay on disk; CI asserts they
+# are never tracked (see ci.yml "Assert no agent tooling is tracked").
+docs-internal/

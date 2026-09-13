@@ -41,7 +41,7 @@ over in
   `DeviceStore` on every protected request, so a stolen token
   becomes useless the moment the user revokes the device.
 - The server never sees the RSI cookie. This is an architectural
-  invariant — see [`../../docs/ENGINEERING.md`](../../docs/ENGINEERING.md) §Architecture
+  invariant — see the engineering notes §Architecture
   Invariants.
 
 ## Building

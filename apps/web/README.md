@@ -60,7 +60,7 @@ pnpm --filter web test:e2e:headed       # debug failing flows
 
 ## Conventions (selected)
 
-These live more comprehensively in [`../../docs/ENGINEERING.md`](../../docs/ENGINEERING.md);
+These live more comprehensively in the engineering notes;
 the ones most likely to bite contributors here:
 
 - **Multi-endpoint dashboards use `Promise.allSettled`,** not
@@ -90,7 +90,7 @@ Logs → Pino (JSON, stdout). Metrics → Prometheus scraping
 `/api/metrics`. Traces → OpenTelemetry SDK → OTel Collector via OTLP
 gRPC. Errors → Sentry. Logs include `trace_id` so Grafana can join
 logs ↔ traces by field rather than regex. See
-[`../../docs/OBSERVABILITY.md`](../../docs/OBSERVABILITY.md) for the
+the observability notes for the
 full matrix.
 
 The cardinality rule: **never label metrics by `user_id` /
