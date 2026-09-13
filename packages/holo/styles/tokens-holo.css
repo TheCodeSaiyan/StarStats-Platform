@@ -96,7 +96,14 @@
 
   /* Projection geometry */
   --hp-perspective: 1500px;  /* @kind spacing */
-  --hp-ring: 560px;          /* @kind spacing */
+  /* SCALES WITH THE VOLUME, which is `100svh`. A fixed value only looks right
+   * at about the height it was picked for: at 560px on a 1300px-tall window it
+   * left ~300px of empty stage between the ring and the lens rail, reported
+   * from a real screen. 62vh keeps ~560px at the 900px height the old constant
+   * suited, so nothing moves on a laptop, and the bounds stop it collapsing on
+   * a short window or swallowing the callouts on a very tall one. The brand
+   * surface already scales its ring the same way. */
+  --hp-ring: clamp(360px, 62vh, 760px); /* @kind spacing */
   /* Brand surfaces open the ring up so a wordmark fits inside it. */
   --hp-ring-brand: min(760px, 72vw); /* @kind spacing */
   --hp-ring-tablet: 360px;   /* @kind spacing */

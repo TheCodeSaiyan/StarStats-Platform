@@ -502,3 +502,49 @@ test('a visitor is never offered the arrange mode', async ({ page, request }) =>
   await expect(page.locator('.hp-layout')).toHaveCount(0);
   await expect(page.getByRole('link', { name: /arrange/i })).toHaveCount(0);
 });
+
+test('the ring fills a tall volume instead of leaving a dead band', async ({
+  page,
+  request,
+}) => {
+  /**
+   * `--hp-ring` is a fixed 560px on this surface while the volume is `100svh`,
+   * so the taller the window the more empty space sits between the ring and
+   * the lens rail. Reported from a real screen at ~1350px of content height:
+   * roughly 350px of nothing below the ring. It never showed up in testing
+   * because a 900px viewport is about the size the fixed value was chosen for.
+   *
+   * The brand surface already scales its ring (`min(760px, 72vw)`); this is
+   * the same idea for the volume, bounded so a short window still shrinks.
+   *
+   * Measured as the GAP, not the ring size — the ring being "big enough" is
+   * meaningless on its own, and the complaint was about the space under it.
+   */
+  await setScenario(request, {
+    __id: 'public_ring_tall_viewport',
+    routes: { 'GET /v1/public/JohnSomeone/summary': publicSummaryShared },
+  });
+  await page.setViewportSize({ width: 1600, height: 1300 });
+  await page.goto('/u/JohnSomeone');
+
+  const ring = page.locator('.hp-ringwrap');
+  await expect(ring).toBeVisible();
+
+  const m = await page.evaluate(() => {
+    const r = document.querySelector('.hp-ringwrap')!.getBoundingClientRect();
+    const rail = document.querySelector('.hp-railstack, .hp-lens')!;
+    return {
+      gap: Math.round(rail.getBoundingClientRect().top - r.bottom),
+      vh: window.innerHeight,
+    };
+  });
+
+  // Proportional, not a tuned constant: the complaint scales with the window,
+  // so the bar has to as well. A fifth of the viewport is the line between
+  // breathing room and a hole. The fixed 560px ring left 300px here (23%);
+  // scaled it leaves 200px (15%), and the space above the ring matches it.
+  expect(
+    m.gap,
+    `${m.gap}px of empty volume under the ring in a ${m.vh}px viewport`,
+  ).toBeLessThan(m.vh * 0.2);
+});
