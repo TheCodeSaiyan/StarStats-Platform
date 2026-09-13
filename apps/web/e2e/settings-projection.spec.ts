@@ -174,7 +174,16 @@ test('export link downloads the file the API streams, name intact', async ({
     // passed in isolation every time, which is the shape of a budget that is
     // too tight rather than a broken download.
     page.waitForEvent('download', { timeout: 30_000 }),
-    page.locator('a[href="/settings/export?format=ndjson"]').click(),
+    // BOTH HALVES NEED THE BUDGET, and only the wait got it in 2026-09-12.
+    // The suite went red again on 2026-09-13 with `locator.click: Timeout
+    // 5000ms exceeded` — the click, not the wait. A click is not instant
+    // here: Playwright holds it until the anchor is actionable, and on a
+    // cold run /settings is still compiling and hydrating, so the element
+    // is not stable inside 5s. Same cause, same shape (passed in isolation
+    // in 4.1s), one timeout short of fixed.
+    page
+      .locator('a[href="/settings/export?format=ndjson"]')
+      .click({ timeout: 30_000 }),
   ]);
   expect(download.suggestedFilename()).toBe(filename);
   const saved = await download.path();
