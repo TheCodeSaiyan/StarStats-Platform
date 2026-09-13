@@ -548,3 +548,99 @@ test('the ring fills a tall volume instead of leaving a dead band', async ({
     `${m.gap}px of empty volume under the ring in a ${m.vh}px viewport`,
   ).toBeLessThan(m.vh * 0.2);
 });
+
+test('the callout field stands down rather than clipping in a short window', async ({
+  page,
+  request,
+}) => {
+  /**
+   * `CALLOUT_SLOTS` are fixed pixel depths in a stage that is 100svh, so the
+   * field does not shrink with the window — past a point the bottom row is
+   * simply cut off by the stage floor. Measured before the guard existed: at
+   * 1200x560 the two deepest callouts drew to y=574 and y=566 against a stage
+   * ending at 560.
+   *
+   * The assertion is the floor, not visibility — a clipped callout is still
+   * `visibility: visible`, it is the stage that cuts it. Above the guard every
+   * callout must sit inside the stage; below it the field must be ABSENT
+   * rather than present-and-clipped, which is the same standing-down the
+   * width guard has always done.
+   */
+  await setScenario(request, {
+    __id: 'public_callouts_short_window',
+    routes: {
+      'GET /v1/public/JohnSomeone/summary': {
+        status: 200,
+        body: {
+          claimed_handle: 'JohnSomeone',
+          total: 325888,
+          supporter: 'gold',
+          by_type: [
+            { event_type: 'attached_gear', count: 99513 },
+            { event_type: 'mission_objective', count: 60112 },
+            { event_type: 'stowed_ship', count: 40233 },
+            { event_type: 'hud_notice', count: 31004 },
+            { event_type: 'loaded_planet', count: 28777 },
+            { event_type: 'login', count: 20111 },
+            { event_type: 'death', count: 9044 },
+          ],
+        },
+      },
+      'GET /v1/public/JohnSomeone/share-scopes': {
+        status: 200,
+        body: {
+          combat_mission: true,
+          economy: false,
+          travel: false,
+          records: true,
+          recent_activity: false,
+        },
+      },
+    },
+  });
+
+  for (const [width, height] of [
+    [1920, 1080],
+    [1600, 1300],
+    [1440, 900],
+    [1280, 800],
+    [1280, 700],
+    [1200, 560],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto('/u/JohnSomeone');
+    await expect(page.locator('.hp-ringwrap').first()).toBeVisible();
+
+    const seen = await page.evaluate(() => {
+      const stage = document
+        .querySelector('.hp-stage:not([data-pending])')!
+        .getBoundingClientRect();
+      const field = document.querySelector('.hp-cos');
+      const drawn = field && getComputedStyle(field).display !== 'none';
+      const overflowing = !drawn
+        ? []
+        : Array.from(document.querySelectorAll('.hp-co'))
+            .map((c) => ({
+              txt: (c.textContent ?? '').trim().slice(0, 16),
+              b: c.getBoundingClientRect(),
+            }))
+            .filter(
+              ({ b }) =>
+                b.bottom > stage.bottom ||
+                b.top < stage.top ||
+                b.left < stage.left ||
+                b.right > stage.right,
+            )
+            .map(({ txt, b }) => `${txt} ${Math.round(b.top)}-${Math.round(b.bottom)}`);
+      return { drawn, overflowing, floor: Math.round(stage.bottom) };
+    });
+
+    expect(
+      seen.overflowing,
+      `callouts past the stage edge at ${width}x${height} (floor ${seen.floor})`,
+    ).toEqual([]);
+
+    // Below the guard it must stand down, not merely happen to fit.
+    if (height <= 620) expect(seen.drawn, `field drawn at ${width}x${height}`).toBe(false);
+  }
+});

@@ -156,6 +156,29 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
  * are still reachable in the pane and the loadout. */
 @media (max-width: 1180px) { .hp-cos { display: none; } }
 
+/* The same standing-down, for the other axis.
+ *
+ * `CALLOUT_SLOTS` are fixed pixel depths — 212 down to 674 — inside a stage
+ * that is 100svh. Nothing scaled them to the window, so a short one cuts the
+ * bottom row off at the stage floor rather than shrinking the composition:
+ * measured at 1200x560, the two deepest drew to y=574 and y=566 against a
+ * stage ending at 560. The width guard above has covered the narrow case
+ * since the field was drawn; there was never a height one.
+ *
+ * The threshold covers the six slots the public profile can fill, the deepest
+ * reaching y=574. Hiding the field whole — rather than dropping the row that
+ * does not fit — is the same trade the width guard makes, and it is safe for
+ * the same reason: no figure lives only in a callout, every one is reachable
+ * from a lens pane.
+ *
+ * NOT covered: the seventh slot (`top: 674`, so bottom ~728), which only /me
+ * can fill and only when a reader enables all seven callouts. By the same
+ * arithmetic it clips below ~740px, but rendering seven on /me needs fixtures
+ * for seven separate figures, so it has not been reproduced — and a guard
+ * that hides six working callouts to prevent a seventh nobody has seen clip
+ * is the worse trade. Left measured-and-unfixed rather than fixed-on-a-guess. */
+@media (max-height: 620px) { .hp-cos { display: none; } }
+
 /* ── Panes (detail + inspector share the language) ────────────────── */
 .hp-pane {
   position: absolute; right: 46px; top: 100px; width: 582px; z-index: 18;
