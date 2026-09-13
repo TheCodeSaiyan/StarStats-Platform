@@ -582,14 +582,37 @@ g:has(> .hp-seghit[aria-current="true"]) > .hp-seg { opacity: .95; stroke: var(-
 .hp-cal button[aria-pressed="true"] { opacity: 1; }
 .hp-cal button[aria-pressed="true"]::after { opacity: .9; transform: scale(1); }
 
-/* Recalibration — the swap is an event, not a repaint */
+/* Recalibration — the swap is an event, not a repaint.
+
+   ITS SPEED IS THE READER'S. /settings offers a wave-speed preference
+   (off / slow / normal / fast). The root layout resolves it — per-user
+   override, else the sitewide appearance default — and stamps it on
+   `<html data-wave-speed>` on every render. Until this block read it,
+   nothing did: the preference was written, fetched twice per page, and
+   drove `applyThemeWithWave`, which the projection port had already
+   replaced with this event and then deleted the caller of. The map is the
+   wave's own — off 0 / slow 1100 / normal 700 / fast 350 — so the setting
+   means exactly what it always said, expressed as a scale on the
+   normal-speed durations below.
+
+   `off` and reduced-motion are one instant path, as they were for the
+   wave: a reader who asked for no motion gets none from any source.
+   `Projection.tsx` clears `data-recal` on a timer scaled by the same
+   attribute, so a slow run is not cut off mid-sweep. */
+:root { --hp-recal-scale: 1; }
+html[data-wave-speed="slow"] { --hp-recal-scale: 1.571; } /* 700ms -> 1100ms */
+html[data-wave-speed="fast"] { --hp-recal-scale: 0.5; }   /* 700ms ->  350ms */
 .hp-shock { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; margin: -8px; border-radius: 50%; border: 1px solid var(--hot); z-index: 57; opacity: 0; pointer-events: none; }
 .hp-wipe { position: absolute; inset: 0; z-index: 58; pointer-events: none; opacity: 0; background: linear-gradient(to bottom, transparent 0%, rgba(var(--hR),var(--hG),var(--hB),.16) 46%, rgba(var(--hR),var(--hG),var(--hB),.5) 50%, rgba(var(--hR),var(--hG),var(--hB),.16) 54%, transparent 100%); }
-.hp-stage[data-recal] .hp-shock { animation: hpShock 700ms var(--ease-out) both; }
-.hp-stage[data-recal] .hp-wipe { animation: hpWipe 620ms cubic-bezier(.4,0,.3,1) both; }
-.hp-stage[data-recal] .hp-emit { animation: hpSurge 620ms ease-out both; }
-.hp-stage[data-recal] .hp-core .n { animation: hpJolt 300ms steps(2,end) both; }
-.hp-stage[data-recal] .hp-ringwrap svg { animation: hpBloom 620ms ease-out both; }
+.hp-stage[data-recal] .hp-shock { animation: hpShock calc(700ms * var(--hp-recal-scale)) var(--ease-out) both; }
+.hp-stage[data-recal] .hp-wipe { animation: hpWipe calc(620ms * var(--hp-recal-scale)) cubic-bezier(.4,0,.3,1) both; }
+.hp-stage[data-recal] .hp-emit { animation: hpSurge calc(620ms * var(--hp-recal-scale)) ease-out both; }
+.hp-stage[data-recal] .hp-core .n { animation: hpJolt calc(300ms * var(--hp-recal-scale)) steps(2,end) both; }
+.hp-stage[data-recal] .hp-ringwrap svg { animation: hpBloom calc(620ms * var(--hp-recal-scale)) ease-out both; }
+html[data-wave-speed="off"] .hp-stage[data-recal] :is(.hp-shock, .hp-wipe, .hp-emit, .hp-core .n, .hp-ringwrap svg) { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hp-stage[data-recal] :is(.hp-shock, .hp-wipe, .hp-emit, .hp-core .n, .hp-ringwrap svg) { animation: none; }
+}
 @keyframes hpShock { 0% { opacity: .95; transform: scale(1); } 70% { opacity: .35; } 100% { opacity: 0; transform: scale(115); } }
 @keyframes hpWipe { 0% { opacity: 0; transform: translateY(-100%); } 18% { opacity: 1; } 100% { opacity: 0; transform: translateY(100%); } }
 @keyframes hpSurge { 0%,100% { filter: none; } 40% { filter: brightness(2.4) saturate(1.5); } }

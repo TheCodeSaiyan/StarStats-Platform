@@ -243,3 +243,89 @@ test('the document sits in a reading column, not the full-width pane', async ({
   const box = (await inner.boundingBox())!;
   expect(box.width).toBeLessThanOrEqual(860);
 });
+
+test('recalibration runs at the wave speed the reader chose', async ({
+  page,
+  request,
+}) => {
+  /**
+   * /settings has offered a wave-speed preference (off / slow / normal /
+   * fast) since before the projection port, and the root layout has stamped
+   * it on `<html data-wave-speed>` on every render — two fetches a page.
+   * Nothing read it. The animation it governed (`applyThemeWithWave`) lost
+   * its caller in the port, which replaced it with the recalibration event,
+   * and that event ran at a fixed 700ms whatever the reader had chosen.
+   *
+   * Now `patterns-holo.css` scales the recal durations by the attribute, on
+   * the wave's own table: 700ms at normal, 350 at fast, 1100 at slow, and
+   * NO animation at off. This forces the event window open and reads the
+   * computed style — the attribute is normally cleared by a timer, and the
+   * `off` window is a single frame, so racing it would be the flaky version
+   * of this test. Asserting the property that differs, not visibility: the
+   * shock ring is `opacity: 0` at rest either way.
+   */
+  const cases = [
+    ['normal', 700],
+    ['fast', 350],
+    ['slow', 1100],
+  ] as const;
+
+  for (const [speed, shockMs] of cases) {
+    await setScenario(
+      request,
+      scenarioFor(`settings-wave-${speed}`, {
+        ...FIXTURES,
+        'GET /v1/me/preferences': {
+          status: 200,
+          body: { theme: 'terra', theme_wave_speed: speed, timezone: null },
+        },
+      }),
+    );
+    await loginAs(page, { handle: 'StarStatsDemo' });
+    await page.goto('/settings');
+    await expect(liveStage(page)).toBeVisible();
+
+    const seen = await page.evaluate(() => {
+      const stage = document.querySelector('.hp-stage:not([data-pending])')!;
+      stage.setAttribute('data-recal', '');
+      const cs = getComputedStyle(stage.querySelector('.hp-shock')!);
+      const out = {
+        stamped: document.documentElement.dataset.waveSpeed,
+        name: cs.animationName,
+        ms: Math.round(parseFloat(cs.animationDuration) * 1000),
+      };
+      stage.removeAttribute('data-recal');
+      return out;
+    });
+
+    expect(seen.stamped, 'layout stamps the preference').toBe(speed);
+    expect(seen.name, `${speed} animates`).toBe('hpShock');
+    expect(Math.abs(seen.ms - shockMs), `${speed}: ${seen.ms}ms vs ${shockMs}ms`).toBeLessThanOrEqual(5);
+  }
+
+  await setScenario(
+    request,
+    scenarioFor('settings-wave-off', {
+      ...FIXTURES,
+      'GET /v1/me/preferences': {
+        status: 200,
+        body: { theme: 'terra', theme_wave_speed: 'off', timezone: null },
+      },
+    }),
+  );
+  await loginAs(page, { handle: 'StarStatsDemo' });
+  await page.goto('/settings');
+  await expect(liveStage(page)).toBeVisible();
+  const off = await page.evaluate(() => {
+    const stage = document.querySelector('.hp-stage:not([data-pending])')!;
+    stage.setAttribute('data-recal', '');
+    const names = ['.hp-shock', '.hp-wipe', '.hp-emit'].map(
+      (sel) => getComputedStyle(stage.querySelector(sel)!).animationName,
+    );
+    stage.removeAttribute('data-recal');
+    return { stamped: document.documentElement.dataset.waveSpeed, names };
+  });
+  expect(off.stamped).toBe('off');
+  // "Off" means off — every animation in the event, not just the shock.
+  expect(off.names, 'off draws nothing').toEqual(['none', 'none', 'none']);
+});

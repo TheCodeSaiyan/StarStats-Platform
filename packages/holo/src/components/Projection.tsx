@@ -22,6 +22,29 @@ export type Calibration = 'terra' | 'stanton' | 'pyro' | 'nyx';
 export type ProjectionMode = 'overview' | 'detail' | 'inspect';
 export type ProjectionSurface = 'brand' | 'console';
 
+/**
+ * How long `data-recal` stays set: the window the recalibration animations
+ * in patterns-holo.css get to run in. They scale their durations by the
+ * reader's wave-speed preference (`<html data-wave-speed>`, stamped by the
+ * web's root layout), so the window scales by the same table — off 0 /
+ * slow 1.571 / fast 0.5 of the 760ms that fits the normal-speed shock —
+ * or a slow sweep would be cut off two-thirds through. `off` collapses to
+ * a frame: the CSS draws nothing then, and the attribute should not linger
+ * on a swap that had no motion. Absent or unknown reads as normal, which is
+ * what the CSS does too.
+ */
+const RECAL_WINDOW_MS = 760;
+const RECAL_SCALE: Readonly<Record<string, number>> = { off: 0, slow: 1.571, fast: 0.5 };
+function recalWindowMs(): number {
+  if (typeof document === 'undefined') return RECAL_WINDOW_MS;
+  const speed = document.documentElement.dataset.waveSpeed;
+  const scale =
+    speed !== undefined && Object.prototype.hasOwnProperty.call(RECAL_SCALE, speed)
+      ? RECAL_SCALE[speed]
+      : 1;
+  return Math.max(60, Math.round(RECAL_WINDOW_MS * scale));
+}
+
 export interface ProjectionProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, 'children'> {
   mode?: ProjectionMode;
@@ -101,7 +124,7 @@ export function Projection({
     if (!recalKey) return;
     setRecal(false);
     const id = requestAnimationFrame(() => setRecal(true));
-    const t = setTimeout(() => setRecal(false), 760);
+    const t = setTimeout(() => setRecal(false), recalWindowMs());
     return () => {
       cancelAnimationFrame(id);
       clearTimeout(t);

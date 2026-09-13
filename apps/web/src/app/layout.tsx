@@ -131,12 +131,14 @@ export default async function RootLayout({
   const theme = await getTheme(session?.token);
   const hasSession = session !== null;
 
-  // Theme-switch wave speed: per-user preference wins when set, else the
-  // sitewide `appearance_config` default, else 'normal'. The sitewide
-  // read is unauthenticated so signed-out visitors get a real value too
-  // (not just the client-side DEFAULT_DURATION fallback in
-  // theme-transition.ts). Fail-soft on both reads — a hiccup here must
-  // never block the shell from rendering.
+  // Recalibration wave speed: per-user preference wins when set, else the
+  // sitewide `appearance_config` default, else 'normal'. Stamped on
+  // `<html data-wave-speed>`, which is what patterns-holo.css scales the
+  // shock / wipe / surge durations by (`--hp-recal-scale`) and what
+  // Projection.tsx scales its `data-recal` window by. The sitewide read is
+  // unauthenticated so signed-out visitors get a real value too. Fail-soft
+  // on both reads — a hiccup here must never block the shell from
+  // rendering; the CSS reads an absent attribute as 'normal'.
   let waveSpeed = 'normal';
   try {
     const appearance = await getAppearanceConfig();
