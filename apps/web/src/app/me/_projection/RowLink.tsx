@@ -21,17 +21,23 @@ import React from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
 
+/**
+ * Everything else is FORWARDED. This used to destructure `href`, `className`
+ * and `children` and silently drop the rest, which is fine until a caller
+ * needs the row to be a trigger: `EntityMeterRow` hangs an entity hover card
+ * off the row and passes a ref plus hover/focus handlers through `MeterRow`,
+ * and all of them landed here and went nowhere. The row rendered, the link
+ * worked, and the card simply never opened — with nothing in the console to
+ * say why.
+ */
 export function RowLink({
   href,
   className,
   children,
-}: {
-  href: string;
-  className?: string;
-  children?: React.ReactNode;
-}) {
+  ...rest
+}: React.ComponentPropsWithRef<'a'> & { href: string }) {
   return (
-    <Link href={href as Route} className={className} prefetch={false}>
+    <Link href={href as Route} className={className} prefetch={false} {...rest}>
       {children}
     </Link>
   );

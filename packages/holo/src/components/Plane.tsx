@@ -41,13 +41,20 @@ export function Plane({
   empty,
   tilt = 'right',
   style,
+  className,
   children,
   ...rest
 }: PlaneProps) {
+  // `className` is MERGED, not spread. It used to arrive in `...rest` and land
+  // after `className={cls}` on the div, so any caller that passed one silently
+  // replaced `hp-plane` and its tilt — the plane kept its markup and lost its
+  // box, borders and ground. Nothing failed: the content is still there and
+  // still visible, so only a look at the screen showed it.
   const cls = [
     'hp-plane',
     tilt === 'flat' ? 'flat' : '',
     tilt === 'left' ? 'left' : '',
+    className ?? '',
   ]
     .filter(Boolean)
     .join(' ');
@@ -84,6 +91,25 @@ export interface MeterRowProps {
    */
   onClick?: () => void;
   /**
+   * Trigger wiring for a surface that hangs a PREVIEW off the row.
+   *
+   * The row is the only usable trigger here — it is the anchor when it has an
+   * href, and its own comment records that an inner anchor and a stretched
+   * overlay were both tried and both failed. So a caller that wants a hover
+   * card attaches to the row and portals the card out itself; `.hp-plane`
+   * clips, so the preview can never be a descendant.
+   *
+   * `ref` is a plain prop rather than `forwardRef`: React 19, which this
+   * package peer-depends on, passes it straight through.
+   */
+  ref?: React.Ref<HTMLElement>;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
+  /** Points the row at the preview it opens, for screen readers. */
+  'aria-describedby'?: string;
+  /**
    * Make the WHOLE ROW a link.
    *
    * Rows that lead somewhere used to carry the anchor around the label only —
@@ -119,7 +145,24 @@ export function MeterRow({
   onClick,
   href,
   linkAs,
+  ref,
+  onMouseEnter,
+  onMouseLeave,
+  onFocus,
+  onBlur,
+  'aria-describedby': describedBy,
 }: MeterRowProps) {
+  // Typed per branch: `linkAs` is a polymorphic `ElementType`, so a single
+  // shared object cannot carry a ref TypeScript can resolve. The cast is on
+  // the ref alone, and it is the caller who decided which element it attaches
+  // to by passing (or not passing) `href`.
+  const handlers = {
+    onMouseEnter,
+    onMouseLeave,
+    onFocus,
+    onBlur,
+    'aria-describedby': describedBy,
+  };
   const cls =
     (valueText ? 'hp-rw hp-rw--text' : 'hp-rw') + (href ? ' hp-rw--link' : '');
   const inner = (
@@ -143,9 +186,19 @@ export function MeterRow({
   // takes `display: grid` perfectly well, so the whole row becomes one hit
   // target with one accessible name.
   if (href) {
-    const A = linkAs ?? 'a';
+    // Annotated, because `'a'` exists in BOTH the HTML and SVG namespaces and
+    // an unannotated `ElementType` union resolves to `SVGSymbolElement` props
+    // the moment a ref is passed.
+    const A = (linkAs ?? 'a') as React.ElementType<
+      React.ComponentPropsWithRef<'a'>
+    >;
     return (
-      <A href={href} className={cls}>
+      <A
+        href={href}
+        className={cls}
+        ref={ref as React.Ref<HTMLAnchorElement>}
+        {...handlers}
+      >
         {inner}
       </A>
     );
@@ -154,6 +207,8 @@ export function MeterRow({
   return (
     <div
       className={cls}
+      ref={ref as React.Ref<HTMLDivElement>}
+      {...handlers}
       onClick={onClick}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
