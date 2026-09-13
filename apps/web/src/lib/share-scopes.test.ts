@@ -53,3 +53,28 @@ describe('share scopes', () => {
     expect(settings).not.toMatch(/label:\s*'Combat & Missions'/);
   });
 });
+
+describe('privacy defaults', () => {
+  /**
+   * Org membership is the one scope that was ever published WITHOUT a
+   * switch: `/v1/public/u/{handle}/orgs` was gated on public visibility
+   * alone, so going public at all published your RSI orgs. The server is
+   * where that is now enforced; this is the client half of the same
+   * promise, and it exists so a future edit that "helpfully" pre-enables a
+   * scope has to delete an assertion that says not to.
+   */
+  it('ships every scope off, orgs included', () => {
+    for (const { key } of SHARE_SCOPES) {
+      expect(DEFAULT_SHARE_SCOPES[key], `${key} must default to private`).toBe(
+        false,
+      );
+    }
+  });
+
+  it('offers org membership as a scope the owner can actually set', () => {
+    // If this key were missing, the settings form — which derives its
+    // checkboxes from SHARE_SCOPES — would give no way to turn orgs back
+    // on, making the new default permanent rather than opt-in.
+    expect(SHARE_SCOPES.map((s) => s.key)).toContain('orgs');
+  });
+});

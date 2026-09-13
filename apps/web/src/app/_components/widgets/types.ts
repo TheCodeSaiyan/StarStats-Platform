@@ -57,6 +57,7 @@ export const DEFAULT_SHARE_SCOPES: WidgetShareScopesApi = {
   travel: false,
   records: false,
   recent_activity: false,
+  orgs: false,
 };
 
 /**

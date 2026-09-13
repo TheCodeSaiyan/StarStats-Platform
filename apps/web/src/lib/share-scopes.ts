@@ -3,7 +3,7 @@ import type { WidgetShareScopesApi } from '@/lib/api';
 /**
  * The per-scope sharing vocabulary — one list, two readers.
  *
- * These five booleans are a pilot's actual privacy switches: what
+ * These six booleans are a pilot's actual privacy switches: what
  * `/settings/widget-sharing` writes, and what `GET /v1/public/{handle}/share-scopes`
  * hands to anyone who asks. The labels lived inside the settings page as a
  * local `WIDGET_LABELS`, so the public profile — the one screen where the
@@ -53,6 +53,12 @@ export const SHARE_SCOPES: readonly ShareScopeMeta[] = [
     key: 'recent_activity',
     label: 'Recent activity',
     description: 'A live feed of your most recent logged events.',
+  },
+  {
+    key: 'orgs',
+    label: 'Org membership',
+    description:
+      'The orgs you belong to, as shown on your RSI profile. Off unless you turn it on, including for profiles that were already public.',
   },
 ];
 

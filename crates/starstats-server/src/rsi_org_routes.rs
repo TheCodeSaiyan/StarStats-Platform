@@ -13,8 +13,10 @@
 //!  - `GET /v1/me/rsi-orgs` — user-authenticated. Returns the latest
 //!    stored snapshot for the caller, or 404 if none captured yet.
 //!  - `GET /v1/public/u/{handle}/orgs` — unauthenticated.
-//!    Returns the latest snapshot for `handle` if (and only if) the
-//!    owner has flipped public visibility on their `stats_record`.
+//!    Returns the latest snapshot for `handle` only if the owner has BOTH
+//!    flipped public visibility on their `stats_record` AND opted org
+//!    membership in via the `orgs` share scope. Public visibility alone
+//!    used to be the whole gate; it is not consent to publish affiliation.
 //!    Visibility resolution mirrors `rsi_profile_routes::public_profile`:
 //!    SpiceDB `view@public_view` on `stats_record:<handle>`. A failed
 //!    visibility check returns 404 — never leak handle existence.
@@ -305,13 +307,14 @@ pub async fn me<S: RsiOrgStore>(State(store): State<Arc<S>>, auth: Authenticated
     params(("handle" = String, Path, description = "RSI handle to fetch the public org-membership snapshot for")),
     responses(
         (status = 200, description = "Latest public snapshot", body = crate::rsi_org_store::RsiOrgsSnapshot),
-        (status = 404, description = "Handle unknown, not public, or no snapshot captured"),
+        (status = 404, description = "Handle unknown, not public, orgs scope not shared, or no snapshot captured"),
         (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
     ),
 )]
 pub async fn public_orgs<U: UserStore, S: RsiOrgStore>(
     State((users, store)): State<(Arc<U>, Arc<S>)>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(scopes): Extension<Arc<dyn crate::share_scopes::ShareScopesStore>>,
     Path(handle): Path<String>,
 ) -> Response {
     // Same posture as `sharing_routes::public_summary` /
@@ -350,6 +353,33 @@ pub async fn public_orgs<U: UserStore, S: RsiOrgStore>(
         }
     };
     if !public {
+        return (StatusCode::NOT_FOUND, ()).into_response();
+    }
+
+    // A PUBLIC PROFILE IS NOT CONSENT TO PUBLISH ORG MEMBERSHIP.
+    //
+    // Until this check existed, `public_view` was the whole gate: making a
+    // profile public published the pilot's RSI orgs too, and there was no
+    // switch anywhere that said otherwise. Org membership can be a redacted
+    // affiliation on RSI itself, so inferring consent from an unrelated
+    // toggle is exactly the wrong default.
+    //
+    // `WidgetShareScopes::orgs` defaults to `false` and every field is
+    // `#[serde(default)]`, so scopes stored before the field existed decode
+    // as private — profiles that were already public stop publishing orgs
+    // without a backfill.
+    //
+    // 404 rather than 403, matching the `!public` arm above and
+    // `sharing_routes::public_summary`: an anonymous caller learns nothing
+    // about whether the handle exists, is public, or simply withholds this.
+    let shared = match scopes.get(&user.claimed_handle).await {
+        Ok(s) => s.orgs,
+        Err(e) => {
+            tracing::error!(error = %e, "share_scopes read failed in public rsi-orgs");
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
+        }
+    };
+    if !shared {
         return (StatusCode::NOT_FOUND, ()).into_response();
     }
 

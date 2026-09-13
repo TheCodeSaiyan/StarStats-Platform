@@ -521,6 +521,7 @@ mod tests {
             travel: true,
             records: true,
             recent_activity: true,
+            orgs: false,
         };
         let diff = render_diff(Some(&prev), &next);
         // All 5 widgets should appear in the diff string.
@@ -593,6 +594,7 @@ mod tests {
                     travel: true,
                     records: false,
                     recent_activity: false,
+                    orgs: false,
                 },
             )
             .await

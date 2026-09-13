@@ -11,7 +11,8 @@
 //!     "economy":         false,
 //!     "travel":          false,
 //!     "records":         false,
-//!     "recent_activity": false
+//!     "recent_activity": false,
+//!     "orgs":            false
 //! }}
 //! ```
 //! Default for any missing key: `false` (private). Owners must explicitly
@@ -45,6 +46,16 @@ pub struct WidgetShareScopes {
     /// Whether visitors can see the Recent Activity widget.
     #[serde(default)]
     pub recent_activity: bool,
+    /// Whether visitors can see this pilot's RSI org membership.
+    ///
+    /// Added after org membership was found to ride on `public_view`
+    /// alone: going public at all published your orgs, with no switch to
+    /// say otherwise. Because every field here is `#[serde(default)]`,
+    /// stored scopes written before this existed decode as `false`, so
+    /// profiles that were already public stop publishing orgs rather
+    /// than needing a backfill. Opt-in, like the five above it.
+    #[serde(default)]
+    pub orgs: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -112,6 +123,7 @@ impl WidgetShareScopes {
             ("travel", self.travel),
             ("records", self.records),
             ("recent_activity", self.recent_activity),
+            ("orgs", self.orgs),
         ]
         .into_iter()
     }
@@ -317,14 +329,52 @@ mod tests {
             travel: true,
             records: false,
             recent_activity: true,
+            orgs: false,
         };
         let pairs: Vec<_> = scopes.iter().collect();
-        assert_eq!(pairs.len(), 5, "iter must yield exactly 5 pairs");
+        assert_eq!(pairs.len(), 6, "iter must yield exactly 6 pairs");
         assert_eq!(pairs[0], ("combat_mission", true));
         assert_eq!(pairs[1], ("economy", false));
         assert_eq!(pairs[2], ("travel", true));
         assert_eq!(pairs[3], ("records", false));
         assert_eq!(pairs[4], ("recent_activity", true));
+        assert_eq!(pairs[5], ("orgs", false));
+    }
+
+    /// The property that makes the orgs gate safe to ship without a backfill.
+    ///
+    /// Org membership used to ride on `public_view` alone, so every profile
+    /// that was already public was publishing its orgs. The fix only helps
+    /// those pilots if scopes written BEFORE the field existed decode as
+    /// private — if the missing key defaulted to `true`, or decoding failed
+    /// outright, the change would either keep publishing or break the read.
+    #[test]
+    fn scopes_stored_before_orgs_existed_decode_as_private() {
+        // Exactly what the JSONB column holds for a pilot who set their
+        // toggles before `orgs` was added: five keys, no sixth.
+        let legacy = serde_json::json!({
+            "combat_mission": true,
+            "economy": true,
+            "travel": true,
+            "records": true,
+            "recent_activity": true,
+        });
+
+        let scopes: WidgetShareScopes = serde_json::from_value(legacy).unwrap();
+
+        assert!(
+            !scopes.orgs,
+            "a pilot who never saw the orgs switch must not be publishing orgs"
+        );
+        // Everything they DID choose is untouched — this must not read as a
+        // reset of their other sharing.
+        assert!(scopes.combat_mission && scopes.economy && scopes.travel);
+        assert!(scopes.records && scopes.recent_activity);
+    }
+
+    #[test]
+    fn orgs_defaults_to_private() {
+        assert!(!WidgetShareScopes::default().orgs);
     }
 
     #[tokio::test]
@@ -347,6 +397,7 @@ mod tests {
             travel: true,
             records: false,
             recent_activity: true,
+            orgs: false,
         };
         store.put("alice", &scopes).await.unwrap();
         assert_eq!(store.get("alice").await.unwrap(), scopes);
@@ -391,6 +442,7 @@ mod tests {
             travel: true,
             records: true,
             recent_activity: true,
+            orgs: false,
         };
         store.put("bob", &scopes).await.unwrap();
         assert_eq!(store.get("bob").await.unwrap(), scopes);

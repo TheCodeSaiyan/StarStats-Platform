@@ -81,6 +81,7 @@ export default async function WidgetSharingPage({
     travel: false,
     records: false,
     recent_activity: false,
+    orgs: false,
   };
   let loadFailed = false;
   try {

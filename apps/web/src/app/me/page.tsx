@@ -82,6 +82,9 @@ const OWNER_SHARE_SCOPES = {
   travel: true,
   records: true,
   recent_activity: true,
+  // The owner always sees their own orgs; the `orgs` scope governs what
+  // VISITORS get, and is enforced server-side on /v1/public/u/{h}/orgs.
+  orgs: true,
 } as const;
 
 export default async function MePage(props: PageProps) {

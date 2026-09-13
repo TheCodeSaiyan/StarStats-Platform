@@ -8251,6 +8251,17 @@ export interface components {
             combat_mission?: boolean;
             /** @description Whether visitors can see the Economy widget. */
             economy?: boolean;
+            /**
+             * @description Whether visitors can see this pilot's RSI org membership.
+             *
+             *     Added after org membership was found to ride on `public_view`
+             *     alone: going public at all published your orgs, with no switch to
+             *     say otherwise. Because every field here is `#[serde(default)]`,
+             *     stored scopes written before this existed decode as `false`, so
+             *     profiles that were already public stop publishing orgs rather
+             *     than needing a backfill. Opt-in, like the five above it.
+             */
+            orgs?: boolean;
             /** @description Whether visitors can see the Recent Activity widget. */
             recent_activity?: boolean;
             /** @description Whether visitors can see the Records widget. */
@@ -15399,7 +15410,7 @@ export interface operations {
                     "application/json": components["schemas"]["RsiOrgsSnapshot"];
                 };
             };
-            /** @description Handle unknown, not public, or no snapshot captured */
+            /** @description Handle unknown, not public, orgs scope not shared, or no snapshot captured */
             404: {
                 headers: {
                     [name: string]: unknown;
