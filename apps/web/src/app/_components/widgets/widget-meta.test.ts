@@ -1,7 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { WIDGET_META, boundsForWidget, titleForWidget } from './widget-meta';
+import {
+  WIDGET_META,
+  boundsForWidget,
+  titleForWidget,
+  GRID_COLS,
+  MIN_W,
+  MIN_H,
+  MAX_H,
+} from './widget-meta';
 import { REGISTERED_IDS } from './registry';
-import { GRID_COLS, MIN_W, MIN_H, MAX_H } from './grid-layout';
 
 describe('WIDGET_META', () => {
   it('has a title + description + bounds for every registered widget', () => {

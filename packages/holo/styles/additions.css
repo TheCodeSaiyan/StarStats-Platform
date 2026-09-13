@@ -3124,26 +3124,6 @@ html[data-wave-speed='off'] .hp-stage::after {
   color: var(--label);
 }
 
-/* ---- HUD row unit, inside the projection ----------------------------------
-   The widget grid sizes tiles in fixed rows (`--hud-row`, 22px) and
-   `grid-layout.ts` records that the per-widget row counts "are chosen to FIT
-   each widget's bounded summary content EXACTLY — a tile never scrolls". Zero
-   slack, by design.
-
-   Raising the micro tier from 8.5px to 10px for legibility spends slack that
-   was not there. Measured on `/u/[handle]`: a compact travel tile came out
-   52px tall with 57px of content and its `.hud-tile__body` collapsed to
-   clientHeight 0 — the body content, and the InfoTip control inside it, were
-   present in the DOM and clipped to nothing.
-
-   The row unit scales with the type rather than the row COUNTS changing:
-   counts are persisted in every reader's saved layout, so re-tuning them would
-   silently move everyone's tiles. 22 -> 24 is the same ~9% the micro tier
-   grew, so every widget keeps exactly the proportion it was tuned with. */
-.ss-projection-root {
-  --hud-row: 24px;
-}
-
 /* A TILE BODY NEVER COLLAPSES TO NOTHING.
    `hud.css` gives the body `flex: 1; min-height: 0`, which lets it shrink to
    zero when the header takes the whole tile — and the header grew with the
@@ -3153,14 +3133,7 @@ html[data-wave-speed='off'] .hp-stage::after {
    `min-height` of one line means the body always renders something and the
    tile scrolls instead, which is the behaviour `hud-tile__body`'s own
    `overflow-y: auto` was already written for. */
-.ss-projection-root .hud-tile__body,
-/* The free-grid canvas sets `min-height: 0` at
-   `.hud-freegrid > .hud-tile > .hud-tile__body` — three classes, which beats
-   the two above it, so on `/u/[handle]` this rule never applied and the body
-   could still collapse. Measured there: `entities` at clientHeight 0 against
-   47px of content, months after the fix was believed done. Matched selector
-   depth so the guard actually reaches the surface that needed it. */
-.ss-projection-root .hud-freegrid > .hud-tile > .hud-tile__body {
+.ss-projection-root .hud-tile__body {
   min-height: 1.6em;
 }
 

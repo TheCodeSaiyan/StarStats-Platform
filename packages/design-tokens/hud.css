@@ -3,122 +3,11 @@
 .hud-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--hud-gap); align-items: start; }
 @media (max-width: 720px) { .hud-grid { grid-template-columns: 1fr; } .hud-tile { grid-column: span 1 !important; } }
 
-/* M7 free drag/resize grid. 24 fine columns; per-tile placement via
-   grid-column/grid-row set inline from the stored {x,y,w,h}. Row height
-   is fixed (--hud-row) so vertical position/size is deterministic and a
-   tile's body scrolls inside itself when content exceeds the box. */
-:root { --hud-row: 22px; }
-.hud-freegrid {
-  display: grid;
-  grid-template-columns: repeat(24, 1fr);
-  grid-auto-rows: var(--hud-row);
-  gap: var(--hud-gap);
-  align-items: stretch;
-}
-.hud-freegrid > .hud-tile { overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
-.hud-freegrid > .hud-tile > .hud-tile__body { overflow: auto; min-height: 0; flex: 1; }
-/* Edit mode: faint anchor-grid so the snapping points are visible, and a
-   grab cursor hint. The overlay is behind the tiles. */
-.hud-freegrid[data-editing="true"] {
-  background-image:
-    repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px calc(100% / 24)),
-    repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px var(--hud-row));
-  background-size: 100% 100%;
-  border-radius: var(--r-sm);
-  opacity: 1;
-}
-.hud-freegrid[data-editing="true"][data-snap="off"] {
-  /* Finer visual grid when snapping is off — twice the anchor density. */
-  background-image:
-    repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px calc(100% / 48)),
-    repeating-linear-gradient(to bottom, var(--border) 0 1px, transparent 1px calc(var(--hud-row) / 2));
-}
-/* Bottom-right pointer resize affordance (edit mode only). */
-.hud-freegrid__resize {
-  position: absolute;
-  right: 2px;
-  bottom: 2px;
-  width: 14px;
-  height: 14px;
-  cursor: nwse-resize;
-  touch-action: none;
-  background:
-    linear-gradient(135deg, transparent 0 50%, var(--fg-dim) 50% 60%, transparent 60% 70%, var(--fg-dim) 70% 80%, transparent 80%);
-  opacity: 0.6;
-}
-.hud-freegrid__resize:hover { opacity: 1; }
-/* Mobile: geometry collapses to a readable single column, tiles auto-size
-   to content (no fixed-row clipping on small screens). */
-@media (max-width: 720px) {
-  .hud-freegrid {
-    grid-template-columns: 1fr;
-    grid-auto-rows: auto;
-    background-image: none !important;
-  }
-  .hud-freegrid > .hud-tile {
-    grid-column: 1 / -1 !important;
-    grid-row: auto !important;
-    overflow: visible;
-  }
-  .hud-freegrid > .hud-tile > .hud-tile__body { overflow: visible; }
-  .hud-freegrid__resize { display: none; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .hud-freegrid > .hud-tile { transition: none !important; }
-}
-
-/* ── Responsive content (M7 v3) ───────────────────────────────────────
-   Each free-grid tile is its own query container, so widget CONTENT reacts
-   to the tile's actual width — not the viewport. GOAL: a tile never scrolls
-   for data — widgets render a bounded summary and link full depth via
-   "See more →". Until every widget is verified to FIT its tile, the body
-   keeps `overflow: auto` as a SAFETY NET: a widget whose content still
-   exceeds its height scrolls rather than being silently CLIPPED (clipping
-   hid travel's routes+map in v1.8.107 — a scrollbar is the lesser evil to
-   losing data). Long tokens wrap instead of overflowing horizontally. */
-.hud-freegrid > .hud-tile { container-type: inline-size; container-name: tile; }
-.hud-freegrid > .hud-tile > .hud-tile__body {
-  overflow-y: auto;
-  overflow-x: hidden;
-  overflow-wrap: anywhere;
-  scrollbar-width: thin;
-}
-.hud-freegrid > .hud-tile > .hud-tile__body::-webkit-scrollbar { width: 6px; height: 6px; }
-.hud-freegrid > .hud-tile > .hud-tile__body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-/* Secondary rows (captions, extra breakdowns) collapse when the tile is
-   squeezed toward its min width, leaving the core readout. Full depth
-   returns as the owner widens the tile toward its max. */
-@container tile (max-width: 210px) {
-  .hud-secondary { display: none; }
-}
-
-/* ── Focus lens projection (M7 v2) ────────────────────────────────────
-   When a lens is active the grid renders a single centered column (the
-   inline grid-column/grid-row still position each tile); this softens the
-   surrounding grid to signal the isolated view. Tiles auto-size to content
-   in focus so an enlarged single widget isn't clipped by fixed rows. */
-.hud-freegrid[data-focus="true"] { grid-auto-rows: minmax(var(--hud-row), auto); }
-.hud-freegrid[data-focus="true"] > .hud-tile { overflow: visible; }
-.hud-freegrid[data-focus="true"] > .hud-tile > .hud-tile__body { overflow: visible; }
-
-/* ── Add-widget palette (edit mode) ──────────────────────────────────── */
-.hud-palette { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
-.hud-palette__hd { margin: 0 0 8px; font-family: var(--font-display); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim); }
-.hud-palette__empty { margin: 0; font-size: 11px; color: var(--fg-dim); }
-.hud-palette__grid { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
-.hud-palette__item {
-  display: flex; flex-direction: column; gap: 3px; align-items: flex-start;
-  width: 168px; padding: 8px 9px;
-  background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-sm);
-}
-.hud-palette__item:hover { border-color: var(--accent); }
-.hud-palette__title { font-size: 12px; font-weight: 700; color: var(--fg); }
-.hud-palette__desc { font-size: 10px; line-height: 1.35; color: var(--fg-dim); }
-.hud-palette__item .hud-chip { margin-top: 2px; }
-@media (max-width: 640px) {
-  .hud-palette__grid { flex-direction: column; }
-  .hud-palette__item { width: 100%; }
-}
+/* The 24-column free-drag grid that used to live here (`--hud-row`, the
+   edit-mode anchor overlay, the resize handle, the per-tile query container
+   and the focus-lens projection) went with the flat `WidgetCanvas` in issue
+   #99. Profile arranging is the projection's own `LayoutEditor` now. The
+   `.hud-tile` primitives below stay: apps/tray-ui renders them directly. */
 
 .hud-tile { position: relative; background: var(--bg-elev); border: 1px solid var(--border); border-radius: var(--r-sm); padding: var(--hud-pad); }
 /* Live/streaming telemetry pane (bridge): squared + four accent corner
@@ -142,35 +31,10 @@
     top left, top left, top right, top right,
     bottom left, bottom left, bottom right, bottom right;
 }
-/* The header is ONE LINE, always.
-   `.hud-tile` row counts are tuned to fit each widget's content exactly, with
-   zero slack by design (see grid-layout.ts and e2e/tile-fit.spec.ts), so
-   `flex-wrap: wrap` here is not free: it cost the Orgs tile 17px it did not
-   have (112px of content in a 95px body) and pushed the already-tight Entities
-   tile from 26px to 28px over. A horizontal clip cannot be paid for with a
-   vertical one.
-
-   So the NARROW tile drops the category eyebrow instead and keeps the title,
-   which is the half that names the widget. Measured at 1440x900 on the public
-   profile's default layout: "Orgs" ran 32px past its 6-column tile and
-   "Entities rollup" 14px, both cut by `.hud-tile { overflow: hidden }`.
-   A container query rather than a viewport one because what is too narrow here
-   is the TILE, and the same tile is roomy at 24 columns and cramped at 6 on
-   the very same screen.
-
-   SCOPED TO `.hud-freegrid >`, and that is load-bearing. `container-type`
-   implies `contain: layout`, which makes the element a containing block for
-   `position: fixed` descendants — the same trap `.claude/rules/tray-ui.md`
-   records for transforms, where a fixed drawer pinned to its wrapper instead
-   of the viewport. `apps/tray-ui` imports this stylesheet and renders bare
-   `.hud-tile` elements (primitives.tsx) alongside fixed-position panes, and it
-   uses no `.hud-freegrid` and no `.hud-tile__hd` at all. Scoping to the web's
-   widget grid leaves every tray tile untouched. */
-.hud-freegrid > .hud-tile { container-type: inline-size; }
+/* The narrow-tile eyebrow rule that used to live here queried the free-grid
+   tile as its container. Both are gone with the flat canvas (issue #99): the
+   eyebrow now only appears inside projection widgets, which size themselves. */
 .hud-tile__hd { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; }
-@container (max-width: 320px) {
-  .hud-tile__hd > .hud-tile__eyebrow { display: none; }
-}
 .hud-tile__eyebrow { font-family: var(--font-display); font-size: 9px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim); }
 
 /* Telemetry rail — persistent live-readout frames under the nav (bridge). */

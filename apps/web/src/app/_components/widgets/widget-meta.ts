@@ -17,7 +17,28 @@
  * `WidgetId` fails the build until it gets an entry here, which keeps the
  * palette, titles, and bounds exhaustive.
  */
-import type { GridBounds } from './grid-layout';
+/**
+ * The size envelope a widget declares.
+ *
+ * These four constants and `GridBounds` came from `grid-layout.ts`, which held
+ * the 24-column drag grid's geometry. That grid was the flat `WidgetCanvas`,
+ * retired in 7f63a74 when profile arranging moved onto the projection's own
+ * `LayoutEditor`; the file went with it. The envelope outlives the grid
+ * because `WIDGET_META` still declares a sensible width and height range per
+ * widget, and `widget-meta.test.ts` still checks every widget sits inside it.
+ */
+export const GRID_COLS = 24;
+export const MIN_W = 3;
+export const MIN_H = 3;
+export const MAX_H = 40;
+
+export interface GridBounds {
+  minW: number;
+  minH: number;
+  maxW: number;
+  maxH: number;
+}
+
 import type { WidgetId } from './types';
 
 export interface WidgetMeta {
