@@ -9,10 +9,14 @@ import { loginAs, scenarioFor, setScenario } from './helpers/api-mock';
  * actually differs: no ancestor of the card clips it, and it lands
  * inside the viewport.
  *
- * Hosted on `/u/[handle]`, which kept the flat `WidgetCanvas` and its
- * `.hud-tile` (overflow:hidden) + `.hud-tile__body` (overflow-y:auto).
- * The fleet widget links every ship through `EntityLink`, so it is the
- * natural anchor. The vehicle catalogue comes from the committed
+ * Hosted on `/u/[handle]`. It used to ride the flat `WidgetCanvas` and its
+ * `.hud-tile` (overflow:hidden) + `.hud-tile__body` (overflow-y:auto); the
+ * body is now projection-native, so the trigger is the ranked row itself —
+ * `MeterRow` makes the WHOLE ROW the anchor, which is why the card is hung off
+ * the row by `EntityMeterRow` rather than by an `EntityLink` inside it. The
+ * clipping ancestors are `.hp-plane` and the pane instead of the tile, and the
+ * assertion is unchanged because the defect would be. The vehicle catalogue
+ * comes from the committed
  * `reference-data` snapshot, not a mocked endpoint, so the ship below
  * must be one the snapshot knows (`AEGS_Avenger_Stalker` →
  * `/kb/vehicle/avenger-stalker`, manufacturer Aegis Dynamics).
@@ -33,7 +37,8 @@ const FIXTURES = {
   },
 };
 
-const LINK = '.hud-tile a[href="/kb/vehicle/avenger-stalker"]';
+/** The row IS the link in a projection plane — see `MeterRow`. */
+const LINK = 'a.hp-rw[href="/kb/vehicle/avenger-stalker"]';
 
 test('entity hover card is not clipped by its widget tile', async ({ page, request }) => {
   await loginAs(page, { handle: 'TestPilot' });

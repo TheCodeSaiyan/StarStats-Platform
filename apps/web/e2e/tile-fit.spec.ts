@@ -50,7 +50,14 @@ test('no widget tile hides its own content', async ({ page, request }) => {
   await setScenario(request, scenarioFor('tile-fit'));
   await loginAs(page, { handle: 'TestPilot' });
 
-  await page.goto('/u/TestPilot', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  // `?arrange=1`: the profile BODY is projection-native now, so the flat
+  // widget canvas this spec measures only renders in the owner's arrange mode.
+  // The tiles are unchanged there, and `apps/tray-ui` still renders `.hud-tile`
+  // from the same stylesheet, so both checks still guard live surfaces.
+  await page.goto('/u/TestPilot?arrange=1', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  });
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
 
@@ -121,7 +128,14 @@ test('no widget tile header spills out of its tile', async ({ page, request }) =
   await setScenario(request, scenarioFor('tile-fit'));
   await loginAs(page, { handle: 'TestPilot' });
 
-  await page.goto('/u/TestPilot', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  // `?arrange=1`: the profile BODY is projection-native now, so the flat
+  // widget canvas this spec measures only renders in the owner's arrange mode.
+  // The tiles are unchanged there, and `apps/tray-ui` still renders `.hud-tile`
+  // from the same stylesheet, so both checks still guard live surfaces.
+  await page.goto('/u/TestPilot?arrange=1', {
+    waitUntil: 'domcontentloaded',
+    timeout: 60_000,
+  });
   await page.waitForLoadState('networkidle').catch(() => {});
   await page.waitForTimeout(1500);
 

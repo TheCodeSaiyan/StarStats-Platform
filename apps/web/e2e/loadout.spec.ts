@@ -172,13 +172,18 @@ test('profile_loadout_widget_shows_view_loadout_link', async ({
     }),
   );
 
-  // `/u/[handle]`, not `/me`: the projection replaced the widget grid on /me,
-  // and the loadout WIDGET (as opposed to the `/me/loadout` page, covered
-  // above) now only renders on the profile surface.
+  // `/u/[handle]`, not `/me`: the loadout WIDGET (as opposed to the
+  // `/me/loadout` page, covered above) renders on the profile surface.
   await page.goto('/u/TestPilot');
 
-  // The loadout widget renders the "View loadout →" link
+  // The route OUT is what this guards — that the widget does not dead-end a
+  // reader who wants the full kit. Asserted by href rather than by prose: the
+  // profile body is projection-native now and its planes carry the system's
+  // own "see all →" caption instead of the flat widget's "View loadout →".
+  // The destination is the behaviour; the wording is the design system's.
+  // Scoped to the dock: the chrome's own nav also links /me/loadout, so an
+  // unscoped locator is a strict-mode violation on three matches.
   await expect(
-    page.getByRole('link', { name: /view loadout/i }),
+    page.locator('.hp-volume-below a[href="/me/loadout"]'),
   ).toBeVisible();
 });

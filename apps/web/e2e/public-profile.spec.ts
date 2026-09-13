@@ -3,9 +3,12 @@ import {
   loginAs,
   notFound,
   publicSummaryShared,
+  publicSummaryTestPilot,
   resetScenario,
   scenarioFor,
   setScenario,
+  summaryWithEvents,
+  timeline30Days,
 } from './helpers/api-mock';
 
 test.beforeEach(async ({ request }) => {
@@ -363,4 +366,126 @@ test('the detail docked below the volume can actually be reached', async ({
     onScreen.top,
     `dock is at y=${onScreen.top} in a ${onScreen.vh}px viewport after scrolling`,
   ).toBeLessThan(onScreen.vh);
+});
+
+/** Owner viewing their own profile, with data behind every default widget. */
+const OWNER_PROFILE_ROUTES = {
+  'GET /v1/public/TestPilot/summary': publicSummaryTestPilot,
+  'GET /v1/u/TestPilot/summary': summaryWithEvents,
+  'GET /v1/me/summary': summaryWithEvents,
+  'GET /v1/me/timeline': timeline30Days,
+  'GET /v1/u/TestPilot/timeline': timeline30Days,
+  'GET /v1/users/TestPilot/sessions': {
+    status: 200,
+    body: {
+      sessions: [
+        {
+          id: 's1',
+          started_at: '2026-09-08T14:00:00Z',
+          ended_at: '2026-09-08T16:30:00Z',
+          event_count: 42,
+        },
+      ],
+    },
+  },
+  'GET /v1/public/TestPilot/share-scopes': {
+    status: 200,
+    body: {
+      combat_mission: true,
+      economy: false,
+      travel: false,
+      records: true,
+      recent_activity: false,
+    },
+  },
+  'GET /v1/users/me/profile-layout': { status: 200, body: { layout: null } },
+  'GET /v1/public/TestPilot/rsi-profile': { status: 404, body: { error: 'not_found' } },
+  'GET /v1/public/TestPilot/rsi-orgs': { status: 200, body: { orgs: [] } },
+};
+
+test('the profile body is drawn in the projection, not the flat widget canvas', async ({
+  page,
+  request,
+}) => {
+  /**
+   * `/u/[handle]` was the last surface in the app still rendering
+   * `WidgetCanvas` — the flat-era 24-column free grid — inside the projection.
+   * The port (`aae18ac`) redrew ~45 page bodies and deliberately left this one
+   * behind: `me/page.tsx` records that "the public profile deliberately did
+   * NOT come along". Nobody noticed, because the dock it lives in was
+   * unreachable until v0.1.38.
+   *
+   * The assertion is which SYSTEM drew the body, because both render tiles
+   * that report `visible` and carry the same text. `.hud-freegrid` is the flat
+   * canvas's own container and exists nowhere in the projection language.
+   */
+  await setScenario(request, {
+    __id: 'public_body_is_projection',
+    routes: OWNER_PROFILE_ROUTES,
+  });
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/u/TestPilot');
+
+  const dock = page.locator('.hp-volume-below');
+  await expect(dock).toBeAttached();
+  // Projection planes drew the body...
+  await expect(dock.locator('.hp-plane').first()).toBeAttached();
+  // ...and the flat grid is gone from the page entirely.
+  await expect(page.locator('.hud-freegrid')).toHaveCount(0);
+
+  // Half the widget set builds a CALLOUT, not a plane — `sessions` among them,
+  // and the flat canvas drew it as a tile. Rendering only `elements.planes`
+  // dropped every one of those silently, which no count of planes would catch.
+  await expect(
+    dock.getByText(/session/i).first(),
+    'widget callouts must reach the dock, not just planes',
+  ).toBeVisible();
+});
+
+test('the owner can still arrange the profile layout', async ({
+  page,
+  request,
+}) => {
+  /**
+   * View mode is projection-native for EVERY reader including the owner —
+   * the pane's own context line claims "your profile, as others see it", and
+   * showing the owner a different design would make that a lie.
+   *
+   * Arranging is therefore a distinct mode behind `?arrange=1` rather than a
+   * client toggle: `WidgetCanvas` is an async server component, so it cannot
+   * be swapped in by client state, and a URL-driven mode stays shareable and
+   * back-button correct — the same reasoning `RangeTabs` records for `?range=`.
+   */
+  await setScenario(request, {
+    __id: 'public_owner_arrange',
+    routes: OWNER_PROFILE_ROUTES,
+  });
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  // The affordance exists in view mode...
+  await page.goto('/u/TestPilot');
+  const arrange = page.getByRole('link', { name: /arrange/i });
+  await expect(arrange).toBeVisible();
+
+  // ...and it reaches the editor.
+  await arrange.click();
+  await expect(page).toHaveURL(/arrange=1/);
+  await expect(page.locator('.hud-freegrid')).toHaveCount(1);
+});
+
+test('a visitor is never offered the arrange mode', async ({ page, request }) => {
+  // `?arrange=1` is owner-only and ignored for anyone else — a visitor who
+  // types the URL gets the ordinary read-only profile, not an editor over
+  // someone else's layout.
+  await setScenario(request, {
+    __id: 'public_visitor_no_arrange',
+    routes: { 'GET /v1/public/JohnSomeone/summary': publicSummaryShared },
+  });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/u/JohnSomeone?arrange=1');
+
+  await expect(page.locator('.hud-freegrid')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /arrange/i })).toHaveCount(0);
 });

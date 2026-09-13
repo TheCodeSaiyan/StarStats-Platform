@@ -15,6 +15,7 @@
  * endpoint we call.
  */
 
+import React from 'react';
 import Link from 'next/link';
 import type { Route } from 'next';
 import {
@@ -51,10 +52,16 @@ import { SHARE_SCOPES, splitShareScopes } from '@/lib/share-scopes';
 import { getTheme } from '@/lib/theme';
 import { navSections } from '@/lib/nav';
 import { setCalibrationAction } from '@/app/me/_projection/actions';
-import type { Calibration } from 'holo';
+import { BeamTip, SubStats, type Calibration, type SubStatItem } from 'holo';
 import type { ViewerCtx } from '@/app/_components/widgets/types';
 import { DEFAULT_SHARE_SCOPES } from '@/app/_components/widgets/types';
 import { WidgetCanvas } from '@/app/_components/widgets/WidgetCanvas';
+// The projection element builder, shared with `/me`. It lives under
+// `me/_projection` because that surface was ported first; `RowLink` and
+// `recent-activity-rows` are already imported out of the same folder by `/kb`
+// and `/me/travel`, so it is a shared projection library in practice.
+import { buildElements } from '@/app/me/_projection/elements';
+import { getProfileLayoutForRender } from '@/lib/profile-layout';
 import { EditToggle } from '@/app/_components/widgets/EditToggle';
 import { EditModeProvider } from '@/app/_components/widgets/useEditMode';
 import { ControlStrip } from '@/components/hud/ControlStrip';
@@ -68,7 +75,7 @@ export const metadata = { title: "Profile" };
 
 interface PageProps {
   params: Promise<{ handle: string }>;
-  searchParams?: Promise<{ range?: string }>;
+  searchParams?: Promise<{ range?: string; arrange?: string }>;
 }
 
 type View =
@@ -241,6 +248,99 @@ export default async function PublicProfilePage(props: PageProps) {
     recipientScopes,
     range,
   };
+
+  /**
+   * ARRANGING IS A MODE, NOT A TOGGLE.
+   *
+   * View mode is projection-native for every reader INCLUDING the owner: the
+   * pane's context line claims "your profile, as others see it", and drawing
+   * the owner a different body would make that a lie. The layout editor is
+   * still the flat `WidgetCanvas`, so it becomes a distinct mode behind
+   * `?arrange=1` rather than a client toggle — `WidgetCanvas` is an async
+   * server component and cannot be swapped in by client state, and a
+   * URL-driven mode stays shareable and back-button correct, the same
+   * reasoning `RangeTabs` records for `?range=`.
+   *
+   * Owner-only: a visitor who types the URL gets the ordinary read-only
+   * profile, never an editor over someone else's layout.
+   */
+  const arranging = isOwner && sp.arrange === '1';
+
+  /**
+   * The body, in the projection.
+   *
+   * `buildElements` is the same engine `/me` uses: each widget's own `load()`,
+   * its own `isAvailable` gate (which is what withholds an unpublished lens
+   * from a visitor), `Promise.allSettled` so one endpoint hiccup degrades one
+   * element rather than the page, and an explicit "nothing recorded yet" plane
+   * rather than a tile that silently vanishes. Only the presentation differs
+   * from the flat canvas it replaces.
+   *
+   * Visitors resolve to `DEFAULT_LAYOUT` inside `getProfileLayoutForRender` —
+   * there is no public endpoint for an owner's saved arrangement yet — so this
+   * is the owner's list for the owner and the default list for everyone else,
+   * exactly as the flat canvas resolved it.
+   */
+  const profileLayout = await getProfileLayoutForRender(
+    token,
+    handle,
+    isOwner,
+    'profile',
+  );
+  const elements = arranging
+    ? null
+    : await buildElements(
+        viewerCtx,
+        profileLayout.filter((e) => e.enabled).map((e) => e.id),
+      );
+
+  /**
+   * The widget CALLOUTS, as figures in the dock.
+   *
+   * Half the widget set builds a callout rather than a plane — `sessions`,
+   * `travel`, `economy`, `lives`, `contracts`, `objectives`, `spend`. On `/me`
+   * those hang beside the ring. This volume's callouts are the public
+   * `by_type` distribution and deliberately so, so a widget callout has no
+   * slot there; rendering only `elements.planes` silently dropped every one of
+   * them, and Sessions — which the flat canvas showed as a tile — vanished.
+   *
+   * The mapping is the one `MeProjection` already uses for its lens pane: a
+   * callout's full `stats` set when it has one, and the headline figure alone
+   * when it does not. Same source as the callout, so the two can never
+   * disagree. `sub` is carried through where `MeProjection` drops it —
+   * `sessionsCallout` puts "4h played" there, and `SubStatItem` renders it, so
+   * dropping it would lose a figure the flat tile showed.
+   *
+   * Chunked into fours because `SubStats` is a four-column grid and its own
+   * doc comment says a fifth item wraps badly.
+   */
+  const calloutItems: SubStatItem[] = (elements?.callouts ?? []).flatMap((c) => {
+    const items: SubStatItem[] =
+      c.stats && c.stats.length > 0
+        ? [...c.stats]
+        : [{ k: c.label, v: c.value, u: c.unit, sub: c.sub, tone: c.tone }];
+    // A callout's `note` is the derivation of its HEADLINE figure, and when a
+    // callout breaks itself into stats the headline is the first of them
+    // (`travelCallout`: value = quantums, stats[0] = Quantum). So the tip hangs
+    // off that figure rather than the row, which is where a reader looking at
+    // the number will reach for it. `SubStatItem.v` is a ReactNode, so this
+    // needs no new plumbing. Same labelling `MeProjection` uses.
+    if (c.note && items[0]) {
+      items[0] = {
+        ...items[0],
+        v: (
+          <BeamTip note={c.note} label={`How ${c.label} is derived`}>
+            {items[0].v}
+          </BeamTip>
+        ),
+      };
+    }
+    return items;
+  });
+  const calloutRows: SubStatItem[][] = [];
+  for (let i = 0; i < calloutItems.length; i += 4) {
+    calloutRows.push(calloutItems.slice(i, i + 4));
+  }
 
   if (view.kind === 'denied') {
     // The refused view gets the SAME chrome as a visible one. It is the
@@ -578,15 +678,45 @@ export default async function PublicProfilePage(props: PageProps) {
             />
           ) : null}
 
-          <EditModeProvider>
-            {isOwner && (
+          {arranging ? (
+            /* The editor is still the flat canvas — the one surface that has
+               not been redrawn, because dragging a 24-column grid has no
+               projection equivalent yet. It is reached deliberately and left
+               deliberately, rather than sitting under every reader's view. */
+            <EditModeProvider>
               <ControlStrip>
                 <span style={{ flex: 1 }} />
+                <Link
+                  href={`/u/${encodeURIComponent(handle)}` as Route}
+                  className="hp-btn hp-btn--ghost"
+                >
+                  Done
+                </Link>
                 <EditToggle />
               </ControlStrip>
-            )}
-            <WidgetCanvas ctx={viewerCtx} surface="profile" />
-          </EditModeProvider>
+              <WidgetCanvas ctx={viewerCtx} surface="profile" />
+            </EditModeProvider>
+          ) : (
+            <>
+              {isOwner ? (
+                <ControlStrip>
+                  <span style={{ flex: 1 }} />
+                  <Link
+                    href={`/u/${encodeURIComponent(handle)}?arrange=1` as Route}
+                    className="hp-btn hp-btn--ghost"
+                  >
+                    Arrange
+                  </Link>
+                </ControlStrip>
+              ) : null}
+              {calloutRows.map((row, i) => (
+                <SubStats key={`figures-${i}`} items={row} />
+              ))}
+              {(elements?.planes ?? []).map((p) => (
+                <React.Fragment key={p.id}>{p.node}</React.Fragment>
+              ))}
+            </>
+          )}
 
           {view.kind === 'public' && (
             <p className="hp-note">

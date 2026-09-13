@@ -13,10 +13,16 @@ import { loginAs, scenarioFor, setScenario } from './helpers/api-mock';
  * actually matters: no ancestor of the popover clips it, and it lands
  * inside the viewport.
  *
- * Hosted on `/u/[handle]` rather than `/me`: `/me` is the projection now and
- * has no widget tiles. The tile + InfoTip this guards still ship on the public
- * profile surface, which kept the flat `WidgetCanvas`, so the regression this
- * spec exists to catch is still covered.
+ * Hosted on `/u/[handle]`. It was moved here when `/me` became the projection
+ * and lost its widget tiles; the public profile has now followed, so the
+ * affordance under test is `BeamTip` — the projection's own derivation tip —
+ * rather than the flat `InfoTip`. The DEFECT is identical and so are the
+ * assertions: `.hp-plane` and the pane clip exactly as `.hud-tile` and
+ * `.hud-tile__body` did, and `BeamTip` portals out for that reason (its own
+ * comment cites this bug).
+ *
+ * The copy is still the registry's (`INFERENCE_EXPLANATIONS`), so a tip that
+ * empties still fails here.
  */
 const TRAVEL_FIXTURES = {
       // `/u/[handle]` as the OWNER: page.tsx short-circuits to the self
@@ -51,15 +57,18 @@ test('infotip popover is not clipped by its widget tile', async ({ page, request
   await setScenario(request, scenarioFor('infotip_unclipped', TRAVEL_FIXTURES));
   await page.goto('/u/TestPilot');
 
-  const btn = page.locator('.infotip__btn').first();
+  // `BeamTip` opens on CLICK — the projection's tip is a lit hairline button,
+  // not a hover affordance like the flat `InfoTip` this replaced. The defect
+  // under test is unchanged: where the popover lands once it is open.
+  const btn = page.locator('button.hp-tip__t').first();
   await expect(btn).toBeVisible();
-  await btn.hover();
+  await btn.click();
 
-  const pop = page.locator('.infotip__pop--open').first();
+  const pop = page.locator('.hp-tip__pop').first();
   await expect(pop).toBeVisible();
 
   const report = await page.evaluate(() => {
-    const el = document.querySelector('.infotip__pop--open') as HTMLElement;
+    const el = document.querySelector('.hp-tip__pop') as HTMLElement;
     const r = el.getBoundingClientRect();
     const clippers: string[] = [];
     let a = el.parentElement;
@@ -115,11 +124,11 @@ test('infotip renders when attached to a list note (fleet)', async ({ page, requ
   );
   await page.goto('/u/TestPilot');
 
-  const btn = page.locator('.hud-note .infotip__btn').first();
+  const btn = page.locator('.hp-note button.hp-tip__t').first();
   await expect(btn).toBeVisible();
-  await btn.hover();
+  await btn.click();
 
-  const pop = page.locator('.infotip__pop--open').first();
+  const pop = page.locator('.hp-tip__pop').first();
   await expect(pop).toBeVisible();
   // The honest bit: flown, not owned.
   await expect(pop).toContainText(/not ships you own/i);
@@ -130,15 +139,15 @@ test('infotip explanation is readable and dismissable', async ({ page, request }
   await setScenario(request, scenarioFor('infotip_readable', TRAVEL_FIXTURES));
   await page.goto('/u/TestPilot');
 
-  const btn = page.locator('.infotip__btn').first();
+  const btn = page.locator('button.hp-tip__t').first();
   await expect(btn).toBeVisible();
   await btn.click();
 
   // The travel widget's first tip explains quantum jumps; assert on the
   // copy so a registry edit that empties the text fails here.
-  const pop = page.locator('.infotip__pop--open').first();
+  const pop = page.locator('.hp-tip__pop').first();
   await expect(pop).toContainText(/quantum/i);
 
   await page.keyboard.press('Escape');
-  await expect(page.locator('.infotip__pop--open')).toHaveCount(0);
+  await expect(page.locator('.hp-tip__pop')).toHaveCount(0);
 });
