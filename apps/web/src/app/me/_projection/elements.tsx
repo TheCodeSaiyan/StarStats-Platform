@@ -3,7 +3,7 @@ import 'server-only';
 import React from 'react';
 import type { Route } from 'next';
 import Link from 'next/link';
-import { Plane, MeterRow, LogRow } from 'holo';
+import { Plane, MeterRow, LogRow, BeamTip } from 'holo';
 // Type-only elsewhere, so no cycle: catalogue.ts imports nothing from here.
 import { PROJECTION_CATALOGUE } from './catalogue';
 import { livesWidget } from '@/app/_components/widgets/lives';
@@ -38,6 +38,7 @@ import type {
   WidgetData,
 } from '@/app/_components/widgets/kit/defineWidget';
 import { logger } from '@/lib/logger';
+import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
 import type { DockingResponse, StatsBucket } from '@/lib/api';
 import { loadAllReferenceBundles } from '@/lib/reference';
@@ -45,6 +46,7 @@ import type {
   ReferenceCatalog,
   ReferenceCatalogs,
   ReferenceCategory,
+  ReferenceEntry,
   ReferenceLookup,
 } from '@/lib/reference-types';
 import { CATEGORIES, resolveReferenceEntry } from '@/lib/reference-types';
@@ -52,6 +54,7 @@ import { toFriendlyName } from '@/lib/heuristic-name';
 import { aggregateLocationBuckets } from '@/lib/class-name-parts';
 import { prettyShop } from '@/lib/shop-name';
 import { RowLink } from './RowLink';
+import { EntityMeterRow } from '@/components/kb/EntityMeterRow';
 
 /** The catalogues the ranked planes resolve their raw identifiers against. */
 type Catalogs = ReferenceCatalogs;
@@ -329,6 +332,15 @@ interface RankedRow {
   pct: number;
   /** Set when the entity resolved to a KB page; makes the whole row the link. */
   href?: string;
+  /**
+   * The catalogue entry behind the row, when there is one.
+   *
+   * Carried so `rankedPlane` can hang a hover card off the row. `entityRow`
+   * already resolved it and used to throw it away, which is why the projection
+   * had no hover cards while the flat tiles it replaced did.
+   */
+  entry?: ReferenceEntry;
+  category?: ReferenceCategory;
 }
 
 /**
@@ -393,6 +405,8 @@ function entityRow(
     href: entry?.slug
       ? `/kb/${category}/${encodeURIComponent(entry.slug)}`
       : undefined,
+    entry: entry ?? undefined,
+    category,
   };
 }
 
@@ -403,10 +417,41 @@ function entityRow(
  * and the Plane's caption carries a Next <Link> to the full page, so the depth
  * model stays intact without losing a crawlable URL.
  */
+/**
+ * The derivation note under a plane's rows.
+ *
+ * The flat widgets carried these as an `<InfoTip>` beside the caveat, and the
+ * port dropped every one — an inferred ranking then read as ground truth. The
+ * copy is the registry's (`INFERENCE_EXPLANATIONS`), not a paraphrase, and
+ * `BeamTip` is the projection's own affordance for exactly this: a lit
+ * hairline under the text, popover portalled clear of the plane's clipping.
+ */
+function inferenceNote(
+  metric: string,
+  label: string,
+  caveat: string,
+): React.ReactNode {
+  const text = INFERENCE_EXPLANATIONS[metric];
+  if (!text) return null;
+  return (
+    <p className="hp-note" style={{ marginTop: 12 }}>
+      <BeamTip note={text} label={label}>
+        {caveat}
+      </BeamTip>
+    </p>
+  );
+}
+
 function rankedPlane(
   cap: string,
   rows: RankedRow[],
-  opts: { href?: Route; hint?: string; onSelectable?: boolean } = {},
+  opts: {
+    href?: Route;
+    hint?: string;
+    onSelectable?: boolean;
+    /** Derivation for an inferred ranking. See `inferenceNote`. */
+    note?: { metric: string; label: string; caveat: string };
+  } = {},
 ): React.ReactNode {
   return (
     <Plane
@@ -417,17 +462,37 @@ function rankedPlane(
       }
       empty={<span className="hp-empty">{MISSING} nothing in this window</span>}
     >
-      {rows.map((r, i) => (
-        <MeterRow
-          key={i}
-          rank={i + 1}
-          name={r.name}
-          value={r.value}
-          pct={r.pct}
-          href={r.href}
-          linkAs={RowLink}
-        />
-      ))}
+      {rows.map((r, i) =>
+        // A row with a catalogue entry gets the hover card the flat tiles had;
+        // one without (an unresolved raw, a merged label) stays a plain row
+        // rather than opening an empty card.
+        r.entry && r.category ? (
+          <EntityMeterRow
+            key={i}
+            rank={i + 1}
+            name={r.name}
+            value={r.value}
+            pct={r.pct}
+            href={r.href}
+            entry={r.entry}
+            category={r.category}
+            linkAs={RowLink}
+          />
+        ) : (
+          <MeterRow
+            key={i}
+            rank={i + 1}
+            name={r.name}
+            value={r.value}
+            pct={r.pct}
+            href={r.href}
+            linkAs={RowLink}
+          />
+        ),
+      )}
+      {opts.note
+        ? inferenceNote(opts.note.metric, opts.note.label, opts.note.caveat)
+        : null}
     </Plane>
   );
 }
@@ -518,7 +583,17 @@ function fleetPlane(d: FleetData, refs?: ProjectionRefs): React.ReactNode {
           pctOf(s.trip_count, max),
         ),
       ),
-    { href: '/kb/vehicle' as Route, hint: 'select a ship →' },
+    {
+      href: '/kb/vehicle' as Route,
+      hint: 'select a ship →',
+      // The flat widget's own caveat, verbatim: this is the honesty statement
+      // that the ranking is ships FLOWN, not ships owned.
+      note: {
+        metric: 'ships_flown',
+        label: 'this ranking',
+        caveat: 'Based on quantum travel',
+      },
+    },
   );
 }
 
