@@ -10,7 +10,7 @@
 
     2. A namespaced Property (`STARSTATS_UPGRADE_DETECTED`) that mirrors
        Windows Installer's built-in `WIX_UPGRADE_DETECTED`. A future
-       full WiX UI template override (see docs/WINDOWS_INSTALLER_UPGRADE.md)
+       full WiX UI template override (see the Windows installer upgrade note)
        will key its conditional welcome-dialog text off this property.
 
   Limitation: visible "Upgrading..." dialog text during install

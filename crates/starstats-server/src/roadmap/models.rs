@@ -1,6 +1,6 @@
 //! Row types and closed-vocabulary enums for the roadmap pipeline.
 //!
-//! The spec (`docs/ROADMAP-PIPELINE-SPEC.md`) defines the data model;
+//! The roadmap-pipeline spec defines the data model;
 //! this module mirrors §1 (RoadmapItem), §2.1 (ChannelStatus), §4.4
 //! (event log), §6 (votes + subscribers), §8 (changelog) and §9
 //! (user read state). Vocabulary enums are validated application-

@@ -1,6 +1,6 @@
 //! Tier-based data retention purge.
 //!
-//! Per docs/ENGINEERING.md mission: server-side personal events are kept for a
+//! Per the engineering notes mission: server-side personal events are kept for a
 //! tier-specific window, after which they are deleted. Tier is derived
 //! at read-time from [`supporter_status`] (active -> supporter, else
 //! free). The retention window per tier lives in the
@@ -45,7 +45,7 @@ const BATCH_THROTTLE: StdDuration = StdDuration::from_millis(100);
 const PER_USER_BATCH_CAP: usize = 100;
 
 /// Closed-vocabulary tier enum stored implicitly via supporter_status.
-/// Per docs/ENGINEERING.md convention: TEXT round-trip helpers, adding a variant
+/// Per the engineering notes convention: TEXT round-trip helpers, adding a variant
 /// does not need a migration.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tier {
@@ -243,7 +243,7 @@ async fn purge_user_events(
 /// supporter_status, derives tier per user, and purges where the
 /// policy has a finite window.
 ///
-/// Audit emission is best-effort per docs/ENGINEERING.md: an audit hiccup
+/// Audit emission is best-effort per the engineering notes: an audit hiccup
 /// never poisons the sweep.
 pub async fn run_sweep(
     pool: &PgPool,
@@ -379,7 +379,7 @@ async fn run_sweep_locked(
             if hit_cap {
                 summary.users_truncated += 1;
             }
-            // Best-effort audit per docs/ENGINEERING.md: warn but continue.
+            // Best-effort audit per the engineering notes: warn but continue.
             let entry = AuditEntry {
                 actor_sub: None,
                 actor_handle: Some("system".to_string()),

@@ -101,7 +101,7 @@ pub async fn put_share_scopes(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // Best-effort audit emission per docs/ENGINEERING.md — a hiccup here must
+    // Best-effort audit emission per the engineering notes — a hiccup here must
     // never poison the response.
     let diff = render_diff(prev.as_ref(), &req);
     if let Err(e) = audit

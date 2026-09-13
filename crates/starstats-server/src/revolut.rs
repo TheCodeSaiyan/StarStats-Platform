@@ -1,7 +1,7 @@
 //! Revolut Business Merchant API client + webhook signature
 //! verification.
 //!
-//! See `docs/REVOLUT-INTEGRATION-PLAN.md` for the wider integration
+//! See the Revolut integration plan for the wider integration
 //! plan. This module is the wire-level shim that:
 //!
 //!   1. POSTs to `{base}/api/1.0/orders` to create a hosted-checkout

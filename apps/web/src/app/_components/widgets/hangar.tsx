@@ -114,7 +114,7 @@ export const hangarWidget = defineWidget<HangarData>({
     // pretty label is also the catalog key: the reference catalog is
     // dual-keyed by display_name, so passing the stripped name resolves
     // the entry; `label` is pinned so the class-id prettifier never
-    // rewrites it (docs/ENGINEERING.md free-text rule).
+    // rewrites it (the engineering notes free-text rule).
     //
     // A bundle/pack pledge (`contains.length > 1`) is EXPANDED inline: one
     // row per real constituent item instead of the single opaque bundle

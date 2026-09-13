@@ -253,7 +253,7 @@ pub async fn export_manifest<Q: EventQuery>(
     };
 
     // Audit BEFORE the first byte: once the body is streaming there is no
-    // response left to fail. Best-effort per docs/ENGINEERING.md — an
+    // response left to fail. Best-effort per the engineering notes — an
     // export is a read, so an audit hiccup is logged, not fatal.
     if let Err(e) = deps
         .audit

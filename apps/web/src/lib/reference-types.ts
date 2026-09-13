@@ -66,7 +66,7 @@ export interface LocationSummary {
   tag?: string;
   classification?: string;
   // -- Wave 2 (starcitizen.tools enrichment, Phase 1 rollout) ---
-  // See docs/PLAN-LOCATION-TAXONOMY-V2.md. All optional;
+  // See the location-taxonomy v2 plan. All optional;
   // populated when the server-side enrichment cron finds a
   // matching wiki page. Snake-case mirrors the Rust
   // `LocationTier` enum + open-ended subtype allow-list.

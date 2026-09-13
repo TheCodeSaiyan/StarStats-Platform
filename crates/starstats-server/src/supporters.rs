@@ -1,6 +1,6 @@
 //! Supporter (donate) status data layer.
 //!
-//! See `docs/REVOLUT-INTEGRATION-PLAN.md` for the full lifecycle.
+//! See the Revolut integration plan for the full lifecycle.
 //! This module owns the read side and one mutation (set name_plate);
 //! payment-flow mutations (state transitions on webhook) land in the
 //! Wave 9 follow-up that wires up Revolut.
@@ -14,7 +14,7 @@ use uuid::Uuid;
 /// we enforce here so a future API change can't accidentally relax it
 /// without an explicit override. Read-side endpoint doesn't reference
 /// this; the cap kicks in on the PUT endpoint that ships in the
-/// Wave 9 follow-up (see `docs/REVOLUT-INTEGRATION-PLAN.md`).
+/// Wave 9 follow-up (see the Revolut integration plan).
 #[allow(dead_code)]
 pub const NAME_PLATE_MAX_CHARS: usize = 28;
 

@@ -126,7 +126,7 @@ export class ApiCallError extends Error {
  * HTTP status off a caught value when it's an `ApiCallError`, else
  * `undefined`. For structured `logger.warn({ call, status }, …)` on
  * `Promise.allSettled` rejections so the failing endpoint is named
- * with its code in server logs (the docs/ENGINEERING.md allSettled invariant).
+ * with its code in server logs (the engineering notes allSettled invariant).
  */
 export function statusOf(e: unknown): number | undefined {
   return e instanceof ApiCallError ? e.status : undefined;
@@ -1729,7 +1729,7 @@ export async function getAdminEventTypes(
 //
 // Read-only for now. The actual checkout / webhook flow depends on
 // Revolut Business credentials being provisioned (see
-// docs/REVOLUT-INTEGRATION-PLAN.md). The read endpoint already exists
+// the Revolut integration plan). The read endpoint already exists
 // so the supporter pill on the profile / settings pages can light up
 // against any manually-set row.
 
@@ -2103,7 +2103,7 @@ export async function getLives(
  * trip count, ranked desc. Me-scoped (owner-only). Honest caveat: this
  * reflects quantum-travel usage, not the caller's full owned/hangar
  * fleet (StarStats never fetches hangar/pledge data server-side —
- * see docs/ENGINEERING.md "Architecture Invariants").
+ * see the engineering notes "Architecture Invariants").
  */
 export async function getFleet(
   bearer: string,

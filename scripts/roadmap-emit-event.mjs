@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Emit a signed CI event to the roadmap pipeline server.
 //
-// Spec: docs/ROADMAP-PIPELINE-SPEC.md §4. Sends one POST to the
+// Spec: the roadmap-pipeline spec §4. Sends one POST to the
 // `/v1/internal/roadmap/events` endpoint, signed with an HMAC-SHA256
 // MAC over `v1.<timestamp_ms>.<body>` (mirrors the Revolut webhook
 // scheme; matches the server's `verify_event_signature` helper).

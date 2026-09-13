@@ -24,7 +24,7 @@ import { fmtNum } from './kit/format';
  * the tile scroll — the exact overflow bug this fixes). Destinations are
  * location identifiers, each wrapped in `<EntityLink category="location">`
  * with `label` pinned so a free-text destination is never rewritten by the
- * class-id prettifier (docs/ENGINEERING.md free-text rule).
+ * class-id prettifier (the engineering notes free-text rule).
  */
 interface RoutesData {
   routes: ReadonlyArray<{ destination: string; count: number }>;

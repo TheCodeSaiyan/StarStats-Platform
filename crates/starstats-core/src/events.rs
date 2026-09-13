@@ -719,7 +719,7 @@ pub enum SessionEndKind {
 }
 
 // ---------------------------------------------------------------------
-// Dynamic parser-definition support (see docs/PARSER_DEFINITION_UPDATES.md)
+// Dynamic parser-definition support (see the parser-definition design note)
 //
 // `RemoteMatch` is the catch-all variant the parser emits when a
 // remote rule (fetched from `GET /v1/parser-definitions`) matches a

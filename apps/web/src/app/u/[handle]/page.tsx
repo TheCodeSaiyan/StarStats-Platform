@@ -224,7 +224,7 @@ export default async function PublicProfilePage(props: PageProps) {
   // Fetch share scopes + recipient scope clamp once at page render.
   // Both functions catch their own errors and return safe defaults,
   // so `Promise.all` would also work in practice — but the project
-  // invariant (docs/ENGINEERING.md) requires `Promise.allSettled` for any
+  // invariant (the engineering notes) requires `Promise.allSettled` for any
   // multi-endpoint render path so a future refactor that drops the
   // internal catches doesn't silently start blanking the page.
   const [shareScopesResult, recipientScopesResult] = await Promise.allSettled([

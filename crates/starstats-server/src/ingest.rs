@@ -668,7 +668,7 @@ fn reject_sync(detail: &str) -> Response {
         .into_response()
 }
 
-/// Server side of the two-gate cloud-sync model (docs/ENGINEERING.md "two-gate
+/// Server side of the two-gate cloud-sync model (the engineering notes "two-gate
 /// model for cross-device toggles"). A device token may only ingest
 /// when its own `devices.sync_enabled` row is `true` — the same gate
 /// `preferences_routes::enforce_device_sync_gate` applies to prefs.

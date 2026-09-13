@@ -718,7 +718,7 @@ pub struct LocationSummary {
     // upstream parsing and the canonical type shapes. Snake-case
     // string values for `tier` and `subtype` mirror the
     // `LocationTier` enum and the open-ended subtype allow-list
-    // documented in `docs/PLAN-LOCATION-TAXONOMY-V2.md`.
+    // documented in the location-taxonomy v2 plan.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

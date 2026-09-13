@@ -100,7 +100,7 @@ export default async function MePage(props: PageProps) {
   // combat use the server's max window, so those stay best-available (~1 year).
   const HEADER_HOURS = 24 * 365;
 
-  // docs/ENGINEERING.md: multi-endpoint render -> Promise.allSettled. Each
+  // the engineering notes: multi-endpoint render -> Promise.allSettled. Each
   // source degrades independently; a single rejection logs its label and the
   // figure falls back to a safe zero/null.
   const [

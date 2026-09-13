@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// One rule on the wire. Mirrors the JSON shape documented in
-/// `docs/PARSER_DEFINITION_UPDATES.md`.
+/// the parser-definition design note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RemoteRule {
     /// Stable id assigned by the manifest publisher. Used to retract

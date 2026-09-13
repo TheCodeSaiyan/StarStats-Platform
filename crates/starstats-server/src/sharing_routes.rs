@@ -368,7 +368,7 @@ pub struct PublicSummaryResponse {
     /// web `<SupporterChip>` renders nothing in that case. Present
     /// for both `active` and `lapsed` per the "pill stays —
     /// recognition is permanent" design (see
-    /// `docs/REVOLUT-INTEGRATION-PLAN.md`). Only fields safe to
+    /// the Revolut integration plan). Only fields safe to
     /// expose publicly: state + tier + plate. We deliberately
     /// withhold `grace_until` / payment timestamps to limit
     /// fingerprinting from a stranger.

@@ -2,7 +2,7 @@
 //!
 //! Samples the sqlx pool's connection counts into Prometheus gauges so
 //! pool-exhaustion — the primary risk under the audit advisory-lock
-//! contention path (see `docs/audit/postgres-performance-review-2026-07-22.md`
+//! contention path (see the 2026-07-22 Postgres performance review
 //! POOL-1) — is visible on `/metrics` instead of surfacing only as opaque
 //! 5-second acquire timeouts. Complements `pg_stat_statements` (enabled in the
 //! baseline migration) for the server-side query view.

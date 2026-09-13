@@ -240,8 +240,7 @@ function ComingSoonPanel() {
         The Revolut Business checkout integration is wired up but waiting on
         production credentials. Once the server has{' '}
         <code className="mono">REVOLUT_API_KEY</code> set, this page lights up
-        with tier buttons. Full plan in{' '}
-        <code className="mono">docs/REVOLUT-INTEGRATION-PLAN.md</code>.
+        with tier buttons.
       </p>
     </section>
   );

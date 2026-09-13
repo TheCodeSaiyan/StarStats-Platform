@@ -311,7 +311,7 @@ export function parseLocationClass(
   // like Jump Points, Comm Arrays). Each matcher returns a result
   // with a *synthetic* top-level grouping ("Jump Points",
   // "Communications") so the rollup keeps a meaningful tree shape.
-  // See docs/REFERENCE-CATALOG-HIERARCHY.md for the rationale.
+  // See the reference-catalog hierarchy note for the rationale.
   for (const m of SYNTHETIC_MATCHERS) {
     const hit = m(parts, raw);
     if (hit) return hit;
@@ -663,7 +663,7 @@ const NON_DESTINATION_PATTERNS: RegExp[] = [
  *
  *  Adding a new pattern is one entry here — no surgery in the parser
  *  body needed. Document the rationale for each top-level pseudo-
- *  system in `docs/REFERENCE-CATALOG-HIERARCHY.md`. */
+ *  system in the reference-catalog hierarchy note. */
 type SyntheticMatcher = (parts: string[], raw: string) => LocationParts | null;
 
 const SYNTHETIC_MATCHERS: SyntheticMatcher[] = [

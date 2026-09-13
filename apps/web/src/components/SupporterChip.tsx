@@ -11,7 +11,7 @@ import type { SupporterStatusDto } from '@/lib/api';
  * brown; standard = accent; generous = gold. Lapsed states mute
  * those colours per the design promise — "the pill stays —
  * recognition is permanent — but accent perks revert to free-tier
- * until the next payment lands" (see `docs/REVOLUT-INTEGRATION-PLAN.md`).
+ * until the next payment lands" (see the Revolut integration plan).
  *
  * When `tier_key` is `null` (no completed order yet, defensive
  * fallback) the chip uses the standard accent palette so it still

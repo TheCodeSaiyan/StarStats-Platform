@@ -208,7 +208,7 @@ pub async fn put_profile_layout(
     let prev_count = prev.as_ref().map_or(0, |v| v.len());
     let next_count = next.as_ref().map_or(0, |v| v.len());
 
-    // Best-effort audit emission per docs/ENGINEERING.md — a hiccup here must
+    // Best-effort audit emission per the engineering notes — a hiccup here must
     // never poison the response.
     if let Err(e) = audit
         .append(AuditEntry {

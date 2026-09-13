@@ -258,7 +258,7 @@ pub async fn redeem<D: DeviceStore, U: UserStore>(
             // (the desktop client is being paired because it doesn't
             // yet hold a token), so actor identity comes from the
             // user looked up via the pairing's user_id rather than a
-            // bearer claim. Best-effort emission per the docs/ENGINEERING.md
+            // bearer claim. Best-effort emission per the engineering notes
             // invariant. Surfaced 2026-05-28 alongside the missing
             // `device.revoked` emit — the device-lifecycle audit
             // trail was a forensic black hole.
@@ -385,7 +385,7 @@ pub async fn revoke<D: DeviceStore>(
             // surfaced 2026-05-28 when a tray auth-loss investigation
             // hit a dead end because the audit log had zero
             // device-lifecycle entries. Best-effort emission per the
-            // docs/ENGINEERING.md invariant.
+            // the engineering notes invariant.
             if let Err(e) = audit
                 .append(AuditEntry {
                     actor_sub: Some(user.sub.clone()),
@@ -472,7 +472,7 @@ pub async fn set_sync<D: DeviceStore>(
     {
         Ok(()) => {
             // Audit: security-relevant kill switch. Best-effort emission —
-            // an audit hiccup never poisons the response (docs/ENGINEERING.md invariant).
+            // an audit hiccup never poisons the response (the engineering notes invariant).
             let action = if body.enabled {
                 "device.sync_enabled"
             } else {

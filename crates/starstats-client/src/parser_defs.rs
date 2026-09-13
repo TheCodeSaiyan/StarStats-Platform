@@ -50,7 +50,7 @@ const FETCH_PATH: &str = "/v1/parser-definitions";
 /// The rejection was, briefly, load-bearing: the served rule set was empty at
 /// the time, so a client that COULD verify would have adopted an empty
 /// manifest and dropped the rules it was running. The rules were republished
-/// first (see docs/PARSER_DEFINITION_UPDATES.md) precisely so this pin could
+/// first (see the parser-definition design note) precisely so this pin could
 /// be changed safely.
 ///
 /// Rotated TWICE that day. The first replacement was printed to a terminal by

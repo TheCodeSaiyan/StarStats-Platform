@@ -13,7 +13,7 @@
 //! primary cron seeds rows, this enrichment cron UPDATES them
 //! (never INSERTs). A starcitizen.tools page with no matching
 //! primary entry is skipped + logged. See
-//! `docs/PLAN-LOCATION-TAXONOMY-V2.md` for the surrounding plan and
+//! the location-taxonomy v2 plan for the surrounding plan and
 //! `memory/sc-wiki-location-taxonomy.md` for the underlying source
 //! taxonomy.
 //!

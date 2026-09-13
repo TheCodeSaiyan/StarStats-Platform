@@ -171,7 +171,7 @@ async fn main() -> anyhow::Result<()> {
     // the legitimate background reconcile/retention work that shares this pool;
     // lock_timeout + idle_in_transaction_session_timeout cap contention and stuck
     // transactions (the audit advisory-lock path — see POOL-1 in
-    // docs/audit/postgres-performance-review-2026-07-22.md). Values are milliseconds.
+    // the 2026-07-22 Postgres performance review). Values are milliseconds.
     let connect_opts = cfg.database_url.parse::<PgConnectOptions>()?.options([
         ("statement_timeout", "60000"),
         ("lock_timeout", "5000"),
@@ -222,7 +222,7 @@ async fn main() -> anyhow::Result<()> {
     // Secondary location-taxonomy enrichment source. Pulls richer
     // tier/subtype/placement metadata from starcitizen.tools and
     // joins onto existing reference_registry rows by slug. Does NOT
-    // insert. See `docs/PLAN-LOCATION-TAXONOMY-V2.md`.
+    // insert. See the location-taxonomy v2 plan.
     let location_enrichment_client =
         Arc::new(location_enrichment::ToolsWikiEnrichmentClient::new()?);
     // Catalogue snapshot consumed by the ingest classifier. Starts
@@ -1232,7 +1232,7 @@ async fn main() -> anyhow::Result<()> {
     // tier's window from `retention_policies`. The job acquires a
     // Postgres advisory lock for the duration of each pass so a
     // multi-replica deployment doesn't double-delete. Best-effort
-    // audit emission per docs/ENGINEERING.md: an audit hiccup never poisons
+    // audit emission per the engineering notes: an audit hiccup never poisons
     // the sweep.
     retention::spawn_sweep_loop(
         retention_pool_for_sweep,

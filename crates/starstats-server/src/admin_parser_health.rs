@@ -262,7 +262,7 @@ pub async fn resolve(
     }
 }
 
-/// Best-effort audit per docs/ENGINEERING.md: a hiccup warns but never poisons the
+/// Best-effort audit per the engineering notes: a hiccup warns but never poisons the
 /// response the moderator already earned.
 async fn emit_audit(
     audit: &dyn AuditLog,

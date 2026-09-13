@@ -169,7 +169,7 @@ function toReferenceEntry(
 /**
  * Build one category's `CategoryBundle` from the static snapshots.
  *
- * DUAL-KEYING PRESERVED (per docs/ENGINEERING.md): the `catalog` map stores each
+ * DUAL-KEYING PRESERVED (per the engineering notes): the `catalog` map stores each
  * entry under BOTH `class_name.toLowerCase()` AND
  * `display_name.toLowerCase()` (when the two keys differ and the name
  * key is free), so `<EntityLink>` resolves whether the caller hands in
@@ -422,7 +422,7 @@ export async function loadAllReferenceBundles(): Promise<AllReferenceBundles> {
 // catalogue carries the full system → body → place hierarchy as facts
 // (system / parent / tag / classification), which `parseLocationClass`
 // consults before falling back to the hardcoded engine-short-code
-// dictionaries (see docs/REFERENCE-CATALOG-HIERARCHY.md).
+// dictionaries (see the reference-catalog hierarchy note).
 
 /**
  * Build the location catalogue with hierarchy facts from the STATIC

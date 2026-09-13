@@ -1,5 +1,5 @@
 {
-  "_comment": "Bundled-into-the-tray bootstrap snapshot of the Star Citizen location catalogue. Loaded on first launch when no server-side refresh has happened yet (offline first run, fresh install). The full ~1955-row catalogue ships from /v1/reference/location at runtime; this file just covers the major hero locations so the tray's classifier resolves something rather than nothing on day-zero. Regenerated periodically from a production /v1/reference/location dump; ordering is alphabetical for diff stability. See docs/PLAN-LOCATION-TAXONOMY-V2.md.",
+  "_comment": "Bundled-into-the-tray bootstrap snapshot of the Star Citizen location catalogue. Loaded on first launch when no server-side refresh has happened yet (offline first run, fresh install). The full ~1955-row catalogue ships from /v1/reference/location at runtime; this file just covers the major hero locations so the tray's classifier resolves something rather than nothing on day-zero. Regenerated periodically from a production /v1/reference/location dump; ordering is alphabetical for diff stability. See the location-taxonomy v2 plan.",
   "version": 1,
   "generated_at": "2026-05-22",
   "entries": [

@@ -32,7 +32,7 @@
 // ORDERING, learned the hard way: make sure the served rule set is NOT empty
 // before restoring verification. A client that can verify will adopt whatever
 // it is given, including an empty manifest, and drop the rules it was running
-// on. See docs/PARSER_DEFINITION_UPDATES.md.
+// on. See the parser-definition design note.
 
 import { execFileSync } from 'node:child_process';
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from 'node:crypto';

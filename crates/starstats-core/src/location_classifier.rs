@@ -11,7 +11,7 @@
 //!   catalogue is the cached snapshot fetched from
 //!   `/v1/reference/location` (with a bundled bootstrap so the
 //!   first launch with no network still classifies). See
-//!   `docs/PLAN-LOCATION-TAXONOMY-V2.md` Phase 4.
+//!   the location-taxonomy v2 plan Phase 4.
 //! * **Server** (`crates/starstats-server/src/ingest.rs`):
 //!   classifies on `/v1/ingest` so the journey-page rollups can
 //!   filter by `location_tier` / `location_subtype` without

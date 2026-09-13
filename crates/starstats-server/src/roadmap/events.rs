@@ -2,7 +2,7 @@
 //!
 //! Receives signed events from the CI pipeline carrying channel-level
 //! status transitions per spec §4. Implements the contract documented
-//! in `docs/ROADMAP-PIPELINE-SPEC.md` §4.1:
+//! in the roadmap-pipeline spec §4.1:
 //!
 //! - HMAC-SHA256 signature over `v1.<timestamp>.<body>` (mirrors the
 //!   Revolut webhook scheme); ±5 minute timestamp drift tolerance.

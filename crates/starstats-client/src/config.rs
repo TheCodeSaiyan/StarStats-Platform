@@ -59,7 +59,7 @@ pub struct Config {
     ///
     /// Stored as String (not ReleaseChannel) so we don't have to handle
     /// the deserialize-of-removed-variant edge case. Closed-vocabulary
-    /// enums stored as TEXT is the project convention (see docs/ENGINEERING.md).
+    /// enums stored as TEXT is the project convention (see the engineering notes).
     #[serde(default)]
     pub channel_mismatch_ack: Option<String>,
     /// When true, the tray writes a daily-rolling `client.log` to

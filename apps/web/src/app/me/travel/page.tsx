@@ -24,7 +24,7 @@
  * `parseRange`) and drives the trace / travel-stats windows off it, exactly
  * like the widgets. A `<RangeBar>` re-navigates the page per range.
  *
- * Fetching follows the docs/ENGINEERING.md invariant: every multi-endpoint render uses
+ * Fetching follows the engineering notes invariant: every multi-endpoint render uses
  * `Promise.allSettled`, never `Promise.all`, so one endpoint hiccup degrades
  * a single section rather than blanking the page. Each rejection is logged
  * individually with its `call=` label.
@@ -158,7 +158,7 @@ export default async function TravelPage(props: PageProps) {
     // Preference read failed; the default stands.
   }
 
-  // docs/ENGINEERING.md: multi-endpoint render → Promise.allSettled. Each source
+  // the engineering notes: multi-endpoint render → Promise.allSettled. Each source
   // degrades a single section, never the whole page; each rejection logs
   // its `call=` label + status.
   const [breakdownRes, routesRes, travelRes, traceRes, dwellRes, currentRes] =
@@ -242,7 +242,7 @@ export default async function TravelPage(props: PageProps) {
   // The FULL routes list — resolve raw engine ids / pipe hierarchies to
   // friendly labels and merge duplicates, then deep-link each. `label` is
   // pinned so the class-id prettifier never rewrites a free-text
-  // destination (docs/ENGINEERING.md free-text rule). NOT capped: this is the
+  // destination (the engineering notes free-text rule). NOT capped: this is the
   // detail page the widget's "See all →" points at.
   const routeRows = aggregateLocationBuckets(
     routes.map((r) => ({ value: r.destination, count: r.count })),

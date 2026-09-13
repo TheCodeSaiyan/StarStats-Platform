@@ -1,6 +1,6 @@
 //! Star Citizen location taxonomy — the 7-tier classification model
 //! derived from `starcitizen.tools` (the MediaWiki-based community
-//! wiki). See `docs/PLAN-LOCATION-TAXONOMY-V2.md` for the
+//! wiki). See the location-taxonomy v2 plan for the
 //! cross-stack rollout plan and `memory/sc-wiki-location-taxonomy.md`
 //! for the underlying source-of-truth reference.
 //!

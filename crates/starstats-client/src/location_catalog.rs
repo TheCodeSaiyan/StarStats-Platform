@@ -17,7 +17,7 @@
 //!   3. Empty catalog (graceful degradation — the classifier still
 //!      runs synthetic+heuristic+fallback paths).
 //!
-//! See `docs/PLAN-LOCATION-TAXONOMY-V2.md` Phase 4 for the
+//! See the location-taxonomy v2 plan Phase 4 for the
 //! cross-stack design.
 
 use std::path::Path;

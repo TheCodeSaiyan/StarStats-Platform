@@ -1,6 +1,6 @@
 //! Revolut order tracking — the local mirror of the merchant API order
 //! lifecycle. See `migrations/0018_revolut_orders.sql` for the schema
-//! and `docs/REVOLUT-INTEGRATION-PLAN.md` for the wider flow.
+//! and the Revolut integration plan for the wider flow.
 //!
 //! Three concerns live here:
 //!  1. The data store (CRUD on `revolut_orders` + insert-or-skip on
