@@ -427,6 +427,28 @@
   .hp-stage[data-lens="top"] .hp-settings { inset: 116px 0 22px; }
 }
 
+/* ── Outstanding-tasks banner ──────────────────────────────────────────────
+ * It renders inside a `Depth` layer, and `.hp-layer` is `position: absolute;
+ * inset: 0` — so without a top offset its first child starts at the very top
+ * of the stage, which is exactly where the chrome sits. Measured at 1440x900:
+ * the banner's top edge landed at y=24, the same y as `.hp-top`, and the layer
+ * is `z-index: auto` against the bar's 30 — so the nav painted over it. Moving
+ * the pointer low in the stage lifted the layer another ~11px (depth 36) plus
+ * the rotateX tilt, putting 46px of the banner behind the bar.
+ *
+ * 96px is the figure `.hp-settings` already uses for "below the chrome", and
+ * it leaves ~26px over the crumb's bottom edge — comfortably more than the
+ * parallax travel, so the clearance survives the tilt rather than only the
+ * resting state. The mobile value tracks `.hp-settings`' own 84px. */
+.hp-tasks {
+  margin-top: 96px;
+}
+@media (max-width: 700px) {
+  .hp-tasks {
+    margin-top: 84px;
+  }
+}
+
 /* Rows of controls inside a settings pane. */
 .hp-formrow {
   display: flex;

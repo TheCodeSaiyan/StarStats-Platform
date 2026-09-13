@@ -9,7 +9,13 @@
  * outlive the port.
  */
 import { test, expect } from '@playwright/test';
-import { loginAs, resetScenario, scenarioFor, setScenario } from './helpers/api-mock';
+import {
+  currentUser,
+  loginAs,
+  resetScenario,
+  scenarioFor,
+  setScenario,
+} from './helpers/api-mock';
 import { liveStage } from './helpers/shell';
 
 
@@ -321,4 +327,67 @@ test('a healthy account is not nagged', async ({ page, request }) => {
   await expect(page.getByText('Pair an uplink')).toHaveCount(0);
   await expect(page.getByText('Turn sync on')).toHaveCount(0);
   await expect(page.getByText(/Needs doing/)).toHaveCount(0);
+});
+
+test('the outstanding-tasks banner clears the chrome, at rest and under parallax', async ({
+  page,
+  request,
+}) => {
+  /**
+   * `OutstandingTasks` renders inside a `Depth` layer, and `.hp-layer` is
+   * `position: absolute; inset: 0` — so its first child starts at the TOP of
+   * the stage, which is where the chrome lives. Measured at 1440x900 before
+   * the fix: the banner's top edge sat at y=24, exactly where `.hp-top`
+   * begins, and the layer is `z-index: auto` against the nav's 30 — so the nav
+   * painted straight over it. Moving the pointer low in the stage lifted the
+   * layer further (depth 36 gives about 11px of travel, plus the rotateX
+   * tilt), leaving 46px of the banner behind the bar.
+   *
+   * The banner is `visible` throughout — it is the ANCESTOR chrome that covers
+   * it — so geometry is the only thing that separates the two renders. Checked
+   * under tilt as well as at rest, because the resting position alone passed
+   * within a few pixels while the tilted one was clearly wrong.
+   */
+  await resetScenario(request);
+  await setScenario(
+    request,
+    scenarioFor('tasks_clear_chrome', {
+      'GET /v1/auth/me': {
+        status: 200,
+        body: { ...currentUser.body, rsi_verified: false },
+      },
+      'GET /v1/devices': { status: 200, body: { devices: [] } },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/me');
+
+  const banner = page.locator('.hp-tasks');
+  await expect(banner).toBeVisible();
+  // Still a PLANE. `Plane` used to spread `className` over its own, so adding
+  // one here stripped `hp-plane` and the banner kept its content while losing
+  // its box entirely — visible, readable, and unstyled.
+  await expect(banner).toHaveClass(/hp-plane/);
+
+  const clearance = async () =>
+    page.evaluate(() => {
+      const b = document.querySelector('.hp-tasks')!.getBoundingClientRect();
+      const bars = ['.hp-top', '.hp-crumb']
+        .map((s) => document.querySelector(s))
+        .filter((e): e is Element => e != null)
+        .map((e) => e.getBoundingClientRect().bottom);
+      return Math.round(b.top - Math.max(...bars));
+    });
+
+  expect(await clearance(), 'banner overlaps the chrome at rest').toBeGreaterThan(0);
+
+  // Pointer low in the stage lifts every layer — this is the state the reader
+  // reported, and the one the resting measurement misses.
+  await page.mouse.move(720, 860);
+  await page.waitForTimeout(600);
+  expect(
+    await clearance(),
+    'banner slides under the chrome when the volume tilts',
+  ).toBeGreaterThan(0);
 });

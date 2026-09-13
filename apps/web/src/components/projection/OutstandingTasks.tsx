@@ -26,6 +26,7 @@ export function OutstandingTasks({ tasks }: { tasks: OutstandingTask[] }) {
   return (
     <Plane
       tilt="flat"
+      className="hp-tasks"
       cap={tasks.length === 1 ? 'Needs doing' : `Needs doing · ${tasks.length}`}
       hint="these clear themselves once sorted"
       style={{ marginBottom: 'var(--s5)' }}
