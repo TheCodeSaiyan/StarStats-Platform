@@ -810,11 +810,18 @@ Each run publishes:
 Then redeploy the `starstats-web-beta` service in Komodo so it re-pulls
 `:beta`.
 
+`$REGISTRY` and `$REGISTRY_DIRECT` stand for the container registry's proxied
+and DNS-only hostnames. They are deliberately not written out here — this is a
+public repository and an internal hostname is the one thing in this file worth
+keeping off it. Both live in `home-servers-build:compose/starstats/compose.yml`,
+which is the source of truth for them as it is for everything else in this
+section.
+
 **Rollback** is a repoint, not a rebuild — every past build is still
 addressable:
 
 ```bash
-docker buildx imagetools create   -t registry-direct.tatux.in/starstats/web:beta   registry-direct.tatux.in/starstats/web:beta-<sha7>
+docker buildx imagetools create   -t $REGISTRY_DIRECT/starstats/web:beta   $REGISTRY_DIRECT/starstats/web:beta-<sha7>
 ```
 
 ### Container definition
@@ -826,8 +833,8 @@ service with one image tag and four env values changed:
 
 | Setting | `starstats-web` | `starstats-web-beta` |
 | --- | --- | --- |
-| `image` | `registry.tatux.in/starstats/web:latest` | `registry.tatux.in/starstats/web:beta` |
-| `ipv4_address` | `192.168.90.182` | `192.168.90.187` |
+| `image` | `$REGISTRY/starstats/web:latest` | `$REGISTRY/starstats/web:beta` |
+| `ipv4_address` | *(see the compose file)* | *(see the compose file)* |
 | `STARSTATS_API_URL` | `http://starstats-api:8080` | `http://starstats-api:8080` (same — live) |
 | `STARSTATS_SITE_URL` | `https://starstats.app` | `https://beta.starstats.app` |
 | `STARSTATS_NOINDEX` | unset | `"1"` |
@@ -841,12 +848,12 @@ with `UnrecognizedActionError`. It only pins the content-addressing of
 server-action IDs; it shares no trust with the session cookie.
 
 **Registry hosts differ by direction, deliberately.** CI *pushes* to
-`registry-direct.tatux.in` (DNS-only, bypasses the Cloudflare proxy that
+`$REGISTRY_DIRECT` (DNS-only, bypasses the Cloudflare proxy that
 throttled large layer transfers). The stack *pulls* from
-`registry.tatux.in`. Same Distribution backend, so `:beta` pushed by the
+`$REGISTRY`. Same Distribution backend, so `:beta` pushed by the
 workflow is the `:beta` the host pulls.
 
-**Ordering constraint — this bites once.** `registry.tatux.in/starstats/web:beta`
+**Ordering constraint — this bites once.** `$REGISTRY/starstats/web:beta`
 must exist *before* the compose change reaches the host. `pull_policy: always`
 on a missing tag fails the pull, and a failed pull fails the whole stack
 deploy — which would block a production redeploy of `starstats-web` too.
