@@ -11,7 +11,8 @@ import type { Route } from 'next';
  *   1. NEVER SCROLL for data — `RankedList` caps to a top-N and surfaces the
  *      remainder as a "See more →" link / "+N more" note, never a scrollbar.
  *   2. NO WASTED SPACE — bodies render only their bounded summary; the tile
- *      height is sized to fit it (see WIDGET_META bounds).
+ *      height is sized to fit it (the flat grid once bounded this via
+ *      WIDGET_META; the projection sizes its planes to content).
  *   3. CONSISTENT STYLE — one HUD readout/row/meter vocabulary, so a design
  *      tweak lands everywhere at once.
  *

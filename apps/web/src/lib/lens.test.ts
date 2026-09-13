@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { LENSES, WIDGET_LENSES, widgetMatchesLens } from './lens';
-import { WIDGET_META } from '@/app/_components/widgets/widget-meta';
-import type { WidgetId } from '@/app/_components/widgets/types';
+import { REGISTERED_IDS } from '@/app/_components/widgets/registry';
 
 describe('lens helpers', () => {
   it('All matches every widget', () => {
@@ -37,8 +36,10 @@ describe('lens helpers', () => {
 // a silent fallback instead of a compile error.
 describe('WIDGET_LENSES covers the registry', () => {
   it('has an explicit lens list for every registered widget', () => {
-    const ids = Object.keys(WIDGET_META) as WidgetId[];
-    const missing = ids.filter((id) => WIDGET_LENSES[id] === undefined);
+    // `REGISTERED_IDS` is the registry itself — `WIDGET_META` used to stand
+    // in for it here, but that was the flat grid's title/bounds map and it
+    // went with the grid. The registry is what the projection renders from.
+    const missing = REGISTERED_IDS.filter((id) => WIDGET_LENSES[id] === undefined);
     expect(missing).toEqual([]);
   });
 
