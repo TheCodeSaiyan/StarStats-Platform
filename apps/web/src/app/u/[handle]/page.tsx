@@ -55,15 +55,14 @@ import { setCalibrationAction } from '@/app/me/_projection/actions';
 import { BeamTip, SubStats, type Calibration, type SubStatItem } from 'holo';
 import type { ViewerCtx } from '@/app/_components/widgets/types';
 import { DEFAULT_SHARE_SCOPES } from '@/app/_components/widgets/types';
-import { WidgetCanvas } from '@/app/_components/widgets/WidgetCanvas';
 // The projection element builder, shared with `/me`. It lives under
 // `me/_projection` because that surface was ported first; `RowLink` and
 // `recent-activity-rows` are already imported out of the same folder by `/kb`
 // and `/me/travel`, so it is a shared projection library in practice.
 import { buildElements } from '@/app/me/_projection/elements';
 import { getProfileLayoutForRender } from '@/lib/profile-layout';
-import { EditToggle } from '@/app/_components/widgets/EditToggle';
-import { EditModeProvider } from '@/app/_components/widgets/useEditMode';
+import { ArrangeProfile } from './_projection/ArrangeProfile';
+import { saveProfileLayoutAction } from './_projection/actions';
 import { ControlStrip } from '@/components/hud/ControlStrip';
 import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
 import { ProfileCard } from '@/components/ProfileCard';
@@ -254,12 +253,11 @@ export default async function PublicProfilePage(props: PageProps) {
    *
    * View mode is projection-native for every reader INCLUDING the owner: the
    * pane's context line claims "your profile, as others see it", and drawing
-   * the owner a different body would make that a lie. The layout editor is
-   * still the flat `WidgetCanvas`, so it becomes a distinct mode behind
-   * `?arrange=1` rather than a client toggle — `WidgetCanvas` is an async
-   * server component and cannot be swapped in by client state, and a
-   * URL-driven mode stays shareable and back-button correct, the same
-   * reasoning `RangeTabs` records for `?range=`.
+   * the owner a different body would make that a lie. Arranging is therefore a
+   * separate mode behind `?arrange=1` rather than something layered over the
+   * view: a URL-driven mode stays shareable and back-button correct, the same
+   * reasoning `RangeTabs` records for `?range=`, and the server can render the
+   * editor instead of the dock rather than swapping one in from client state.
    *
    * Owner-only: a visitor who types the URL gets the ordinary read-only
    * profile, never an editor over someone else's layout.
@@ -505,8 +503,8 @@ export default async function PublicProfilePage(props: PageProps) {
    * a claim about someone else's settings. That reasoning was right about the
    * LAYOUT and wrong about the page: `shareScopes` above is the pilot's own
    * per-scope switch set, fetched from `/v1/public/{handle}/share-scopes` with
-   * no token at all. It was already being fetched and handed to `WidgetCanvas`
-   * without ever being read. It is the pilot's actual decision, so it can be
+   * no token at all. The flat widget canvas was already being handed it and
+   * never read it. It is the pilot's actual decision, so it can be
    * stated to anyone — which is the whole point of the screen.
    *
    * `scopesKnown` is load-bearing. A failed fetch falls back to
@@ -679,23 +677,18 @@ export default async function PublicProfilePage(props: PageProps) {
           ) : null}
 
           {arranging ? (
-            /* The editor is still the flat canvas — the one surface that has
-               not been redrawn, because dragging a 24-column grid has no
-               projection equivalent yet. It is reached deliberately and left
-               deliberately, rather than sitting under every reader's view. */
-            <EditModeProvider>
-              <ControlStrip>
-                <span style={{ flex: 1 }} />
-                <Link
-                  href={`/u/${encodeURIComponent(handle)}` as Route}
-                  className="hp-btn hp-btn--ghost"
-                >
-                  Done
-                </Link>
-                <EditToggle />
-              </ControlStrip>
-              <WidgetCanvas ctx={viewerCtx} surface="profile" />
-            </EditModeProvider>
+            /* The projection's own layout editor, not the flat drag grid it
+               replaced. The dock renders a plane stack in layout ORDER and
+               reads no geometry, so "which elements, in what order" is the
+               whole of what this surface can express — and the old canvas let
+               an owner drag a tile to coordinates nothing would read. */
+            <ArrangeProfile
+              handle={handle}
+              enabledIds={profileLayout
+                .filter((e) => e.enabled)
+                .map((e) => e.id)}
+              onSave={saveProfileLayoutAction}
+            />
           ) : (
             <>
               {isOwner ? (

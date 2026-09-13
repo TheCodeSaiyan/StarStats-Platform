@@ -453,9 +453,14 @@ test('the owner can still arrange the profile layout', async ({
    * showing the owner a different design would make that a lie.
    *
    * Arranging is therefore a distinct mode behind `?arrange=1` rather than a
-   * client toggle: `WidgetCanvas` is an async server component, so it cannot
-   * be swapped in by client state, and a URL-driven mode stays shareable and
-   * back-button correct — the same reasoning `RangeTabs` records for `?range=`.
+   * client toggle: a URL-driven mode stays shareable and back-button correct,
+   * the same reasoning `RangeTabs` records for `?range=`, and the server can
+   * render the editor in place of the dock.
+   *
+   * The editor is the projection's own (`.hp-layout`), not the flat 24-column
+   * drag grid it replaced — that grid edited geometry this surface stopped
+   * reading when the body became a plane stack, so an owner could drag a tile
+   * somewhere nothing would render it.
    */
   await setScenario(request, {
     __id: 'public_owner_arrange',
@@ -472,7 +477,14 @@ test('the owner can still arrange the profile layout', async ({
   // ...and it reaches the editor.
   await arrange.click();
   await expect(page).toHaveURL(/arrange=1/);
-  await expect(page.locator('.hud-freegrid')).toHaveCount(1);
+  await expect(page.locator('.hp-layout')).toBeVisible();
+  // ...offering the profile's own elements, with the widget the dock draws
+  // by default among them.
+  await expect(
+    page.locator('.hp-layout').getByText(/sessions/i).first(),
+  ).toBeVisible();
+  // The flat grid is gone from this surface entirely, editor included.
+  await expect(page.locator('.hud-freegrid')).toHaveCount(0);
 });
 
 test('a visitor is never offered the arrange mode', async ({ page, request }) => {
@@ -487,5 +499,6 @@ test('a visitor is never offered the arrange mode', async ({ page, request }) =>
   await page.goto('/u/JohnSomeone?arrange=1');
 
   await expect(page.locator('.hud-freegrid')).toHaveCount(0);
+  await expect(page.locator('.hp-layout')).toHaveCount(0);
   await expect(page.getByRole('link', { name: /arrange/i })).toHaveCount(0);
 });
