@@ -53,22 +53,9 @@
    lens filters, edit toolbar). Active via aria-pressed / aria-current so the
    same class drives buttons and links. Consolidates the pattern previously
    hand-rolled inline in RangeBar / lens nav / EditToggle / edit toolbar. */
-.hud-chip {
-  font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 12px; line-height: 1; letter-spacing: .02em;
-  padding: 4px 10px; border: 1px solid var(--border); border-radius: 4px;
-  background: transparent; color: var(--fg-muted);
-  text-decoration: none; cursor: pointer;
-}
-.hud-chip:hover { border-color: var(--accent); color: var(--fg); }
-.hud-chip[aria-pressed="true"], .hud-chip[aria-current="page"] {
-  background: var(--accent); border-color: var(--accent); color: var(--bg);
-}
-.hud-chip--sm { padding: 2px 6px; font-size: 11px; }
-.hud-chip--ghost { border-color: transparent; background: transparent; }
-.hud-chip--ghost:hover { border-color: transparent; color: var(--fg); }
-.hud-chip--grip { cursor: grab; font-size: 14px; }
-.hud-chip[aria-checked="false"] { color: var(--fg-dim); }
+/* `.hud-chip` stood here. Nothing in the web or the tray renders it any
+   more — the projection has BeamChip — so its eight rules went with the
+   flat-era sweep. */
 /* Inline accent text button (e.g. the empty-profile "Edit layout" prompt). */
 .hud-textbtn { background: transparent; border: none; padding: 0; color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; }
 .hud-readout { font-family: var(--font-mono, ui-monospace, monospace); font-size: 12px; color: var(--fg); }

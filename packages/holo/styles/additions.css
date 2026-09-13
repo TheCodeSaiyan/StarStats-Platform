@@ -1861,11 +1861,10 @@
   --grid-4: rgba(var(--hR), var(--hG), var(--hB), 0.92);
 }
 
-/* Square corners on the flat chip and the heat cell. The system has none, and
-   a 3-4px radius on a small element is precisely where the old idiom is most
-   visible — a grid of rounded cells reads as the previous design however the
-   colours are set. */
-.ss-projection-root .hud-chip,
+/* Square corners on the heat cell. The system has none, and a 3-4px radius
+   on a small element is precisely where the old idiom is most visible — a
+   grid of rounded cells reads as the previous design however the colours
+   are set. (`.hud-chip` was listed here too; nothing renders it now.) */
 .ss-projection-root .ss-heatcell {
   border-radius: 0;
 }
@@ -3119,7 +3118,6 @@ html[data-wave-speed='off'] .hp-stage::after {
    these join the label tier explicitly rather than by moving the alias, which
    would make every flat muted paragraph shout. */
 .ss-projection-root .hud-nosignal__title,
-.ss-projection-root .hud-chip,
 .ss-projection-root .hud-note {
   color: var(--label);
 }
