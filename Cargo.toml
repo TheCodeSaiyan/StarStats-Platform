@@ -75,7 +75,7 @@ opentelemetry_sdk = { version = "0.32", features = ["rt-tokio"] }
 opentelemetry-otlp = { version = "0.32", features = ["grpc-tonic", "tls"] }
 
 # HTTP server / middleware
-axum = "0.7"
+axum = "0.8"
 tower = "0.5"
 tower-http = { version = "0.7", features = ["trace", "cors", "compression-zstd", "request-id"] }
 
