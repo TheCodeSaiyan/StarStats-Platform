@@ -144,21 +144,11 @@ keyring = { version = "3", default-features = false, features = [
 # Process enumeration. The hangar fetcher reads this to skip cycles
 # while StarCitizen.exe is running so overlapping authenticated HTTP
 # from the same machine doesn't trip Easy Anti-Cheat heuristics.
-# Pinned to 0.30 — 0.31+ changed `refresh_processes` to require a
-# `ProcessesToUpdate` argument and `process.name()` to return
-# `&OsStr` instead of `&str`. We can take that bump in a separate
-# pass.
-# Pinned to 0.38 — the last sysinfo release with MSRV 1.88 (matches the
-# workspace `rust-version`); 0.39+ require rustc 1.95. Same treatment as
-# aws-sdk-s3 below: Dependabot is told to ignore sysinfo >=0.39 in
-# .github/dependabot.yml so it stops re-proposing the MSRV-breaking bump
-# until the toolchain moves. 0.30 -> 0.38 still carries the API changes
-# from 0.31/0.32/0.33 (ProcessesToUpdate, remove_dead_processes,
-# RefreshKind::nothing), which process_guard.rs and commands.rs take.
-# `default-features = false` predates sysinfo splitting each subsystem into
-# a cargo feature; with nothing opted in, `System` and `Disks` are not even
-# exported. The tray uses exactly two: process liveness and disk free space.
-sysinfo = { version = "0.38", default-features = false, features = ["system", "disk"] }
+# The tray uses two sysinfo subsystems — process liveness and disk free
+# space — so `default-features = false` with exactly those two features.
+# (Since 0.33 every subsystem is a cargo feature; with none opted in,
+# `System` and `Disks` are not even exported.)
+sysinfo = { version = "0.39", default-features = false, features = ["system", "disk"] }
 
 # Mail (SMTP — async via tokio + rustls). Used for verification emails.
 # `default-features = false` drops the native-tls path so we don't pull
@@ -184,15 +174,10 @@ tonic = "0.12"
 # We deliberately avoid `aws-config`'s default credential chain (no SSO,
 # IMDS, or STS); the server uses a static access key from a Docker
 # secret. `behavior-version-latest` opts in to current SigV4 defaults.
-# Pinned to 1.121.0 — it's the last aws-sdk-s3 release with MSRV 1.88
-# (matches the workspace `rust-version`); 1.122+ require rustc 1.91
-# (via aws-smithy-types 1.5 / aws-smithy-json 0.62.5). Dependabot is
-# told to ignore aws-sdk-s3 in .github/dependabot.yml so it stops
-# re-proposing the MSRV-breaking bump until the toolchain moves.
-# Direct sub-deps capped to the last 1.88-compatible patch; later
-# patches bump MSRV to 1.91. Transitive aws-smithy-* deps drift the
-# same way — the lockfile tracks the working versions; bump rust
-# toolchain in lockstep when upgrading them.
+# Versions are carets again. They were held at exact 1.88-MSRV pins while
+# the toolchain sat at 1.88; the toolchain is 1.98 now, so the caps and the
+# matching Dependabot ignore are gone and the next aws-sdk-s3 bump arrives
+# as an ordinary Dependabot PR. The lockfile stays where it is until then.
 # TLS: `default-https-client`, NOT `rustls`. The SDK's `rustls` feature maps
 # to `aws-smithy-runtime/tls-rustls`, which is the LEGACY connector — it pulls
 # `legacy-rustls` (rustls 0.21) on top of hyper 0.14, and with it
@@ -217,9 +202,9 @@ tonic = "0.12"
 # because the SDK default pulls in the full `aws-config` credential
 # chain (STS / SSO / IMDS) which we deliberately avoid — production
 # uses a static MinIO access key from a Docker secret.
-aws-sdk-s3 = { version = "=1.121.0", default-features = false, features = ["default-https-client", "behavior-version-latest", "rt-tokio"] }
-aws-credential-types = ">=1.2.8, <1.2.12"
-aws-smithy-runtime-api = ">=1.10, <1.11.4"
+aws-sdk-s3 = { version = "1.121", default-features = false, features = ["default-https-client", "behavior-version-latest", "rt-tokio"] }
+aws-credential-types = "1.2"
+aws-smithy-runtime-api = "1.10"
 
 [profile.release]
 lto = "thin"
