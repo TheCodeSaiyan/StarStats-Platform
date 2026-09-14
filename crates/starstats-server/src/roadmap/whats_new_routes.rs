@@ -443,6 +443,44 @@ mod tests {
         }
     }
 
+    /// The module doc says "anonymous path (no bearer / invalid bearer)".
+    /// Under axum 0.7 that came for free — `Option<T>` swallowed every
+    /// extractor error. axum 0.8 made `Option<T>` its own trait, so the
+    /// invalid-bearer half is now a hand-written `OptionalFromRequestParts`
+    /// impl in auth.rs, and this is the test that keeps it honest: a stale
+    /// or garbage token on a page with a public shape gets the public
+    /// feed, not a 401. Reverting that impl to propagate errors fails
+    /// here with 401.
+    #[tokio::test]
+    async fn invalid_bearer_falls_back_to_anonymous() {
+        let memory = Arc::new(MemoryRoadmapStore::new());
+        let (_, _) = seed_item_with_published_entry(&memory, "alpha", true).await;
+        let (_, _) = seed_item_with_published_entry(&memory, "beta", true).await;
+
+        let store: Arc<dyn RoadmapStore> = memory;
+        let (_issuer, verifier) = fresh_pair();
+        let app = build_app(store, Arc::new(verifier));
+
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/me/roadmap/whats-new")
+                    .header("authorization", "Bearer not-a-token")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK, "a bad bearer is anonymous, not rejected");
+        let bytes = to_bytes(resp.into_body(), 1 << 20).await.unwrap();
+        let body: WhatsNewResponse = serde_json::from_slice(&bytes).unwrap();
+        assert!(!body.seen_via_auth);
+        assert_eq!(body.items.len(), 2);
+        for item in &body.items {
+            assert!(!item.unread);
+        }
+    }
+
     #[tokio::test]
     async fn authed_unread_items_surface() {
         let memory = Arc::new(MemoryRoadmapStore::new());
