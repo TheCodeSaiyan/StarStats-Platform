@@ -49,6 +49,11 @@ updates:
       # smithy chain on its 1.88-compatible versions.
       - dependency-name: aws-sdk-s3
         versions: [">=1.122.0"]
+      # sysinfo 0.39+ declares rust-version 1.95; the workspace pins 1.88.
+      # Hold at 0.38.x (the last 1.88-compatible line) until the toolchain
+      # is bumped. See the pin note in Cargo.toml.
+      - dependency-name: sysinfo
+        versions: [">=0.39.0"]
 
   # pnpm workspace lives at the repo root (pnpm-workspace.yaml lists
   # apps/* and packages/*). Pointing Dependabot at `/` covers every
