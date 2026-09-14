@@ -471,7 +471,11 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::OK, "a bad bearer is anonymous, not rejected");
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "a bad bearer is anonymous, not rejected"
+        );
         let bytes = to_bytes(resp.into_body(), 1 << 20).await.unwrap();
         let body: WhatsNewResponse = serde_json::from_slice(&bytes).unwrap();
         assert!(!body.seen_via_auth);
