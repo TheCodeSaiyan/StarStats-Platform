@@ -68,6 +68,10 @@ updates:
           - minor
           - patch
     ignore:
+      # @vitejs/plugin-react 6 peers on vite ^8; apps/tray-ui is on Vite 6.
+      # Hold at 5.x (the Vite 6/7 line) until Vite moves. See #53.
+      - dependency-name: "@vitejs/plugin-react"
+        versions: [">=6.0.0"]
       # React majors land with concurrent-mode / hook-rule changes —
       # take them in a dedicated PR with full e2e re-runs.
       - dependency-name: react
