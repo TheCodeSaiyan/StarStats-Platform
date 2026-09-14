@@ -6652,7 +6652,7 @@ dependencies = [
 
 [[package]]
 name = "starstats-core"
-version = "0.1.45"
+version = "0.1.46"
 dependencies = [
  "chrono",
  "once_cell",
@@ -6668,7 +6668,7 @@ dependencies = [
 
 [[package]]
 name = "starstats-server"
-version = "0.1.45"
+version = "0.1.46"
 dependencies = [
  "aes-gcm",
  "anyhow",
