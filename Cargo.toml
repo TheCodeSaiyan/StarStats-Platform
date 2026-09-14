@@ -148,7 +148,7 @@ keyring = { version = "3", default-features = false, features = [
 # `ProcessesToUpdate` argument and `process.name()` to return
 # `&OsStr` instead of `&str`. We can take that bump in a separate
 # pass.
-sysinfo = { version = "0.30", default-features = false }
+sysinfo = { version = "0.39", default-features = false }
 
 # Mail (SMTP — async via tokio + rustls). Used for verification emails.
 # `default-features = false` drops the native-tls path so we don't pull
