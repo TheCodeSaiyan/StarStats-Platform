@@ -2685,7 +2685,9 @@ fn cached_sysinfo() -> (bool, Option<u64>) {
 fn compute_sysinfo() -> (bool, Option<u64>) {
     use sysinfo::{ProcessRefreshKind, RefreshKind, System};
     let sys =
-        System::new_with_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
+        // `RefreshKind::new` and `ProcessRefreshKind::new` became `nothing` in
+        // sysinfo 0.33 — same meaning, refresh nothing but what is opted in.
+        System::new_with_specifics(RefreshKind::nothing().with_processes(ProcessRefreshKind::nothing()));
     let sc_running = sys
         .processes_by_name("StarCitizen.exe".as_ref())
         .next()
