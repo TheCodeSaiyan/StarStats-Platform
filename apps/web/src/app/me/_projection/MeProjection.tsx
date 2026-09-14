@@ -158,7 +158,13 @@ export function MeProjection({
   // event played, and nothing recalibrated.
   const [cal, setCal] = React.useState<Calibration>(calibration);
   // Keep in step if the server sends a different value on a later navigation.
-  React.useEffect(() => setCal(calibration), [calibration]);
+  // Adjusted during render against the previous prop, not in an effect: the
+  // same result without the extra commit (react-hooks/set-state-in-effect).
+  const [seenCalibration, setSeenCalibration] = React.useState(calibration);
+  if (calibration !== seenCalibration) {
+    setSeenCalibration(calibration);
+    setCal(calibration);
+  }
 
   /**
    * ADDING A WIDGET HAS TO REACH THE SERVER BEFORE IT CAN DRAW.

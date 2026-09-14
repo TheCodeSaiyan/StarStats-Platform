@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 
 import { utcIsoToLocalInput } from '@/lib/expiry';
+import { useIsClient } from '@/lib/use-is-client';
 
 /**
  * Timezone-correct auto-expiry picker for the share form.
@@ -26,17 +27,24 @@ export function ExpiryField({
   prefillIso?: string;
   style?: React.CSSProperties;
 }) {
-  // The offset is unknown during SSR. Start neutral so the server-rendered
-  // markup matches the first client render (no hydration mismatch), then fill
-  // in the real offset + localized prefill after mount.
-  const [offsetMinutes, setOffsetMinutes] = useState<number | ''>('');
+  // The offset is unknown during SSR. It stays '' for the server render and
+  // the hydration render (so markup matches) and is read from the browser at
+  // render time behind the client gate from then on — derived, not copied
+  // into state after mount.
+  const isClient = useIsClient();
+  const offsetMinutes: number | '' = isClient ? new Date().getTimezoneOffset() : '';
   const [value, setValue] = useState('');
-
-  useEffect(() => {
-    const off = new Date().getTimezoneOffset();
-    setOffsetMinutes(off);
-    if (prefillIso) setValue(utcIsoToLocalInput(prefillIso, off));
-  }, [prefillIso]);
+  // The localised prefill needs the offset, so it can only be applied on the
+  // client. Applied during render and keyed on the prop — React's "adjust
+  // state when a prop changes" pattern — so a new prefill on a later render is
+  // taken, and a user's own edits in between are not overwritten.
+  const [appliedPrefill, setAppliedPrefill] = useState<string | undefined>(undefined);
+  if (isClient && prefillIso !== appliedPrefill) {
+    setAppliedPrefill(prefillIso);
+    if (prefillIso && offsetMinutes !== '') {
+      setValue(utcIsoToLocalInput(prefillIso, offsetMinutes));
+    }
+  }
 
   return (
     <>

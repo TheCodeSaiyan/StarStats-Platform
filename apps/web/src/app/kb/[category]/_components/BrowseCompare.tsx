@@ -101,7 +101,13 @@ export function BrowseCompare({
   const stats = AXES[category];
   const [picked, setPicked] = React.useState<string[]>([]);
   const [mode, setMode] = React.useState<'radar' | 'bars'>('radar');
-  const [entries, setEntries] = React.useState<CompareEntry[]>([]);
+  // Fetched vectors are keyed by the request that produced them, so the
+  // rendered `entries` are derived: the current key's result, or nothing while
+  // it is in flight or when fewer than two are picked. That replaces an effect
+  // that cleared state synchronously before fetching.
+  const [fetched, setFetched] = React.useState<{ key: string; entries: CompareEntry[] }>(
+    { key: '', entries: [] },
+  );
 
   const bySlug = React.useMemo(() => {
     const m = new Map<string, string>();
@@ -109,15 +115,18 @@ export function BrowseCompare({
     return m;
   }, [options]);
 
+  const slugs = React.useMemo(
+    () => picked.map((n) => bySlug.get(n)).filter(Boolean) as string[],
+    [picked, bySlug],
+  );
+  const requestKey = picked.length < 2 ? '' : `${category}:${slugs.join(',')}`;
+  const entries = requestKey && fetched.key === requestKey ? fetched.entries : [];
+
   React.useEffect(() => {
-    if (picked.length < 2) {
-      setEntries([]);
-      return;
-    }
+    if (!requestKey) return;
     let cancelled = false;
-    const slugs = picked.map((n) => bySlug.get(n)).filter(Boolean) as string[];
     fetchCompareVectors(category, slugs).then((r) => {
-      if (!cancelled) setEntries(r.entries);
+      if (!cancelled) setFetched({ key: requestKey, entries: r.entries });
     });
     return () => {
       cancelled = true;

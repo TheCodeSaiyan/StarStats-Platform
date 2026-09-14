@@ -87,7 +87,14 @@ export function LandingProjection({
 }) {
   const router = useRouter();
   const [cal, setCal] = React.useState<Calibration>(calibration);
-  React.useEffect(() => setCal(calibration), [calibration]);
+  // Keep in step if the server sends a different value on a later navigation.
+  // Adjusted during render against the previous prop, not in an effect: the
+  // same result without the extra commit (react-hooks/set-state-in-effect).
+  const [seenCalibration, setSeenCalibration] = React.useState(calibration);
+  if (calibration !== seenCalibration) {
+    setSeenCalibration(calibration);
+    setCal(calibration);
+  }
   const [recalKey, setRecalKey] = React.useState(0);
 
   const calibrate = (id: CalibrationId) => {

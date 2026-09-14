@@ -204,6 +204,7 @@ export default async function RootLayout({
       // (recipients should know who used to share) but the badge should reflect
       // things to look at NOW. An expired badge would be noise and would never
       // clear.
+      // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
       const now = Date.now();
       inboundShareCount = shared.shared_with_me.filter(
         (entry) =>

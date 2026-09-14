@@ -15,6 +15,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { WaitlistForm } from './WaitlistForm';
+import { useIsClient } from '@/lib/use-is-client';
 
 const DISMISS_COOKIE = 'ss_beta_dismissed';
 // ~180 days.
@@ -53,15 +54,13 @@ function channelSource(): string {
 
 export function BetaGate() {
   const [open, setOpen] = useState(true);
-  // Resolved in an effect: this component SSRs once for the initial HTML,
-  // and `window` isn't there. The value is only read at submit time, so
-  // the late resolution can't cause a hydration mismatch.
-  const [source, setSource] = useState(DEFAULT_SOURCE);
+  // This component SSRs once for the initial HTML, and `window` isn't there.
+  // The value is only read at submit time, so it is derived at render behind
+  // the client gate rather than copied into state after mount: same value,
+  // same hydration safety, one render fewer.
+  const isClient = useIsClient();
+  const source = isClient ? channelSource() : DEFAULT_SOURCE;
   const dialogRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    setSource(channelSource());
-  }, []);
 
   const dismiss = () => {
     setDismissed();

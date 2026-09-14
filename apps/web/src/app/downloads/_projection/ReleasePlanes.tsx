@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Plane, HoloTable, HoloKV, BeamChip, Flatline } from 'holo';
+import { useIsClient } from '@/lib/use-is-client';
 import {
   formatBytes,
   RELEASES_HTML_URL,
@@ -89,8 +90,9 @@ export function ReleasePlanes({
   prerelease: TrayRelease | null;
   error: boolean;
 }) {
-  const [os, setOs] = useState<AssetOs | null>(null);
-  useEffect(() => setOs(detectOs()), []);
+  // `null` on the server and hydration renders, the detected OS from the
+  // first client render on — derived, not copied into state after mount.
+  const os: AssetOs | null = useIsClient() ? detectOs() : null;
 
   if (!stable) {
     return (

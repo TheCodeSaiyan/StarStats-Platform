@@ -633,6 +633,7 @@ export default async function SharingPage(props: {
   // clamp, so they cannot disagree with each other.
   const publicScopeDescription = describePublicScope(visibility?.public_scope);
   const isOptedOut = visibility?.listing_opt_out === true;
+  // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
   const now = Date.now();
   const shareEntries = shares?.shares ?? [];
   const expiredCount = shareEntries.filter(

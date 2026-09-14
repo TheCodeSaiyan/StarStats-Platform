@@ -11,6 +11,7 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { rankFuzzy } from '@/lib/fuzzy';
+import { useIsClient } from '@/lib/use-is-client';
 
 /**
  * Text box with a fuzzy-ranked pick-list underneath: the "Add vehicle…" / "Add weapon…" and
@@ -86,7 +87,6 @@ export function SearchPicker({
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [pos, setPos] = useState<Pos | null>(null);
   const listId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,8 +95,7 @@ export function SearchPicker({
   // Portal target only exists on the client. Gate on a mounted flag rather
   // than `typeof document`, so the server render and the first client
   // render agree and hydration doesn't mismatch.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useIsClient();
 
   const results = useMemo(() => {
     const q = query.trim();
@@ -106,15 +105,22 @@ export function SearchPicker({
 
   const showing = open && !disabled && results.length > 0;
 
-  // Keep the active row inside the current result set.
-  useEffect(() => {
-    setActive((a) => Math.min(a, Math.max(0, results.length - 1)));
-  }, [results.length]);
+  // The active row is the reader's intent; the row actually highlighted is
+  // that intent clamped to the current result set. Derived at render rather
+  // than written back into state from an effect, so a shrinking result set
+  // never shows a highlight past the end for a frame.
+  const activeIdx = Math.min(active, Math.max(0, results.length - 1));
 
-  const place = useCallback(() => {
+  // `place` only MEASURES. It used to write the position itself, which made
+  // every caller — the layout effect included — a state write routed through a
+  // callback, and react-hooks/set-state-in-effect flags exactly that. Returning
+  // the position lets the layout effect set it directly, which the rule allows
+  // (measure-then-position is what useLayoutEffect is for), and the listeners
+  // do the same.
+  const place = useCallback((): Pos | null => {
     const input = inputRef.current;
     const list = listRef.current;
-    if (!input || !list) return;
+    if (!input || !list) return null;
     const r = input.getBoundingClientRect();
     const l = list.getBoundingClientRect();
     const vw = document.documentElement.clientWidth;
@@ -130,23 +136,40 @@ export function SearchPicker({
     let top = r.bottom + GAP;
     if (top + l.height > vh - PAD) top = Math.max(PAD, r.top - l.height - GAP);
 
-    setPos({ top: Math.round(top), left: Math.round(left), width: Math.round(width) });
+    return { top: Math.round(top), left: Math.round(left), width: Math.round(width) };
+  }, []);
+
+  // THE POSITION IS WRITTEN TO THE ELEMENT, NOT TO STATE.
+  //
+  // Measuring the DOM and storing the result in state made every open a
+  // second render — commit, measure in a layout effect, set state, commit
+  // again — and react-hooks/set-state-in-effect flags precisely that. The
+  // geometry lives outside React; writing it straight back to the element's
+  // style inside the layout effect lands before the same paint, with no state
+  // and no second commit. Hidden until measured so nothing flashes at 0,0.
+  const apply = useCallback((p: Pos | null) => {
+    const list = listRef.current;
+    if (!list) return;
+    if (p) {
+      list.style.top = `${p.top}px`;
+      list.style.left = `${p.left}px`;
+      list.style.width = `${p.width}px`;
+      list.style.visibility = 'visible';
+    } else {
+      list.style.visibility = 'hidden';
+    }
   }, []);
 
   // Measure before paint so the list never shows at a stale position.
   useLayoutEffect(() => {
-    if (!showing) {
-      setPos(null);
-      return;
-    }
-    place();
-  }, [showing, results, place]);
+    apply(showing ? place() : null);
+  }, [showing, results, place, apply]);
 
   // `position: fixed` does not follow the anchor, so track it while open.
   // Capture phase catches scrolls inside any container, not just the window.
   useEffect(() => {
     if (!showing) return;
-    const onMove = () => place();
+    const onMove = () => apply(place());
     window.addEventListener('scroll', onMove, true);
     window.addEventListener('resize', onMove);
     return () => {
@@ -188,9 +211,9 @@ export function SearchPicker({
         if (results.length > 0) setActive((a) => (a - 1 + results.length) % results.length);
         break;
       case 'Enter':
-        if (showing && results[active]) {
+        if (showing && results[activeIdx]) {
           e.preventDefault();
-          pick(results[active].key);
+          pick(results[activeIdx].key);
         }
         break;
       case 'Escape':
@@ -216,10 +239,11 @@ export function SearchPicker({
       aria-label={label}
       style={{
         position: 'fixed',
-        top: pos?.top ?? 0,
-        left: pos?.left ?? 0,
-        width: pos?.width ?? MIN_LIST_WIDTH,
-        visibility: pos ? 'visible' : 'hidden',
+        top: 0,
+        left: 0,
+        width: MIN_LIST_WIDTH,
+        // Placed by the layout effect before paint; hidden until then.
+        visibility: 'hidden',
         // Above the tile grid and the sticky chrome, matching `.infotip__pop`.
         zIndex: 200,
         listStyle: 'none',
@@ -233,7 +257,7 @@ export function SearchPicker({
       }}
     >
       {results.map((item, i) => {
-        const isActive = i === active;
+        const isActive = i === activeIdx;
         return (
           <li
             key={item.key}
@@ -278,7 +302,7 @@ export function SearchPicker({
         aria-autocomplete="list"
         aria-expanded={showing}
         aria-controls={showing ? listId : undefined}
-        aria-activedescendant={showing && results[active] ? optionId(active) : undefined}
+        aria-activedescendant={showing && results[activeIdx] ? optionId(activeIdx) : undefined}
         placeholder={placeholder}
         disabled={disabled}
         value={query}

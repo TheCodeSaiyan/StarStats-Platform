@@ -33,6 +33,7 @@ export function InboundList({
     );
   }
 
+  // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
   const now = Date.now();
   const isExpired = (e: SharedWithMeEntry) =>
     e.expires_at != null && new Date(e.expires_at).getTime() <= now;

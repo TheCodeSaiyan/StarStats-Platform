@@ -46,7 +46,6 @@ interface EntityHoverCardProps {
   /** Stable id so the triggering EntityLink can `aria-describedby` it. */
   id?: string;
   /** Measured viewport position. `null` until the first layout pass. */
-  pos: HoverCardPos | null;
 }
 
 interface Field {
@@ -108,7 +107,7 @@ function fieldsFor(_category: ReferenceCategory, entry: ReferenceEntry): Field[]
 }
 
 export const EntityHoverCard = forwardRef<HTMLSpanElement, EntityHoverCardProps>(
-  function EntityHoverCard({ category, entry, id, pos }, ref) {
+  function EntityHoverCard({ category, entry, id }, ref) {
     const fields = fieldsFor(category, entry);
     // Everything here is phrasing content (spans, not <dl>/<dt>/<dd> or
     // <div>): the card is portaled to <body> now, but it is still
@@ -125,9 +124,10 @@ export const EntityHoverCard = forwardRef<HTMLSpanElement, EntityHoverCardProps>
         aria-label={`${entry.display_name} details`}
         style={{
           position: 'fixed',
-          top: pos?.top ?? 0,
-          left: pos?.left ?? 0,
-          visibility: pos ? 'visible' : 'hidden',
+          top: 0,
+          left: 0,
+          // Placed by useHoverCard's layout effect before paint; hidden until then.
+          visibility: 'hidden',
           width: HOVER_CARD_WIDTH,
           padding: '10px 12px',
           background: 'var(--bg-elev)',

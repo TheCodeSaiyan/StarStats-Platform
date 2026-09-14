@@ -18,7 +18,9 @@
 
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
+
+const subscribeNever = () => () => {};
 import type { DiscoverProfile } from '@/lib/api';
 import { DiscoverProfileCard } from './DiscoverProfileCard';
 
@@ -39,15 +41,15 @@ export function DiscoverLoadMore({ initialAfter, limit, initialCount }: Props) {
   const [extra, setExtra] = useState<DiscoverProfile[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [gridEl, setGridEl] = useState<HTMLUListElement | null>(null);
-
-  // Locate the SSR grid once on mount so we can portal cards into it.
-  useEffect(() => {
-    const el = document.querySelector<HTMLUListElement>(
-      '[data-testid="discover-grid"]',
-    );
-    setGridEl(el);
-  }, []);
+  // The SSR grid is DOM this component does not own — an external store.
+  // `null` on the server, the element on the client; querySelector returns
+  // the same node each time, so the snapshot is stable and nothing loops.
+  const gridEl = useSyncExternalStore(
+    subscribeNever,
+    () =>
+      document.querySelector<HTMLUListElement>('[data-testid="discover-grid"]'),
+    () => null,
+  );
 
   const onClick = useCallback(async () => {
     if (cursor === null || loading) return;

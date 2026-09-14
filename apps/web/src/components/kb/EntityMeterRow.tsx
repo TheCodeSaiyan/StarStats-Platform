@@ -47,7 +47,7 @@ export function EntityMeterRow({
   entry,
   linkAs,
 }: EntityMeterRowProps) {
-  const { hovered, setHovered, pos, cardId, anchorRef, cardRef, mounted } =
+  const { hovered, setHovered, cardId, anchorRef, cardRef, mounted } =
     useHoverCard<HTMLElement, HTMLSpanElement>();
 
   const card = hovered ? (
@@ -56,7 +56,6 @@ export function EntityMeterRow({
       id={cardId}
       category={category}
       entry={entry}
-      pos={pos}
     />
   ) : null;
 

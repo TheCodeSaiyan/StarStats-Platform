@@ -25,6 +25,7 @@ import {
   useState,
 } from 'react';
 import { HOVER_CARD_WIDTH, type HoverCardPos } from './EntityHoverCard';
+import { useIsClient } from '@/lib/use-is-client';
 
 /** Gap between the trigger and the card. */
 const GAP = 6;
@@ -37,7 +38,6 @@ export interface HoverCardController<
 > {
   hovered: boolean;
   setHovered: (v: boolean) => void;
-  pos: HoverCardPos | null;
   /** Stable id, for the trigger's `aria-describedby`. */
   cardId: string;
   anchorRef: React.RefObject<A | null>;
@@ -51,7 +51,6 @@ export function useHoverCard<
   C extends HTMLElement = HTMLElement,
 >(): HoverCardController<A, C> {
   const [hovered, setHovered] = useState(false);
-  const [pos, setPos] = useState<HoverCardPos | null>(null);
   // Stable id to wire the trigger's `aria-describedby` to the hover card so
   // screen-reader users get the detail on focus, not just sighted hover (M-W10).
   const cardId = useId();
@@ -61,13 +60,18 @@ export function useHoverCard<
   // Portal target only exists on the client. Gate on a mounted flag rather
   // than `typeof document`, so the server render and the first client render
   // agree and hydration doesn't mismatch.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useIsClient();
 
-  const place = useCallback(() => {
+  // `place` only MEASURES. It used to write the position itself, which made
+  // every caller — the layout effect included — a state write routed through a
+  // callback, and react-hooks/set-state-in-effect flags exactly that. Returning
+  // the position lets the layout effect set it directly, which the rule allows
+  // (measure-then-position is what useLayoutEffect is for), and the listeners
+  // do the same.
+  const place = useCallback((): HoverCardPos | null => {
     const anchor = anchorRef.current;
     const card = cardRef.current;
-    if (!anchor || !card) return;
+    if (!anchor || !card) return null;
     const a = anchor.getBoundingClientRect();
     const c = card.getBoundingClientRect();
     const vw = document.documentElement.clientWidth;
@@ -89,24 +93,43 @@ export function useHoverCard<
       top = Math.max(PAD, a.top - c.height - GAP);
     }
 
-    setPos({ top: Math.round(top), left: Math.round(left) });
+    return { top: Math.round(top), left: Math.round(left) };
   }, []);
+
+  // THE POSITION IS WRITTEN TO THE ELEMENT, NOT TO STATE.
+  //
+  // Measuring the DOM and storing the result in state made every open a
+  // second render — commit, measure in a layout effect, set state, commit
+  // again — and react-hooks/set-state-in-effect flags precisely that. The
+  // geometry lives outside React; writing it straight back to the element's
+  // style inside the layout effect lands before the same paint, with no state
+  // and no second commit. Hidden until measured so nothing flashes at 0,0.
+  const apply = useCallback(
+    (p: HoverCardPos | null) => {
+      const card = cardRef.current;
+      if (!card) return;
+      if (p) {
+        card.style.top = `${p.top}px`;
+        card.style.left = `${p.left}px`;
+        card.style.visibility = 'visible';
+      } else {
+        card.style.visibility = 'hidden';
+      }
+    },
+    [],
+  );
 
   // Measure before paint so the card never shows at a stale position.
   useLayoutEffect(() => {
-    if (!hovered) {
-      setPos(null);
-      return;
-    }
-    place();
-  }, [hovered, place]);
+    apply(hovered ? place() : null);
+  }, [hovered, place, apply]);
 
   // `position: fixed` does not follow the trigger, so track it while open.
   // Capture phase catches scrolls in an inner scroll container, not just the
   // window.
   useEffect(() => {
     if (!hovered) return;
-    const onMove = () => place();
+    const onMove = () => apply(place());
     window.addEventListener('scroll', onMove, true);
     window.addEventListener('resize', onMove);
     return () => {
@@ -128,5 +151,5 @@ export function useHoverCard<
     return () => document.removeEventListener('keydown', onKey);
   }, [hovered]);
 
-  return { hovered, setHovered, pos, cardId, anchorRef, cardRef, mounted };
+  return { hovered, setHovered, cardId, anchorRef, cardRef, mounted };
 }

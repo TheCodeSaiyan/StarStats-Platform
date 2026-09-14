@@ -167,6 +167,7 @@ function CategoryCard({ category }: { category: AdminReferenceCategoryDto }) {
   const isStale = (() => {
     if (!category.latest_updated_at) return true;
     const ageDays =
+      // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
       (Date.now() - new Date(category.latest_updated_at).getTime()) /
       (1000 * 60 * 60 * 24);
     return ageDays > 7;

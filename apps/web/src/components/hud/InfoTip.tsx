@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useIsClient } from '@/lib/use-is-client';
 
 /**
  * Accessible "how was this calculated?" affordance: a small [i] button that
@@ -51,7 +52,6 @@ interface Pos {
 
 export function InfoTip({ text, label }: InfoTipProps) {
   const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<Pos | null>(null);
   const id = useId();
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLSpanElement>(null);
@@ -59,13 +59,18 @@ export function InfoTip({ text, label }: InfoTipProps) {
   // Portal target only exists on the client. Gate on a mounted flag rather
   // than `typeof document`, so the server render and the first client render
   // agree and hydration doesn't mismatch.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useIsClient();
 
-  const place = useCallback(() => {
+  // `place` only MEASURES. It used to write the position itself, which made
+  // every caller — the layout effect included — a state write routed through a
+  // callback, and react-hooks/set-state-in-effect flags exactly that. Returning
+  // the position lets the layout effect set it directly, which the rule allows
+  // (measure-then-position is what useLayoutEffect is for), and the listeners
+  // do the same.
+  const place = useCallback((): Pos | null => {
     const btn = btnRef.current;
     const pop = popRef.current;
-    if (!btn || !pop) return;
+    if (!btn || !pop) return null;
     const b = btn.getBoundingClientRect();
     const p = pop.getBoundingClientRect();
     const vw = document.documentElement.clientWidth;
@@ -84,24 +89,43 @@ export function InfoTip({ text, label }: InfoTipProps) {
     let top = b.top - p.height - GAP;
     if (top < PAD) top = Math.min(b.bottom + GAP, vh - PAD - p.height);
 
-    setPos({ top: Math.round(top), left: Math.round(left) });
+    return { top: Math.round(top), left: Math.round(left) };
   }, []);
+
+  // THE POSITION IS WRITTEN TO THE ELEMENT, NOT TO STATE.
+  //
+  // Measuring the DOM and storing the result in state made every open a
+  // second render — commit, measure in a layout effect, set state, commit
+  // again — and react-hooks/set-state-in-effect flags precisely that. The
+  // geometry lives outside React; writing it straight back to the element's
+  // style inside the layout effect lands before the same paint, with no state
+  // and no second commit. Hidden until measured so nothing flashes at 0,0.
+  const apply = useCallback(
+    (p: Pos | null) => {
+      const pop = popRef.current;
+      if (!pop) return;
+      if (p) {
+        pop.style.top = `${p.top}px`;
+        pop.style.left = `${p.left}px`;
+        pop.style.visibility = '';
+      } else {
+        pop.style.visibility = 'hidden';
+      }
+    },
+    [],
+  );
 
   // Measure before paint so the popover never shows at a stale position.
   useLayoutEffect(() => {
-    if (!open) {
-      setPos(null);
-      return;
-    }
-    place();
-  }, [open, place]);
+    apply(open ? place() : null);
+  }, [open, place, apply]);
 
   // `position: fixed` does not follow the anchor, so track it while open.
   // Capture phase catches scrolls in the tile body and `.ss-main`, not just
   // the window.
   useEffect(() => {
     if (!open) return;
-    const onMove = () => place();
+    const onMove = () => apply(place());
     window.addEventListener('scroll', onMove, true);
     window.addEventListener('resize', onMove);
     return () => {
@@ -137,8 +161,7 @@ export function InfoTip({ text, label }: InfoTipProps) {
       ref={popRef}
       id={id}
       role="tooltip"
-      className={`infotip__pop${open && pos ? ' infotip__pop--open' : ''}`}
-      style={pos ? { top: pos.top, left: pos.left } : undefined}
+      className={`infotip__pop${open ? ' infotip__pop--open' : ''}`}
       // Keep it open while the pointer is over the explanation itself, so it
       // can be read and selected without racing the button's mouseleave.
       onMouseEnter={() => setOpen(true)}

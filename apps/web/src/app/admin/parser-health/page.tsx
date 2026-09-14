@@ -103,6 +103,7 @@ export default async function AdminParserHealthPage() {
     revalidatePath('/admin/parser-health');
   }
 
+  // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
   const staleness = runStaleness(last_run, Date.now());
   const open = findings.filter((f) => f.finding.status === 'open');
   const other = findings.filter((f) => f.finding.status !== 'open');

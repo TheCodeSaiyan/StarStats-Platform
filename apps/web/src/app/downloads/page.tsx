@@ -569,6 +569,7 @@ function formatRelativeTime(iso: string): string {
 function ExpiryRelative({ iso }: { iso: string }) {
   const seconds = Math.max(
     0,
+    // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
     Math.round((Date.parse(iso) - Date.now()) / 1000),
   );
   if (seconds < 60) return <>in {seconds}s</>;
@@ -578,6 +579,7 @@ function ExpiryRelative({ iso }: { iso: string }) {
 function RelativeTime({ iso }: { iso: string }) {
   const seconds = Math.max(
     0,
+    // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
     Math.round((Date.now() - Date.parse(iso)) / 1000),
   );
   if (seconds < 60) return <>just now</>;

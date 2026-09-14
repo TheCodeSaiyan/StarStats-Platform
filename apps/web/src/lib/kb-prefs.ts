@@ -1,8 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { Units } from './kb-viz';
 import { saveKbPrefs } from '@/app/kb/actions';
+import { useIsClient } from '@/lib/use-is-client';
 
 export type KbView = 'visual' | 'compact';
 export const KB_PREFS_STORAGE_KEY = 'ss-kb-prefs';
@@ -63,14 +64,17 @@ export function useKbPrefs(opts: {
     ...defined(opts.serverPrefs),
   }));
 
-  // After mount (client-only), reconcile with localStorage. This is where
-  // server > local > default precedence applies — same logic as
-  // resolveInitialKbPrefs. serverPrefs is stable per page render.
-  useEffect(() => {
+  // On the first client render after hydration, reconcile with localStorage.
+  // This is where server > local > default precedence applies — same logic as
+  // resolveInitialKbPrefs. A render-time adjustment gated on the client rather
+  // than an effect that writes state: the gate flips only after the hydration
+  // render, so the timing is the same, with one render fewer.
+  const isClient = useIsClient();
+  const [reconciled, setReconciled] = useState(false);
+  if (isClient && !reconciled) {
+    setReconciled(true);
     setPrefs(resolveInitialKbPrefs(opts.serverPrefs));
-    // run once on mount; serverPrefs is stable per page render
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }
 
   const update = useCallback(
     (patch: Partial<KbPrefs>) => {

@@ -89,7 +89,12 @@ export function KbDetailView(props: KbDetailViewProps) {
 
   const [selectedSlugs, setSelectedSlugs] = useState<string[]>([]);
   const [onRadar, setOnRadar] = useState<Record<string, boolean>>({});
-  const [vectors, setVectors] = useState<CompareEntry[]>([]);
+  // Keyed by the request that produced them, so `vectors` is derived — the
+  // current selection's result, or nothing while it is in flight or when
+  // nothing is selected. Replaces an effect that cleared state synchronously.
+  const [fetchedVectors, setFetchedVectors] = useState<{ key: string; entries: CompareEntry[] }>(
+    { key: '', entries: [] },
+  );
   const [showComparison, setShowComparison] = useState(true);
   const [sort, setSort] = useState<SortSpec>(DEFAULT_SORT[props.category] ?? { key: 'speed.scm', dir: 'desc' });
   const [cohortNotice, setCohortNotice] = useState<string | null>(null);
@@ -99,12 +104,15 @@ export function KbDetailView(props: KbDetailViewProps) {
 
   const comparing = selectedSlugs.length > 0;
 
+  const vectorKey = selectedSlugs.length === 0 ? '' : `${props.category}:${props.anchorSlug}:${selectedSlugs.join(',')}`;
+  const vectors = vectorKey && fetchedVectors.key === vectorKey ? fetchedVectors.entries : [];
+
   useEffect(() => {
-    if (selectedSlugs.length === 0) { setVectors([]); return; }
+    if (!vectorKey) return;
     let cancelled = false;
     const slugs = [props.anchorSlug, ...selectedSlugs];
     fetchCompareVectors(props.category, slugs).then((r) => {
-      if (!cancelled) setVectors(r.entries);
+      if (!cancelled) setFetchedVectors({ key: vectorKey, entries: r.entries });
     });
     return () => { cancelled = true; };
   }, [props.category, props.anchorSlug, selectedSlugs]);

@@ -7,6 +7,13 @@ import type { Route } from 'next';
 import { SiteLegalPlate } from './SiteLegalPlate';
 import { useShellData } from './ShellData';
 import { signOut } from '@/lib/sign-out';
+
+const subscribeHash = (onChange: () => void) => {
+  window.addEventListener('hashchange', onChange);
+  return () => window.removeEventListener('hashchange', onChange);
+};
+const readHash = () => window.location.hash;
+const readServerHash = () => '';
 import {
   Projection,
   Pane,
@@ -190,7 +197,14 @@ export function PaneSurface({
   // scan wipe over a volume that stayed the old colour until the next
   // navigation: the recalibration event played and nothing recalibrated.
   const [cal, setCal] = React.useState<Calibration>(calibration);
-  React.useEffect(() => setCal(calibration), [calibration]);
+  // Keep in step if the server sends a different value on a later navigation.
+  // Adjusted during render against the previous prop, not in an effect: the
+  // same result without the extra commit (react-hooks/set-state-in-effect).
+  const [seenCalibration, setSeenCalibration] = React.useState(calibration);
+  if (calibration !== seenCalibration) {
+    setSeenCalibration(calibration);
+    setCal(calibration);
+  }
   const scrollRef = React.useRef<HTMLDivElement | null>(null);
 
   /**
@@ -228,26 +242,31 @@ export function PaneSurface({
    * `hashchange` is handled as well as mount: a server action redirects to the
    * same path with a new fragment, which does not always remount this tree.
    */
-  const openHash = React.useCallback(() => {
-    const id = window.location.hash.replace(/^#/, '');
-    if (!id) return;
-    const g = groupOfSection.get(id);
-    if (g === undefined) return;
-    setGroup(g);
-    // The section mounts in the same commit as the group change, so wait a
-    // frame before measuring it.
-    requestAnimationFrame(() => {
+  // The fragment is an external store: '' on the server, live on the client,
+  // re-read on every `hashchange` (a server action can redirect to the same
+  // path with a new fragment without remounting this tree).
+  const hash = React.useSyncExternalStore(subscribeHash, readHash, readServerHash);
+  const hashId = hash.replace(/^#/, '');
+  // The group the fragment names is adjusted during render, against the last
+  // fragment seen, rather than set from an effect.
+  const [seenHash, setSeenHash] = React.useState<string | null>(null);
+  if (hashId !== seenHash) {
+    setSeenHash(hashId);
+    const g = hashId ? groupOfSection.get(hashId) : undefined;
+    if (g !== undefined) setGroup(g);
+  }
+  // Scrolling is the DOM side effect, and the only part that belongs in an
+  // effect. The section mounts in the same commit as the group change, so
+  // wait a frame before measuring it.
+  React.useEffect(() => {
+    if (!hashId || groupOfSection.get(hashId) === undefined) return;
+    const frame = requestAnimationFrame(() => {
       document
-        .getElementById(id)
+        .getElementById(hashId)
         ?.scrollIntoView({ block: 'start', behavior: 'auto' });
     });
-  }, [groupOfSection]);
-
-  React.useEffect(() => {
-    openHash();
-    window.addEventListener('hashchange', openHash);
-    return () => window.removeEventListener('hashchange', openHash);
-  }, [openHash]);
+    return () => cancelAnimationFrame(frame);
+  }, [hashId, groupOfSection]);
 
   // A group change is a new reading position, not a continuation of the last
   // one — start it at the top rather than wherever the previous group sat.

@@ -97,7 +97,7 @@ export function EntityLink({
   resolvedSlug,
   resolvedLabel,
 }: EntityLinkProps) {
-  const { hovered, setHovered, pos, cardId, anchorRef, cardRef, mounted } =
+  const { hovered, setHovered, cardId, anchorRef, cardRef, mounted } =
     useHoverCard<HTMLSpanElement, HTMLSpanElement>();
 
   // A tray-resolved label can stand in even when there's no classKey
@@ -163,7 +163,6 @@ export function EntityLink({
         id={cardId}
         category={category}
         entry={entry}
-        pos={pos}
       />
     ) : null;
 

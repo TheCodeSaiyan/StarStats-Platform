@@ -2,16 +2,25 @@ import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import nextTypescript from "eslint-config-next/typescript";
 
 const eslintConfig = [...nextCoreWebVitals, ...nextTypescript, {
-  // eslint-config-next 16 ships React Compiler's hook rules. Two of them
-  // flag 21 existing sites: `set-state-in-effect` (14 — state derived in
-  // an effect that should be render-time) and `purity` (7 — Date.now() /
-  // Math.random() during render). They are right, and each fix changes
-  // when a component re-renders, so they are a refactor, not a dependency
-  // bump. Held at `warn` so the upgrade lands and the count stays on every
-  // lint run; lift to `error` as the sites are fixed.
+  // eslint-config-next 16 ships React Compiler's hook rules. When it landed
+  // they flagged 26 sites and were held at `warn` so the upgrade could merge;
+  // the sites were then fixed (#101) and the rules raised to `error`, where
+  // they stay. Two things about them worth knowing before touching either:
+  //
+  //   - `purity` cannot tell a server component from a client one. Seven
+  //     server components call `Date.now()` during render, which is correct
+  //     there (once per request, never re-rendered), and each carries a
+  //     one-line disable saying so. A wrapper function would only hide the
+  //     call from the analyser; the disables keep the rule meaningful for
+  //     client code.
+  //   - `set-state-in-effect` also flags a state write routed through a
+  //     callback from a layout effect, so "measure the DOM, store the
+  //     position" is out even in useLayoutEffect. The popovers write the
+  //     measured position to the element's style instead, which is also one
+  //     render fewer per open.
   rules: {
-    'react-hooks/set-state-in-effect': 'warn',
-    'react-hooks/purity': 'warn',
+    'react-hooks/set-state-in-effect': 'error',
+    'react-hooks/purity': 'error',
   },
 }, {
   // E2E tests live outside src and use Playwright globals + Node
