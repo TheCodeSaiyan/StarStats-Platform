@@ -9,7 +9,7 @@
 //! negative against EAC is potentially a banned account, so we err on
 //! the side of skipping.
 
-use sysinfo::System;
+use sysinfo::{ProcessesToUpdate, System};
 
 /// Process names we consider "Star Citizen running". Windows ships
 /// the launcher as `StarCitizen.exe`; macOS / Linux builds (Wine and
@@ -27,12 +27,16 @@ const SC_PROCESS_NAMES: &[&str] = &["StarCitizen.exe", "StarCitizen"];
 /// because the answer can flip the moment the user launches the
 /// game.
 ///
-/// On `sysinfo` 0.30 `process.name()` returns `&str`. The 0.31
-/// migration changes that to `&OsStr`; bump the call site (and the
-/// workspace pin) together when we move past 0.30.
+/// `process.name()` is `&OsStr` since `sysinfo` 0.31; the comparison
+/// below goes through `OsStr::eq_ignore_ascii_case`, which takes any
+/// `AsRef<OsStr>`, so the `&str` targets compare without conversion.
+/// `refresh_processes` grew its two arguments in 0.31 and 0.32: refresh
+/// every process, and drop the ones that have exited — this is a liveness
+/// probe, so a stale entry for a closed game would be exactly the wrong
+/// answer.
 pub fn is_starcitizen_running() -> bool {
     let mut sys = System::new();
-    sys.refresh_processes();
+    sys.refresh_processes(ProcessesToUpdate::All, true);
     sys.processes().values().any(|p| {
         let name = p.name();
         SC_PROCESS_NAMES
