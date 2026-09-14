@@ -199,10 +199,10 @@ pub fn router() -> Router {
     Router::new()
         .route("/v1/admin/roadmap/changelog/drafts", get(list_drafts))
         .route(
-            "/v1/admin/roadmap/changelog/:id/publish",
+            "/v1/admin/roadmap/changelog/{id}/publish",
             post(publish_draft),
         )
-        .route("/v1/admin/roadmap/changelog/:id/edit", post(edit_draft))
+        .route("/v1/admin/roadmap/changelog/{id}/edit", post(edit_draft))
 }
 
 // ---------- tests ----------------------------------------------------------

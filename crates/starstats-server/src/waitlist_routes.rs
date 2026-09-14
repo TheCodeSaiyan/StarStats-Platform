@@ -56,7 +56,7 @@ pub fn routes() -> Router {
     let public = Router::new()
         .route("/v1/waitlist", post(join))
         .route("/v1/waitlist/status", get(status))
-        .layer(GovernorLayer { config: governor });
+        .layer(GovernorLayer::new(governor));
 
     let admin = Router::new()
         .route("/v1/admin/waitlist", get(admin_list))

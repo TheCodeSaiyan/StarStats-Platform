@@ -295,7 +295,7 @@ pub fn router<R: ReferenceStore>(refs: Arc<R>) -> Router {
             get(list_reference_categories::<R>),
         )
         .route(
-            "/v1/admin/reference/:category",
+            "/v1/admin/reference/{category}",
             get(list_reference_entries::<R>),
         )
         .with_state(refs)

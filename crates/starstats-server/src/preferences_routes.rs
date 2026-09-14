@@ -166,7 +166,7 @@ pub fn routes<S: PreferencesStore, D: DeviceStore>(prefs: Arc<S>, devices: Arc<D
         )
         .with_state((prefs, devices))
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .layer(GovernorLayer { config: governor })
+        .layer(GovernorLayer::new(governor))
 }
 
 fn error(status: StatusCode, code: &'static str, detail: Option<String>) -> Response {

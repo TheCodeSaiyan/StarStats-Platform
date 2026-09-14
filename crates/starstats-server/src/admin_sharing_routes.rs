@@ -919,15 +919,15 @@ pub fn router() -> Router {
         )
         .route("/v1/admin/sharing/reports", get(get_reports))
         .route(
-            "/v1/admin/sharing/reports/:id/resolve",
+            "/v1/admin/sharing/reports/{id}/resolve",
             post(resolve_report),
         )
         .route(
-            "/v1/admin/sharing/by-user/:handle",
+            "/v1/admin/sharing/by-user/{handle}",
             get(get_user_sharing_context),
         )
         .route(
-            "/v1/admin/sharing/by-org/:slug",
+            "/v1/admin/sharing/by-org/{slug}",
             get(get_org_sharing_context),
         )
 }

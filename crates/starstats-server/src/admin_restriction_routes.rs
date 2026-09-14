@@ -378,7 +378,7 @@ pub async fn clear_restrictions<U: UserStore>(
 pub fn router<U: UserStore>(users: Arc<U>) -> Router {
     Router::new()
         .route(
-            "/v1/admin/users/:id/restrictions",
+            "/v1/admin/users/{id}/restrictions",
             put(set_restrictions::<U>).delete(clear_restrictions::<U>),
         )
         .with_state(users)

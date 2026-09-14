@@ -51,18 +51,18 @@ pub fn routes(orgs: Arc<PostgresOrgStore>, users: Arc<PostgresUserStore>) -> Rou
             post(create_org::<PostgresOrgStore>).get(list_orgs::<PostgresOrgStore>),
         )
         .route(
-            "/v1/orgs/:slug",
+            "/v1/orgs/{slug}",
             get(get_org::<PostgresOrgStore>).delete(delete_org::<PostgresOrgStore>),
         )
         .route(
-            "/v1/orgs/:slug/members/:handle",
+            "/v1/orgs/{slug}/members/{handle}",
             delete(remove_member::<PostgresOrgStore>),
         )
         .with_state(orgs.clone());
 
     let member_router = Router::new()
         .route(
-            "/v1/orgs/:slug/members",
+            "/v1/orgs/{slug}/members",
             post(add_member::<PostgresOrgStore, PostgresUserStore>),
         )
         .with_state((orgs, users));
@@ -755,17 +755,17 @@ mod tests {
                 post(create_org::<MemoryOrgStore>).get(list_orgs::<MemoryOrgStore>),
             )
             .route(
-                "/v1/orgs/:slug",
+                "/v1/orgs/{slug}",
                 get(get_org::<MemoryOrgStore>).delete(delete_org::<MemoryOrgStore>),
             )
             .route(
-                "/v1/orgs/:slug/members/:handle",
+                "/v1/orgs/{slug}/members/{handle}",
                 delete(remove_member::<MemoryOrgStore>),
             )
             .with_state(orgs.clone());
         let members = Router::new()
             .route(
-                "/v1/orgs/:slug/members",
+                "/v1/orgs/{slug}/members",
                 post(add_member::<MemoryOrgStore, MemoryUserStore>),
             )
             .with_state((orgs, users));

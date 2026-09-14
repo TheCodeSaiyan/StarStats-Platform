@@ -75,7 +75,7 @@ pub fn routes(
     let share_no_state_router: Router = Router::new()
         .route("/v1/me/shares", get(list_shares))
         .route("/v1/me/shared-with-me", get(list_shared_with_me))
-        .route("/v1/me/share/:recipient_handle", delete(delete_share))
+        .route("/v1/me/share/{recipient_handle}", delete(delete_share))
         .route("/v1/share/report", post(report_share));
 
     let share_org_post_router = Router::new()
@@ -86,29 +86,29 @@ pub fn routes(
         .with_state((orgs, users));
 
     let share_org_delete_router: Router =
-        Router::new().route("/v1/me/share/org/:slug", delete(unshare_with_org));
+        Router::new().route("/v1/me/share/org/{slug}", delete(unshare_with_org));
 
     let share_query_router = Router::new()
         .route(
-            "/v1/public/:handle/summary",
+            "/v1/public/{handle}/summary",
             get(public_summary::<PostgresStore>),
         )
         .route(
-            "/v1/public/:handle/timeline",
+            "/v1/public/{handle}/timeline",
             get(public_timeline::<PostgresStore>),
         )
         .route(
-            "/v1/u/:handle/summary",
+            "/v1/u/{handle}/summary",
             get(friend_summary::<PostgresStore>),
         )
         .route(
-            "/v1/u/:handle/timeline",
+            "/v1/u/{handle}/timeline",
             get(friend_timeline::<PostgresStore>),
         )
         // The event LIST behind a share. Everything else on `/v1/u/*`
         // returns aggregates, which is why a recipient could see that
         // someone played but not what they did.
-        .route("/v1/u/:handle/events", get(friend_events::<PostgresStore>))
+        .route("/v1/u/{handle}/events", get(friend_events::<PostgresStore>))
         // Plan 3b Option B foundation — exposes the caller's per-
         // recipient ShareScope so the web framework can populate
         // ViewerCtx.recipientScopes once at page load instead of
@@ -117,7 +117,7 @@ pub fn routes(
         // deny_widgets clamps. Per-widget data endpoints with
         // server-side widget_allowed_for_scope checks are a separate
         // follow-up PR.
-        .route("/v1/u/:handle/scope", get(friend_scope))
+        .route("/v1/u/{handle}/scope", get(friend_scope))
         // Audit v2.1 §B1 — owner-side preview of own data through a
         // scope clamp. No SpiceDB check, no audit emission.
         .route(
@@ -3059,7 +3059,7 @@ mod tests {
         Router::new()
             .route("/v1/me/visibility", post(set_visibility::<MemoryUserStore>))
             .route("/v1/me/share", post(add_share::<MemoryUserStore>))
-            .route("/v1/me/share/:recipient_handle", delete(delete_share))
+            .route("/v1/me/share/{recipient_handle}", delete(delete_share))
             .route("/v1/me/shared-with-me", get(list_shared_with_me))
             .route("/v1/me/shares", get(list_shares))
             .with_state(users)
@@ -3824,11 +3824,11 @@ mod public_restriction_tests {
             Arc::new(crate::supporters::test_support::MemorySupporterStore::default());
         Router::new()
             .route(
-                "/v1/public/:handle/summary",
+                "/v1/public/{handle}/summary",
                 get(public_summary::<MemoryQuery>),
             )
             .route(
-                "/v1/public/:handle/timeline",
+                "/v1/public/{handle}/timeline",
                 get(public_timeline::<MemoryQuery>),
             )
             .with_state(Arc::new(MemoryQuery::new(Vec::new())))

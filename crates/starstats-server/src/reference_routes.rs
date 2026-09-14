@@ -475,44 +475,42 @@ pub fn routes(
             get(list_vehicles::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/vehicles/:class_name",
+            "/v1/reference/vehicles/{class_name}",
             get(get_vehicle::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category",
+            "/v1/reference/{category}",
             get(list_entries::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category/compare",
+            "/v1/reference/{category}/compare",
             get(get_compare::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category/cohort",
+            "/v1/reference/{category}/cohort",
             get(get_cohort::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category/slug/:slug",
+            "/v1/reference/{category}/slug/{slug}",
             get(get_entry_by_slug::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category/stats",
+            "/v1/reference/{category}/stats",
             get(get_category_stats::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category/by-class/:class_name",
+            "/v1/reference/{category}/by-class/{class_name}",
             get(get_entry_by_class_name::<PostgresReferenceStore>),
         )
         .route(
-            "/v1/reference/:category/:class_name",
+            "/v1/reference/{category}/{class_name}",
             get(get_entry::<PostgresReferenceStore>),
         )
         .with_state(store)
         .layer(Extension(list_cache))
         .layer(Extension(stats_cache))
         .layer(Extension(vectors_cache))
-        .layer(GovernorLayer {
-            config: public_governor,
-        })
+        .layer(GovernorLayer::new(public_governor))
 }
 
 /// Wrapper for `GET /v1/reference/vehicles`.
@@ -924,31 +922,31 @@ mod tests {
     fn test_app(store: Arc<MemoryReferenceStore>) -> Router {
         Router::new()
             .route(
-                "/v1/reference/:category",
+                "/v1/reference/{category}",
                 get(list_entries::<MemoryReferenceStore>),
             )
             .route(
-                "/v1/reference/:category/compare",
+                "/v1/reference/{category}/compare",
                 get(get_compare::<MemoryReferenceStore>),
             )
             .route(
-                "/v1/reference/:category/cohort",
+                "/v1/reference/{category}/cohort",
                 get(get_cohort::<MemoryReferenceStore>),
             )
             .route(
-                "/v1/reference/:category/stats",
+                "/v1/reference/{category}/stats",
                 get(get_category_stats::<MemoryReferenceStore>),
             )
             .route(
-                "/v1/reference/:category/slug/:slug",
+                "/v1/reference/{category}/slug/{slug}",
                 get(get_entry_by_slug::<MemoryReferenceStore>),
             )
             .route(
-                "/v1/reference/:category/by-class/:class_name",
+                "/v1/reference/{category}/by-class/{class_name}",
                 get(get_entry_by_class_name::<MemoryReferenceStore>),
             )
             .route(
-                "/v1/reference/:category/:class_name",
+                "/v1/reference/{category}/{class_name}",
                 get(get_entry::<MemoryReferenceStore>),
             )
             .with_state(store)

@@ -17,7 +17,6 @@
 
 use crate::account_restrictions::{AccountRestrictionStore, Capability};
 use crate::auth::AuthenticatedUser;
-use axum::async_trait;
 use axum::{
     extract::FromRequestParts,
     http::{request::Parts, StatusCode},
@@ -85,7 +84,6 @@ fn unavailable() -> Response {
         .into_response()
 }
 
-#[async_trait]
 impl<S, C> FromRequestParts<S> for RequireUnrestricted<C>
 where
     S: Send + Sync,

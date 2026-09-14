@@ -52,9 +52,7 @@ pub fn routes(users: Arc<PostgresUserStore>) -> Router {
             .finish()
             .expect("auth governor config builder produced no config"),
     );
-    let governor_layer = GovernorLayer {
-        config: governor_conf,
-    };
+    let governor_layer = GovernorLayer::new(governor_conf);
 
     Router::new()
         .route("/v1/auth/signup", post(signup::<PostgresUserStore>))

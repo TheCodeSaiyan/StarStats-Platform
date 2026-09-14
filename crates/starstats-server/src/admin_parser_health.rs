@@ -287,10 +287,13 @@ pub fn router() -> Router {
     Router::new()
         .route("/v1/admin/parser-health", get(get_health))
         .route(
-            "/v1/admin/parser-health/:event_type/acknowledge",
+            "/v1/admin/parser-health/{event_type}/acknowledge",
             post(acknowledge),
         )
-        .route("/v1/admin/parser-health/:event_type/resolve", post(resolve))
+        .route(
+            "/v1/admin/parser-health/{event_type}/resolve",
+            post(resolve),
+        )
 }
 
 #[cfg(test)]

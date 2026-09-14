@@ -34,7 +34,7 @@ pub fn routes() -> Router {
             "/v1/users/me/share-scopes",
             get(get_share_scopes).put(put_share_scopes),
         )
-        .route("/v1/public/:handle/share-scopes", get(public_share_scopes))
+        .route("/v1/public/{handle}/share-scopes", get(public_share_scopes))
 }
 
 // ---------------------------------------------------------------------------
@@ -252,7 +252,7 @@ mod tests {
         store: Arc<dyn ShareScopesStore>,
     ) -> axum::Router {
         Router::new()
-            .route("/v1/public/:handle/share-scopes", get(public_share_scopes))
+            .route("/v1/public/{handle}/share-scopes", get(public_share_scopes))
             .layer(Extension(checker))
             .layer(Extension(store))
     }

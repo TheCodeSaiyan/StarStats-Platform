@@ -89,7 +89,7 @@ pub fn routes(store: Arc<dyn ReferenceStore>) -> Router {
 
     Router::new()
         .route(
-            "/v1/reference/:category/:class_name/media/:idx",
+            "/v1/reference/{category}/{class_name}/media/{idx}",
             get(proxy_reference_media),
         )
         .with_state(MediaState { store, http })

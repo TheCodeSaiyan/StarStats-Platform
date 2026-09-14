@@ -189,12 +189,12 @@ fn timeline_window_since(params: &TimelineWindowQuery) -> Result<Option<DateTime
 
 pub fn routes(pool: PgPool) -> Router {
     Router::new()
-        .route("/v1/users/:handle/sessions", get(list_sessions))
+        .route("/v1/users/{handle}/sessions", get(list_sessions))
         .route(
-            "/v1/users/:handle/sessions/:session_id/events",
+            "/v1/users/{handle}/sessions/{session_id}/events",
             get(list_session_events),
         )
-        .route("/v1/users/:handle/stats/playtime", get(user_playtime))
+        .route("/v1/users/{handle}/stats/playtime", get(user_playtime))
         .with_state(Arc::new(pool))
 }
 

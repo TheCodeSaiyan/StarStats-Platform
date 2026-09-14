@@ -1181,11 +1181,11 @@ pub fn router() -> Router {
     Router::new()
         .route("/v1/admin/parser-submissions", get(list_submissions))
         .route(
-            "/v1/admin/parser-submissions/:id",
+            "/v1/admin/parser-submissions/{id}",
             get(get_submission).patch(patch_submission),
         )
         .route(
-            "/v1/admin/parser-submissions/:id/publish",
+            "/v1/admin/parser-submissions/{id}/publish",
             post(publish_to_community),
         )
 }

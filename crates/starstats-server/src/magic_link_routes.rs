@@ -138,7 +138,7 @@ pub fn routes(users: Arc<PostgresUserStore>, magic: Arc<PostgresMagicLinkStore>)
         )
         .with_state((users, magic))
         .layer(Extension(Arc::new(MagicSendLimiter::new())))
-        .layer(GovernorLayer { config: governor })
+        .layer(GovernorLayer::new(governor))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

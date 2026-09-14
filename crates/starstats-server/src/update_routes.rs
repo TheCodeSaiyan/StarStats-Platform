@@ -187,7 +187,7 @@ mod tests {
     fn router_with_cfg(cfg: UpdaterConfig) -> Router {
         Router::new()
             .route(
-                "/v1/updater/:target/:arch/:current_version",
+                "/v1/updater/{target}/{arch}/{current_version}",
                 get(check_for_update),
             )
             .layer(Extension(Arc::new(cfg)))

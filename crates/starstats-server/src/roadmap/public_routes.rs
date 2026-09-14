@@ -256,7 +256,7 @@ pub fn router() -> Router {
         // The longer prefix MUST come before /:slug so axum matches
         // `/changelog` as a literal path rather than as a slug.
         .route("/v1/roadmap/changelog", get(list_changelog))
-        .route("/v1/roadmap/:slug", get(get_roadmap_item))
+        .route("/v1/roadmap/{slug}", get(get_roadmap_item))
 }
 
 // ---------- tests ----------------------------------------------------------

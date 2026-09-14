@@ -79,7 +79,7 @@ pub fn routes(store: Arc<dyn ReferenceStore>, media_flag: Arc<AtomicBool>) -> Ro
     // schema model the data reference routes use. Omission is intentional.
     Router::new()
         .route(
-            "/v1/reference/vehicles/:class_name/media/:idx",
+            "/v1/reference/vehicles/{class_name}/media/{idx}",
             get(proxy_media),
         )
         .with_state(MediaState {
@@ -87,7 +87,7 @@ pub fn routes(store: Arc<dyn ReferenceStore>, media_flag: Arc<AtomicBool>) -> Ro
             http,
             media_flag,
         })
-        .layer(GovernorLayer { config: governor })
+        .layer(GovernorLayer::new(governor))
 }
 
 /// Resolve `media[idx]` for a vehicle and stream the image back. 404 for
