@@ -98,7 +98,7 @@ url = "2.5"
 # `html5ever` + a small CSS-selector engine; pulled at the workspace
 # layer so any future crate that needs to parse upstream HTML lands
 # on the same version.
-scraper = "0.20"
+scraper = "0.27"
 
 # Metrics
 metrics = "0.24"
