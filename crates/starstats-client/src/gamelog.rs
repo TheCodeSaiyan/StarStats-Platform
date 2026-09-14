@@ -204,7 +204,6 @@ pub async fn start_tail(
 /// nothing new. Callers use the flag to wake downstream consumers only
 /// when there's actually fresh data to forward.
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 async fn drain(
     path: &PathBuf,
     path_str: &str,
@@ -416,7 +415,7 @@ fn stitch_multiline_records(mut lines: Vec<(String, u64)>) -> Vec<(String, u64)>
         // fallback.
         let mut quote_count = lines[i].0.matches('"').count();
         let mut consumed = 1usize;
-        let mut closed = quote_count % 2 == 0;
+        let mut closed = quote_count.is_multiple_of(2);
         while !closed && consumed < MAX_STITCH_LINES && i + consumed < lines.len() {
             let next = &lines[i + consumed].0;
             if looks_like_record_start(next) {
@@ -424,7 +423,7 @@ fn stitch_multiline_records(mut lines: Vec<(String, u64)>) -> Vec<(String, u64)>
             }
             quote_count += continuation_body(next).matches('"').count();
             consumed += 1;
-            closed = quote_count % 2 == 0;
+            closed = quote_count.is_multiple_of(2);
         }
 
         let offset = lines[i].1;

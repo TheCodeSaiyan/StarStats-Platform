@@ -1381,7 +1381,7 @@ pub mod test_support {
 
             match filters.cursor {
                 Some(SeqCursor::After(_)) => rows.sort_by_key(|r| r.seq),
-                _ => rows.sort_by(|a, b| b.seq.cmp(&a.seq)),
+                _ => rows.sort_by_key(|a| std::cmp::Reverse(a.seq)),
             }
 
             rows.truncate(filters.limit.max(0) as usize);
@@ -1496,7 +1496,7 @@ pub mod test_support {
                 *counts.entry(e.event_type.clone()).or_default() += 1;
             }
             let mut by_type: Vec<(String, u64)> = counts.into_iter().collect();
-            by_type.sort_by(|a, b| b.1.cmp(&a.1));
+            by_type.sort_by_key(|a| std::cmp::Reverse(a.1));
             Ok((total, by_type))
         }
 
@@ -1576,7 +1576,7 @@ pub mod test_support {
                     }),
                 }
             }
-            sessions.sort_by(|a, b| b.start_at.cmp(&a.start_at));
+            sessions.sort_by_key(|a| std::cmp::Reverse(a.start_at));
             let start = offset.max(0) as usize;
             let take = limit.max(0) as usize;
             Ok(sessions.into_iter().skip(start).take(take).collect())
@@ -1800,7 +1800,7 @@ pub mod test_support {
                 })
                 .map(|(_, row)| row.clone())
                 .collect();
-            rows.sort_by(|a, b| b.seq.cmp(&a.seq));
+            rows.sort_by_key(|a| std::cmp::Reverse(a.seq));
             let start = offset.max(0) as usize;
             let take = limit.max(0) as usize;
             Ok(rows.into_iter().skip(start).take(take).collect())
@@ -1831,7 +1831,7 @@ pub mod test_support {
                     })
                 })
                 .collect();
-            rows.sort_by(|a, b| a.event_timestamp.cmp(&b.event_timestamp));
+            rows.sort_by_key(|a| a.event_timestamp);
             // Mirror the Postgres `ORDER BY ts DESC LIMIT` + reverse:
             // keep only the most-recent `limit` raw events by dropping
             // from the FRONT (oldest), preserving oldest-first order.
@@ -2057,7 +2057,7 @@ pub mod test_support {
                     // `accepted_at >= $2` (NULL compares false there too).
                     .filter(|r| since.map_or(true, |s| r.accepted_at.is_some_and(|ts| ts >= s)))
                     .collect();
-            out.sort_by(|a, b| b.accepted_at.cmp(&a.accepted_at));
+            out.sort_by_key(|a| std::cmp::Reverse(a.accepted_at));
             Ok(out)
         }
 
@@ -2204,7 +2204,7 @@ pub mod test_support {
                 .collect();
             // Newest-first to match the Postgres impl's ORDER BY DESC.
             // The handler relies on this ordering for its walk-back.
-            rows.sort_by(|a, b| b.event_timestamp.cmp(&a.event_timestamp));
+            rows.sort_by_key(|a| std::cmp::Reverse(a.event_timestamp));
             rows.truncate(limit.max(0) as usize);
             Ok(rows)
         }

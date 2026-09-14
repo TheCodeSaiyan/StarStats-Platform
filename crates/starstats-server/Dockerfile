@@ -2,7 +2,7 @@
 # Multi-stage build for the Axum API server.
 # Final image: ~30 MB on debian:bookworm-slim with the compiled binary.
 
-FROM rust:1.88-slim-bookworm@sha256:38bc5a86d998772d4aec2348656ed21438d20fcdce2795b56ca434cf21430d89 AS builder
+FROM rust:1.98.1-slim-bookworm@sha256:ebd900bae66fd508b466cef82d64a83a5fb34682e4c8b2797a42908bddc95a57 AS builder
 WORKDIR /build
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

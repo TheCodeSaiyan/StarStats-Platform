@@ -447,7 +447,7 @@ pub mod test_support {
                 .cloned()
                 .collect();
             // Most-recent first.
-            filtered.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            filtered.sort_by_key(|a| std::cmp::Reverse(a.created_at));
             Ok(filtered.into_iter().skip(offset).take(limit).collect())
         }
 

@@ -2340,7 +2340,7 @@ pub async fn check_upload_drift(state: State<'_, AppState>) -> Result<UploadDrif
             });
         }
     }
-    rows.sort_by(|a, b| b.missing.cmp(&a.missing));
+    rows.sort_by_key(|a| std::cmp::Reverse(a.missing));
 
     // The VERDICT comes from totals, never from summed per-type gaps.
     //

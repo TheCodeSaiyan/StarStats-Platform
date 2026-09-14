@@ -1004,7 +1004,10 @@ mod tests {
     async fn upsert_and_get_round_trips() {
         let store = MemoryReferenceStore::new();
         let v = make_vehicle("AEGS_Avenger_Stalker", "Aegis Avenger Stalker");
-        let affected = store.upsert_vehicles(&[v.clone()]).await.unwrap();
+        let affected = store
+            .upsert_vehicles(std::slice::from_ref(&v))
+            .await
+            .unwrap();
         assert_eq!(affected, 1);
 
         let got = store
@@ -1018,7 +1021,10 @@ mod tests {
             display_name: "Aegis Avenger Stalker (Refreshed)".to_owned(),
             ..v.clone()
         };
-        store.upsert_vehicles(&[updated.clone()]).await.unwrap();
+        store
+            .upsert_vehicles(std::slice::from_ref(&updated))
+            .await
+            .unwrap();
         let got = store
             .get_vehicle("AEGS_Avenger_Stalker")
             .await
@@ -1037,7 +1043,10 @@ mod tests {
     async fn get_vehicle_is_case_insensitive() {
         let store = MemoryReferenceStore::new();
         let v = make_vehicle("AEGS_Avenger_Stalker", "Aegis Avenger Stalker");
-        store.upsert_vehicles(&[v.clone()]).await.unwrap();
+        store
+            .upsert_vehicles(std::slice::from_ref(&v))
+            .await
+            .unwrap();
 
         let lower = store
             .get_vehicle("aegs_avenger_stalker")
@@ -1093,7 +1102,10 @@ mod tests {
             slug: None,
             metadata: serde_json::Value::Object(meta),
         };
-        store.upsert_entries(&[weapon.clone()]).await.unwrap();
+        store
+            .upsert_entries(std::slice::from_ref(&weapon))
+            .await
+            .unwrap();
 
         // Same class_name under a different category must not collide.
         let vehicle_with_same_id = ReferenceEntry {
@@ -1104,7 +1116,7 @@ mod tests {
             metadata: serde_json::Value::Object(Default::default()),
         };
         store
-            .upsert_entries(&[vehicle_with_same_id.clone()])
+            .upsert_entries(std::slice::from_ref(&vehicle_with_same_id))
             .await
             .unwrap();
 

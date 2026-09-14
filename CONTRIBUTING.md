@@ -17,7 +17,7 @@ Before you start, please skim:
 
 | Tool | Version | Why |
 |---|---|---|
-| Rust toolchain | **1.88** (workspace `rust-toolchain.toml` pin) | Workspace MSRV; some upstream deps (`aws-sdk-s3 1.110.0`) require it |
+| Rust toolchain | **1.98** (workspace `rust-toolchain.toml` pin) | Workspace MSRV; CI, the server image and `rust-version` all move together — see the toolchain note in `Cargo.toml` |
 | `cargo-fmt`, `cargo clippy` | bundled with the toolchain | CI gates on both |
 | Node.js | **20.x** | Web app + tray UI build |
 | pnpm | **9.15+** | Workspace package manager |

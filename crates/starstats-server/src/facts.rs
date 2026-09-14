@@ -258,7 +258,7 @@ fn fact_session_rhythm(input: &FactInput) -> Option<Fact> {
     }
     durations.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let n = durations.len();
-    let median = if n % 2 == 0 {
+    let median = if n.is_multiple_of(2) {
         (durations[n / 2 - 1] + durations[n / 2]) / 2.0
     } else {
         durations[n / 2]

@@ -1393,7 +1393,7 @@ fn aggregate_dwell(stream: Vec<crate::repo::LatestLocationEvent>) -> Vec<Breakdo
             visit_count: visits,
         })
         .collect();
-    entries.sort_by(|a, b| b.dwell_seconds.cmp(&a.dwell_seconds));
+    entries.sort_by_key(|a| std::cmp::Reverse(a.dwell_seconds));
     entries
 }
 
@@ -3158,7 +3158,7 @@ fn merge_buckets(
 ) -> Vec<PayloadFieldBucket> {
     use std::collections::HashMap;
     let mut counts: HashMap<String, i64> = HashMap::new();
-    for bucket in a.into_iter().chain(b.into_iter()) {
+    for bucket in a.into_iter().chain(b) {
         *counts.entry(bucket.value).or_insert(0) += bucket.count;
     }
     let mut merged: Vec<PayloadFieldBucket> = counts

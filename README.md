@@ -146,7 +146,7 @@ release flow live in [`CONTRIBUTING.md`](CONTRIBUTING.md). Quick
 start:
 
 ```powershell
-# Prereqs: Rust 1.88, pnpm 9.15, Node 20.18+.
+# Prereqs: Rust 1.98, pnpm 9.15, Node 20.18+.
 # For server work: Postgres 17 (with pgvector). For tray work: WebView2 (Windows) or GTK + WebKit2GTK (Linux).
 
 # Clone

@@ -11,7 +11,7 @@ name: CodeQL
 #                           (October 2025), as did build-free scanning, so
 #                           no compile step is needed. It does need rustup
 #                           and cargo on PATH, hence the toolchain step
-#                           below, pinned to the same 1.88.0 the rest of CI
+#                           below, pinned to the same 1.98.1 the rest of CI
 #                           uses so findings match what actually ships.
 #   javascript-typescript — apps/web + apps/tray-ui + release scripts
 #   actions               — the workflows themselves. Worth having: these
@@ -61,7 +61,7 @@ jobs:
     # compiler than we ship would make findings hard to act on.
     - name: Install Rust toolchain
       if: matrix.language == 'rust'
-      uses: dtolnay/rust-toolchain@2eae45db285e407f22119950686d47e1101e071b # 1.88.0
+      uses: dtolnay/rust-toolchain@ce678459e9fc7500d337468f904b95f1b5c10b5e # 1.98.1
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4

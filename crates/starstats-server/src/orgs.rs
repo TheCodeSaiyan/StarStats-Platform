@@ -428,7 +428,7 @@ pub mod test_support {
                 .filter(|o| o.owner_user_id == user_id)
                 .cloned()
                 .collect();
-            out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            out.sort_by_key(|a| std::cmp::Reverse(a.created_at));
             Ok(out)
         }
 
@@ -452,7 +452,7 @@ pub mod test_support {
                 })
                 .cloned()
                 .collect();
-            out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            out.sort_by_key(|a| std::cmp::Reverse(a.created_at));
             Ok(out.into_iter().skip(offset).take(limit).collect())
         }
 

@@ -860,7 +860,7 @@ fn start_log_tail(
         .into_iter()
         .filter(|d| d.kind == discovery::LogKind::ChannelLive)
         .collect();
-    discovered.sort_by(|a, b| b.size_bytes.cmp(&a.size_bytes));
+    discovered.sort_by_key(|a| std::cmp::Reverse(a.size_bytes));
 
     let Some(log) = discovered.first().cloned() else {
         tracing::warn!("no live Game.log discovered in standard install paths");

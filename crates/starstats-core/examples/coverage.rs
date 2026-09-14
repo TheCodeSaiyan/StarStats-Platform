@@ -106,14 +106,14 @@ fn main() {
 
     println!("\n--- recognised events by type ---");
     let mut by_type: Vec<_> = recognised_by_type.into_iter().collect();
-    by_type.sort_by(|a, b| b.1.cmp(&a.1));
+    by_type.sort_by_key(|a| std::cmp::Reverse(a.1));
     for (variant, count) in &by_type {
         println!("  {count:>6}  {variant}");
     }
 
     println!("\n--- top unknown event_names ---");
     let mut top: Vec<_> = unknowns.into_iter().collect();
-    top.sort_by(|a, b| b.1.count.cmp(&a.1.count));
+    top.sort_by_key(|a| std::cmp::Reverse(a.1.count));
     for (name, acc) in top.iter().take(40) {
         println!("  {:>6}  <{}>", acc.count, name);
         // First-occurrence body sample, trimmed to keep output readable.

@@ -1254,7 +1254,7 @@ pub mod test_support {
                 .filter(|i| !public_only || i.public)
                 .cloned()
                 .collect();
-            items.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            items.sort_by_key(|a| std::cmp::Reverse(a.created_at));
             Ok(items)
         }
 
@@ -1524,7 +1524,7 @@ pub mod test_support {
                 .filter(|s| s.roadmap_item_id == roadmap_item_id)
                 .cloned()
                 .collect();
-            out.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+            out.sort_by_key(|a| a.created_at);
             Ok(out)
         }
 
@@ -1574,7 +1574,7 @@ pub mod test_support {
                 .filter(|e| e.published_at.is_none())
                 .cloned()
                 .collect();
-            out.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            out.sort_by_key(|a| std::cmp::Reverse(a.created_at));
             Ok(out)
         }
 
@@ -1592,7 +1592,7 @@ pub mod test_support {
                 .filter(|e| e.published_at.is_some())
                 .cloned()
                 .collect();
-            out.sort_by(|a, b| b.published_at.cmp(&a.published_at));
+            out.sort_by_key(|a| std::cmp::Reverse(a.published_at));
             out.truncate(limit);
             Ok(out)
         }
@@ -1703,7 +1703,7 @@ pub mod test_support {
                     Some((latest, i.clone()))
                 })
                 .collect();
-            scored.sort_by(|a, b| b.0.cmp(&a.0));
+            scored.sort_by_key(|a| std::cmp::Reverse(a.0));
             scored.truncate(limit);
             Ok(scored.into_iter().map(|(_, i)| i).collect())
         }

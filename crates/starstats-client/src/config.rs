@@ -271,10 +271,11 @@ fn derive_web_origin_from_api_url(api_url: &str) -> Option<String> {
 /// User-selectable visual theme. Each variant matches one of the four
 /// `[data-theme="..."]` blocks in `starstats-tokens.css` — switching
 /// themes is just a paint change (no layout reflow, no font swap).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum Theme {
     /// Warm amber on charcoal. The design system's default.
+    #[default]
     Stanton,
     /// Molten coral, more aggressive accent. Dark.
     Pyro,
@@ -282,12 +283,6 @@ pub enum Theme {
     Terra,
     /// Deep violet on warm off-white. Light.
     Nyx,
-}
-
-impl Default for Theme {
-    fn default() -> Self {
-        Self::Stanton
-    }
 }
 
 impl Theme {
