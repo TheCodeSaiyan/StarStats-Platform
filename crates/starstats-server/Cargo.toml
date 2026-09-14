@@ -72,7 +72,7 @@ aws-sdk-s3.workspace = true
 aws-credential-types.workspace = true
 aws-smithy-runtime-api.workspace = true
 utoipa.workspace = true
-axum-extra = { version = "0.9", features = ["typed-header"] }
+axum-extra = { version = "0.12", features = ["typed-header"] }
 base64 = "0.22"
 sha2 = "0.10"
 hmac = "0.12"
@@ -88,7 +88,7 @@ subtle = "2.6"
 # compatible — 0.5+ targets axum 0.8). `SmartIpKeyExtractor` reads
 # `Forwarded` / `X-Forwarded-For` / `X-Real-IP` so we get the real
 # client IP behind Traefik, falling back to peer addr in dev.
-tower_governor = "0.4"
+tower_governor = "0.8"
 url.workspace = true
 # `GET /v1/me/export`: the ZIP bundle is written in streaming mode
 # (`ZipWriter::new_stream`, data descriptors, no Seek) so a large export
