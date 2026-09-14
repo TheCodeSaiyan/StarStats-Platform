@@ -148,7 +148,17 @@ keyring = { version = "3", default-features = false, features = [
 # `ProcessesToUpdate` argument and `process.name()` to return
 # `&OsStr` instead of `&str`. We can take that bump in a separate
 # pass.
-sysinfo = { version = "0.39", default-features = false }
+# Pinned to 0.38 — the last sysinfo release with MSRV 1.88 (matches the
+# workspace `rust-version`); 0.39+ require rustc 1.95. Same treatment as
+# aws-sdk-s3 below: Dependabot is told to ignore sysinfo >=0.39 in
+# .github/dependabot.yml so it stops re-proposing the MSRV-breaking bump
+# until the toolchain moves. 0.30 -> 0.38 still carries the API changes
+# from 0.31/0.32/0.33 (ProcessesToUpdate, remove_dead_processes,
+# RefreshKind::nothing), which process_guard.rs and commands.rs take.
+# `default-features = false` predates sysinfo splitting each subsystem into
+# a cargo feature; with nothing opted in, `System` and `Disks` are not even
+# exported. The tray uses exactly two: process liveness and disk free space.
+sysinfo = { version = "0.38", default-features = false, features = ["system", "disk"] }
 
 # Mail (SMTP — async via tokio + rustls). Used for verification emails.
 # `default-features = false` drops the native-tls path so we don't pull
