@@ -55,9 +55,7 @@ pub fn routes(users: Arc<PostgresUserStore>, recovery: Arc<PostgresRecoveryCodeS
             .finish()
             .expect("totp governor config builder produced no config"),
     );
-    let governor_layer = GovernorLayer {
-        config: governor_conf,
-    };
+    let governor_layer = GovernorLayer::new(governor_conf);
 
     Router::new()
         .route("/v1/auth/totp/setup", post(setup::<PostgresUserStore>))

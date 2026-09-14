@@ -797,7 +797,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route("/v1/me/events", get(query::list_events::<PostgresStore>))
         .route(
-            "/v1/me/events/:seq/hide",
+            "/v1/me/events/{seq}/hide",
             post(query::hide_event::<PostgresStore>).delete(query::unhide_event::<PostgresStore>),
         )
         .route("/v1/me/summary", get(query::summary::<PostgresStore>))
@@ -905,7 +905,7 @@ async fn main() -> anyhow::Result<()> {
             get(query::commerce_recent::<PostgresStore>),
         )
         .route(
-            "/v1/updater/:target/:arch/:current_version",
+            "/v1/updater/{target}/{arch}/{current_version}",
             get(update_routes::check_for_update),
         )
         .with_state(store)

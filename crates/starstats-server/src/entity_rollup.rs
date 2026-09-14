@@ -634,8 +634,11 @@ impl EntityRollupStore for PostgresEntityRollupStore {
 pub fn routes(store: Arc<PostgresEntityRollupStore>) -> Router {
     let store_dyn: Arc<dyn EntityRollupStore> = store;
     Router::new()
-        .route("/v1/users/:handle/entities", get(list_entities))
-        .route("/v1/users/:handle/entities/:kind/:id", get(entity_history))
+        .route("/v1/users/{handle}/entities", get(list_entities))
+        .route(
+            "/v1/users/{handle}/entities/{kind}/{id}",
+            get(entity_history),
+        )
         .with_state(store_dyn)
 }
 
@@ -1469,8 +1472,11 @@ mod tests {
     fn router_for_test(store: Arc<MemoryEntityRollupStore>, verifier: Arc<AuthVerifier>) -> Router {
         let store_dyn: Arc<dyn EntityRollupStore> = store;
         Router::new()
-            .route("/v1/users/:handle/entities", get(list_entities))
-            .route("/v1/users/:handle/entities/:kind/:id", get(entity_history))
+            .route("/v1/users/{handle}/entities", get(list_entities))
+            .route(
+                "/v1/users/{handle}/entities/{kind}/{id}",
+                get(entity_history),
+            )
             .with_state(store_dyn)
             .layer(Extension(verifier))
             .layer(Extension(

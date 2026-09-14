@@ -107,7 +107,7 @@ pub fn router(store: Arc<dyn ContractStore>, ingest_token: Option<String>) -> Ro
         .route("/api/contracts/by-entity", get(contracts_by_entity))
         .route("/api/contracts/resolve", get(resolve_contract_names))
         .route(
-            "/api/contracts/:canonical_id",
+            "/api/contracts/{canonical_id}",
             get(get_contract).delete(delete_one_contract),
         )
         .with_state(state)

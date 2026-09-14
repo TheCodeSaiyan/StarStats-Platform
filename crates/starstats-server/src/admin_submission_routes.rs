@@ -51,10 +51,10 @@ const REJECT_REASON_MAX_LEN: usize = FLAG_REASON_MAX_LEN;
 /// `Arc<dyn StaffRoleStore>` extensions before mounting.
 pub fn router<S: SubmissionStore>(store: Arc<S>) -> Router {
     Router::new()
-        .route("/v1/admin/submissions/:id/accept", post(accept::<S>))
-        .route("/v1/admin/submissions/:id/reject", post(reject::<S>))
+        .route("/v1/admin/submissions/{id}/accept", post(accept::<S>))
+        .route("/v1/admin/submissions/{id}/reject", post(reject::<S>))
         .route(
-            "/v1/admin/submissions/:id/dismiss-flag",
+            "/v1/admin/submissions/{id}/dismiss-flag",
             post(dismiss_flag::<S>),
         )
         .route("/v1/admin/submissions/queue", get(queue::<S>))

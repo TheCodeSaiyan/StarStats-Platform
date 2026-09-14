@@ -344,11 +344,11 @@ pub async fn unsubscribe(
 pub fn router() -> Router {
     Router::new()
         .route(
-            "/v1/roadmap/:slug/vote",
+            "/v1/roadmap/{slug}/vote",
             post(cast_vote).delete(retract_vote),
         )
         .route(
-            "/v1/roadmap/:slug/subscribe",
+            "/v1/roadmap/{slug}/subscribe",
             post(subscribe).delete(unsubscribe),
         )
         .layer(Extension(

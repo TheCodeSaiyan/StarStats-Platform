@@ -764,11 +764,14 @@ pub fn router<U: UserStore>(users: Arc<U>) -> Router {
     Router::new()
         .route("/v1/admin/users", get(list_users_admin::<U>))
         .route(
-            "/v1/admin/users/:id",
+            "/v1/admin/users/{id}",
             get(get_user_admin::<U>).delete(delete_user_admin::<U>),
         )
-        .route("/v1/admin/users/:id/roles", post(grant_role::<U>))
-        .route("/v1/admin/users/:id/roles/:role", delete(revoke_role::<U>))
+        .route("/v1/admin/users/{id}/roles", post(grant_role::<U>))
+        .route(
+            "/v1/admin/users/{id}/roles/{role}",
+            delete(revoke_role::<U>),
+        )
         .with_state(users)
 }
 

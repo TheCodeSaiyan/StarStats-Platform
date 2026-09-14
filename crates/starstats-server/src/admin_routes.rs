@@ -16,7 +16,6 @@
 use crate::audit::{AuditFilters, AuditQuery};
 use crate::auth::AuthenticatedUser;
 use crate::staff_roles::{StaffRole, StaffRoleStore};
-use async_trait::async_trait;
 use axum::{
     extract::{FromRequestParts, Query},
     http::{request::Parts, StatusCode},
@@ -139,7 +138,6 @@ async fn extract_with_role(
     Ok(user)
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for RequireModerator
 where
     S: Send + Sync,
@@ -154,7 +152,6 @@ where
     }
 }
 
-#[async_trait]
 impl<S> FromRequestParts<S> for RequireAdmin
 where
     S: Send + Sync,

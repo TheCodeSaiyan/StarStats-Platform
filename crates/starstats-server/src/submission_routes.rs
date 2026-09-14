@@ -48,19 +48,19 @@ pub fn routes(submissions: Arc<PostgresSubmissionStore>) -> Router {
             post(create::<PostgresSubmissionStore>).get(list::<PostgresSubmissionStore>),
         )
         .route(
-            "/v1/submissions/:id",
+            "/v1/submissions/{id}",
             get(detail::<PostgresSubmissionStore>),
         )
         .route(
-            "/v1/submissions/:id/vote",
+            "/v1/submissions/{id}/vote",
             post(vote::<PostgresSubmissionStore>),
         )
         .route(
-            "/v1/submissions/:id/flag",
+            "/v1/submissions/{id}/flag",
             post(flag::<PostgresSubmissionStore>),
         )
         .route(
-            "/v1/submissions/:id/withdraw",
+            "/v1/submissions/{id}/withdraw",
             post(withdraw::<PostgresSubmissionStore>),
         )
         .with_state(submissions)
@@ -617,17 +617,17 @@ mod tests {
                 "/v1/submissions",
                 post(create::<MemorySubmissionStore>).get(list::<MemorySubmissionStore>),
             )
-            .route("/v1/submissions/:id", get(detail::<MemorySubmissionStore>))
+            .route("/v1/submissions/{id}", get(detail::<MemorySubmissionStore>))
             .route(
-                "/v1/submissions/:id/vote",
+                "/v1/submissions/{id}/vote",
                 post(vote::<MemorySubmissionStore>),
             )
             .route(
-                "/v1/submissions/:id/flag",
+                "/v1/submissions/{id}/flag",
                 post(flag::<MemorySubmissionStore>),
             )
             .route(
-                "/v1/submissions/:id/withdraw",
+                "/v1/submissions/{id}/withdraw",
                 post(withdraw::<MemorySubmissionStore>),
             )
             .layer(Extension(verifier))

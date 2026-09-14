@@ -52,11 +52,11 @@ pub fn routes(
     let list_router = Router::new()
         .route("/v1/auth/devices", get(list::<PostgresDeviceStore>))
         .route(
-            "/v1/auth/devices/:id",
+            "/v1/auth/devices/{id}",
             delete(revoke::<PostgresDeviceStore>),
         )
         .route(
-            "/v1/auth/devices/:id/sync",
+            "/v1/auth/devices/{id}/sync",
             post(set_sync::<PostgresDeviceStore>),
         )
         .with_state(devices.clone())

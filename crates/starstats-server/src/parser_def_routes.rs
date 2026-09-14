@@ -46,7 +46,7 @@ pub fn routes(
     );
     Router::new()
         .route("/v1/parser-definitions", get(get_manifest))
-        .layer(GovernorLayer { config: governor })
+        .layer(GovernorLayer::new(governor))
         .with_state((store, inference_store))
 }
 

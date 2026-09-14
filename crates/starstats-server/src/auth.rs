@@ -15,9 +15,8 @@
 //! HS256 is rejected — see the [`AuthError::UnsupportedAlgorithm`]
 //! arm. Symmetric algorithms invalidate the asymmetric trust model.
 
-use async_trait::async_trait;
 use axum::{
-    extract::FromRequestParts,
+    extract::{FromRequestParts, OptionalFromRequestParts},
     http::{request::Parts, StatusCode},
     response::{IntoResponse, Response},
     Json, RequestPartsExt,
@@ -440,7 +439,6 @@ impl AuthVerifier {
 
 // -- Extractor -------------------------------------------------------
 
-#[async_trait]
 impl<S> FromRequestParts<S> for AuthenticatedUser
 where
     S: Send + Sync,
@@ -520,6 +518,38 @@ where
         }
 
         Ok(user)
+    }
+}
+
+/// `Option<AuthenticatedUser>` — the anonymous-or-signed-in extractor.
+///
+/// axum 0.8 stopped deriving `Option<T>` from `FromRequestParts` and made it
+/// its own trait, so that a handler can see the difference between "no
+/// credential" and "a bad credential" if it wants to. This one does not
+/// want to, on purpose. Its only consumer is the What's-New feed, whose
+/// module doc pins the contract: anonymous path on "no bearer / invalid
+/// bearer". A reader whose device token has expired or been revoked must
+/// see the public feed, not a 401 on a page that has a public shape — so
+/// every rejection collapses to `None`, exactly as axum 0.7's blanket
+/// `Option<T>` did, and `Infallible` says so in the signature.
+///
+/// Anything that must distinguish the two keeps taking `AuthenticatedUser`
+/// and gets the `AuthError`.
+impl<S> OptionalFromRequestParts<S> for AuthenticatedUser
+where
+    S: Send + Sync,
+{
+    type Rejection = std::convert::Infallible;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &S,
+    ) -> Result<Option<Self>, Self::Rejection> {
+        Ok(
+            <Self as FromRequestParts<S>>::from_request_parts(parts, state)
+                .await
+                .ok(),
+        )
     }
 }
 

@@ -99,13 +99,11 @@ pub fn routes(users: Arc<PostgresUserStore>, orgs: Arc<PostgresRsiOrgStore>) -> 
     );
     let public_router = Router::new()
         .route(
-            "/v1/public/u/:handle/orgs",
+            "/v1/public/u/{handle}/orgs",
             get(public_orgs::<PostgresUserStore, PostgresRsiOrgStore>),
         )
         .with_state((users, orgs))
-        .layer(GovernorLayer {
-            config: public_governor,
-        });
+        .layer(GovernorLayer::new(public_governor));
 
     refresh_router.merge(me_router).merge(public_router)
 }

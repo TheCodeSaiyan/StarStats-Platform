@@ -60,7 +60,7 @@ pub fn routes<S: HangarStore>(store: Arc<S>) -> Router {
         .route("/v1/me/hangar", post(push::<S>).get(me::<S>))
         .with_state(store)
         .layer(DefaultBodyLimit::max(MAX_BODY_BYTES))
-        .layer(GovernorLayer { config: governor })
+        .layer(GovernorLayer::new(governor))
 }
 
 // Schema-only mirrors of `starstats_core::wire::{HangarPushRequest,

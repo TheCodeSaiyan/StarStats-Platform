@@ -119,13 +119,11 @@ pub fn routes(
     // background recorder for every successful read.
     let public_router = Router::new()
         .route(
-            "/v1/public/u/:handle/profile",
+            "/v1/public/u/{handle}/profile",
             get(public_profile::<PostgresUserStore, PostgresProfileStore>),
         )
         .with_state((users, profiles, view_stats))
-        .layer(GovernorLayer {
-            config: public_governor,
-        });
+        .layer(GovernorLayer::new(public_governor));
 
     refresh_router
         .merge(me_router)

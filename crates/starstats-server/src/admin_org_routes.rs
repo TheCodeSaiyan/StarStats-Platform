@@ -252,7 +252,7 @@ pub async fn delete_org_admin<O: OrgStore>(
 pub fn router<O: OrgStore>(orgs: Arc<O>) -> Router {
     Router::new()
         .route("/v1/admin/orgs", get(list_orgs_admin::<O>))
-        .route("/v1/admin/orgs/:slug", get(get_org_admin::<O>))
-        .route("/v1/admin/orgs/:slug", delete(delete_org_admin::<O>))
+        .route("/v1/admin/orgs/{slug}", get(get_org_admin::<O>))
+        .route("/v1/admin/orgs/{slug}", delete(delete_org_admin::<O>))
         .with_state(orgs)
 }
