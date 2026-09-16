@@ -143,13 +143,19 @@ fn install_roots() -> Vec<PathBuf> {
 /// un-gated, it is covered by the tests at the bottom of this file on
 /// whatever machine runs them.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn linux_prefix_roots(home: &Path, wine_prefix: Option<&Path>) -> Vec<(PathBuf, bool)> {
+fn linux_prefix_roots(home: Option<&Path>, wine_prefix: Option<&Path>) -> Vec<(PathBuf, bool)> {
     let mut roots: Vec<(PathBuf, bool)> = Vec::new();
 
-    // An explicitly configured prefix beats every guess below.
+    // An explicitly configured prefix beats every guess below, and is
+    // the one answer that does not depend on knowing the home
+    // directory — so it is collected before the early return.
     if let Some(prefix) = wine_prefix {
         roots.push((prefix.to_path_buf(), false));
     }
+
+    let Some(home) = home else {
+        return roots;
+    };
 
     // Single prefixes, in the places the common install guides put them.
     for direct in [
@@ -203,7 +209,7 @@ fn install_roots_in_prefix(prefix: &Path, out: &mut Vec<PathBuf>) {
 /// instead of the real environment - see the note on
 /// [`linux_prefix_roots`] for why that matters.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn linux_install_roots_under(home: &Path, wine_prefix: Option<&Path>) -> Vec<PathBuf> {
+fn linux_install_roots_under(home: Option<&Path>, wine_prefix: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
     for (root, scan_children) in linux_prefix_roots(home, wine_prefix) {
         install_roots_in_prefix(&root, &mut roots);
@@ -218,19 +224,19 @@ fn linux_install_roots_under(home: &Path, wine_prefix: Option<&Path>) -> Vec<Pat
         }
     }
     // Some users bind-mount or symlink the install outside any prefix.
-    for shape in INSTALL_SHAPES {
-        roots.push(join_shape(home, shape));
+    if let Some(home) = home {
+        for shape in INSTALL_SHAPES {
+            roots.push(join_shape(home, shape));
+        }
     }
     dedupe(roots)
 }
 
 #[cfg(target_os = "linux")]
 fn install_roots() -> Vec<PathBuf> {
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        return Vec::new();
-    };
+    let home = std::env::var_os("HOME").map(PathBuf::from);
     let wine_prefix = std::env::var_os("WINEPREFIX").map(PathBuf::from);
-    linux_install_roots_under(&home, wine_prefix.as_deref())
+    linux_install_roots_under(home.as_deref(), wine_prefix.as_deref())
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
@@ -833,6 +839,12 @@ mod tests {
     /// return every live log it finds — the same filter-then-walk
     /// `discover_standard` applies.
     fn discovered_under(home: &Path, wine_prefix: Option<&Path>) -> Vec<PathBuf> {
+        discovered_under_opt(Some(home), wine_prefix)
+    }
+
+    /// `home` is optional so the HOME-unset case is reachable from a
+    /// test rather than only from a broken environment.
+    fn discovered_under_opt(home: Option<&Path>, wine_prefix: Option<&Path>) -> Vec<PathBuf> {
         let mut out = Vec::new();
         for root in linux_install_roots_under(home, wine_prefix) {
             if root.exists() {
@@ -960,6 +972,24 @@ mod tests {
         assert!(
             discovered_under(&home, Some(&prefix)).contains(&want),
             "explicit WINEPREFIX not honoured"
+        );
+    }
+
+    #[test]
+    fn linux_honours_wineprefix_even_with_no_home() {
+        // HOME unset is a broken environment rather than a real desktop
+        // one, but $WINEPREFIX is an exact answer that does not depend
+        // on knowing HOME, so dropping it there loses the one path the
+        // user told us about. An earlier refactor returned empty here.
+        let tmp = TempDir::new().unwrap();
+        let prefix = tmp.path().join("srv/prefix");
+        let want = plant_install(
+            &prefix,
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under_opt(None, Some(&prefix)).contains(&want),
+            "WINEPREFIX was dropped when HOME was unset"
         );
     }
 
