@@ -190,7 +190,13 @@ for (const [from, anchor] of [
 
     await page.goto(from);
 
-    await expect(page).toHaveURL(/\/admin\/settings/);
+    // Explicit timeout: this waits on `next dev` COMPILING
+    // /admin/settings, not on the DOM, and the default expect budget
+    // is 5s. `smtp` is first in the loop, so it pays the compile for
+    // the other two and was the only one of the three to fail in a
+    // full-suite run while passing in isolation every time. Same trap,
+    // and same fix, as the export-download click (403a2f8).
+    await expect(page).toHaveURL(/\/admin\/settings/, { timeout: 30_000 });
     await expect(
       page.getByRole('heading', { level: 1, name: 'Settings' }),
     ).toBeVisible();

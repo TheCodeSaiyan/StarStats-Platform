@@ -931,6 +931,135 @@ export const defaultShareScopes = {
   },
 };
 
+/**
+ * The `/me` projection fans out to one endpoint per widget on every
+ * render. None of them had a base fixture, so every scenario that
+ * reached `/me` emitted a `599 no_mock_fixture` per widget and then
+ * rendered the DEGRADED branch — the `Promise.allSettled` fallback,
+ * not the real one. The tests still passed, which is exactly why this
+ * went unnoticed: a green suite was asserting against the error path.
+ *
+ * Per the Playwright fixture-default rule each gets an empty-but-valid
+ * body shaped to its schema. Tests that care about real numbers
+ * override per scenario, and an override always beats the base.
+ */
+
+/** Empty lives stats — used in scenarioFor's base map. */
+export const noLives = {
+  status: 200,
+  body: {
+    deaths: 0,
+    deaths_inferred: 0,
+    deaths_per_session: null,
+    lives_ended_by_crash: 0,
+    longest_life_secs: null,
+    mean_life_secs: null,
+    recent_lives: [] as Array<unknown>,
+    sessions: 0,
+    total_lives: 0,
+    window: null,
+  },
+};
+
+/** Empty fleet stats — used in scenarioFor's base map. */
+export const noFleet = {
+  status: 200,
+  body: { ships: [] as Array<unknown>, lifetime: null, previous: null },
+};
+
+/** Empty docking stats — used in scenarioFor's base map. */
+export const noDocking = {
+  status: 200,
+  body: {
+    by_kind: { hangar: 0, other: 0, pad: 0 },
+    by_size: { large: 0, medium: 0, small: 0, unknown: 0, xl: 0 },
+    lifetime: null,
+    previous: null,
+    total_stows: 0,
+  },
+};
+
+/** Empty route stats — used in scenarioFor's base map. */
+export const noRoutes = {
+  status: 200,
+  body: { routes: [] as Array<unknown>, lifetime: null, previous: null },
+};
+
+/** Empty objective stats — used in scenarioFor's base map. */
+export const noObjectives = {
+  status: 200,
+  body: {
+    completed: 0,
+    completion_pct: null,
+    failed: 0,
+    lifetime: null,
+    no_outcome: 0,
+    previous: null,
+    total: 0,
+    unresolved: 0,
+  },
+};
+
+/** Empty contract stats — used in scenarioFor's base map. */
+export const noContracts = {
+  status: 200,
+  body: {
+    abandoned: 0,
+    completed: 0,
+    completion_pct: null,
+    failed: 0,
+    in_progress: 0,
+    runs: [] as Array<unknown>,
+    total: 0,
+    unknown: 0,
+    withdrawn: 0,
+  },
+};
+
+/** Empty travel stats — used in scenarioFor's base map. */
+export const noTravelStats = {
+  status: 200,
+  body: {
+    hours: 0,
+    planets_visited: [] as Array<unknown>,
+    quantum_jumps: 0,
+    top_destinations: [] as Array<unknown>,
+  },
+};
+
+/** Empty event-type facet list — used in scenarioFor's base map. */
+export const noEventTypes = {
+  status: 200,
+  body: { event_types: [] as string[] },
+};
+
+/** Empty commerce feed — used in scenarioFor's base map. */
+export const noCommerceRecent = {
+  status: 200,
+  body: { transactions: [] as Array<unknown> },
+};
+
+/** Empty session list — used in scenarioFor's base map. */
+export const noSessions = {
+  status: 200,
+  body: { sessions: [] as Array<unknown> },
+};
+
+/** Empty profile-view stats — used in scenarioFor's base map. */
+export const noProfileViews = {
+  status: 200,
+  body: {
+    days: [] as Array<unknown>,
+    totals: { all_time: 0, by_source_30d: {}, last_30d: 0, last_7d: 0 },
+  },
+};
+
+/** Empty discover listing — used in scenarioFor's base map. */
+export const noDiscoverProfiles = {
+  status: 200,
+  body: { profiles: [] as Array<unknown>, next_after: null },
+};
+
 export function scenarioFor(
   id: string,
   overrides: ScenarioRoutes = {},
@@ -1032,6 +1161,35 @@ export function scenarioFor(
     'GET /v1/me/stats/playtime': playtimeStats,
     'GET /v1/me/stats/locations': locationsStats,
     'GET /v1/me/stats/combat': combatStats,
+    // The rest of the `/me` widget fan-out. Every one of these was
+    // missing, so any scenario landing on `/me` without its own
+    // override 599'd per widget and rendered the DEGRADED branch --
+    // and still passed, because the page is built on
+    // `Promise.allSettled` and degrades quietly by design. A green
+    // suite was asserting the error path. Tests that care about real
+    // numbers override per scenario; an override beats the base.
+    'GET /v1/me/stats/lives': noLives,
+    'GET /v1/me/stats/fleet': noFleet,
+    'GET /v1/me/stats/docking': noDocking,
+    'GET /v1/me/stats/routes': noRoutes,
+    'GET /v1/me/stats/objectives': noObjectives,
+    'GET /v1/me/stats/contracts': noContracts,
+    'GET /v1/me/stats/travel': noTravelStats,
+    'GET /v1/me/metrics/event-types': noEventTypes,
+    'GET /v1/me/commerce/recent': noCommerceRecent,
+    // `/u/[handle]` and the `/me` sessions rail read this. Keyed per
+    // handle because the mock's wildcards are PREFIX-only -- a
+    // `/v1/users/*` entry would swallow `share-scopes` and
+    // `profile-layout` for every scenario.
+    'GET /v1/users/TestPilot/sessions': noSessions,
+    // `/sharing` and `/discover` fetch these on render. Page-level
+    // rather than layout-level, but any sweeping scenario (a11y,
+    // contrast, screenshots) walks onto both and would otherwise
+    // measure the error state. `POST /v1/auth/rsi/start` is
+    // DELIBERATELY left unmocked: it is a mutation, and a silent
+    // default would mask a test asserting a failed verify-start.
+    'GET /v1/me/profile-views': noProfileViews,
+    'GET /v1/discover/profiles': noDiscoverProfiles,
     // The `/me` page (Plan 4 redirect target) also fetches the RSI
     // profile snapshot. Default to an empty-nullable stub so any
     // scenario that redirects to /me doesn't 599 with no_mock_fixture.

@@ -462,10 +462,47 @@ jobs:
     - run: pnpm install --frozen-lockfile
     - name: Install Playwright browsers
       run: pnpm --filter web exec playwright install --with-deps chromium
-    - name: Run Playwright tests
-      run: pnpm --filter web run test:e2e
+    # Sharded because the `next dev` server behind these tests grows
+    # ~24 MB per test with no ceiling of its own, and `workers: 1` +
+    # `fullyParallel: false` mean ONE server serves all 58 spec files.
+    # On 2026-09-16 it ran out of heap 26 minutes into a 30.8-minute
+    # run; the 92 tests after it failed `ERR_CONNECTION_REFUSED` and
+    # looked like 92 broken tests rather than one dead server.
+    #
+    # Playwright boots a fresh server per invocation, so four
+    # sequential shards reset that memory four times and cap the
+    # exposure at ~90 tests' worth: a measured 4.0 GB peak for shard
+    # 1/4, against 9.1 GB for the whole suite in one server.
+    #
+    # NODE_OPTIONS pins the ceiling rather than leaving it to Node's
+    # default, which scales with the host's memory — so the limit that
+    # actually killed the 2026-09-16 run is not a number anyone here
+    # can quote. 8 GB is 2x the measured shard peak and fits the
+    # runner's 16 GB alongside chromium and the mock server. It is set
+    # HERE and not in playwright.config.ts on purpose: an unsharded
+    # local run legitimately needs ~9 GB, and a ceiling low enough to
+    # protect CI would kill it.
+    #
+    # Sequential rather than a matrix on purpose: a matrix wants four
+    # concurrent runners and this repo already queues for them — a
+    # Build & Test run sat pending with zero jobs for ~50 minutes the
+    # same day. This costs the same wall clock as before and adds no
+    # runner pressure.
+    #
+    # Every shard runs even when an earlier one fails, so one bad shard
+    # still leaves the other three's results instead of hiding them.
+    - name: Run Playwright tests (sharded)
+      run: |
+        fail=0
+        for shard in 1 2 3 4; do
+          echo "::group::Playwright shard ${shard}/4"
+          pnpm --filter web exec playwright test --shard="${shard}/4" || fail=1
+          echo "::endgroup::"
+        done
+        exit "$fail"
       env:
         CI: 'true'
+        NODE_OPTIONS: '--max-old-space-size=8192'
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
       if: always()
       with:

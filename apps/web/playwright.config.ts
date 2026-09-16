@@ -91,6 +91,31 @@ export default defineConfig({
         // Plain JSON logs — pino-pretty's worker thread can hang
         // when stdout is piped under webServer.
         LOG_LEVEL: 'warn',
+        // NOTE ON MEMORY — deliberately no `--max-old-space-size` here.
+        //
+        // This server accumulates compiled modules for the whole run
+        // and never gives them back: measured 2026-09-16 at ~25 MB per
+        // test, climbing monotonically to a 9.1 GB peak across 362
+        // tests in one unsharded run. On that date CI hit `FATAL
+        // ERROR: Ineffective mark-compacts near heap limit -
+        // JavaScript heap out of memory` 26 minutes into a 30.8-minute
+        // run; the 92 tests after it failed `ERR_CONNECTION_REFUSED`,
+        // which reads as 92 broken tests and was one dead server.
+        //
+        // The fix is SHARDING, not a bigger heap — see ci.yml's
+        // web-e2e job, where four sequential shards each start a fresh
+        // server; shard 1/4 measured a 4.0 GB peak over its 91 tests.
+        // That job pins `--max-old-space-size` in its own step env,
+        // where sharding guarantees the ceiling cannot bind.
+        //
+        // Nothing is pinned HERE because a ceiling low enough to
+        // protect CI would kill an unsharded local run, which
+        // legitimately needs ~9 GB. Node's own default, which scales
+        // with host memory, is the better behaviour for a developer
+        // machine.
+        //
+        // So: running the whole suite locally, expect ~9 GB.
+        // `playwright test --shard=1/4` keeps it near 4 GB.
       },
     },
   ],
