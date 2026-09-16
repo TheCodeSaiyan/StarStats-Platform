@@ -1284,10 +1284,12 @@ export function SettingsPane({ config, onSave, status }: Props) {
               style={{ accentColor: 'var(--accent)', marginTop: 2 }}
             />
             <span style={{ lineHeight: 1.4 }}>
-              <strong style={{ color: 'var(--fg)' }}>Debug logging</strong>
+              <strong style={{ color: 'var(--fg)' }}>Verbose logging</strong>
               <span style={{ display: 'block', fontSize: 11 }}>
-                Writes a daily client.log to the user data dir for bug
-                reports. Off by default. Restart after toggling.
+                A daily client.log is always written to the user data dir
+                (last 7 days kept). This adds per-request detail to it —
+                turn it on before reproducing a problem. Restart after
+                toggling.
               </span>
             </span>
           </label>

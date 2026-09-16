@@ -59,6 +59,16 @@ pub const MAX_SHIPS_PER_PUSH: usize = 5000;
 /// bounds a pathological page from ballooning one ship's payload.
 pub const MAX_CONTAINS_ITEMS: usize = 50;
 
+/// Hard stop on how many pledge pages one refresh will walk.
+///
+/// A bound, not an expectation: the walk normally ends when a page
+/// adds no new pledge. This exists so a pagination parameter RSI
+/// starts ignoring in some new way — one that returns fresh-looking
+/// content forever — costs 50 requests rather than running until the
+/// process is killed. At the ~10 pledges per page the live page
+/// shows, 50 covers an account with ~500 pledges.
+pub const MAX_PLEDGE_PAGES: usize = 50;
+
 /// RSI pledge ledger URL. Authenticated — requires a valid session
 /// cookie attached as a request header.
 pub const PLEDGES_URL: &str = "https://robertsspaceindustries.com/account/pledges";
@@ -212,16 +222,26 @@ async fn refresh_once(
         s.last_skip_reason = None;
     }
 
-    let body = match fetch_pledges(client, &cookie_value, hangar_stats).await? {
-        Some(body) => body,
+    let parsed = match fetch_all_pledges(client, &cookie_value, hangar_stats).await? {
+        Some(ships) => ships,
         // RSI rejected the cookie. State has already been recorded by
-        // `fetch_pledges`; bail without erroring out so the loop sleeps.
+        // `fetch_pledges_page`; bail without erroring out so the loop
+        // sleeps.
         None => return Ok(()),
     };
 
-    let parsed = parse_pledges_html(&body);
+    let parsed_count = parsed.len();
     let ships = sanitise_ships(parsed);
-    tracing::info!(count = ships.len(), "hangar parsed");
+    // `dropped` is the gap between what the pages yielded and what we
+    // will send. Non-zero means `sanitise_ships` rejected entries —
+    // previously invisible, so a hangar that arrived short gave no
+    // hint whether the loss happened at fetch, parse or sanitise.
+    tracing::info!(
+        parsed = parsed_count,
+        sending = ships.len(),
+        dropped = parsed_count.saturating_sub(ships.len()),
+        "hangar: parsed"
+    );
 
     let push = HangarPushRequest {
         schema_version: 1,
@@ -283,19 +303,39 @@ async fn refresh_once(
     Ok(())
 }
 
-/// Fetch the RSI pledge ledger HTML using the supplied session cookie.
+/// URL for one page of the pledge ledger.
 ///
-/// Returns `Ok(Some(body))` on a clean 200, `Ok(None)` if RSI rejected
-/// the cookie (401/403 — recorded as a skip reason so the user knows
-/// to re-paste), and `Err(_)` for transport / non-2xx errors.
-async fn fetch_pledges(
+/// ASSUMPTION, and the only place it lives: RSI paginates
+/// `/account/pledges` with `?page=N`, 1-based. If that is wrong the
+/// walk in [`fetch_all_pledges`] still terminates safely — an ignored
+/// parameter returns page 1 again, every pledge on it is already
+/// known, and the walk stops having made exactly one extra request.
+/// So a wrong guess costs one round trip and behaves as before rather
+/// than looping or dropping data.
+///
+/// `pagesize` is deliberately NOT sent. It might work and fetch
+/// everything in one request, but it is a second guess stacked on the
+/// first, and a rejected parameter could fail the whole fetch instead
+/// of degrading.
+fn pledges_page_url(page: usize) -> String {
+    if page <= 1 {
+        PLEDGES_URL.to_string()
+    } else {
+        format!("{PLEDGES_URL}?page={page}")
+    }
+}
+
+async fn fetch_pledges_page(
     client: &reqwest::Client,
     cookie_value: &str,
     hangar_stats: &Mutex<HangarStats>,
+    page: usize,
 ) -> Result<Option<String>> {
+    let url = pledges_page_url(page);
+    let started = std::time::Instant::now();
     let cookie_header = format!("{}={}", RSI_SESSION_COOKIE_NAME, cookie_value);
     let resp = client
-        .get(PLEDGES_URL)
+        .get(&url)
         .header(reqwest::header::COOKIE, cookie_header)
         .send()
         .await
@@ -303,20 +343,168 @@ async fn fetch_pledges(
 
     let status = resp.status();
     if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
-        tracing::warn!(%status, "RSI cookie expired or invalid — pausing until user re-pastes");
+        tracing::warn!(
+            %status,
+            page,
+            url = %url,
+            "RSI cookie expired or invalid — pausing until user re-pastes"
+        );
         let mut s = hangar_stats.lock();
         s.last_error = Some("RSI cookie expired or invalid".into());
         s.last_skip_reason = Some("rsi_cookie_invalid".into());
         return Ok(None);
     }
     if !status.is_success() {
-        anyhow::bail!("RSI pledges returned {status}");
+        // Carry the page and URL: a 404 on page 3 of a walk means
+        // something quite different from a 500 on page 1, and the old
+        // message could not tell them apart.
+        anyhow::bail!("RSI pledges returned {status} for {url}");
     }
 
     let body = read_capped_text(resp)
         .await
         .context("read RSI pledges body")?;
+    tracing::debug!(
+        page,
+        url = %url,
+        %status,
+        bytes = body.len(),
+        elapsed_ms = started.elapsed().as_millis() as u64,
+        "hangar: fetched pledge page"
+    );
     Ok(Some(body))
+}
+
+/// Walk every page of the pledge ledger and return the union.
+///
+/// Stops when a page contributes no pledge the walk has not already
+/// seen. That condition covers all three ways the ledger can end — an
+/// empty last page, a repeated page (RSI ignoring `?page=`), and a
+/// short final page — without needing to parse RSI's pagination
+/// controls, whose markup we would then have to track.
+///
+/// Identity is `pledge_id` where present, falling back to the name. A
+/// duplicate name across two genuinely different pledges (two of the
+/// same ship) would collapse, so the fallback only applies to entries
+/// RSI did not give an id, which the live markup always does.
+///
+/// Returns `Ok(None)` only when the FIRST page reports a bad cookie —
+/// a failure mid-walk returns what was gathered, because a partial
+/// hangar beats none.
+async fn fetch_all_pledges(
+    client: &reqwest::Client,
+    cookie_value: &str,
+    hangar_stats: &Mutex<HangarStats>,
+) -> Result<Option<Vec<HangarShip>>> {
+    let mut walk = PledgeWalk::default();
+    let mut pages_fetched = 0usize;
+    let mut stop_reason = "page cap";
+
+    for page in 1..=MAX_PLEDGE_PAGES {
+        let body = match fetch_pledges_page(client, cookie_value, hangar_stats, page).await {
+            Ok(Some(body)) => body,
+            Ok(None) if page == 1 => return Ok(None),
+            Ok(None) => {
+                stop_reason = "cookie rejected mid-walk";
+                break;
+            }
+            Err(e) if page == 1 => return Err(e),
+            Err(e) => {
+                // Keep what we have. A transient failure on page 4 of 5
+                // should not discard pages 1-3 and report an empty
+                // hangar, which would look like the user lost ships.
+                tracing::warn!(page, error = %e, "hangar: page fetch failed mid-walk; keeping earlier pages");
+                stop_reason = "page fetch failed";
+                break;
+            }
+        };
+        pages_fetched += 1;
+
+        let parsed = parse_pledges_page(&body);
+        let added = walk.absorb(parsed.ships);
+
+        tracing::info!(
+            page,
+            blocks_seen = parsed.blocks_seen,
+            blocks_skipped = parsed.blocks_skipped,
+            list_missing = parsed.list_missing,
+            added,
+            running_total = walk.len(),
+            "hangar: parsed pledge page"
+        );
+
+        // A page whose blocks all parsed but added nothing is the end
+        // of the ledger. A page whose blocks were all SKIPPED also
+        // adds nothing, but means the markup moved — worth saying so
+        // loudly rather than reporting a short hangar as success.
+        if parsed.blocks_skipped > 0 {
+            tracing::warn!(
+                page,
+                blocks_seen = parsed.blocks_seen,
+                blocks_skipped = parsed.blocks_skipped,
+                "hangar: pledge blocks did not parse — RSI markup may have changed"
+            );
+        }
+        if added == 0 {
+            stop_reason = if parsed.blocks_seen == 0 {
+                "empty page"
+            } else {
+                "no new pledges"
+            };
+            break;
+        }
+    }
+
+    tracing::info!(
+        pages_fetched,
+        pledges = walk.len(),
+        stop_reason,
+        "hangar: pledge walk complete"
+    );
+    Ok(Some(walk.into_ships()))
+}
+
+/// Accumulates pledges across pages, keeping first-seen order and
+/// discarding repeats.
+///
+/// Pulled out of [`fetch_all_pledges`] so the termination rules can be
+/// tested without an HTTP client — in particular the case that makes
+/// the `?page=` guess safe: if RSI ignores the parameter and serves
+/// page 1 forever, the second page contributes nothing, the walk stops,
+/// and the result equals today's single-page behaviour.
+#[derive(Default)]
+struct PledgeWalk {
+    all: Vec<HangarShip>,
+    seen: std::collections::HashSet<String>,
+}
+
+impl PledgeWalk {
+    /// Add one page's pledges; returns how many were NEW.
+    ///
+    /// Identity is `pledge_id` where RSI supplied one, else the name
+    /// under a distinct prefix so an id of "x" cannot collide with a
+    /// pledge named "x".
+    fn absorb(&mut self, ships: Vec<HangarShip>) -> usize {
+        let before = self.all.len();
+        for ship in ships {
+            let key = match ship.pledge_id.as_deref() {
+                Some(id) if !id.is_empty() => format!("id:{id}"),
+                _ => format!("name:{}", ship.name),
+            };
+            if self.seen.insert(key) {
+                self.all.push(ship);
+            }
+        }
+        self.all.len() - before
+    }
+
+    fn len(&self) -> usize {
+        self.all.len()
+    }
+
+    fn into_ships(self) -> Vec<HangarShip> {
+        self.all
+    }
 }
 
 /// Stream-read a response body into a `String`, aborting if it crosses
@@ -450,7 +638,37 @@ pub async fn probe_with_cookie(cookie_value: &str) -> Result<()> {
 /// input rather than panicking; the route layer treats "empty parse"
 /// the same as "no pledges", which matches the server's current
 /// behaviour for users with empty hangars.
+#[cfg(test)]
 pub fn parse_pledges_html(body: &str) -> Vec<HangarShip> {
+    parse_pledges_page(body).ships
+}
+
+/// What one page of the pledge ledger yielded.
+///
+/// `blocks_seen` vs `ships.len()` is the signal that matters when a
+/// user reports missing items: equal means the parser understood every
+/// pledge on the page and anything missing is upstream (pagination, a
+/// filter, the cookie's account); a gap means RSI's markup moved and
+/// `parse_pledge_block` is dropping blocks it no longer recognises.
+/// Before this existed the two were indistinguishable, because a
+/// skipped block simply never appeared in the output.
+#[derive(Debug, Default)]
+pub struct ParsedPledgePage {
+    pub ships: Vec<HangarShip>,
+    /// `<li>` elements matching the pledge selector.
+    pub blocks_seen: usize,
+    /// Blocks the selector matched but `parse_pledge_block` rejected,
+    /// i.e. markup we no longer understand.
+    pub blocks_skipped: usize,
+    /// True when the page contained no `ul.list-items` at all. Tells a
+    /// "logged out / interstitial / markup moved" page apart from a
+    /// genuinely empty hangar, which look identical in a bare count.
+    pub list_missing: bool,
+}
+
+/// [`parse_pledges_html`] plus the counts needed to tell parser drift
+/// apart from an empty page.
+pub fn parse_pledges_page(body: &str) -> ParsedPledgePage {
     let doc = Html::parse_document(body);
 
     // Each pledge is a `<li>` directly under `<ul class="list-items">`.
@@ -458,15 +676,27 @@ pub fn parse_pledges_html(body: &str) -> Vec<HangarShip> {
     // the parser from latching onto unrelated `<li>` elsewhere on
     // the page (footer nav, side menu, etc.).
     let Ok(item_sel) = Selector::parse("ul.list-items > li") else {
-        return Vec::new();
+        return ParsedPledgePage {
+            list_missing: true,
+            ..Default::default()
+        };
     };
 
-    let mut out = Vec::new();
+    let list_present = Selector::parse("ul.list-items")
+        .ok()
+        .is_some_and(|s| doc.select(&s).next().is_some());
+
+    let mut out = ParsedPledgePage {
+        list_missing: !list_present,
+        ..Default::default()
+    };
     for li in doc.select(&item_sel) {
+        out.blocks_seen += 1;
         let Some(parsed) = parse_pledge_block(&li) else {
+            out.blocks_skipped += 1;
             continue;
         };
-        out.push(parsed);
+        out.ships.push(parsed);
     }
     out
 }
@@ -683,6 +913,240 @@ mod tests {
         </div>
         </body></html>
     "#;
+
+    // ---- The page walk -------------------------------------------
+
+    fn ships(ids: &[&str]) -> Vec<HangarShip> {
+        ids.iter()
+            .map(|id| HangarShip {
+                name: format!("Ship {id}"),
+                manufacturer: None,
+                pledge_id: Some((*id).to_string()),
+                kind: None,
+                contains: Vec::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn walk_accumulates_across_pages_in_order() {
+        let mut walk = PledgeWalk::default();
+        assert_eq!(walk.absorb(ships(&["1", "2"])), 2);
+        assert_eq!(walk.absorb(ships(&["3"])), 1);
+        let out: Vec<_> = walk
+            .into_ships()
+            .into_iter()
+            .map(|s| s.pledge_id.unwrap())
+            .collect();
+        assert_eq!(out, vec!["1", "2", "3"], "first-seen order must hold");
+    }
+
+    #[test]
+    fn walk_degrades_safely_when_the_page_parameter_is_ignored() {
+        // THE property that makes guessing `?page=N` acceptable. If RSI
+        // ignores the parameter and serves page 1 forever, the second
+        // page adds nothing, the caller stops, and the result is
+        // exactly today's single-page behaviour — no loop, no dupes.
+        let page_one = ships(&["1", "2", "3"]);
+        let mut walk = PledgeWalk::default();
+        assert_eq!(walk.absorb(page_one.clone()), 3);
+        assert_eq!(
+            walk.absorb(page_one.clone()),
+            0,
+            "a repeated page must contribute nothing, which is what stops the walk"
+        );
+        assert_eq!(walk.len(), 3, "and must not duplicate what it already had");
+    }
+
+    #[test]
+    fn walk_stops_on_an_empty_final_page() {
+        let mut walk = PledgeWalk::default();
+        walk.absorb(ships(&["1"]));
+        assert_eq!(walk.absorb(Vec::new()), 0);
+        assert_eq!(walk.len(), 1);
+    }
+
+    #[test]
+    fn walk_keeps_a_partial_overlap_between_pages() {
+        // A pledge bought mid-walk can shift the page boundary, so page
+        // 2 may repeat one entry from page 1. The new ones must still
+        // land, or a shifting ledger would truncate the hangar.
+        let mut walk = PledgeWalk::default();
+        walk.absorb(ships(&["1", "2", "3"]));
+        assert_eq!(walk.absorb(ships(&["3", "4", "5"])), 2);
+        assert_eq!(walk.len(), 5);
+    }
+
+    #[test]
+    fn walk_keeps_two_pledges_that_share_a_name() {
+        // Owning two of the same ship is ordinary. They share a name
+        // and differ only by pledge id, so an identity keyed on the
+        // name would silently halve them.
+        let mut walk = PledgeWalk::default();
+        let two = vec![
+            HangarShip {
+                name: "Aegis Avenger Titan".into(),
+                manufacturer: None,
+                pledge_id: Some("111".into()),
+                kind: None,
+                contains: Vec::new(),
+            },
+            HangarShip {
+                name: "Aegis Avenger Titan".into(),
+                manufacturer: None,
+                pledge_id: Some("222".into()),
+                kind: None,
+                contains: Vec::new(),
+            },
+        ];
+        assert_eq!(walk.absorb(two), 2);
+    }
+
+    #[test]
+    fn walk_falls_back_to_the_name_without_an_id() {
+        // No id means the name is all the identity there is. Two
+        // different unnamed-id pledges with the same name collapse —
+        // accepted, because the live markup always supplies an id and
+        // the alternative is unbounded repeats from a repeated page.
+        let mut walk = PledgeWalk::default();
+        let no_id = |name: &str| HangarShip {
+            name: name.to_string(),
+            manufacturer: None,
+            pledge_id: None,
+            kind: None,
+            contains: Vec::new(),
+        };
+        assert_eq!(walk.absorb(vec![no_id("A"), no_id("B")]), 2);
+        assert_eq!(walk.absorb(vec![no_id("A")]), 0);
+    }
+
+    #[test]
+    fn walk_does_not_confuse_an_id_with_a_name() {
+        // The key is prefixed, so a pledge whose id is "x" and one
+        // whose name is "x" are different entries rather than a
+        // collision.
+        let mut walk = PledgeWalk::default();
+        let by_id = HangarShip {
+            name: "Something".into(),
+            manufacturer: None,
+            pledge_id: Some("x".into()),
+            kind: None,
+            contains: Vec::new(),
+        };
+        let by_name = HangarShip {
+            name: "x".into(),
+            manufacturer: None,
+            pledge_id: None,
+            kind: None,
+            contains: Vec::new(),
+        };
+        assert_eq!(walk.absorb(vec![by_id, by_name]), 2);
+    }
+
+    // ---- Pagination ----------------------------------------------
+    //
+    // Only page 1 of the ledger was ever fetched, so any account whose
+    // pledges spilled past the first page silently reported a short
+    // hangar. Reported 2026-09-16.
+
+    #[test]
+    fn page_one_is_the_bare_url() {
+        // Page 1 must stay parameterless. It is the URL the cookie
+        // probe and every previous release used, and a query string
+        // RSI does not expect is a needless difference on the one
+        // request that has to work.
+        assert_eq!(pledges_page_url(1), PLEDGES_URL);
+        assert_eq!(pledges_page_url(0), PLEDGES_URL);
+    }
+
+    #[test]
+    fn later_pages_carry_the_page_parameter() {
+        assert_eq!(
+            pledges_page_url(3),
+            format!("{PLEDGES_URL}?page=3"),
+            "the ?page= assumption lives in exactly one place; if RSI \
+             paginates differently, this is the line to change"
+        );
+    }
+
+    /// Build a pledges page holding `names`, in the real markup shape.
+    fn page_with(names: &[(&str, &str)]) -> String {
+        let items: String = names
+        .iter()
+        .map(|(id, name)| {
+            format!(
+                r#"<li><div class="row"><div class="basic-infos clearfix"><div class="wrapper-col">
+                       <div class="title-col"><h3>{name}</h3>
+                       <input type="hidden" class="js-pledge-id" value="{id}">
+                       <input type="hidden" class="js-pledge-name" value="{name}">
+                       </div></div></div></div></li>"#
+            )
+        })
+        .collect();
+        format!(r#"<html><body><ul class="list-items">{items}</ul></body></html>"#)
+    }
+
+    #[test]
+    fn parse_page_counts_blocks_it_could_not_read() {
+        // A block the selector matches but the field reader rejects is
+        // the signature of RSI moving its markup. It used to vanish
+        // silently, making parser drift look like a smaller hangar.
+        let body = r#"<html><body><ul class="list-items">
+            <li><div class="title-col"><h3>Aegis Avenger Titan</h3>
+                <input type="hidden" class="js-pledge-name" value="Aegis Avenger Titan"></div></li>
+            <li><div class="nothing-we-recognise">???</div></li>
+        </ul></body></html>"#;
+        let parsed = parse_pledges_page(body);
+        assert_eq!(parsed.blocks_seen, 2);
+        assert_eq!(parsed.ships.len(), 1);
+        assert_eq!(parsed.blocks_skipped, 1);
+        assert!(!parsed.list_missing);
+    }
+
+    #[test]
+    fn parse_page_flags_a_page_with_no_pledge_list_at_all() {
+        // A login interstitial or an error page parses to zero ships,
+        // exactly like a genuinely empty hangar. `list_missing` is what
+        // separates "RSI did not show us the ledger" from "the user
+        // owns nothing", which a bare count cannot.
+        let parsed = parse_pledges_page("<html><body><h1>Sign in</h1></body></html>");
+        assert!(parsed.list_missing);
+        assert_eq!(parsed.blocks_seen, 0);
+        assert!(parsed.ships.is_empty());
+
+        let real = parse_pledges_page(&page_with(&[("1", "Aegis Avenger Titan")]));
+        assert!(!real.list_missing, "a real ledger must not look missing");
+    }
+
+    #[test]
+    fn parse_page_reads_an_empty_but_present_ledger() {
+        // The genuinely-empty hangar: the list element is there, it
+        // just has no children. Must NOT be flagged as missing.
+        let parsed =
+            parse_pledges_page(r#"<html><body><ul class="list-items"></ul></body></html>"#);
+        assert!(!parsed.list_missing);
+        assert_eq!(parsed.blocks_seen, 0);
+        assert!(parsed.ships.is_empty());
+    }
+
+    #[test]
+    fn pledge_identity_prefers_the_id_over_the_name() {
+        // The walk dedupes on this key. Two distinct pledges for the
+        // same ship share a name but never an id, so keying on the id
+        // is what stops a second Avenger being swallowed as a repeat.
+        let two = page_with(&[
+            ("111", "Aegis Avenger Titan"),
+            ("222", "Aegis Avenger Titan"),
+        ]);
+        let parsed = parse_pledges_page(&two);
+        assert_eq!(parsed.ships.len(), 2);
+        let ids: Vec<_> = parsed
+            .ships
+            .iter()
+            .map(|s| s.pledge_id.clone().unwrap())
+            .collect();
+        assert_eq!(ids, vec!["111", "222"]);
+    }
 
     #[test]
     fn parse_pledges_extracts_ships_with_all_fields() {

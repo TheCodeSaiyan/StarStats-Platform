@@ -697,35 +697,72 @@ fn is_autostart_launch() -> bool {
     std::env::args().any(|a| a == "--autostart")
 }
 
+/// How many days of rolled `client.log` files to keep.
+///
+/// The file log used to be opt-in so the data dir stayed tidy. Bounded
+/// retention buys the same tidiness without the cost — see
+/// [`init_telemetry`] for why that cost was unacceptable.
+const LOG_RETENTION_DAYS: usize = 7;
+
+/// Install tracing.
+///
+/// THE FILE LOG IS NOT OPTIONAL, and that is a deliberate reversal.
+///
+/// Release builds carry `windows_subsystem = "windows"`, which detaches
+/// the console, so the stdout layer below writes to nowhere a user can
+/// reach. With the file appender also opt-in and defaulting to off, a
+/// normal install produced NO durable log of any kind: asking a user
+/// what went wrong could only ever be answered with "nothing was
+/// recorded". That is what made a hangar import returning too few items
+/// impossible to diagnose from a bug report.
+///
+/// So the appender always runs, capped at [`LOG_RETENTION_DAYS`] files
+/// so it cannot grow without bound. `debug_logging` now chooses the
+/// verbosity of that log rather than whether it exists — the detail
+/// that is expensive (per-request URLs, page-by-page counts) stays
+/// behind it, while the shape of every cycle is always on record.
+///
+/// `RUST_LOG` still wins over both: an env filter set by the user is
+/// taken verbatim.
 fn init_telemetry(debug_logging: bool) {
+    let default_directive = if debug_logging {
+        "debug,starstats=debug"
+    } else {
+        "info,starstats=info"
+    };
     let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,starstats=info"));
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
     let stdout_layer = fmt::layer().with_target(false);
 
-    // The daily-rolling file appender is opt-in. With debug_logging
-    // off (the default for end users) we keep the user's data dir
-    // tidy — no log accumulation. Toggle from Settings → Updates.
-    // Panic.log is still written on panic, regardless of this flag,
-    // so we never lose a crash trace.
-    if debug_logging {
-        if let Ok(dir) = config::data_dir() {
-            let file_appender = tracing_appender::rolling::daily(&dir, "client.log");
-            let file_layer = fmt::layer()
-                .with_writer(file_appender)
-                .with_target(false)
-                .with_ansi(false);
-            let _ = Registry::default()
-                .with(filter)
-                .with(stdout_layer)
-                .with(file_layer)
-                .try_init();
-            return;
-        }
-    }
+    // `panic.log` is written separately by the panic hook, unbuffered,
+    // because a panic during setup can outrun tracing's pipeline.
+    let file_layer = config::data_dir().ok().and_then(|dir| {
+        tracing_appender::rolling::Builder::new()
+            .rotation(tracing_appender::rolling::Rotation::DAILY)
+            .filename_prefix("client")
+            .filename_suffix("log")
+            .max_log_files(LOG_RETENTION_DAYS)
+            .build(&dir)
+            .ok()
+            .map(|appender| {
+                fmt::layer()
+                    .with_writer(appender)
+                    .with_target(false)
+                    .with_ansi(false)
+            })
+    });
+
+    // A failure to open the log file must not take the tray down with
+    // it — a read-only data dir is a degraded install, not a dead one.
     let _ = Registry::default()
         .with(filter)
         .with(stdout_layer)
+        .with(file_layer)
         .try_init();
+
+    if debug_logging {
+        tracing::debug!("verbose logging enabled");
+    }
 }
 
 /// Capture panics to a dedicated `panic.log` in the user data dir
