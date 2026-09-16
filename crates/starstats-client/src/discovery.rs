@@ -135,18 +135,21 @@ fn install_roots() -> Vec<PathBuf> {
 /// Returned as `(path, scan_children)`: `scan_children` means the
 /// directory holds one prefix per child (Lutris' `prefixes/`, Steam's
 /// `compatdata/`), rather than being a prefix itself.
-#[cfg(target_os = "linux")]
-fn prefix_roots() -> Vec<(PathBuf, bool)> {
+/// Takes `home` and `wine_prefix` rather than reading the environment,
+/// and is compiled on EVERY platform even though only Linux calls it.
+/// That is deliberate: the table below is the whole Linux fix, and a
+/// typo in any one of these paths is invisible until a Linux user
+/// reports that detection still does not work. Parameterised and
+/// un-gated, it is covered by the tests at the bottom of this file on
+/// whatever machine runs them.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn linux_prefix_roots(home: &Path, wine_prefix: Option<&Path>) -> Vec<(PathBuf, bool)> {
     let mut roots: Vec<(PathBuf, bool)> = Vec::new();
 
     // An explicitly configured prefix beats every guess below.
-    if let Some(prefix) = std::env::var_os("WINEPREFIX") {
-        roots.push((PathBuf::from(prefix), false));
+    if let Some(prefix) = wine_prefix {
+        roots.push((prefix.to_path_buf(), false));
     }
-
-    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
-        return roots;
-    };
 
     // Single prefixes, in the places the common install guides put them.
     for direct in [
@@ -186,7 +189,7 @@ fn prefix_roots() -> Vec<(PathBuf, bool)> {
 /// A Steam `compatdata` entry nests the prefix under `pfx/`; every
 /// other launcher uses the prefix directory itself. Both are probed
 /// because the cost is an `exists()` call.
-#[cfg(target_os = "linux")]
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn install_roots_in_prefix(prefix: &Path, out: &mut Vec<PathBuf>) {
     for drive_c in [prefix.join("drive_c"), prefix.join("pfx").join("drive_c")] {
         for shape in INSTALL_SHAPES {
@@ -195,10 +198,14 @@ fn install_roots_in_prefix(prefix: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-#[cfg(target_os = "linux")]
-fn install_roots() -> Vec<PathBuf> {
+/// Every candidate install root under `home`. Split out of
+/// [`install_roots`] so a test can hand it a synthetic home directory
+/// instead of the real environment - see the note on
+/// [`linux_prefix_roots`] for why that matters.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn linux_install_roots_under(home: &Path, wine_prefix: Option<&Path>) -> Vec<PathBuf> {
     let mut roots = Vec::new();
-    for (root, scan_children) in prefix_roots() {
+    for (root, scan_children) in linux_prefix_roots(home, wine_prefix) {
         install_roots_in_prefix(&root, &mut roots);
         if !scan_children {
             continue;
@@ -211,12 +218,19 @@ fn install_roots() -> Vec<PathBuf> {
         }
     }
     // Some users bind-mount or symlink the install outside any prefix.
-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from) {
-        for shape in INSTALL_SHAPES {
-            roots.push(join_shape(&home, shape));
-        }
+    for shape in INSTALL_SHAPES {
+        roots.push(join_shape(home, shape));
     }
     dedupe(roots)
+}
+
+#[cfg(target_os = "linux")]
+fn install_roots() -> Vec<PathBuf> {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
+        return Vec::new();
+    };
+    let wine_prefix = std::env::var_os("WINEPREFIX").map(PathBuf::from);
+    linux_install_roots_under(&home, wine_prefix.as_deref())
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux")))]
@@ -788,6 +802,203 @@ mod tests {
         }
         println!("--- tail target ---");
         println!("{:?}", select_tail_target(None, found));
+    }
+
+    // ---- Linux install-root discovery ----------------------------
+    //
+    // Star Citizen on Linux runs under Lutris, Heroic, Bottles or a
+    // hand-rolled prefix far more often than under Steam, and the old
+    // code probed Steam's compatdata and nothing else — so Linux
+    // detection essentially never worked.
+    //
+    // These run on EVERY platform on purpose. The table they cover is
+    // the whole Linux fix, and a typo in one path is otherwise
+    // invisible from a Windows machine until a user reports that
+    // detection still does not work.
+
+    /// Plant a complete install (one LIVE channel with a Game.log) at
+    /// `<prefix>/drive_c/<shape>` and return the Game.log's path.
+    fn plant_install(prefix: &Path, shape: &str) -> PathBuf {
+        let install = shape
+            .split('/')
+            .fold(prefix.join("drive_c"), |acc, seg| acc.join(seg));
+        let channel = install.join("LIVE");
+        fs::create_dir_all(&channel).unwrap();
+        let log = channel.join("Game.log");
+        write_file(&log, b"<2026-01-01> linux\n");
+        log
+    }
+
+    /// Run the real Linux root enumeration against a synthetic home and
+    /// return every live log it finds — the same filter-then-walk
+    /// `discover_standard` applies.
+    fn discovered_under(home: &Path, wine_prefix: Option<&Path>) -> Vec<PathBuf> {
+        let mut out = Vec::new();
+        for root in linux_install_roots_under(home, wine_prefix) {
+            if root.exists() {
+                collect_from_root(&root, &mut out);
+            }
+        }
+        out.into_iter()
+            .filter(|d| d.kind == LogKind::ChannelLive)
+            .map(|d| d.path)
+            .collect()
+    }
+
+    #[test]
+    fn linux_finds_a_lutris_install() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let prefix = home.join(".local/share/lutris/prefixes/star-citizen");
+        let want = plant_install(
+            &prefix,
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "Lutris prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_finds_a_heroic_install() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let prefix = home.join("Games/Heroic/Prefixes/default/StarCitizen");
+        let want = plant_install(
+            &prefix,
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "Heroic prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_finds_a_bottles_install() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let prefix = home.join(".local/share/bottles/bottles/StarCitizen");
+        let want = plant_install(
+            &prefix,
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "Bottles prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_finds_a_flatpak_install() {
+        // Flatpak relocates every launcher's data under ~/.var/app.
+        // A user on Flatpak Lutris has a completely different path to
+        // one on native Lutris, and only the native one was covered
+        // before.
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let prefix = home.join(".var/app/net.lutris.Lutris/data/lutris/prefixes/sc");
+        let want = plant_install(
+            &prefix,
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "Flatpak Lutris prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_still_finds_a_steam_proton_install() {
+        // Steam was the ONLY thing the old code looked at, so it must
+        // keep working — the fix widened coverage, it did not move it.
+        // Steam nests the prefix under `pfx/`, unlike every other
+        // launcher.
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let compat = home.join(".steam/steam/steamapps/compatdata/12345");
+        let want = plant_install(
+            &compat.join("pfx"),
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "Steam Proton prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_finds_a_flatpak_steam_install() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let compat = home
+            .join(".var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/4242");
+        let want = plant_install(
+            &compat.join("pfx"),
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "Flatpak Steam prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_honours_an_explicit_wineprefix() {
+        // $WINEPREFIX is an exact answer from the user's own
+        // environment, so it must win wherever the prefix lives —
+        // including somewhere none of the guessed tables would reach.
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path().join("home");
+        fs::create_dir_all(&home).unwrap();
+        let prefix = tmp.path().join("mnt/ssd/my-own-prefix");
+        let want = plant_install(
+            &prefix,
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(&home, Some(&prefix)).contains(&want),
+            "explicit WINEPREFIX not honoured"
+        );
+    }
+
+    #[test]
+    fn linux_finds_a_plain_wine_prefix() {
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let want = plant_install(
+            &home.join(".wine"),
+            "Program Files/Roberts Space Industries/StarCitizen",
+        );
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "~/.wine prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_finds_an_install_moved_off_the_default_folder() {
+        // The Linux mirror of the Windows custom-path case: the prefix
+        // is where we expect, but the install inside it is not under
+        // `Program Files`.
+        let tmp = TempDir::new().unwrap();
+        let home = tmp.path();
+        let prefix = home.join("Games/star-citizen");
+        let want = plant_install(&prefix, "Games/StarCitizen");
+        assert!(
+            discovered_under(home, None).contains(&want),
+            "non-default install folder inside the prefix not found"
+        );
+    }
+
+    #[test]
+    fn linux_finds_nothing_in_an_empty_home() {
+        // The no-install case must stay quiet rather than inventing a
+        // hit — `GamelogMissing` depends on an empty result meaning
+        // empty.
+        let tmp = TempDir::new().unwrap();
+        assert!(discovered_under(tmp.path(), None).is_empty());
     }
 
     // ---- Override resolution -------------------------------------
