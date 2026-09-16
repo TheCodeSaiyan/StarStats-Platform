@@ -776,9 +776,15 @@ mod tests {
         for d in &found {
             println!("{:?} {} {} bytes", d.kind, d.path.display(), d.size_bytes);
         }
-        println!("--- launcher-log install roots ---");
-        for r in launcher_log_install_roots() {
-            println!("{} (exists: {})", r.display(), r.exists());
+        // Windows-only: on Linux the launcher's logs are inside the
+        // Wine prefix we are still looking for, so the scanner does
+        // not exist there and `--all-targets` would not compile.
+        #[cfg(target_os = "windows")]
+        {
+            println!("--- launcher-log install roots ---");
+            for r in launcher_log_install_roots() {
+                println!("{} (exists: {})", r.display(), r.exists());
+            }
         }
         println!("--- tail target ---");
         println!("{:?}", select_tail_target(None, found));
