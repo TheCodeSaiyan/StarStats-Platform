@@ -181,7 +181,7 @@ impl Default for Config {
 /// platform's origin — must be `https://` or `wss://` except for a
 /// loopback test host, where plaintext is allowed), and a `bearer_token`
 /// (the org platform's desktop/member token).
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct OrgConnectorConfig {
     /// Master switch. When false, the connector never spawns.
@@ -408,6 +408,43 @@ impl ReleaseChannel {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn debug_never_prints_a_token() {
+        // The file log is always written now, and users are asked to
+        // attach it to bug reports. A derived Debug on these structs
+        // would make leaking a live device JWT into that file a
+        // one-line mistake, so the redaction is asserted rather than
+        // trusted to review.
+        let mut cfg = Config::default();
+        cfg.remote_sync.access_token = Some("eyJ-a-real-looking-device-jwt".into());
+        cfg.remote_sync.api_url = Some("https://api.starstats.app".into());
+        cfg.org_connector.bearer_token = Some("org-bearer-abcdef".into());
+
+        // The whole Config, because that is what a careless
+        // `tracing::debug!(?cfg)` would actually render.
+        let rendered = format!("{cfg:?}");
+        assert!(
+            !rendered.contains("eyJ-a-real-looking-device-jwt"),
+            "device token leaked into Debug output: {rendered}"
+        );
+        assert!(
+            !rendered.contains("org-bearer-abcdef"),
+            "org bearer leaked into Debug output: {rendered}"
+        );
+        // Presence still visible — that is the diagnostic value.
+        assert!(rendered.contains("<set>"), "got {rendered}");
+        // Non-secret fields must survive, or the redaction has cost
+        // the log its usefulness.
+        assert!(rendered.contains("api.starstats.app"), "got {rendered}");
+    }
+
+    #[test]
+    fn debug_marks_an_absent_token_unset() {
+        let cfg = Config::default();
+        let rendered = format!("{cfg:?}");
+        assert!(rendered.contains("<unset>"), "got {rendered}");
+    }
     use super::*;
 
     #[test]
@@ -1104,7 +1141,7 @@ pub const DEFAULT_URGENT_TYPES: &[&str] = &[
     "session_end",
 ];
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RemoteSyncConfig {
     pub enabled: bool,
@@ -1222,6 +1259,50 @@ fn default_priority_event_types() -> Vec<String> {
 fn project_dirs() -> Result<directories::ProjectDirs> {
     directories::ProjectDirs::from("app", "StarStats", "tray")
         .context("could not resolve user config/data directories")
+}
+
+/// Hand-rolled so a token can never reach a log.
+///
+/// `Config` is `Debug`, and the file log is now ALWAYS written
+/// (`main::init_telemetry`), so a single `tracing::debug!(?cfg)` added
+/// in good faith later would put a live device JWT into a file users
+/// are asked to attach to bug reports. A derived `Debug` makes that a
+/// one-line mistake; this makes it impossible.
+///
+/// The field is reported as present-or-absent, because "is a token
+/// configured at all" is the question worth answering when reading a
+/// log, and its VALUE never is.
+impl std::fmt::Debug for RemoteSyncConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteSyncConfig")
+            .field("enabled", &self.enabled)
+            .field("api_url", &self.api_url)
+            .field("claimed_handle", &self.claimed_handle)
+            .field("access_token", &redacted(self.access_token.as_deref()))
+            .field("interval_secs", &self.interval_secs)
+            .field("batch_size", &self.batch_size)
+            .finish_non_exhaustive()
+    }
+}
+
+/// See [`RemoteSyncConfig`]'s `Debug` — same reasoning, same risk.
+impl std::fmt::Debug for OrgConnectorConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OrgConnectorConfig")
+            .field("enabled", &self.enabled)
+            .field("platform_url", &self.platform_url)
+            .field("bearer_token", &redacted(self.bearer_token.as_deref()))
+            .finish_non_exhaustive()
+    }
+}
+
+/// Render a secret as its presence, never its value or its length —
+/// a length is a small hint about the credential and buys nothing.
+fn redacted(value: Option<&str>) -> &'static str {
+    match value {
+        Some(v) if !v.is_empty() => "<set>",
+        _ => "<unset>",
+    }
 }
 
 pub fn config_dir() -> Result<PathBuf> {
