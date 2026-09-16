@@ -570,6 +570,7 @@ export type Severity = 'error' | 'warn' | 'info';
 
 export type HealthId =
   | 'gamelog_missing'
+  | 'gamelog_override_invalid'
   | 'api_url_missing'
   | 'pair_missing'
   | 'auth_lost'
@@ -596,6 +597,7 @@ export type HealthAction =
 
 export type HealthParams =
   | { id: 'gamelog_missing' }
+  | { id: 'gamelog_override_invalid'; path: string }
   | { id: 'api_url_missing' }
   | { id: 'pair_missing' }
   | { id: 'auth_lost' }

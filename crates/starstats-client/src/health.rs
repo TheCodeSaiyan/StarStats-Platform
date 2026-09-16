@@ -21,6 +21,7 @@ pub enum Severity {
 #[serde(rename_all = "snake_case")]
 pub enum HealthId {
     GamelogMissing,
+    GamelogOverrideInvalid,
     ApiUrlMissing,
     PairMissing,
     AuthLost,
@@ -56,6 +57,9 @@ pub enum HealthAction {
 #[serde(tag = "id", rename_all = "snake_case")]
 pub enum HealthParams {
     GamelogMissing,
+    GamelogOverrideInvalid {
+        path: String,
+    },
     ApiUrlMissing,
     PairMissing,
     AuthLost,
@@ -106,6 +110,13 @@ pub struct HealthInputs {
     pub now: DateTime<Utc>,
     pub gamelog_discovered_count: usize,
     pub gamelog_override_set: bool,
+    /// The configured `gamelog_path`, when one is set. Carried so the
+    /// health item can name the path back at the user.
+    pub gamelog_override_path: Option<String>,
+    /// Whether that override actually resolves to a readable log.
+    /// `true` when no override is set — an absent override cannot be
+    /// broken, and the `GamelogMissing` check below covers that case.
+    pub gamelog_override_resolved: bool,
     pub remote_sync_enabled: bool,
     pub api_url: Option<String>,
     pub access_token: Option<String>,
@@ -133,7 +144,26 @@ const DISK_FREE_LOW_THRESHOLD: u64 = 1_073_741_824; // 1 GiB
 pub fn current_health(inputs: &HealthInputs) -> Vec<HealthItem> {
     let mut items: Vec<HealthItem> = Vec::new();
 
-    if inputs.gamelog_discovered_count == 0 && !inputs.gamelog_override_set {
+    // An override that points at nothing is its own failure, and a
+    // louder one than "we found no logs": the user believes they have
+    // already fixed this. Before this fired, merely SETTING the path
+    // suppressed GamelogMissing below whether or not it resolved, so a
+    // typo looked exactly like success.
+    if inputs.gamelog_override_set && !inputs.gamelog_override_resolved {
+        items.push(item(
+            HealthId::GamelogOverrideInvalid,
+            Severity::Warn,
+            HealthParams::GamelogOverrideInvalid {
+                path: inputs.gamelog_override_path.clone().unwrap_or_default(),
+            },
+            Some(HealthAction::GoToSettings {
+                field: SettingsField::GamelogPath,
+            }),
+        ));
+    } else if inputs.gamelog_discovered_count == 0 {
+        // Reached only when no override is set, or one is set and
+        // resolves — a resolving override always contributes at least
+        // one discovered log, so this cannot fire alongside it.
         items.push(item(
             HealthId::GamelogMissing,
             Severity::Warn,
@@ -335,6 +365,9 @@ fn id_order(id: HealthId) -> u8 {
         HealthId::SyncFailing => 5,
         HealthId::HangarSkip => 6,
         HealthId::EmailUnverified => 7,
+        // Same slot as GamelogMissing — the two are mutually
+        // exclusive, so they never compete for a position.
+        HealthId::GamelogOverrideInvalid => 0,
         HealthId::GameLogStale => 8,
         HealthId::UpdateAvailable => 9,
         HealthId::DiskFreeLow => 10,
@@ -350,6 +383,8 @@ mod tests {
             now: chrono::Utc::now(),
             gamelog_discovered_count: 0,
             gamelog_override_set: false,
+            gamelog_override_path: None,
+            gamelog_override_resolved: true,
             remote_sync_enabled: false,
             api_url: None,
             access_token: None,
@@ -426,6 +461,85 @@ mod tests {
     }
 
     #[test]
+    fn override_invalid_fires_when_the_configured_path_resolves_to_nothing() {
+        let mut inputs = empty_inputs();
+        inputs.gamelog_override_set = true;
+        inputs.gamelog_override_resolved = false;
+        inputs.gamelog_override_path = Some(r"D:\typo\Game.log".to_string());
+        let items = current_health(&inputs);
+        let found = items
+            .iter()
+            .find(|i| i.id == HealthId::GamelogOverrideInvalid)
+            .expect("override-invalid item");
+        assert_eq!(
+            found.params,
+            HealthParams::GamelogOverrideInvalid {
+                path: r"D:\typo\Game.log".to_string()
+            },
+            "the item must name the path back at the user"
+        );
+    }
+
+    #[test]
+    fn a_broken_override_does_not_silence_the_gamelog_warning() {
+        // The reported failure mode: setting ANY path suppressed
+        // GamelogMissing whether or not it resolved, so a typo looked
+        // exactly like a fix. Something must still warn.
+        let mut inputs = empty_inputs();
+        inputs.gamelog_discovered_count = 0;
+        inputs.gamelog_override_set = true;
+        inputs.gamelog_override_resolved = false;
+        let items = current_health(&inputs);
+        assert!(
+            items
+                .iter()
+                .any(|i| i.id == HealthId::GamelogOverrideInvalid),
+            "a broken override must warn: {:#?}",
+            items.iter().map(|i| i.id).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn broken_override_reports_one_gamelog_problem_not_two() {
+        // GamelogOverrideInvalid strictly supersedes GamelogMissing —
+        // it says the same thing plus which path is wrong. Emitting
+        // both would put two warnings on screen for one fault.
+        let mut inputs = empty_inputs();
+        inputs.gamelog_discovered_count = 0;
+        inputs.gamelog_override_set = true;
+        inputs.gamelog_override_resolved = false;
+        let items = current_health(&inputs);
+        assert!(
+            items.iter().all(|i| i.id != HealthId::GamelogMissing),
+            "the generic item fired alongside the specific one"
+        );
+    }
+
+    #[test]
+    fn override_invalid_does_not_fire_for_a_resolving_override() {
+        let mut inputs = empty_inputs();
+        inputs.gamelog_discovered_count = 1;
+        inputs.gamelog_override_set = true;
+        inputs.gamelog_override_resolved = true;
+        let items = current_health(&inputs);
+        assert!(items
+            .iter()
+            .all(|i| i.id != HealthId::GamelogOverrideInvalid));
+        assert!(items.iter().all(|i| i.id != HealthId::GamelogMissing));
+    }
+
+    #[test]
+    fn override_invalid_does_not_fire_when_no_override_is_set() {
+        let mut inputs = empty_inputs();
+        inputs.gamelog_discovered_count = 1;
+        inputs.gamelog_override_set = false;
+        let items = current_health(&inputs);
+        assert!(items
+            .iter()
+            .all(|i| i.id != HealthId::GamelogOverrideInvalid));
+    }
+
+    #[test]
     fn gamelog_missing_fires_when_no_logs_and_no_override() {
         let inputs = empty_inputs();
         let items = current_health(&inputs);
@@ -442,9 +556,17 @@ mod tests {
     }
 
     #[test]
-    fn gamelog_missing_does_not_fire_when_override_set() {
+    fn gamelog_missing_does_not_fire_when_override_set_and_resolving() {
+        // This used to assert that merely SETTING an override silenced
+        // the warning, with zero logs discovered — which is what let a
+        // typo'd path look like a fix. The override now has to resolve
+        // to earn the silence, and a resolving override always
+        // contributes at least one discovered log, so the fixture
+        // carries one.
         let mut inputs = empty_inputs();
         inputs.gamelog_override_set = true;
+        inputs.gamelog_override_resolved = true;
+        inputs.gamelog_discovered_count = 1;
         let items = current_health(&inputs);
         assert!(items.iter().all(|i| i.id != HealthId::GamelogMissing));
     }

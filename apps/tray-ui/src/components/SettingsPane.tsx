@@ -1035,7 +1035,7 @@ export function SettingsPane({ config, onSave, status }: Props) {
         <TrayCard title="Game.log">
           <Field
             label="Override path"
-            hint="Leave blank to auto-discover the largest LIVE/PTU/EPTU log."
+            hint="The Game.log itself, its channel folder (LIVE, PTU…) or the StarCitizen install folder — all work. Applies straight away. Leave blank to auto-discover the largest LIVE/PTU/EPTU log."
           >
             <TextInput
               type="text"

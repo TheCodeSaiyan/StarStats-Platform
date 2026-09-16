@@ -1238,6 +1238,31 @@ pub fn data_dir() -> Result<PathBuf> {
     Ok(dir)
 }
 
+/// Read just `gamelog_path` out of `config.toml`.
+///
+/// [`load`] hydrates the device JWT and org bearer from the OS
+/// keychain, which is far too expensive for `discovery::discover` —
+/// that runs on every status poll (10 s) plus every health snapshot.
+/// This reads the one field off disk and deserialises nothing else,
+/// so discovery can honour the override without a keychain round trip.
+///
+/// Returns `None` for an absent file, an unreadable file, a malformed
+/// file, or an unset/blank value — an override we cannot read is an
+/// override that is not set, and the caller falls back to the
+/// standard install roots.
+pub fn gamelog_path_override() -> Option<PathBuf> {
+    #[derive(Deserialize)]
+    struct JustGamelogPath {
+        #[serde(default)]
+        gamelog_path: Option<PathBuf>,
+    }
+
+    let path = config_dir().ok()?.join("config.toml");
+    let text = std::fs::read_to_string(path).ok()?;
+    let parsed: JustGamelogPath = toml::from_str(&text).ok()?;
+    parsed.gamelog_path.filter(|p| !p.as_os_str().is_empty())
+}
+
 pub fn load() -> Result<Config> {
     let path = config_dir()?.join("config.toml");
     let mut cfg: Config = if !path.exists() {

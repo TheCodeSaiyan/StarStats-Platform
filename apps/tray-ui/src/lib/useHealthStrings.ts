@@ -27,6 +27,11 @@ export function healthStrings(p: HealthParams): HealthStrings {
       return {
         summary: 'No Game.log found — set a path in Settings to start the feed.',
       };
+    case 'gamelog_override_invalid':
+      return {
+        summary: 'The Game.log path you set doesn’t point at a readable log.',
+        detail: `${p.path} — give the Game.log itself, its channel folder (LIVE, PTU…) or the StarCitizen install folder.`,
+      };
     case 'api_url_missing':
       return {
         summary: 'Remote sync is on but no API URL is set.',

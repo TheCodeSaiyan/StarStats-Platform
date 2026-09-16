@@ -839,15 +839,9 @@ fn start_sync_workers(
     sync_handle
 }
 
-/// Picks the largest discovered live `Game.log` and starts tailing
-/// it. Returns `Ok(None)` when no candidate is found in any standard
-/// install path — the tray still launches in that case so the user
-/// can pair a device or change the configured path.
-///
-/// Only `LogKind::ChannelLive` entries are considered. Discovery now
-/// also surfaces archived rotated logs and crash reports for UI
-/// visibility, but those aren't tail-able sources — picking one
-/// would mean reading a stale file with no ongoing updates.
+/// Picks the live `Game.log` to tail and starts tailing it. Returns
+/// `Ok(None)` when no candidate is found — the tray still launches in
+/// that case so the user can pair a device or fix the configured path.
 fn start_log_tail(
     storage: Arc<Storage>,
     tail_stats: Arc<parking_lot::Mutex<gamelog::TailStats>>,
@@ -856,13 +850,10 @@ fn start_log_tail(
     own_handle: String,
     event_kick: Arc<tokio::sync::Notify>,
 ) -> anyhow::Result<Option<notify::RecommendedWatcher>> {
-    let mut discovered: Vec<discovery::DiscoveredLog> = discovery::discover()
-        .into_iter()
-        .filter(|d| d.kind == discovery::LogKind::ChannelLive)
-        .collect();
-    discovered.sort_by_key(|a| std::cmp::Reverse(a.size_bytes));
+    let override_path = config::gamelog_path_override();
+    let discovered = discovery::discover_with_override(override_path.as_deref());
 
-    let Some(log) = discovered.first().cloned() else {
+    let Some(log) = discovery::select_tail_target(override_path.as_deref(), discovered) else {
         tracing::warn!("no live Game.log discovered in standard install paths");
         return Ok(None);
     };

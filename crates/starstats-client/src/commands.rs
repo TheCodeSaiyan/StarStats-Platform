@@ -288,6 +288,75 @@ pub async fn install_update_for_channel(
     Ok(true)
 }
 
+/// Stop tailing whatever log we were on and pick a target again.
+///
+/// Mirrors `sync::respawn`: drop the old handle, build a new one, swap
+/// it into `AppState`. Dropping the `notify` watcher closes the channel
+/// its callback holds, so the tail task's `rx.recv()` returns `None`
+/// and it winds down on its own — there is no task handle to abort.
+///
+/// Best-effort by design. A failure here leaves the tray running with
+/// no tail rather than failing the config save the user just made; the
+/// health surface reports the resulting state either way.
+fn respawn_log_tail(state: &AppState) {
+    // Both were captured from config at startup; re-read them so a
+    // save that changed either takes effect on the new tail too.
+    let cfg = config::load().unwrap_or_default();
+    let override_path = cfg.gamelog_path.clone();
+    let discovered = crate::discovery::discover_with_override(override_path.as_deref());
+
+    let Some(log) = crate::discovery::select_tail_target(override_path.as_deref(), discovered)
+    else {
+        tracing::warn!("re-tail found no live Game.log; dropping the previous watcher");
+        *state._tail_handle.lock() = None;
+        state.tail_stats.lock().current_path = None;
+        return;
+    };
+
+    tracing::info!(
+        channel = %log.channel,
+        path = %log.path.display(),
+        "re-tailing after a config change"
+    );
+
+    let storage = Arc::clone(&state.storage);
+    let tail_stats = Arc::clone(&state.tail_stats);
+    let rules = state.parser_def_cache.clone();
+    let event_kick = Arc::clone(&state.tail_event_kick);
+    let path = log.path.clone();
+    let enable_v2_metadata = cfg.v2_metadata_enabled();
+    let own_handle = cfg.remote_sync.claimed_handle.clone().unwrap_or_default();
+
+    let started = tauri::async_runtime::block_on(async move {
+        crate::gamelog::start_tail(
+            path,
+            storage,
+            tail_stats,
+            rules,
+            enable_v2_metadata,
+            own_handle,
+            event_kick,
+        )
+        .await
+    });
+
+    match started {
+        Ok(watcher) => {
+            state.tail_stats.lock().current_path = Some(log.path);
+            // Swapping the Option drops the previous watcher here,
+            // which is what stops the old tail.
+            *state._tail_handle.lock() = Some(watcher);
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                path = %log.path.display(),
+                "re-tail failed; leaving the previous watcher in place"
+            );
+        }
+    }
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn save_config(
     app_handle: tauri::AppHandle,
@@ -323,6 +392,14 @@ pub async fn save_config(
         app_handle.clone(),
         Arc::clone(&state.location_catalog),
     );
+
+    // Re-tail when the Game.log override changed. Without this the
+    // user pastes a path, saves, and watches nothing happen until the
+    // next launch — which is indistinguishable from the override being
+    // ignored, and was half of why the setting looked broken.
+    if prev_config.gamelog_path != cfg.gamelog_path {
+        respawn_log_tail(&state);
+    }
 
     // Respawn the org-connector worker so a change to the
     // `org_connector` settings block (enabled toggle, platform_url,
@@ -2715,7 +2792,20 @@ fn snapshot_health_inputs(state: &AppState) -> Result<crate::health::HealthInput
 
     let config = crate::config::load().map_err(|e| e.to_string())?;
     let gamelog_override_set = config.gamelog_path.is_some();
-    let discovered = crate::discovery::discover();
+    // Resolve the override here rather than inferring "it must be
+    // fine because it is set" — a path that points at nothing is the
+    // failure the user most needs told about, and the one they are
+    // least likely to suspect.
+    let gamelog_override_resolved = config
+        .gamelog_path
+        .as_deref()
+        .map(crate::discovery::override_resolves)
+        .unwrap_or(true);
+    let gamelog_override_path = config
+        .gamelog_path
+        .as_ref()
+        .map(|p| p.to_string_lossy().into_owned());
+    let discovered = crate::discovery::discover_with_override(config.gamelog_path.as_deref());
 
     let cookie_configured = SecretStore::new(ACCOUNT_RSI_SESSION_COOKIE)
         .ok()
@@ -2753,6 +2843,8 @@ fn snapshot_health_inputs(state: &AppState) -> Result<crate::health::HealthInput
         now,
         gamelog_discovered_count: discovered.len(),
         gamelog_override_set,
+        gamelog_override_path,
+        gamelog_override_resolved,
         remote_sync_enabled: config.remote_sync.enabled,
         api_url: config.remote_sync.api_url.clone(),
         access_token: config.remote_sync.access_token.clone(),
