@@ -283,6 +283,12 @@ fn launcher_log_roots() -> Vec<PathBuf> {
 /// others, and the surrounding text changes between launcher versions.
 /// Anything that doesn't resolve to a real directory is dropped by the
 /// caller's `exists()` probe anyway.
+/// Compiled on every platform because its tests are, but only the
+/// Windows scanner above consumes it: on Linux the launcher's logs sit
+/// inside the Wine prefix we are still trying to locate, so there is no
+/// bootstrap and no caller. Without the `allow`, `cargo check` on Linux
+/// fails the workspace's `-D warnings` gate.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
 fn install_roots_in_log_line(line: &str) -> Vec<PathBuf> {
     const MARKER: &str = r"StarCitizen";
     let mut out = Vec::new();
@@ -361,13 +367,6 @@ fn launcher_log_install_roots() -> Vec<PathBuf> {
         }
     }
     dedupe(out)
-}
-
-#[cfg(not(target_os = "windows"))]
-fn launcher_log_install_roots() -> Vec<PathBuf> {
-    // Launcher logs live inside the Wine prefix on Linux, and the
-    // prefix is exactly what we're trying to find — no bootstrap.
-    Vec::new()
 }
 
 fn meta_or_skip(path: &Path) -> Option<u64> {
