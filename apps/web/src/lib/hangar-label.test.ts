@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prettyHangarItem } from './hangar-label';
+import { prettyHangarItem, rsiStoreSearchUrl } from './hangar-label';
 
 describe('prettyHangarItem', () => {
   it('strips the "Standalone Ships - " prefix and maps to vehicle', () => {
@@ -68,5 +68,48 @@ describe('prettyHangarItem', () => {
       category: 'vehicle',
     });
     expect(prettyHangarItem('')).toEqual({ label: '', category: null });
+  });
+});
+
+describe('rsiStoreSearchUrl', () => {
+  it('builds the confirmed live shape', () => {
+    // Verified against a working store URL supplied by the account
+    // holder, 2026-09-17. The parameter is `keywords`, NOT `q` — `q`
+    // is accepted and silently ignored, so getting this wrong yields
+    // a link that looks like a search and shows an unfiltered
+    // catalogue.
+    expect(rsiStoreSearchUrl('emoto')).toBe(
+      'https://robertsspaceindustries.com/en/store/pledge/browse/?page=1&keywords=emoto',
+    );
+  });
+
+  it('encodes names with spaces and punctuation', () => {
+    // Hangar names are full pledge titles, not slugs.
+    const url = rsiStoreSearchUrl('Aegis Avenger Titan');
+    expect(url).toContain('keywords=Aegis+Avenger+Titan');
+    expect(url).not.toContain(' ');
+  });
+
+  it('encodes a name that would otherwise break the query string', () => {
+    const url = rsiStoreSearchUrl('Paints - Constellation & Polar');
+    // `&` must not start a new parameter.
+    expect(url).not.toMatch(/&Polar/);
+    expect(url).toContain('%26');
+  });
+
+  it('returns null for an empty or whitespace name', () => {
+    // A blank keyword would link to the unfiltered catalogue, which
+    // is worse than rendering no link at all.
+    expect(rsiStoreSearchUrl('')).toBeNull();
+    expect(rsiStoreSearchUrl('   ')).toBeNull();
+  });
+
+  it('targets the browse root, not a category', () => {
+    // Category paths exist and work, but choosing one per item means
+    // classifying it; a wrong category shows no results. Subscriber
+    // items make that unreliable — that category's contents differ
+    // per account.
+    expect(rsiStoreSearchUrl('x')).toContain('/store/pledge/browse/?');
+    expect(rsiStoreSearchUrl('x')).not.toContain('/browse/extras/');
   });
 });

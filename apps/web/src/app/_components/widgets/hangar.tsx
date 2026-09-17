@@ -2,7 +2,15 @@ import React from 'react';
 import { getMyHangar } from '@/lib/api';
 import { loadAllReferenceBundles, type ReferenceCatalog } from '@/lib/reference';
 import { EntityLink } from '@/components/kb/EntityLink';
-import { prettyHangarItem, classifyContainedItem } from '@/lib/hangar-label';
+import {
+  resolveReferenceEntry,
+  type ReferenceCategory,
+} from '@/lib/reference-types';
+import {
+  prettyHangarItem,
+  classifyContainedItem,
+  rsiStoreSearchUrl,
+} from '@/lib/hangar-label';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
 import { RankedList, ReadoutGroup, type Row } from './kit/archetypes';
@@ -70,6 +78,60 @@ function bundleShortName(name: string): string {
     ? segs.slice(0, -1)
     : segs;
   return body.join(' – ');
+}
+
+
+/**
+ * One hangar row's label.
+ *
+ * The KB link is the useful one and stays first: it goes to a
+ * StarStats page with real data. But the reference catalog only knows
+ * ships and weapons, so paints, flair and subscriber-store exclusives
+ * resolved to nothing and rendered as dead plain text — which is most
+ * of what makes a hangar list feel inert.
+ *
+ * Those now fall back to a pledge-store search. Not a per-item product
+ * URL: store availability differs per account (subscriber items are
+ * visible to some readers and not others), so a URL resolved against
+ * one account is not valid for another. A keyword search is the same
+ * link for everybody.
+ */
+function HangarItemLabel({
+  category,
+  classKey,
+  catalog,
+  label,
+}: {
+  category: ReferenceCategory | null;
+  classKey: string;
+  catalog: ReferenceCatalog | undefined;
+  label: string;
+}) {
+  const resolved = category
+    ? resolveReferenceEntry(category, classKey, catalog)
+    : undefined;
+  if (category && resolved?.slug) {
+    return (
+      <EntityLink
+        category={category}
+        classKey={classKey}
+        catalog={catalog}
+        label={label}
+      />
+    );
+  }
+  const storeUrl = rsiStoreSearchUrl(label);
+  if (!storeUrl) return <>{label}</>;
+  return (
+    <a
+      href={storeUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={`Find "${label}" in the RSI pledge store`}
+    >
+      {label}
+    </a>
+  );
 }
 
 export const hangarWidget = defineWidget<HangarData>({
@@ -140,7 +202,7 @@ export const hangarWidget = defineWidget<HangarData>({
           rows.push({
             key: `${s.name}-${i}-c${j}`,
             label: (
-              <EntityLink
+              <HangarItemLabel
                 category={category}
                 classKey={item}
                 catalog={catalog}
@@ -161,15 +223,13 @@ export const hangarWidget = defineWidget<HangarData>({
             : undefined;
       rows.push({
         key: `${s.name}-${i}`,
-        label: category ? (
-          <EntityLink
+        label: (
+          <HangarItemLabel
             category={category}
             classKey={pretty}
             catalog={catalog}
             label={pretty}
           />
-        ) : (
-          pretty
         ),
         value: rowValue(s.name),
       });

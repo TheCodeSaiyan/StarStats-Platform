@@ -195,3 +195,34 @@ export function classifyContainedItem(name: string): ReferenceCategory {
   if (SHIP_MANUFACTURERS.has(first)) return 'vehicle';
   return 'item';
 }
+
+/**
+ * RSI pledge-store search for an item name.
+ *
+ * The store has NO dedicated search endpoint — `/store/search`,
+ * `/search` and `/store/pledge/search` all 404 (checked 2026-09-17
+ * against a calibration 404, so that is a real absence and not a SPA
+ * catch-all). Search is a `keywords` parameter on a browse path, and
+ * the filtering is done CLIENT-SIDE: the server returns a
+ * byte-identical shell with or without it. That is fine for a link,
+ * which a browser opens and runs, but it does mean the URL cannot be
+ * validated by fetching it — every probe returns 200 and the same
+ * bytes.
+ *
+ * `page=1` is carried because the live example did; the store pairs
+ * the two and dropping half of a shape confirmed as a pair is not
+ * worth the guess.
+ *
+ * Deliberately the browse ROOT rather than a category path. Picking a
+ * category per item would mean classifying a hangar entry into
+ * `standalone-ships` / `paints` / `subscribers-store`, and a wrong
+ * guess lands the reader in a category where the keyword matches
+ * nothing. Subscriber-store items make that worse: what is in that
+ * category differs per account.
+ */
+export function rsiStoreSearchUrl(name: string): string | null {
+  const term = name.trim();
+  if (!term) return null;
+  const params = new URLSearchParams({ page: '1', keywords: term });
+  return `https://robertsspaceindustries.com/en/store/pledge/browse/?${params.toString()}`;
+}

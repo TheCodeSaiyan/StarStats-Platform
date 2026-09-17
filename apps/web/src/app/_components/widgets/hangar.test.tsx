@@ -87,8 +87,12 @@ describe('hangarWidget', () => {
     const rows = container.querySelectorAll('.hud-readout-row');
     expect(rows.length).toBe(12);
     expect(container.textContent).toContain('+3 more');
-    // No see-more link — hangar has no detail page.
-    expect(container.querySelector('a')).toBeNull();
+    // No see-more LINK — the overflow is a note, not navigation. This
+    // used to assert zero anchors in the tile, which was a broader
+    // claim than the intent and started failing when unresolved items
+    // gained a store-search link. Assert the actual intent instead.
+    const anchors = Array.from(container.querySelectorAll('a'));
+    expect(anchors.some((a) => /more/i.test(a.textContent ?? ''))).toBe(false);
   });
 
   it('expanded shows no "+N more" note when every ship already fits', async () => {
@@ -189,8 +193,37 @@ describe('hangarWidget', () => {
     expect(container.textContent).toContain('Uamchuai Paint');
     // The ship it's for surfaces as the concise value.
     expect(container.textContent).toContain('Railen');
-    // Cosmetic → never a KB link.
-    expect(container.querySelector('a')).toBeNull();
+    // Cosmetic → never a KB link; the reference catalog has no paints.
+    const anchors = Array.from(container.querySelectorAll('a'));
+    expect(anchors.some((a) => (a.getAttribute('href') ?? '').startsWith('/kb/'))).toBe(
+      false,
+    );
+    // It is no longer DEAD text, though: an item the catalog cannot
+    // resolve now links out to a pledge-store search, which is the
+    // whole point of the fallback.
+    const store = anchors.find((a) =>
+      (a.getAttribute('href') ?? '').includes('robertsspaceindustries.com'),
+    );
+    expect(store, 'paint should offer a store-search link').toBeTruthy();
+    expect(store?.getAttribute('href')).toContain('keywords=');
+    expect(store?.getAttribute('rel')).toContain('noopener');
+  });
+
+  it('prefers the KB link over the store fallback when the catalog resolves', async () => {
+    // The fallback must not displace the useful link. A ship the
+    // catalog knows keeps going to its StarStats page.
+    mockHangar().mockResolvedValue({
+      captured_at: '2026-05-22T12:00:00Z',
+      ships: [{ name: 'Gladius', manufacturer: 'Aegis' }],
+    });
+    const node = await hangarWidget.render(ownerCtx(), 'expanded');
+    const { container } = render(node as React.ReactElement);
+    const hrefs = Array.from(container.querySelectorAll('a')).map((a) =>
+      a.getAttribute('href') ?? '',
+    );
+    if (hrefs.some((h) => h.startsWith('/kb/'))) {
+      expect(hrefs.some((h) => h.includes('robertsspaceindustries.com'))).toBe(false);
+    }
   });
 });
 
