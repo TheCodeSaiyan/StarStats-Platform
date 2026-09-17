@@ -170,9 +170,20 @@ describe('the inline row', () => {
   it('offers a signed-in reader their own pages and a way home', () => {
     const ids = primaryIds(true);
     expect(ids).toContain('home');
-    // Every `user` destination, none of the other public ones.
-    const userIds = SITE_NAV.filter((n) => n.access === 'user').map((n) => n.id);
+    // Every `user` destination EXCEPT those held out of the row. The
+    // row's fit is all-or-nothing and measured at 1440px by
+    // `chrome-nav.spec.ts`; `rowExempt` exists so a new destination
+    // can reach the menu without spending the row's last slot and
+    // collapsing every link behind the hamburger.
+    const userIds = SITE_NAV.filter(
+      (n) => n.access === 'user' && !n.rowExempt,
+    ).map((n) => n.id);
     for (const id of userIds) expect(ids).toContain(id);
+    // A held-out entry is still a destination — it is in the menu.
+    for (const n of SITE_NAV.filter((n) => n.rowExempt)) {
+      expect(navFor({ signedIn: true }).map((e) => e.id)).toContain(n.id);
+      expect(ids).not.toContain(n.id);
+    }
     for (const id of ['features', 'docs', 'guides', 'trust', 'privacy', 'terms']) {
       expect(ids, `${id} is marketing, not a working destination`).not.toContain(id);
     }

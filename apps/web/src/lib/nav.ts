@@ -27,6 +27,21 @@ export interface NavDestination {
   label: string;
   href: Route;
   access: NavAccess;
+  /**
+   * Keep this out of the always-visible inline row, while still
+   * offering it in the menu.
+   *
+   * The row has a measured budget and `ChromeBar`'s fit is
+   * all-or-nothing: one entry too many and EVERY link goes behind the
+   * hamburger. `chrome-nav.spec.ts` measures that at 1440px, and
+   * adding a twelfth signed-in destination tripped it — the whole bar
+   * collapsed. Without this flag the only choices were "no menu entry
+   * at all" or "demote something else", and the second is a product
+   * decision a new page should not get to make for itself.
+   *
+   * Default is primary, so nothing existing changes.
+   */
+  rowExempt?: boolean;
 }
 
 /**
@@ -81,7 +96,16 @@ export const SITE_NAV: readonly NavDestination[] = [
   { id: 'travel', label: 'Travel', href: '/me/travel' as Route, access: 'user' },
   { id: 'contracts', label: 'Contracts', href: '/me/contracts' as Route, access: 'user' },
   { id: 'loadout', label: 'Loadout', href: '/me/loadout' as Route, access: 'user' },
-  { id: 'hangar', label: 'Hangar', href: '/me/hangar' as Route, access: 'user' },
+  // Menu, not the inline row — see `rowExempt`. The row is full at
+  // 1440px, and the widget's "View all N items →" is the path most
+  // readers take to this page anyway.
+  {
+    id: 'hangar',
+    label: 'Hangar',
+    href: '/me/hangar' as Route,
+    access: 'user',
+    rowExempt: true,
+  },
   { id: 'kb', label: 'Catalogue', href: '/kb' as Route, access: 'user' },
   { id: 'discover', label: 'Directory', href: '/discover' as Route, access: 'user' },
   { id: 'sharing', label: 'Sharing', href: '/sharing' as Route, access: 'user' },
@@ -131,6 +155,7 @@ export interface NavOpts {
  */
 export function isPrimaryNav(n: NavDestination, signedIn: boolean): boolean {
   if (n.id === 'home') return true;
+  if (n.rowExempt) return false;
   if (n.access !== 'public') return true;
   return !signedIn;
 }
