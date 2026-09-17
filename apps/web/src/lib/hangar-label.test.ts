@@ -72,44 +72,18 @@ describe('prettyHangarItem', () => {
 });
 
 describe('rsiStoreSearchUrl', () => {
-  it('builds the confirmed live shape', () => {
-    // Verified against a working store URL supplied by the account
-    // holder, 2026-09-17. The parameter is `keywords`, NOT `q` — `q`
-    // is accepted and silently ignored, so getting this wrong yields
-    // a link that looks like a search and shows an unfiltered
-    // catalogue.
-    expect(rsiStoreSearchUrl('emoto')).toBe(
-      'https://robertsspaceindustries.com/en/store/pledge/browse/?page=1&keywords=emoto',
-    );
-  });
-
-  it('encodes names with spaces and punctuation', () => {
-    // Hangar names are full pledge titles, not slugs.
-    const url = rsiStoreSearchUrl('Aegis Avenger Titan');
-    expect(url).toContain('keywords=Aegis+Avenger+Titan');
-    expect(url).not.toContain(' ');
-  });
-
-  it('encodes a name that would otherwise break the query string', () => {
-    const url = rsiStoreSearchUrl('Paints - Constellation & Polar');
-    // `&` must not start a new parameter.
-    expect(url).not.toMatch(/&Polar/);
-    expect(url).toContain('%26');
-  });
-
-  it('returns null for an empty or whitespace name', () => {
-    // A blank keyword would link to the unfiltered catalogue, which
-    // is worse than rendering no link at all.
+  it('links nothing while the URL shape is unverified', () => {
+    // The v0.1.50 shape (`/store/pledge/browse/?page=1&keywords=…`)
+    // 404'd on every item: the store SPA's router requires a
+    // storefront segment, and the browse root matches no route. The
+    // server answers 200 with an identical shell either way, so this
+    // could not be caught from a test or a fetch — only in a browser.
+    //
+    // Asserting null rather than deleting the function keeps the
+    // finding attached to the thing it is about, and makes re-enabling
+    // a deliberate edit rather than a silent one.
+    expect(rsiStoreSearchUrl('emoto')).toBeNull();
+    expect(rsiStoreSearchUrl('Aegis Avenger Titan')).toBeNull();
     expect(rsiStoreSearchUrl('')).toBeNull();
-    expect(rsiStoreSearchUrl('   ')).toBeNull();
-  });
-
-  it('targets the browse root, not a category', () => {
-    // Category paths exist and work, but choosing one per item means
-    // classifying it; a wrong category shows no results. Subscriber
-    // items make that unreliable — that category's contents differ
-    // per account.
-    expect(rsiStoreSearchUrl('x')).toContain('/store/pledge/browse/?');
-    expect(rsiStoreSearchUrl('x')).not.toContain('/browse/extras/');
   });
 });

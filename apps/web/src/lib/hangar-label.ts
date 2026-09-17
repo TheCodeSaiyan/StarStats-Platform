@@ -197,32 +197,35 @@ export function classifyContainedItem(name: string): ReferenceCategory {
 }
 
 /**
- * RSI pledge-store search for an item name.
+ * RSI pledge-store search for an item name — currently DISABLED.
  *
- * The store has NO dedicated search endpoint — `/store/search`,
- * `/search` and `/store/pledge/search` all 404 (checked 2026-09-17
- * against a calibration 404, so that is a real absence and not a SPA
- * catch-all). Search is a `keywords` parameter on a browse path, and
- * the filtering is done CLIENT-SIDE: the server returns a
- * byte-identical shell with or without it. That is fine for a link,
- * which a browser opens and runs, but it does mean the URL cannot be
- * validated by fetching it — every probe returns 200 and the same
- * bytes.
+ * Returns null for everything. The store link shipped in v0.1.50
+ * pointed at the browse ROOT with `?page=1&keywords=…`, and every one
+ * of those links 404s.
  *
- * `page=1` is carried because the live example did; the store pairs
- * the two and dropping half of a shape confirmed as a pair is not
- * worth the guess.
+ * Why it was not caught: the store is a client-rendered SPA whose
+ * router declares `path:":storeFront"` — a REQUIRED dynamic segment.
+ * The browse root matches no route, so the router renders its own
+ * not-found page. The server still answers 200 with an identical
+ * shell, so `curl` cannot see it; probing the URL from here reports
+ * success no matter what. Only a browser shows the 404.
  *
- * Deliberately the browse ROOT rather than a category path. Picking a
- * category per item would mean classifying a hangar entry into
- * `standalone-ships` / `paints` / `subscribers-store`, and a wrong
- * guess lands the reader in a category where the keyword matches
- * nothing. Subscriber-store items make that worse: what is in that
- * category differs per account.
+ * What is actually known to work is a category path, which is the
+ * shape the account holder supplied in the first place:
+ *
+ *     /en/store/pledge/browse/extras/subscribers-store?page=1&keywords=emoto
+ *
+ * Re-enabling it therefore needs a storefront per item, and the
+ * categories partition the catalogue (`paints`, `merchandise`,
+ * `game-packages`, `extras/standalone-ships`,
+ * `extras/subscribers-store`), so a hangar entry has to be classified
+ * into one and a wrong guess lands the reader in a category where the
+ * keyword matches nothing. That mapping needs verifying IN A BROWSER
+ * before it ships, because nothing reachable from here can check it.
+ *
+ * Until then no link is correct: an item that renders as plain text is
+ * worse than one that looks clickable and 404s.
  */
-export function rsiStoreSearchUrl(name: string): string | null {
-  const term = name.trim();
-  if (!term) return null;
-  const params = new URLSearchParams({ page: '1', keywords: term });
-  return `https://robertsspaceindustries.com/en/store/pledge/browse/?${params.toString()}`;
+export function rsiStoreSearchUrl(_name: string): string | null {
+  return null;
 }

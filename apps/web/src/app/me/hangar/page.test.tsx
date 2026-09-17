@@ -109,7 +109,12 @@ describe('/me/hangar', () => {
     expect(container.textContent).toContain('Gamma Legs');
   });
 
-  it('links an unresolved item to a store search', async () => {
+  it('renders an unresolved item as plain text, not a broken link', async () => {
+    // The store fallback is disabled: the v0.1.50 URL 404'd on every
+    // item because the store SPA's router requires a storefront
+    // segment. Assert the item still RENDERS and carries no store
+    // link — a tautology here would let a broken URL come back
+    // unnoticed, which is how the first one shipped.
     mockHangar.mockResolvedValue({
       captured_at: '2026-09-17T12:00:00Z',
       ships: [
@@ -118,12 +123,11 @@ describe('/me/hangar', () => {
     });
     const node = await HangarPage();
     const { container } = render(node as React.ReactElement);
-    const store = Array.from(container.querySelectorAll('a')).find((a) =>
+    expect(container.textContent).toContain('Uamchuai Paint');
+    const storeLinks = Array.from(container.querySelectorAll('a')).filter((a) =>
       (a.getAttribute('href') ?? '').includes('/store/pledge/browse'),
     );
-    expect(store, 'unresolved item should link to the store').toBeTruthy();
-    expect(store?.getAttribute('href')).toContain('keywords=');
-    expect(store?.getAttribute('rel')).toContain('noopener');
+    expect(storeLinks).toHaveLength(0);
   });
 
   it('tells a missing snapshot apart from a failed fetch', async () => {

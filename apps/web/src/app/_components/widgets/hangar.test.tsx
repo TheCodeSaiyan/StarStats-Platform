@@ -201,15 +201,16 @@ describe('hangarWidget', () => {
     expect(anchors.some((a) => (a.getAttribute('href') ?? '').startsWith('/kb/'))).toBe(
       false,
     );
-    // It is no longer DEAD text, though: an item the catalog cannot
-    // resolve now links out to a pledge-store search, which is the
-    // whole point of the fallback.
-    const store = anchors.find((a) =>
-      (a.getAttribute('href') ?? '').includes('robertsspaceindustries.com'),
-    );
-    expect(store, 'paint should offer a store-search link').toBeTruthy();
-    expect(store?.getAttribute('href')).toContain('keywords=');
-    expect(store?.getAttribute('rel')).toContain('noopener');
+    // Nor a store link, for now: the v0.1.50 store URL 404'd on every
+    // item (the store SPA requires a storefront segment; the browse
+    // root matches no route), so the fallback is disabled until a
+    // shape has been checked in a browser. Plain text beats a link
+    // that looks clickable and goes nowhere.
+    expect(
+      anchors.some((a) =>
+        (a.getAttribute('href') ?? '').includes('/store/pledge/browse'),
+      ),
+    ).toBe(false);
   });
 
   it('prefers the KB link over the store fallback when the catalog resolves', async () => {
