@@ -749,10 +749,25 @@ const LOG_RETENTION_DAYS: usize = 7;
 /// `RUST_LOG` still wins over both: an env filter set by the user is
 /// taken verbatim.
 fn init_telemetry(debug_logging: bool) {
+    // The crate targets are `starstats_client::…` and `starstats_core::…`
+    // — UNDERSCORES. `starstats=…` matches neither: EnvFilter compares
+    // whole `::`-separated segments, so it was a silent no-op in the
+    // directive this replaces, and every level here came from the bare
+    // global one.
+    //
+    // That is why the global stays at `info` even when verbose. A bare
+    // leading `debug` turns debug on for EVERY dependency: measured
+    // 2026-09-17 at 120k lines / 17.5 MB in under an hour, of which
+    // ~99% was HTML-parser internals (`processing`, `Matching`, `char`)
+    // and 314 lines were ours. With the file log now always on and kept
+    // for 7 days, that is gigabytes of somebody else's debug output.
+    //
+    // Verbose means OUR crates get more detail. It does not mean the
+    // dependency tree does.
     let default_directive = if debug_logging {
-        "debug,starstats=debug"
+        "info,starstats_client=debug,starstats_core=debug"
     } else {
-        "info,starstats=info"
+        "info"
     };
     let filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_directive));
