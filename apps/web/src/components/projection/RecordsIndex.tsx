@@ -29,6 +29,7 @@ export interface RecordsIndexCounts {
   myContracts?: number;
   catalogue?: number;
   loadout?: number;
+  hangar?: number;
 }
 
 const ENTRIES: readonly {
@@ -41,6 +42,10 @@ const ENTRIES: readonly {
   { href: '/me/contracts', label: 'My contracts', key: 'myContracts' },
   { href: '/contracts', label: 'Catalogue', key: 'catalogue' },
   { href: '/me/loadout', label: 'Player loadout', key: 'loadout' },
+  // The pledge ledger in full. The `hangar` widget caps at 12 rows and
+  // the settings pane shows a shorter preview, so before this entry an
+  // account with 34 items could see 12 of them and had nowhere to go.
+  { href: '/me/hangar', label: 'Hangar', key: 'hangar' },
   { href: '/downloads', label: 'Uploads', key: null },
 ];
 
