@@ -101,6 +101,12 @@ fn main() {
             }
         }))
         .setup(|app| {
+            // Shared with `AppState` below so the startup auto-check can
+            // PUBLISH what it finds. Created here because that check is
+            // spawned long before AppState is built.
+            let update_available: Arc<parking_lot::Mutex<Option<state::UpdateInfo>>> =
+                Arc::new(parking_lot::Mutex::new(None));
+
             // 0. Updater plugin — desktop only. Always registered so
             //    the manual "Check for updates" command in the Settings
             //    pane works regardless of the auto-check preference.
@@ -117,6 +123,7 @@ fn main() {
                     let handle = app.handle().clone();
                     let current_version = env!("CARGO_PKG_VERSION");
                     let channel = cfg.release_channel;
+                    let found_update = Arc::clone(&update_available);
                     tauri::async_runtime::spawn(async move {
                         // Override the static `endpoints` from
                         // tauri.conf.json with the user's selected
@@ -159,12 +166,29 @@ fn main() {
                             }
                         };
                         match updater.check().await {
-                            Ok(Some(update)) => tracing::info!(
-                                channel = channel.as_str(),
-                                current_version = current_version,
-                                new_version = %update.version,
-                                "starstats update available"
-                            ),
+                            Ok(Some(update)) => {
+                                tracing::info!(
+                                    channel = channel.as_str(),
+                                    current_version = current_version,
+                                    new_version = %update.version,
+                                    "starstats update available"
+                                );
+                                // Publish it. This arm used to ONLY log,
+                                // so the backend learned about a release
+                                // and told nobody: `update_available`
+                                // was written solely by the
+                                // `set_update_available` command, which
+                                // the FRONTEND calls, so a tray whose
+                                // window was never opened stayed on an
+                                // old build indefinitely while writing
+                                // "update available" to its log on every
+                                // launch. Observed 2026-09-17 on 0.1.25
+                                // with 0.1.26 published.
+                                *found_update.lock() = Some(state::UpdateInfo {
+                                    version: update.version.clone(),
+                                    checked_at: chrono::Utc::now(),
+                                });
+                            }
                             Ok(None) => tracing::info!(
                                 channel = channel.as_str(),
                                 current_version = current_version,
@@ -430,7 +454,7 @@ fn main() {
                 org_connector_handle,
                 _tail_handle: parking_lot::Mutex::new(watcher),
                 _launcher_handle: parking_lot::Mutex::new(launcher_watcher),
-                update_available: Arc::new(parking_lot::Mutex::new(None)),
+                update_available: Arc::clone(&update_available),
             });
 
             // Background: upgrade the location catalogue from the bundled
