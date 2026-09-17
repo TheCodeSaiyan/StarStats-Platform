@@ -71,7 +71,16 @@ pub const MAX_PLEDGE_PAGES: usize = 50;
 
 /// RSI pledge ledger URL. Authenticated — requires a valid session
 /// cookie attached as a request header.
-pub const PLEDGES_URL: &str = "https://robertsspaceindustries.com/account/pledges";
+///
+/// The `/en/` locale prefix is deliberate and load-bearing for
+/// pagination. RSI redirects the bare `/account/pledges` here, and a
+/// redirect that dropped the query string would turn `?page=2` back
+/// into page 1 — which the page walk reads as "no new pledges, we are
+/// done", so the hangar would come back short while looking healthy.
+/// Requesting the canonical path avoids the redirect, and the question,
+/// entirely. This is the form confirmed against a live account
+/// (2026-09-17).
+pub const PLEDGES_URL: &str = "https://robertsspaceindustries.com/en/account/pledges";
 
 /// Name of the RSI session cookie. The user pastes the **value** of
 /// this cookie out of their browser's DevTools cookie store (not the
@@ -305,18 +314,17 @@ async fn refresh_once(
 
 /// URL for one page of the pledge ledger.
 ///
-/// ASSUMPTION, and the only place it lives: RSI paginates
-/// `/account/pledges` with `?page=N`, 1-based. If that is wrong the
-/// walk in [`fetch_all_pledges`] still terminates safely — an ignored
-/// parameter returns page 1 again, every pledge on it is already
-/// known, and the walk stops having made exactly one extra request.
-/// So a wrong guess costs one round trip and behaves as before rather
-/// than looping or dropping data.
+/// RSI paginates the ledger with `?page=N`, 1-based. CONFIRMED against
+/// a live account on 2026-09-17: page 2 and onwards return different
+/// pledges. It was a guess when written, which is why the walk in
+/// [`fetch_all_pledges`] terminates on "this page added nothing new"
+/// rather than on a page count — that rule survives being wrong about
+/// the parameter, and it is still the right rule now the parameter is
+/// known, because it is also how the LAST page ends.
 ///
-/// `pagesize` is deliberately NOT sent. It might work and fetch
-/// everything in one request, but it is a second guess stacked on the
-/// first, and a rejected parameter could fail the whole fetch instead
-/// of degrading.
+/// `pagesize` is deliberately NOT sent. It might fetch everything in
+/// one request, but it is an unverified second parameter, and a
+/// rejected one could fail the whole fetch rather than degrade.
 fn pledges_page_url(page: usize) -> String {
     if page <= 1 {
         PLEDGES_URL.to_string()
@@ -1063,9 +1071,22 @@ mod tests {
     fn later_pages_carry_the_page_parameter() {
         assert_eq!(
             pledges_page_url(3),
-            format!("{PLEDGES_URL}?page=3"),
-            "the ?page= assumption lives in exactly one place; if RSI \
-             paginates differently, this is the line to change"
+            "https://robertsspaceindustries.com/en/account/pledges?page=3",
+            "the confirmed live shape (2026-09-17), spelled out rather than \
+             rebuilt from PLEDGES_URL so that changing the base URL has to \
+             face this assertion instead of silently reshaping the request"
+        );
+    }
+
+    #[test]
+    fn the_pledges_url_keeps_its_locale_prefix() {
+        // Without `/en/`, RSI redirects — and a redirect that dropped the
+        // query string would turn ?page=2 back into page 1, which the walk
+        // reads as "no new pledges" and stops. The hangar would come back
+        // short while every log line looked healthy.
+        assert!(
+            PLEDGES_URL.contains("/en/account/pledges"),
+            "got {PLEDGES_URL}"
         );
     }
 
