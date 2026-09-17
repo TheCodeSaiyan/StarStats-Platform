@@ -1,4 +1,5 @@
 import React from 'react';
+import type { Route } from 'next';
 import { getMyHangar } from '@/lib/api';
 import { loadAllReferenceBundles, type ReferenceCatalog } from '@/lib/reference';
 import { EntityLink } from '@/components/kb/EntityLink';
@@ -21,10 +22,12 @@ import { fmtNum } from './kit/format';
  *
  * Zero-credentials invariant (server holds NO RSI cookie): the snapshot is
  * scraped and pushed by the tray app; the widget therefore offers NO
- * "refresh from server" affordance and NO detail-page link — the full fleet
+ * "refresh from server" affordance. It DOES link to `/me/hangar` for the full
  * lives in the tray, not on a server route. The compact caveat note keeps
  * that promise explicit; expanded caps the list and surfaces the remainder
- * as a plain "+N more" note (never a scrollbar, never a fabricated link).
+ * list (added 2026-09-17) — that page reads the stored snapshot and offers
+ * no refresh of its own, so the zero-credentials invariant still holds.
+ * Never a scrollbar.
  *
  * Migrated to the kit: `defineWidget` owns fetch/empty/gate; `RankedList` /
  * `ReadoutGroup` own the bounded presentation.
@@ -234,12 +237,17 @@ export const hangarWidget = defineWidget<HangarData>({
         value: rowValue(s.name),
       });
     });
-    const hidden = Math.max(0, rows.length - EXPANDED_CAP);
+    // The remainder is now navigation rather than a dead count:
+    // `/me/hangar` lists every item. The kit has always supported this
+    // (`SeeMore`); the tile could not use it while no page existed.
     return (
       <RankedList
         rows={rows}
         cap={EXPANDED_CAP}
-        note={hidden > 0 ? `+${fmtNum(hidden)} more` : undefined}
+        seeMore={{
+          href: '/me/hangar' as Route,
+          label: (hidden) => `View all ${fmtNum(rows.length)} items (+${fmtNum(hidden)}) →`,
+        }}
       />
     );
   },

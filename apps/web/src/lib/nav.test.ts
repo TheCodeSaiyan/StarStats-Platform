@@ -67,14 +67,27 @@ describe('SITE_NAV', () => {
     expect(new Set(hrefs).size).toBe(hrefs.length);
   });
 
-  it('routes pairing to the Emitter, and offers no Hangar destination', () => {
+  it('routes pairing to the Emitter, and never labels it Hangar', () => {
     // `/devices` was labelled "Hangar" and was the pairing page. It double-
     // booked the word — the hangar is the RSI fleet — and split the emitter's
     // lifecycle across two destinations. Pairing moved into `/downloads`.
-    expect(SITE_NAV.map((n) => n.label)).not.toContain('Hangar');
+    //
+    // This used to assert that no entry was labelled "Hangar" AT ALL, which
+    // was a broader claim than the reason for it. The fault was the word
+    // pointing at the tray, not the word existing: a user looking for their
+    // fleet landed on the installer. `/me/hangar` (2026-09-17) is the fleet,
+    // so the label is correct there and the guard is what it always meant —
+    // "Hangar" must never resolve to a pairing or install destination.
     expect(SITE_NAV.map((n) => n.href)).not.toContain('/devices');
+    const hangar = SITE_NAV.find((n) => n.label === 'Hangar');
+    if (hangar) {
+      expect(hangar.href).toBe('/me/hangar');
+      expect(hangar.href).not.toBe('/downloads');
+    }
     const emitter = SITE_NAV.find((n) => n.id === 'downloads');
     expect(emitter).toMatchObject({ label: 'Emitter', href: '/downloads' });
+    // The Emitter keeps its own name; pairing must not be re-labelled back.
+    expect(emitter?.label).not.toBe('Hangar');
   });
 });
 

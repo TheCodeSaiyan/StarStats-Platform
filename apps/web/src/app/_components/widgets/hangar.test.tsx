@@ -86,13 +86,16 @@ describe('hangarWidget', () => {
     const { container } = render(node as React.ReactElement);
     const rows = container.querySelectorAll('.hud-readout-row');
     expect(rows.length).toBe(12);
-    expect(container.textContent).toContain('+3 more');
-    // No see-more LINK — the overflow is a note, not navigation. This
-    // used to assert zero anchors in the tile, which was a broader
-    // claim than the intent and started failing when unresolved items
-    // gained a store-search link. Assert the actual intent instead.
-    const anchors = Array.from(container.querySelectorAll('a'));
-    expect(anchors.some((a) => /more/i.test(a.textContent ?? ''))).toBe(false);
+    // The overflow is now NAVIGATION, not a dead count. It was a plain
+    // "+N more" note for as long as there was no page to send anyone
+    // to; `/me/hangar` (2026-09-17) lists all of them, so the tile
+    // links there and the reader is no longer stuck at 12.
+    const seeMore = Array.from(container.querySelectorAll('a')).find((a) =>
+      /view all/i.test(a.textContent ?? ''),
+    );
+    expect(seeMore, 'overflow should link to the full list').toBeTruthy();
+    expect(seeMore?.getAttribute('href')).toBe('/me/hangar');
+    expect(seeMore?.textContent).toContain('15');
   });
 
   it('expanded shows no "+N more" note when every ship already fits', async () => {
@@ -332,6 +335,11 @@ describe('hangarWidget bundle expansion', () => {
     const { container } = render(node as React.ReactElement);
     const rows = container.querySelectorAll('.hud-readout-row');
     expect(rows.length).toBe(12);
-    expect(container.textContent).toContain('+3 more');
+    // Flattened bundle items count toward the cap, and the remainder
+    // is reachable rather than merely counted.
+    expect(
+      container.querySelector('a[href="/me/hangar"]'),
+      'capped bundle list should link to the full page',
+    ).toBeTruthy();
   });
 });

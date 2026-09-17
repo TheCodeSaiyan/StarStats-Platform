@@ -33,13 +33,19 @@ export interface NavDestination {
  * Labels follow the product's voice: in-universe nouns for chrome, plain nouns
  * for anything that can go wrong. Downloads → Emitter, settings → Calibrate.
  *
- * THERE IS NO "HANGAR" ENTRY. There was: it pointed at `/devices`, the paired-
- * device page. That double-booked the word — the actual hangar is the RSI
- * fleet, which is the `hangar` and `fleet` widgets — and it split the emitter's
- * lifecycle across two destinations, so a reader who had just downloaded the
- * tray had to go find a second page to pair it. Pairing, the uplink list and
- * ingest activity all moved into Emitter; `/devices` redirects there and, being
- * a redirect, is not offered as a destination.
+ * "HANGAR" MEANS THE RSI FLEET, and nothing else. It used to point at
+ * `/devices`, the paired-device page, which double-booked the word and split
+ * the emitter's lifecycle across two destinations — a reader who had just
+ * downloaded the tray had to find a second page to pair it. Pairing, the
+ * uplink list and ingest activity all moved into Emitter; `/devices` redirects
+ * there and, being a redirect, is never offered as a destination.
+ *
+ * The entry was then absent entirely, which cost the word its meaning in the
+ * other direction: someone looking for their fleet found no menu item, and
+ * followed the nearest "hangar"-ish link straight back to the tray installer.
+ * `/me/hangar` (2026-09-17) is the fleet — every pledge in the stored snapshot
+ * — so the label points at what it says. The rule that survives both mistakes:
+ * "Hangar" is the fleet, never the tray.
  *
  * "StarPlatform", never "OrgPlatform" — the product was renamed and
  * `/org-platform` is a permanent redirect, so the old name is never offered as
@@ -75,6 +81,7 @@ export const SITE_NAV: readonly NavDestination[] = [
   { id: 'travel', label: 'Travel', href: '/me/travel' as Route, access: 'user' },
   { id: 'contracts', label: 'Contracts', href: '/me/contracts' as Route, access: 'user' },
   { id: 'loadout', label: 'Loadout', href: '/me/loadout' as Route, access: 'user' },
+  { id: 'hangar', label: 'Hangar', href: '/me/hangar' as Route, access: 'user' },
   { id: 'kb', label: 'Catalogue', href: '/kb' as Route, access: 'user' },
   { id: 'discover', label: 'Directory', href: '/discover' as Route, access: 'user' },
   { id: 'sharing', label: 'Sharing', href: '/sharing' as Route, access: 'user' },
