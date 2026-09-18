@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 
 use super::github_graphql::{ProjectFieldValue, ProjectItem, ProjectItemContent};
-use super::models::{ChannelName, EtaBand, RoadmapStatus};
+use super::models::{ChannelName, EtaBand};
 
 /// Result of mapping one `ProjectItem` into roadmap-domain shape.
 /// Owned strings throughout — borrows would impose a lifetime on the
@@ -28,10 +28,23 @@ pub struct MappedItem {
     pub eta_band: Option<EtaBand>,
     pub surfaces: Vec<String>,
     pub public: bool,
-    /// Status custom field on the Project board, if set. The CI
-    /// pipeline owns per-channel statuses (§2.5); this field is the
-    /// item-level *headline* the board owner sees.
-    pub status: Option<RoadmapStatus>,
+    // The board's "Status" single-select is DELIBERATELY NOT INGESTED.
+    //
+    // It used to be parsed into a `status` field here, and then dropped on
+    // the floor: nothing ever put it in `UpsertRoadmapItem`, `RoadmapItem`
+    // has no column for it, and `item_to_public` derives the headline from
+    // channel rows alone. Setting a card to "shipped" on the board changed
+    // nothing a reader could see, while the field's own docstring claimed it
+    // was "the item-level headline the board owner sees" — so it read as
+    // wired when it was not.
+    //
+    // Channel rows are the single source of truth for status: they are
+    // stamped by the CI emitter when a release actually ships (spec §2.5),
+    // which is a fact about the world rather than a board edit. An item with
+    // no channel rows reports `proposed` by design — see
+    // `compute_headline_status`, whose empty-input case is pinned by test.
+    // If the board's column is ever wanted again it needs a column, a
+    // store path and an aggregation rule, not just a parse.
     /// Channels derived from `channel/*` labels on the linked
     /// Issue/PR. Empty for DraftIssue items (spec §2.6
     /// "not-yet-targeted").
@@ -54,7 +67,6 @@ pub fn map_project_item(pi: &ProjectItem) -> MappedItem {
         eta_band: extract_eta_band(&pi.custom_fields),
         surfaces: extract_surfaces(labels),
         public: extract_public(&pi.custom_fields),
-        status: extract_status(&pi.custom_fields),
         channels: extract_channels(labels),
     }
 }
@@ -138,16 +150,6 @@ fn extract_public(fields: &HashMap<String, ProjectFieldValue>) -> bool {
         }
         _ => false,
     }
-}
-
-fn extract_status(fields: &HashMap<String, ProjectFieldValue>) -> Option<RoadmapStatus> {
-    let v = fields.get("Status")?;
-    let raw = match v {
-        ProjectFieldValue::SingleSelect { option_name, .. } => option_name.to_ascii_lowercase(),
-        ProjectFieldValue::Text(s) => s.to_ascii_lowercase(),
-        _ => return None,
-    };
-    RoadmapStatus::parse(&raw)
 }
 
 /// Pull `channel/<name>` labels, parse the suffix into `ChannelName`,
@@ -331,19 +333,6 @@ mod tests {
     }
 
     #[test]
-    fn extract_status_parses_single_select_option() {
-        let mut fields = HashMap::new();
-        fields.insert(
-            "Status".to_string(),
-            ProjectFieldValue::SingleSelect {
-                option_name: "in-design".into(),
-                option_id: "opt_d".into(),
-            },
-        );
-        assert_eq!(extract_status(&fields), Some(RoadmapStatus::InDesign));
-    }
-
-    #[test]
     fn extract_eta_band_is_case_insensitive() {
         let mut fields = HashMap::new();
         fields.insert(
@@ -425,7 +414,6 @@ mod tests {
         assert_eq!(mapped.eta_band, Some(EtaBand::Next));
         assert_eq!(mapped.surfaces, vec!["web-roadmap".to_string()]);
         assert!(mapped.public);
-        assert_eq!(mapped.status, Some(RoadmapStatus::Building));
         assert_eq!(mapped.channels, vec![ChannelName::Live, ChannelName::Beta]);
     }
 
