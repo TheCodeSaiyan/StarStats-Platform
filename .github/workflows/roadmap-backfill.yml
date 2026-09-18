@@ -1,0 +1,91 @@
+name: Roadmap backfill
+
+# Record a roadmap pipeline event for something that has ALREADY shipped.
+#
+# WHY THIS EXISTS
+#   Channel status is stamped in exactly one place: `POST
+#   /v1/internal/roadmap/events`, HMAC-signed, called by
+#   `scripts/roadmap-emit-event.mjs` from a tag push — and only when that tag
+#   carried a `Roadmap-Item:` annotation. Items that shipped before the
+#   annotation was in use have no channel rows at all, and an item with no
+#   channel rows reports `proposed` however finished it is
+#   (`compute_headline_status`, empty-input case). As of 2026-09-18 that was
+#   four features reading as not-started on the public roadmap.
+#
+#   There is no other way in. The board's own Status column is deliberately
+#   not ingested (see `roadmap/mapper.rs`), there is no admin route for
+#   channel status, and the endpoint's signature means it cannot be poked by
+#   hand without putting the shared secret on someone's laptop.
+#
+# WHAT STAGE THIS AFFECTS
+#   Telemetry only. It writes roadmap channel status. It does not build,
+#   tag, push an image or deploy anything. If it fails, the roadmap is left
+#   exactly as it was and the release it describes is untouched — rerun it
+#   or ignore it.
+#
+# WHY DISPATCH ONLY
+#   Every input is a claim about something that already happened. Only a
+#   person knows whether the claim is true, so there is no trigger here and
+#   there must not be one — a backfill that fires itself is just a second,
+#   quieter source of wrong statuses.
+
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: 'Roadmap item slug, exactly as the API knows it (e.g. gdpr-uk-gdpr-data-controls)'
+        required: true
+        type: string
+      channel:
+        description: 'Channel this item reached'
+        required: true
+        default: live
+        type: choice
+        options: [live, rc, beta, alpha]
+      commit_sha:
+        description: 'Commit that shipped it. Defaults to this run''s SHA, which is only right if nothing has landed since.'
+        required: false
+        type: string
+      tag:
+        description: 'Release tag it shipped under, if you know it (recorded alongside the event)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  emit:
+    name: Emit roadmap event
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: 24
+    - name: Emit signed event
+      env:
+        ROADMAP_ITEM_SLUG: ${{ inputs.slug }}
+        CHANNEL: ${{ inputs.channel }}
+        COMMIT_SHA: ${{ inputs.commit_sha != '' && inputs.commit_sha || github.sha }}
+        TAG: ${{ inputs.tag }}
+        BUILD_ID: ${{ github.run_id }}
+        CI_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        # Same two secrets the release jobs use. Missing either one now
+        # annotates the run rather than passing in silence, because a slug
+        # was supplied — see the emitter's `warnNoop`.
+        ROADMAP_CI_EVENT_HMAC_KEY: ${{ secrets.ROADMAP_CI_EVENT_HMAC_KEY }}
+        ROADMAP_EVENTS_URL: ${{ secrets.ROADMAP_EVENTS_URL }}
+      run: node scripts/roadmap-emit-event.mjs
+    - name: Say what to check
+      if: always()
+      env:
+        SLUG: ${{ inputs.slug }}
+      run: |
+        {
+          echo "Backfilled **$SLUG** on **${{ inputs.channel }}**."
+          echo ""
+          echo "Verify: \`curl -s https://api.starstats.app/v1/roadmap/$SLUG\` —"
+          echo "\`headline_status\` should no longer read \`proposed\`, and the"
+          echo "channel should appear in \`channels\`."
+        } >> "$GITHUB_STEP_SUMMARY"
