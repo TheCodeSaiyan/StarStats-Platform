@@ -25,6 +25,12 @@
 // Optional:
 //   - TAG                        The git tag (`vX.Y.Z[-pre.N]`).
 //
+// Every no-op path exits 0 — a telemetry hop never blocks a release. The
+// ones that mean "a slug was supplied and the event did not land" also
+// raise a `::warning` annotation and a step-summary note, so the gap is
+// visible on the run instead of buried in a log line. A release with no
+// slug at all is the normal case and stays quiet.
+//
 // Exit codes:
 //   0 — sent, OR no-op (missing config / no slug to emit for / 404
 //       from the receiver, which indicates the roadmap item slug
@@ -37,8 +43,50 @@
 //   2 — config error (missing required env when emission was intended).
 
 import crypto from 'node:crypto';
+import { appendFileSync } from 'node:fs';
 
 function noop(msg) {
+  console.log(`[roadmap-emit] no-op: ${msg}`);
+  process.exit(0);
+}
+
+/**
+ * Say something a reader of the Actions run will actually see.
+ *
+ * Every path below still exits 0 — a telemetry hop must never block a
+ * release. But "exit 0 and print a line" is how this pipeline sat idle
+ * across eight consecutive tags while four shipped features kept reporting
+ * `proposed` on the public roadmap and every run stayed green. A `::warning`
+ * annotation surfaces on the run summary and in the PR/commit checks; the
+ * step summary keeps a copy, because annotations are easy to scroll past.
+ *
+ * Reserved for cases where INTENT EXISTED AND WAS DROPPED — a slug was
+ * supplied and the event did not land. A release that ships no roadmap item
+ * is the normal case (chores, dependency bumps, docs) and gets the plain
+ * `noop` above; annotating those would fire on most releases and teach
+ * everyone to ignore the annotation, which is the same silence wearing a
+ * different hat.
+ */
+function warnNoop(title, msg) {
+  if (env.GITHUB_ACTIONS === 'true') {
+    // One line: GitHub needs %0A for newlines in an annotation body, and a
+    // single sentence reads better in the checks UI anyway.
+    console.log(`::warning title=${title}::${msg}`);
+  }
+  if (env.GITHUB_STEP_SUMMARY) {
+    try {
+      appendFileSync(
+        env.GITHUB_STEP_SUMMARY,
+        `> [!WARNING]
+> ${title} — ${msg}
+
+`,
+      );
+    } catch (e) {
+      // A summary we cannot write is not worth failing a release over.
+      console.warn(`[roadmap-emit] could not write step summary: ${e.message}`);
+    }
+  }
   console.log(`[roadmap-emit] no-op: ${msg}`);
   process.exit(0);
 }
@@ -50,17 +98,29 @@ function fatal(code, msg) {
 
 const env = process.env;
 
+// ORDER MATTERS. The slug gate comes first so that the commonest release
+// by far — one that ships no tracked roadmap item at all — exits quietly
+// whatever else is or isn't configured. Only once a slug says "this release
+// ships that item" does a missing secret become a fault worth annotating.
+if (!env.ROADMAP_ITEM_SLUG) {
+  noop('no roadmap item for this release (nothing to record)');
+}
+
 // Soft-skip when the pipeline isn't wired yet (Phase 0 prerequisites
 // not met). This lets the workflow step ship today without needing
-// repo secrets configured — it just no-ops until they exist.
+// repo secrets configured — it just no-ops until they exist. Loud,
+// because by here the release named an item it wanted recorded.
 if (!env.ROADMAP_CI_EVENT_HMAC_KEY) {
-  noop('ROADMAP_CI_EVENT_HMAC_KEY not set (pipeline not configured)');
+  warnNoop(
+    'Roadmap event not sent',
+    `release names roadmap item '${env.ROADMAP_ITEM_SLUG}' but ROADMAP_CI_EVENT_HMAC_KEY is not set, so nothing was recorded`,
+  );
 }
 if (!env.ROADMAP_EVENTS_URL) {
-  noop('ROADMAP_EVENTS_URL not set (pipeline not configured)');
-}
-if (!env.ROADMAP_ITEM_SLUG) {
-  noop('ROADMAP_ITEM_SLUG not set (no item to emit for)');
+  warnNoop(
+    'Roadmap event not sent',
+    `release names roadmap item '${env.ROADMAP_ITEM_SLUG}' but ROADMAP_EVENTS_URL is not set, so nothing was recorded`,
+  );
 }
 
 for (const k of ['CHANNEL', 'COMMIT_SHA', 'BUILD_ID', 'CI_RUN_URL']) {
@@ -151,10 +211,10 @@ for (let i = 0; i < delays.length; i++) {
     // Release tray / Release images jobs on this. Surfaced on
     // v1.8.4-alpha.5 + v1.8.4-alpha.6 with slug=`smoke-test`.
     if (resp.status === 404) {
-      console.warn(
-        `[roadmap-emit] soft-fail 404 (slug=${payload.roadmap_slug} not seeded?): ${text.slice(0, 200)}`,
+      warnNoop(
+        'Roadmap event not recorded',
+        `the receiver does not know roadmap item '${payload.roadmap_slug}' (needs seeding); ${text.slice(0, 120)}`,
       );
-      process.exit(0);
     }
     // 400 with an unknown-channel hint — same root cause as 404 but
     // from the other side: the client (this script's CHANNEL_MAP) is
@@ -167,10 +227,10 @@ for (let i = 0; i < delays.length; i++) {
     // catches up (v1.8.10+ on `:latest`), this branch stops firing
     // and telemetry resumes naturally.
     if (resp.status === 400 && /unknown.*channel/i.test(text)) {
-      console.warn(
-        `[roadmap-emit] soft-fail 400 unknown-channel (channel=${payload.channel} not recognized by server; server lagging client?): ${text.slice(0, 200)}`,
+      warnNoop(
+        'Roadmap event not recorded',
+        `server does not accept channel '${payload.channel}' (server lagging this script's CHANNEL_MAP); '${payload.roadmap_slug}' was not recorded`,
       );
-      process.exit(0);
     }
     // Other 4xx — non-retryable (auth, bad payload, schema mismatch).
     fatal(1, `non-retryable ${resp.status}: ${text.slice(0, 500)}`);
