@@ -52,6 +52,18 @@ export const metadata = { title: "Settings" };
 interface SearchParams {
   status?: string;
   error?: string;
+  /**
+   * Section id whose group should be open when the page renders.
+   *
+   * Every mutating action here redirects, and the fragment it carries CANNOT
+   * carry the reader's place: Next drops the fragment on a server-action
+   * redirect, so `?status=resent#verification` arrives with an empty
+   * `location.hash`. The rail then fell back to group 0 and the outcome notice
+   * rendered on General, beside settings the action never touched. The param
+   * survives the redirect; the fragment is kept beside it only for the paths
+   * where it still works (a plain navigation, a copied link).
+   */
+  pane?: string;
 }
 
 // ----- Layout style helpers ------------------------------------------------
@@ -80,7 +92,7 @@ export default async function SettingsPage(props: {
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/settings');
 
-  const { status, error } = await props.searchParams;
+  const { status, error, pane } = await props.searchParams;
 
   // /v1/auth/me is the source of truth — the cookie may be stale.
   let me: MeResponse;
@@ -188,14 +200,14 @@ export default async function SettingsPage(props: {
     if (!isTheme(raw)) {
       // Form was tampered with or submitted without a button value —
       // ignore silently rather than error out, themes aren't load-bearing.
-      redirect('/settings?error=invalid_theme#theme');
+      redirect('/settings?error=invalid_theme&pane=theme#theme');
     }
     // setTheme writes the cookie and forwards to PUT /v1/me/preferences;
     // backend failures are logged + swallowed so the cookie still wins
     // for this browser.
     await setTheme(raw, session.token);
     revalidatePath('/settings');
-    redirect('/settings?status=theme_updated#theme');
+    redirect('/settings?status=theme_updated&pane=theme#theme');
   }
 
   async function waveSpeedAction(formData: FormData) {
@@ -204,16 +216,16 @@ export default async function SettingsPage(props: {
     if (!session) redirect('/auth/login?next=/settings#theme');
     const raw = formData.get('wave_speed');
     if (!isWaveSpeed(raw)) {
-      redirect('/settings?error=invalid_wave_speed#theme');
+      redirect('/settings?error=invalid_wave_speed&pane=theme#theme');
     }
     try {
       await putPreferences(session.token, { theme_wave_speed: raw });
     } catch (e) {
       logger.error({ err: e }, 'put preferences (wave speed) failed');
-      redirect('/settings?error=unexpected#theme');
+      redirect('/settings?error=unexpected&pane=theme#theme');
     }
     revalidatePath('/settings');
-    redirect('/settings?status=wave_speed_updated#theme');
+    redirect('/settings?status=wave_speed_updated&pane=theme#theme');
   }
 
   async function timezoneAction(formData: FormData) {
@@ -224,16 +236,16 @@ export default async function SettingsPage(props: {
     // Shape check only — the API validates against the real tz database,
     // which is the authority. Duplicating a zone list here would rot.
     if (typeof raw !== 'string' || raw.length === 0 || raw.length > 64) {
-      redirect('/settings?error=invalid_timezone#timezone');
+      redirect('/settings?error=invalid_timezone&pane=timezone#timezone');
     }
     try {
       await putPreferences(session.token, { timezone: raw as string });
     } catch (e) {
       logger.error({ err: e }, 'put preferences (timezone) failed');
-      redirect('/settings?error=invalid_timezone#timezone');
+      redirect('/settings?error=invalid_timezone&pane=timezone#timezone');
     }
     revalidatePath('/settings');
-    redirect('/settings?status=timezone_updated#timezone');
+    redirect('/settings?status=timezone_updated&pane=timezone#timezone');
   }
 
   async function resendAction() {
@@ -247,12 +259,12 @@ export default async function SettingsPage(props: {
         redirect('/auth/login?next=/settings');
       }
       if (e instanceof ApiCallError && e.status === 409) {
-        redirect('/settings?status=already_verified#verification');
+        redirect('/settings?status=already_verified&pane=verification#verification');
       }
       logger.error({ err: e }, 'resend verification failed');
-      redirect('/settings?error=unexpected#verification');
+      redirect('/settings?error=unexpected&pane=verification#verification');
     }
-    redirect('/settings?status=resent#verification');
+    redirect('/settings?status=resent&pane=verification#verification');
   }
 
   async function rsiCheckAction() {
@@ -266,13 +278,13 @@ export default async function SettingsPage(props: {
     } catch (e) {
       if (e instanceof ApiCallError) {
         if (e.status === 401) redirect('/auth/login?next=/settings');
-        if (e.status === 422) redirect('/settings?error=rsi_code_not_in_bio#rsi');
-        if (e.status === 404) redirect('/settings?error=rsi_handle_not_found#rsi');
-        if (e.status === 410) redirect('/settings?error=rsi_code_expired#rsi');
-        if (e.status === 503) redirect('/settings?error=rsi_unavailable#rsi');
+        if (e.status === 422) redirect('/settings?error=rsi_code_not_in_bio&pane=rsi#rsi');
+        if (e.status === 404) redirect('/settings?error=rsi_handle_not_found&pane=rsi#rsi');
+        if (e.status === 410) redirect('/settings?error=rsi_code_expired&pane=rsi#rsi');
+        if (e.status === 503) redirect('/settings?error=rsi_unavailable&pane=rsi#rsi');
       }
       logger.error({ err: e }, 'rsi verify check failed');
-      redirect('/settings?error=unexpected#rsi');
+      redirect('/settings?error=unexpected&pane=rsi#rsi');
     }
     redirect(
       verified
@@ -291,18 +303,18 @@ export default async function SettingsPage(props: {
       if (e instanceof ApiCallError) {
         if (e.status === 401) redirect('/auth/login?next=/settings');
         if (e.status === 422) {
-          redirect('/settings?error=rsi_handle_not_verified#rsi');
+          redirect('/settings?error=rsi_handle_not_verified&pane=rsi#rsi');
         }
-        if (e.status === 429) redirect('/settings?error=refresh_too_soon#rsi');
+        if (e.status === 429) redirect('/settings?error=refresh_too_soon&pane=rsi#rsi');
         if (e.status === 404) {
-          redirect('/settings?error=rsi_handle_not_found#rsi');
+          redirect('/settings?error=rsi_handle_not_found&pane=rsi#rsi');
         }
-        if (e.status === 503) redirect('/settings?error=rsi_unavailable#rsi');
+        if (e.status === 503) redirect('/settings?error=rsi_unavailable&pane=rsi#rsi');
       }
       logger.error({ err: e }, 'refresh profile failed');
-      redirect('/settings?error=unexpected#rsi');
+      redirect('/settings?error=unexpected&pane=rsi#rsi');
     }
-    redirect('/settings?status=profile_refreshed#rsi');
+    redirect('/settings?status=profile_refreshed&pane=rsi#rsi');
   }
 
   async function refreshRsiOrgsAction() {
@@ -315,20 +327,20 @@ export default async function SettingsPage(props: {
       if (e instanceof ApiCallError) {
         if (e.status === 401) redirect('/auth/login?next=/settings');
         if (e.status === 422) {
-          redirect('/settings?error=rsi_handle_not_verified#rsi');
+          redirect('/settings?error=rsi_handle_not_verified&pane=rsi#rsi');
         }
         if (e.status === 429) {
-          redirect('/settings?error=orgs_refresh_too_soon#rsi');
+          redirect('/settings?error=orgs_refresh_too_soon&pane=rsi#rsi');
         }
         if (e.status === 404) {
-          redirect('/settings?error=rsi_handle_not_found#rsi');
+          redirect('/settings?error=rsi_handle_not_found&pane=rsi#rsi');
         }
-        if (e.status === 503) redirect('/settings?error=rsi_unavailable#rsi');
+        if (e.status === 503) redirect('/settings?error=rsi_unavailable&pane=rsi#rsi');
       }
       logger.error({ err: e }, 'refresh rsi orgs failed');
-      redirect('/settings?error=unexpected#rsi');
+      redirect('/settings?error=unexpected&pane=rsi#rsi');
     }
-    redirect('/settings?status=orgs_refreshed#rsi');
+    redirect('/settings?status=orgs_refreshed&pane=rsi#rsi');
   }
 
   async function emailChangeAction(formData: FormData) {
@@ -337,14 +349,14 @@ export default async function SettingsPage(props: {
     if (!session) redirect('/auth/login?next=/settings');
     const new_email = String(formData.get('new_email') ?? '').trim();
     if (new_email === '') {
-      redirect('/settings?error=invalid_email#email');
+      redirect('/settings?error=invalid_email&pane=email#email');
     }
     try {
       await emailChangeStart(session.token, { new_email });
     } catch (e) {
       if (e instanceof ApiCallError) {
         if (e.status === 401) redirect('/auth/login?next=/settings');
-        if (e.status === 409) redirect('/settings?error=email_taken#email');
+        if (e.status === 409) redirect('/settings?error=email_taken&pane=email#email');
         if (e.status === 400) {
           redirect(
             `/settings?error=${encodeURIComponent(e.body.error)}#email`,
@@ -352,9 +364,9 @@ export default async function SettingsPage(props: {
         }
       }
       logger.error({ err: e }, 'email change start failed');
-      redirect('/settings?error=unexpected#email');
+      redirect('/settings?error=unexpected&pane=email#email');
     }
-    redirect('/settings?status=email_change_sent#email');
+    redirect('/settings?status=email_change_sent&pane=email#email');
   }
 
   async function passwordAction(formData: FormData) {
@@ -370,7 +382,7 @@ export default async function SettingsPage(props: {
     } catch (e) {
       if (e instanceof ApiCallError) {
         if (e.status === 401) {
-          redirect('/settings?error=invalid_credentials#password');
+          redirect('/settings?error=invalid_credentials&pane=password#password');
         }
         if (e.status === 400) {
           redirect(
@@ -379,9 +391,9 @@ export default async function SettingsPage(props: {
         }
       }
       logger.error({ err: e }, 'change password failed');
-      redirect('/settings?error=unexpected#password');
+      redirect('/settings?error=unexpected&pane=password#password');
     }
-    redirect('/settings?status=password_changed#password');
+    redirect('/settings?status=password_changed&pane=password#password');
   }
 
   async function deleteAction(formData: FormData) {
@@ -405,7 +417,7 @@ export default async function SettingsPage(props: {
         }
       }
       logger.error({ err: e }, 'delete account failed');
-      redirect('/settings?error=unexpected#danger');
+      redirect('/settings?error=unexpected&pane=danger#danger');
     }
     // Account is gone — drop the cookie and bounce to the marketing page.
     await clearSession();
@@ -851,6 +863,7 @@ export default async function SettingsPage(props: {
       nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'settings')}
       groups={SETTINGS_GROUPS}
       sections={sections}
+      openPane={pane}
       notice={notice}
       themeAction={themeAction}
       onCalibrate={async (id: string) => {

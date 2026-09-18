@@ -77,6 +77,7 @@ interface SearchParams {
   code?: string;
   expires?: string;
   error?: string;
+  status?: string;
   device?: string;
 }
 
@@ -85,7 +86,7 @@ const ACTIVITY_LIMIT = 25;
 export default async function EmitterPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
-  const { code, expires, error, device: selectedParam } =
+  const { code, expires, error, status, device: selectedParam } =
     await props.searchParams;
 
   // No redirect for an absent session — this surface is public. Everything
@@ -138,6 +139,10 @@ export default async function EmitterPage(props: {
         code: pairing.code,
         expires: pairing.expires_at,
       });
+      // No fragment here, deliberately: Next drops it on an action redirect
+      // (see `PaneSurface.openPane`). The `?code=` param is what reopens the
+      // Pair lens, and without that the reader is thrown back to the download
+      // half while the code they just minted expires unseen.
       redirect(`/downloads?${params.toString()}`);
     } catch (e) {
       if (e instanceof ApiCallError && e.status === 401) {
@@ -163,7 +168,11 @@ export default async function EmitterPage(props: {
       }
       throw e;
     }
-    redirect('/downloads');
+    // `?status=revoked` does two jobs: it earns the reader a confirmation
+    // chip, and it is what reopens the Uplinks lens. A bare `/downloads`
+    // dropped them on the download half having just confirmed a destructive
+    // action, with nothing on screen saying whether it worked.
+    redirect('/downloads?status=revoked');
   }
 
   const pairedCount = deviceList.length;
@@ -519,13 +528,23 @@ export default async function EmitterPage(props: {
           : [EMITTER_GROUP]
       }
       sections={sections}
+      // Every action on this surface lands the reader back on it, and the rail
+      // would otherwise reset to the download half. Open the lens the action
+      // came from: the code it just minted, or the device list it just changed.
+      openPane={code ? 'code' : status || error ? 'uplinks' : undefined}
       notice={
         error
           ? {
               tone: 'bad' as const,
               message: "Couldn't complete that action. Try again.",
             }
-          : null
+          : status === 'revoked'
+            ? {
+                tone: 'good' as const,
+                message:
+                  'Device revoked. It has stopped syncing, and must be paired again from the tray to reconnect.',
+              }
+            : null
       }
       onCalibrate={async (id: string) => {
         'use server';

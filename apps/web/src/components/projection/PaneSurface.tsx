@@ -97,6 +97,22 @@ export interface PaneSurfaceProps {
   sections: readonly SurfaceSection[];
   /** Resolved copy for `?status=` / `?error=`, mapped server-side. */
   notice: { tone: 'good' | 'bad' | 'warn'; message: React.ReactNode } | null;
+  /**
+   * Section id whose group should be open, resolved SERVER-side from the URL.
+   *
+   * The fragment cannot carry this. Next DROPS it on a server-action redirect:
+   * `redirect('/downloads?code=K3M9-7QXZ#code')` arrives in the browser as
+   * `/downloads?code=K3M9-7QXZ` with `location.hash === ''` (measured against
+   * Next 15.5.24). The query survives, the fragment does not — so an action
+   * that must land the reader on a particular pane says which one through a
+   * param its page reads and passes here, and only decorative scrolling is
+   * left to `#`.
+   *
+   * It bit `/downloads`: generating a pairing code redirected with `?code=`,
+   * the rail fell back to group 0 — the download half — and the code the
+   * reader had just minted sat two lenses away, expiring in five minutes.
+   */
+  openPane?: string;
   /** Rendered above every group — a degraded-service banner, say. */
   banner?: React.ReactNode;
   onCalibrate: (id: CalibrationId) => void;
@@ -159,6 +175,7 @@ export function PaneSurface({
   crumb,
   groups,
   sections,
+  openPane,
   notice,
   banner,
   onCalibrate,
@@ -250,23 +267,36 @@ export function PaneSurface({
   // The group the fragment names is adjusted during render, against the last
   // fragment seen, rather than set from an effect.
   const [seenHash, setSeenHash] = React.useState<string | null>(null);
+  // `openPane` is tracked SEPARATELY from the fragment, not merged into one
+  // value, so whichever of the two actually CHANGED is the one that moves the
+  // rail. A `?pane=` left in the URL from an earlier redirect must not keep
+  // beating a fragment the reader has since clicked.
+  const [seenPane, setSeenPane] = React.useState<string | undefined>(undefined);
+  const openGroupOf = (id: string | undefined) => {
+    const g = id ? groupOfSection.get(id) : undefined;
+    if (g !== undefined) setGroup(g);
+  };
   if (hashId !== seenHash) {
     setSeenHash(hashId);
-    const g = hashId ? groupOfSection.get(hashId) : undefined;
-    if (g !== undefined) setGroup(g);
+    openGroupOf(hashId);
+  }
+  if (openPane !== seenPane) {
+    setSeenPane(openPane);
+    openGroupOf(openPane);
   }
   // Scrolling is the DOM side effect, and the only part that belongs in an
   // effect. The section mounts in the same commit as the group change, so
   // wait a frame before measuring it.
+  const focusId = hashId || openPane || '';
   React.useEffect(() => {
-    if (!hashId || groupOfSection.get(hashId) === undefined) return;
+    if (!focusId || groupOfSection.get(focusId) === undefined) return;
     const frame = requestAnimationFrame(() => {
       document
-        .getElementById(hashId)
+        .getElementById(focusId)
         ?.scrollIntoView({ block: 'start', behavior: 'auto' });
     });
     return () => cancelAnimationFrame(frame);
-  }, [hashId, groupOfSection]);
+  }, [focusId, groupOfSection]);
 
   // A group change is a new reading position, not a continuation of the last
   // one — start it at the top rather than wherever the previous group sat.
