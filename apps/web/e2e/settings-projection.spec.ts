@@ -329,3 +329,41 @@ test('recalibration runs at the wave speed the reader chose', async ({
   // "Off" means off — every animation in the event, not just the shock.
   expect(off.names, 'off draws nothing').toEqual(['none', 'none', 'none']);
 });
+
+test('an action redirect leaves you in the group you acted from', async ({
+  page,
+  request,
+}) => {
+  // Every mutating action on this surface redirects, and a redirect used to
+  // cost the reader their place: Next DROPS the fragment on a server-action
+  // redirect, so `/settings?status=resent#verification` arrived with an empty
+  // `location.hash` and the rail fell back to group 0. The outcome notice then
+  // rendered on General, beside settings that had nothing to do with it.
+  await setScenario(
+    request,
+    scenarioFor('settings-action-group', {
+      ...FIXTURES,
+      'GET /v1/auth/me': {
+        status: 200,
+        body: {
+          ...currentUser.body,
+          rsi_verified: false,
+          totp_enabled: false,
+          email_verified: false,
+        },
+      },
+      'POST /v1/auth/email/resend': { status: 200, body: { sent: true } },
+    }),
+  );
+  await page.goto('/settings');
+  await openGroup(page, 'Account');
+  await page
+    .getByRole('button', { name: 'Resend verification link' })
+    .click({ timeout: 30_000 });
+
+  await expect(page).toHaveURL(/status=resent/);
+  await expect(page.locator('.hp-lens button[aria-pressed="true"]')).toHaveText(
+    /account/i,
+  );
+  await expect(liveIn(page, '.hp-alert')).toContainText(/verification email/i);
+});

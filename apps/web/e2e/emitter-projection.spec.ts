@@ -18,6 +18,13 @@ const DEVICE_A = 'dev_0191f3aa0c7e7b2ea1c4d5e6f7a8b9c0';
 const DEVICE_B = 'dev_0191f3bb1d8f8c3fb2d5e6f7a8b9c0d1';
 
 const FIXTURES = {
+  'POST /v1/auth/devices/start': {
+    status: 200,
+    body: {
+      code: 'K3M9-7QXZ',
+      expires_at: new Date(Date.now() + 300_000).toISOString(),
+    },
+  },
   'GET /v1/auth/devices': {
     status: 200,
     body: {
@@ -38,6 +45,10 @@ const FIXTURES = {
         },
       ],
     },
+  },
+  'DELETE /v1/auth/devices/dev_0191f3aa0c7e7b2ea1c4d5e6f7a8b9c0': {
+    status: 200,
+    body: { revoked: true },
   },
   'GET /v1/me/ingest-history': {
     status: 200,
@@ -218,4 +229,49 @@ test('the Emitter renders in the projection, not the flat shell', async ({
   // flat chrome is still in the DOM and is taken out with `display: none`.
   await expect(page.locator('.ss-topbar')).toHaveCount(0);
   await expect(page.locator('.ss-rail')).toHaveCount(0);
+});
+
+test('generating a pairing code stays on the Pair lens and shows the code', async ({
+  page,
+}) => {
+  // `pairAction` redirects to `/downloads?code=…`. The rail is driven from the
+  // URL fragment (PaneSurface), so a redirect with no fragment drops the
+  // reader back on the FIRST group — the download half — while the code they
+  // just minted sits unseen two lenses away, expiring in five minutes.
+  await page.goto('/downloads');
+  await openGroup(page, 'Pair');
+  await page.getByLabel('Device label').fill("Daisy's gaming PC");
+  await page
+    .getByRole('button', { name: 'Generate pairing code' })
+    .click({ timeout: 30_000 });
+
+  await expect(page).toHaveURL(/[?&]code=K3M9-7QXZ/);
+  await expect(page.locator('.hp-lens button[aria-pressed="true"]')).toHaveText(
+    'Pair',
+  );
+  await expect(liveStage(page).locator('.hp-paircode')).toHaveText('K3M9-7QXZ');
+});
+
+test('revoking a device keeps you in Uplinks and confirms it happened', async ({
+  page,
+}) => {
+  // `revokeAction` used to end in a bare `redirect('/downloads')`. The reader
+  // confirmed a destructive action from the Uplinks lens, got thrown to the
+  // download half, and was told nothing — no notice, and the list they were
+  // working in two lenses away. The sibling sync toggle on this same surface
+  // never had the fault: it revalidates instead of redirecting.
+  page.on('dialog', (d) => d.accept());
+  await page.goto('/downloads');
+  await openGroup(page, 'Uplinks');
+  await page
+    .getByRole('button', { name: /revoke/i })
+    .first()
+    .click({ timeout: 30_000 });
+
+  await expect(page.locator('.hp-lens button[aria-pressed="true"]')).toHaveText(
+    'Uplinks',
+  );
+  await expect(liveStage(page).locator('.hp-alert[data-tone="good"]')).toContainText(
+    /revoked/i,
+  );
 });
