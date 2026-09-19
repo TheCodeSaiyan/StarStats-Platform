@@ -102,7 +102,10 @@ export const stabilityWidget = defineWidget<StabilityData>({
         ? `no crashes in ${fmtNum(Math.round(hoursPlayed))}h played`
         : undefined;
 
-    if (size === 'compact' || byChannel.length === 0) {
+    // `< 2`, not `=== 0`: a single-channel player — the common case — was
+    // getting a one-row list whose only value IS `crashes`, restated directly
+    // beneath itself. A breakdown of one breaks nothing down.
+    if (size === 'compact' || byChannel.length < 2) {
       return <ReadoutGroup readouts={readouts} note={note} />;
     }
     const rows: Row[] = byChannel.map((b) => ({

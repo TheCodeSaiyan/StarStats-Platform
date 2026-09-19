@@ -1,4 +1,6 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render } from '@testing-library/react';
 
 vi.mock('@/lib/api', () => ({
   getStabilityStats: vi.fn(),
@@ -100,5 +102,50 @@ describe('stabilityWidget', () => {
     const visitor = { ...ownerCtx(), isOwner: false } as ViewerCtx;
     expect(await stabilityWidget.load!(visitor)).toBeNull();
     expect(getStabilityStats).not.toHaveBeenCalled();
+  });
+});
+
+describe('stability channel breakdown', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** Expanded render with a given by_channel set. */
+  async function renderExpanded(by_channel: { value: string; count: number }[]) {
+    vi.mocked(getStabilityStats).mockResolvedValue({
+      hours: 168,
+      crashes: by_channel.reduce((a, b) => a + b.count, 0),
+      by_channel,
+    } as never);
+    vi.mocked(getPlaytime).mockResolvedValue({
+      total_playtime_secs: 40 * 3600,
+      session_count: 12,
+    } as never);
+    const node = await stabilityWidget.render(ownerCtx(), 'expanded');
+    return render(node as React.ReactElement).container;
+  }
+
+  it('does not render a breakdown of one', async () => {
+    // A single-channel player — the overwhelmingly common case — got a
+    // one-row list whose only value IS `crashes`, restated directly beneath
+    // itself. The guard was `by_channel.length === 0`, so length 1 fell
+    // through to the RankedList. A breakdown of one is not a breakdown.
+    const c = await renderExpanded([{ value: 'LIVE', count: 4 }]);
+    // `.hud-readout-row` is RankedList's row element (kit/archetypes.tsx:104).
+    // An earlier draft of this test asserted on `.hud-row`, which does not
+    // exist anywhere — so it passed against the broken code and proved
+    // nothing. Assert the element that actually differs.
+    expect(c.querySelectorAll('.hud-readout-row')).toHaveLength(0);
+    expect(c.textContent).not.toContain('LIVE');
+    // The headline figure is still there — this hides the duplicate, not the data.
+    expect(c.textContent).toContain('4');
+  });
+
+  it('still renders the breakdown when there is something to break down', async () => {
+    const c = await renderExpanded([
+      { value: 'LIVE', count: 3 },
+      { value: 'PTU', count: 1 },
+    ]);
+    expect(c.querySelectorAll('.hud-readout-row')).toHaveLength(2);
+    expect(c.textContent).toContain('LIVE');
+    expect(c.textContent).toContain('PTU');
   });
 });
