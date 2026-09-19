@@ -47,6 +47,17 @@ pub enum AuthError {
     InvalidToken(String),
     #[error("keypair load/generate failed: {0}")]
     Keypair(String),
+    /// A DEPENDENCY failed while checking the token — not a verdict on the
+    /// token itself.
+    ///
+    /// This has to be its own variant because every other one collapses to
+    /// 401, and 401 tells the caller "your credentials are wrong". When the
+    /// device-revocation lookup merely FAILED, that answer was a lie with
+    /// consequences: the tray reads 401 from /v1/auth/me as auth lost, and the
+    /// user re-pairs a device that was never unpaired. Reported in production
+    /// as "remote sync is failing / the pairing got reset".
+    #[error("dependency unavailable: {0}")]
+    Unavailable(String),
 }
 
 impl IntoResponse for AuthError {
@@ -55,6 +66,16 @@ impl IntoResponse for AuthError {
         // JWT-library internals (ExpiredSignature vs InvalidAudience, unknown
         // key, unsupported algorithm, …) to the client — a probing caller must
         // learn nothing beyond "401 unauthorized" (M-S4).
+        // An unavailable dependency is a 503 and says so. It leaks nothing a
+        // prober can use: the signature is verified BEFORE any of this runs,
+        // so only a caller holding a valid token ever reaches it. Retrying is
+        // the correct client response, and it is the opposite of what a 401
+        // tells them to do.
+        if let AuthError::Unavailable(_) = self {
+            tracing::error!(error = %self, "auth dependency unavailable");
+            let body = serde_json::json!({ "error": "unavailable" });
+            return (StatusCode::SERVICE_UNAVAILABLE, Json(body)).into_response();
+        }
         tracing::debug!(error = %self, "auth rejected");
         let body = serde_json::json!({
             "error": "unauthorized",
@@ -495,8 +516,14 @@ where
                     return Err(AuthError::InvalidToken("device not found".into()));
                 }
                 Err(e) => {
+                    // NOT InvalidToken. The lookup failed to ANSWER; it did
+                    // not answer "revoked". Calling that an invalid token
+                    // sends a tray with a perfectly good pairing off to
+                    // re-pair, which is how a pool timeout became "the
+                    // pairing got reset". `touch_last_seen` below already
+                    // takes this posture — a DB hiccup logs and continues.
                     tracing::error!(error = %e, "device revocation lookup failed");
-                    return Err(AuthError::InvalidToken("device check failed".into()));
+                    return Err(AuthError::Unavailable("device check failed".into()));
                 }
             }
 
@@ -736,6 +763,57 @@ mod tests {
         assert_eq!(
             first.kid, second.kid,
             "the second boot must observe the same kid"
+        );
+    }
+
+    /// A database failure is not a verdict on the caller's token.
+    ///
+    /// `device_auth_status` returning `Err` used to become
+    /// `AuthError::InvalidToken`, which collapses to 401 — the same answer as
+    /// "your token is forged". The tray reads 401 from /v1/auth/me as auth
+    /// lost and makes the user re-pair, so a transient pool timeout presented
+    /// to users as "remote sync is failing" and "the pairing got reset", with
+    /// nothing actually unpaired.
+    ///
+    /// Untestable before now: `MemoryDeviceStore` had no way to fail, so the
+    /// error arm had no coverage at all.
+    #[tokio::test]
+    async fn a_failed_device_lookup_is_503_not_401() {
+        use crate::devices::test_support::MemoryDeviceStore;
+        use crate::devices::DeviceStore;
+        use axum::http::Request;
+
+        let (issuer, verifier) = test_support::fresh_pair();
+        let user_id = Uuid::new_v4();
+        let devices = Arc::new(MemoryDeviceStore::new());
+        let device_id = devices.seed_paired_device(user_id, "RIG-01").await.unwrap();
+        // The pairing is GOOD. Only the lookup is broken.
+        devices.fail_auth_status();
+
+        let token = issuer
+            .sign_device(&user_id.to_string(), "TestPilot", device_id)
+            .unwrap();
+
+        let mut parts = Request::builder()
+            .uri("/v1/auth/me")
+            .header("authorization", format!("Bearer {token}"))
+            .body(())
+            .unwrap()
+            .into_parts()
+            .0;
+        parts.extensions.insert(Arc::new(verifier));
+        parts
+            .extensions
+            .insert(devices.clone() as Arc<dyn DeviceStore>);
+
+        let err = <AuthenticatedUser as FromRequestParts<()>>::from_request_parts(&mut parts, &())
+            .await
+            .expect_err("a broken lookup must not authenticate");
+        let status = err.into_response().status();
+        assert_eq!(
+            status,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "a dependency failure must tell the client to RETRY, never to re-pair"
         );
     }
 }
