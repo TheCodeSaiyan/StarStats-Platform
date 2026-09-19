@@ -9,6 +9,7 @@ import { logger } from '@/lib/logger';
 import { rangeToWindowHours, rangeHasLifetimeBaseline } from '@/lib/range';
 import { computeTrend, formatTrend, previousWindowLabel } from '@/lib/trend';
 import { EmptyWindow } from './kit/EmptyWindow';
+import { LOAD_FAILED } from './kit/loadResult';
 import { defineWidget } from './kit/defineWidget';
 import { RankedList } from './kit/archetypes';
 import { fmtNum } from './kit/format';
@@ -69,7 +70,7 @@ export const routesWidget = defineWidget<RoutesData>({
       previous = res?.previous ?? null;
     } catch (err) {
       logger.warn({ err, call: 'widget.routes' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     // An empty WINDOW is not the same as having no routes. These widgets
     // were lifetime-only until #309 range-scoped them; since then a

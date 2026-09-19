@@ -5,6 +5,10 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { Plane, MeterRow, LogRow, BeamTip } from 'holo';
 // Type-only elsewhere, so no cycle: catalogue.ts imports nothing from here.
+import {
+  hasNoData,
+  isLoadFailure,
+} from '@/app/_components/widgets/kit/loadResult';
 import { PROJECTION_CATALOGUE } from './catalogue';
 import { livesWidget } from '@/app/_components/widgets/lives';
 import { contractsWidget } from '@/app/_components/widgets/contracts';
@@ -1333,15 +1337,26 @@ export async function buildElements(
       // broken". That ambiguity cost real time on the loadout pane — the tray
       // had stopped producing the events it reads, and the surface said
       // nothing at all. Planes already have an `empty` treatment; use it.
-      if (def.load && data == null) {
-        if (builder.kind === 'callout') return null;
+      if (def.load && hasNoData(data)) {
+        // FAILED and EMPTY are different answers and must not share a
+        // message. "nothing recorded yet" told users holding hundreds of
+        // thousands of records that they held none — the reported symptom of
+        // data being wiped and then loading back in later. A failure says so,
+        // and says it is probably temporary, because it usually is: the
+        // trigger is a burst of ~37 calls against a 16-connection pool.
+        const failed = isLoadFailure(data);
+        if (builder.kind === 'callout' && !failed) return null;
         return {
           kind: 'plane' as const,
           vm: {
             id: id as WidgetId,
             node: (
               <Plane tilt="flat" cap={elementName(id as WidgetId)}>
-                <span className="hp-empty">{MISSING} nothing recorded yet</span>
+                <span className="hp-empty">
+                  {failed
+                    ? `${MISSING} couldn't load — try again`
+                    : `${MISSING} nothing recorded yet`}
+                </span>
               </Plane>
             ),
           },

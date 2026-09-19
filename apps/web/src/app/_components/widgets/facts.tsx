@@ -3,6 +3,7 @@ import { getPlayerFacts, type PlayerFact } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { NoSignal } from '@/components/hud/NoSignal';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { fmtNum } from './kit/format';
 
 /**
@@ -51,7 +52,7 @@ export const factsWidget = defineWidget<FactsData>({
       };
     } catch (err) {
       logger.warn({ err, call: 'widget.facts' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
   },
   body(data, _ctx, size) {

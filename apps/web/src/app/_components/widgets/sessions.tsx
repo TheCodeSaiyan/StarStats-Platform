@@ -8,6 +8,7 @@ import { buildSessionSummary, type SessionSummaryLine } from './sessions-summary
 import { lastNSessionDurationsMinutes } from '@/lib/session-series';
 import { Sparkline } from '@/components/metrics/Sparkline';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { RankedList, type Row } from './kit/archetypes';
 import { fmtDuration } from './kit/format';
 
@@ -186,7 +187,7 @@ export const sessionsWidget = defineWidget<SessionsData>({
         { err, call: 'widget.sessions', handle: ctx.ownerHandle },
         'sessions fetch failed',
       );
-      return null;
+      return LOAD_FAILED;
     }
     if (!sessions || sessions.sessions.length === 0) return null;
 

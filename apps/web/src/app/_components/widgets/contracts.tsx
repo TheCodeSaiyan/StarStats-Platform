@@ -10,6 +10,7 @@ import { getContracts } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { rangeToWindowHours } from '@/lib/range';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { ReadoutGroup } from './kit/archetypes';
 import { fmtNum, fmtPct } from './kit/format';
 import { InfoTip } from '@/components/hud/InfoTip';
@@ -124,7 +125,7 @@ export const contractsWidget = defineWidget<ContractsData>({
       };
     } catch (err) {
       logger.warn({ err, call: 'widget.contracts' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
   },
   body(data) {

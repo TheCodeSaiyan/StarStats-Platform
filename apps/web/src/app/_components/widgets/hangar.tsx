@@ -14,6 +14,7 @@ import {
 } from '@/lib/hangar-label';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { RankedList, ReadoutGroup, type Row } from './kit/archetypes';
 import { fmtNum } from './kit/format';
 
@@ -149,7 +150,7 @@ export const hangarWidget = defineWidget<HangarData>({
       hangar = await getMyHangar(ctx.token);
     } catch (err) {
       logger.warn({ err, call: 'widget.hangar' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     // getMyHangar returns null on 404 (no snapshot yet) — surface nothing.
     const ships = hangar?.ships ?? [];

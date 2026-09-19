@@ -4,6 +4,7 @@ import { getLives } from '@/lib/api';
 import { rangeToHours } from '@/lib/range';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { ReadoutGroup, type Readout } from './kit/archetypes';
 import { fmtDuration, fmtNum } from './kit/format';
 
@@ -53,7 +54,7 @@ export const livesWidget = defineWidget<LivesData>({
       lives = await getLives(ctx.token, hours);
     } catch (err) {
       logger.warn({ err, call: 'widget.lives' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     if (!lives || lives.total_lives === 0) return null;
     return {

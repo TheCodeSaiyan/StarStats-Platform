@@ -7,6 +7,7 @@ import { toDistinctStops } from '@/components/journey/trail-utils';
 import { deriveTransitionGraph } from '@/components/journey/TransitionGraph';
 import { NoSignal } from '@/components/hud/NoSignal';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { fmtNum } from './kit/format';
 
 /**
@@ -55,7 +56,7 @@ export const corridorsWidget = defineWidget<CorridorsData>({
       entries = trace.entries ?? [];
     } catch (err) {
       logger.warn({ err, call: 'widget.corridors' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     const stops = toDistinctStops(entries);
     const { nodes, edges } = deriveTransitionGraph(stops);

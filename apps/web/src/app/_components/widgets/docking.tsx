@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { rangeToWindowHours, rangeHasLifetimeBaseline } from '@/lib/range';
 import { computeTrend, formatTrend, previousWindowLabel } from '@/lib/trend';
 import { EmptyWindow } from './kit/EmptyWindow';
+import { LOAD_FAILED } from './kit/loadResult';
 import { defineWidget } from './kit/defineWidget';
 import { MeterList, type Readout } from './kit/archetypes';
 import { fmtNum } from './kit/format';
@@ -62,7 +63,7 @@ export const dockingWidget = defineWidget<DockingData>({
       docking = await getDocking(ctx.token, rangeToWindowHours(ctx.range));
     } catch (err) {
       logger.warn({ err, call: 'widget.docking' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     const total = docking?.total_stows ?? 0;
     // An empty WINDOW is not an empty account — see kit/EmptyWindow.

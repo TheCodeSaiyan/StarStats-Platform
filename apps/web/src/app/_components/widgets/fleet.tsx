@@ -8,6 +8,7 @@ import { logger } from '@/lib/logger';
 import { rangeToWindowHours, rangeHasLifetimeBaseline } from '@/lib/range';
 import { computeTrend, formatTrend, previousWindowLabel } from '@/lib/trend';
 import { EmptyWindow } from './kit/EmptyWindow';
+import { LOAD_FAILED } from './kit/loadResult';
 import { defineWidget } from './kit/defineWidget';
 import { RankedList } from './kit/archetypes';
 import { fmtNum } from './kit/format';
@@ -58,7 +59,7 @@ export const fleetWidget = defineWidget<FleetData>({
       fleet = await getFleet(ctx.token, rangeToWindowHours(ctx.range));
     } catch (err) {
       logger.warn({ err, call: 'widget.fleet' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     const ships = fleet?.ships ?? [];
     // An empty WINDOW is not an empty account — see kit/EmptyWindow.

@@ -10,6 +10,7 @@ import { logger } from '@/lib/logger';
 import { rangeToHours, rangeHasLifetimeBaseline } from '@/lib/range';
 import { computeTrend, formatTrend, previousWindowLabel } from '@/lib/trend';
 import { EmptyWindow } from './kit/EmptyWindow';
+import { LOAD_FAILED } from './kit/loadResult';
 import { defineWidget } from './kit/defineWidget';
 import { ReadoutGroup, RankedList, type Readout, type Row } from './kit/archetypes';
 import { fmtNum } from './kit/format';
@@ -62,7 +63,7 @@ export const economyWidget = defineWidget<EconomyData>({
     ]);
     if (commerceRes.status === 'rejected') {
       logger.warn({ err: commerceRes.reason, call: 'widget.economy' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     if (spendRes.status === 'rejected') {
       logger.warn({ err: spendRes.reason, call: 'widget.economy.spend' }, 'fetch failed');
