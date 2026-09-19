@@ -6,6 +6,7 @@ import { IN_TRANSIT_HIDDEN_TYPES } from '@/lib/event-filter';
 import { logger } from '@/lib/logger';
 import { rangeToSinceIso } from '@/lib/range';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { RankedList } from './kit/archetypes';
 import { fmtRelative } from './kit/format';
 
@@ -160,7 +161,7 @@ export const recentActivityWidget = defineWidget<RecentActivityData>({
         { err, call: 'widget.recent_activity', handle: ctx.ownerHandle },
         'fetch failed',
       );
-      return null;
+      return LOAD_FAILED;
     }
     const rows = (events?.events ?? []).filter((e) => !isLowSignal(e));
     if (rows.length === 0) return null;

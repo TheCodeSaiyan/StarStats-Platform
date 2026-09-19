@@ -3,6 +3,7 @@ import type { Route } from 'next';
 import { getPublicRsiOrgs, type RsiOrgsSnapshot } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { RankedList } from './kit/archetypes';
 import { fmtRelative } from './kit/format';
 
@@ -36,7 +37,7 @@ export const orgsWidget = defineWidget<OrgsData>({
         { err, call: 'widget.orgs', handle: ctx.ownerHandle },
         'orgs fetch failed',
       );
-      return null;
+      return LOAD_FAILED;
     }
     if (!snapshot || snapshot.orgs.length === 0) return null;
     return { orgs: snapshot.orgs, capturedAt: snapshot.captured_at };

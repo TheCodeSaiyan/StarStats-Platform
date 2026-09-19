@@ -4,6 +4,7 @@ import { getTimeline, getFriendTimeline } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { rangeToDays } from '@/lib/range';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 
 /**
  * `heatmap` — "Activity shape": a per-day event-count grid over the
@@ -44,7 +45,7 @@ export const heatmapWidget = defineWidget<HeatmapData>({
         { err, call: 'widget.heatmap', handle: ctx.ownerHandle },
         'heatmap fetch failed',
       );
-      return null;
+      return LOAD_FAILED;
     }
     if (!timeline || timeline.buckets.length === 0) return null;
     return timeline;

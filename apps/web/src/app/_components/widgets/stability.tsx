@@ -4,6 +4,7 @@ import type { StatsBucket } from '@/lib/api';
 import { rangeToHours } from '@/lib/range';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { ReadoutGroup, RankedList, type Readout, type Row } from './kit/archetypes';
 import { fmtNum } from './kit/format';
 
@@ -56,7 +57,7 @@ export const stabilityWidget = defineWidget<StabilityData>({
     ]);
     if (stabilityRes.status === 'rejected') {
       logger.warn({ err: stabilityRes.reason, call: 'widget.stability' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     if (playtimeRes.status === 'rejected') {
       logger.warn(

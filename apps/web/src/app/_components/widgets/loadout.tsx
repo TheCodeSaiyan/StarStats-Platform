@@ -16,6 +16,7 @@ import type { LoadoutItem } from '@/lib/loadout';
 import { EntityLink } from '@/components/kb/EntityLink';
 import type { ReferenceCategory } from '@/lib/reference-types';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 
 /**
  * `loadout` — a snapshot of current gear. Migrated to the kit:
@@ -79,7 +80,7 @@ export const loadoutWidget = defineWidget<LoadoutViewData>({
     ]);
     if (burstRes.status === 'rejected') {
       logger.warn({ err: burstRes.reason, call: 'widget.loadout' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     if (activityRes.status === 'rejected') {
       logger.warn(

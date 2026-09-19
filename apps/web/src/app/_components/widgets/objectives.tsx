@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { rangeToWindowHours, rangeHasLifetimeBaseline } from '@/lib/range';
 import { computeTrend, formatTrend, previousWindowLabel } from '@/lib/trend';
 import { EmptyWindow } from './kit/EmptyWindow';
+import { LOAD_FAILED } from './kit/loadResult';
 import { defineWidget } from './kit/defineWidget';
 import { ReadoutGroup } from './kit/archetypes';
 import { fmtNum, fmtPct } from './kit/format';
@@ -84,7 +85,7 @@ export const objectivesWidget = defineWidget<ObjectivesData>({
       obj = await getObjectives(ctx.token, rangeToWindowHours(ctx.range));
     } catch (err) {
       logger.warn({ err, call: 'widget.objectives' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     // An empty WINDOW is not an empty account — see kit/EmptyWindow.
     const lifetimeTotal = rangeHasLifetimeBaseline(ctx.range)

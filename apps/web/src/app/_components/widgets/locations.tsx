@@ -8,6 +8,7 @@ import { aggregateLocationBuckets } from '@/lib/class-name-parts';
 import { logger } from '@/lib/logger';
 import { rangeToHours } from '@/lib/range';
 import { defineWidget } from './kit/defineWidget';
+import { LOAD_FAILED } from './kit/loadResult';
 import { ReadoutGroup, RankedList } from './kit/archetypes';
 import { fmtNum } from './kit/format';
 import { InfoTip } from '@/components/hud/InfoTip';
@@ -48,7 +49,7 @@ export const locationsWidget = defineWidget<LocationsData>({
       unique = res?.unique_locations ?? 0;
     } catch (err) {
       logger.warn({ err, call: 'widget.locations' }, 'fetch failed');
-      return null;
+      return LOAD_FAILED;
     }
     if (unique === 0 && top.length === 0) return null;
     const { catalogs } = await loadAllReferenceBundles();

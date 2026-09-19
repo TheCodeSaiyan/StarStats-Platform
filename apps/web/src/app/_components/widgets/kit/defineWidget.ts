@@ -1,5 +1,7 @@
 import type { ReactElement } from 'react';
 import type { ViewerCtx, WidgetDef, WidgetId, WidgetSize, WidgetShareScopes } from '../types';
+import { LOAD_FAILED, isLoadFailure, type LoadResult } from './loadResult';
+import { logger } from '@/lib/logger';
 
 /**
  * Declarative widget definition. Collapses the boilerplate every widget
@@ -34,9 +36,18 @@ export interface WidgetConfig<D> {
   visibility?: Visibility;
   /** Escape hatch for bespoke gates; wins over `visibility` when set. */
   isAvailable?: (ctx: ViewerCtx) => boolean | Promise<boolean>;
-  /** Fetch + normalise. Return `null` for "no data / error" → renders
-   *  nothing (WidgetFrame shows the shared empty placeholder). */
-  load: (ctx: ViewerCtx) => Promise<D | null>;
+  /**
+   * Fetch + normalise.
+   *
+   * `null` means EMPTY — there is genuinely nothing to draw. A FAILURE is a
+   * different answer: either throw (this wrapper catches and converts it) or
+   * return `LOAD_FAILED` where the failure is caught locally, as it is in the
+   * widgets that use `Promise.allSettled` to tolerate a partial outage.
+   *
+   * Returning `null` for a failed fetch is the bug this contract exists to
+   * prevent — see `./loadResult.ts`.
+   */
+  load: (ctx: ViewerCtx) => Promise<LoadResult<D>>;
   /** Draw the bounded summary from the loaded data. Pure — compose the
    *  archetype renderers. May itself return null (defensive). */
   body: (data: D, ctx: ViewerCtx, size: WidgetSize) => ReactElement | null;
@@ -83,8 +94,11 @@ export function defineWidget<D>(cfg: WidgetConfig<D>): TypedWidgetDef<D> {
     rangeAware: cfg.rangeAware,
     isAvailable,
     async render(ctx, size) {
-      const data = await cfg.load(ctx);
-      if (data == null) return null;
+      const data = await loadSafely(cfg, ctx);
+      // The flat surface still draws nothing for either outcome; the
+      // projection is what tells them apart. Keeping this branch collapsed
+      // means no behaviour change on `/u/[handle]` from this commit.
+      if (data == null || isLoadFailure(data)) return null;
       return cfg.body(data, ctx, size);
     },
     // Exposed so a DIFFERENT render layer can reuse the same fetch.
@@ -95,6 +109,28 @@ export function defineWidget<D>(cfg: WidgetConfig<D>): TypedWidgetDef<D> {
     // exactly right, and duplicating that per element would be 13 near-copies
     // drifting apart. So `load` comes out and the projection supplies its own
     // body; `render` is untouched and the flat profile surface keeps working.
-    load: cfg.load as (ctx: ViewerCtx) => Promise<unknown | null>,
+    load: ((ctx: ViewerCtx) => loadSafely(cfg, ctx)) as (
+      ctx: ViewerCtx,
+    ) => Promise<unknown | null>,
   };
+}
+
+/**
+ * Run a widget's loader so a THROWN error becomes `LOAD_FAILED` rather than
+ * escaping into `Promise.allSettled` (where a rejection is indistinguishable
+ * from a widget that chose to render nothing).
+ *
+ * The `call: widget.<id>` log label matches what the widgets' own catch
+ * blocks emitted, so existing log searches keep working.
+ */
+async function loadSafely<D>(
+  cfg: WidgetConfig<D>,
+  ctx: ViewerCtx,
+): Promise<LoadResult<D>> {
+  try {
+    return await cfg.load(ctx);
+  } catch (err) {
+    logger.warn({ err, call: `widget.${cfg.id}` }, 'widget load failed');
+    return LOAD_FAILED;
+  }
 }
