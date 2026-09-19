@@ -25,35 +25,6 @@ function ownerCtx(range: ViewerCtx['range']): ViewerCtx {
   };
 }
 
-describe('economyWidget lifetime suppression on "all"', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  // `all` is a real 8760h window, so the server DOES send a twin for it
-  // — but that twin spans the same rows, so the note would read
-  // "lifetime 1,250,000 aUEC" beside an identical windowed figure.
-  it('renders no lifetime note on the "all" range', async () => {
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [
-        { kind: 'shop', status: 'confirmed', shop_name: 'SCShop_X' },
-      ],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 1_250_000,
-      purchases: 412,
-      top_shop: null,
-      lifetime: { total_auec: 1_250_000, purchases: 412 },
-    });
-
-    const node = await economyWidget.render(ownerCtx('all'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    expect(container.textContent).toContain('1,250,000 aUEC');
-    expect(container.textContent).not.toMatch(/lifetime/i);
-  });
-});
-
 describe('economyWidget range-awareness', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -74,26 +45,6 @@ describe('economyWidget range-awareness', () => {
     expect(getCommerceRecent).toHaveBeenCalledWith('tok', 100, 30, 168);
   });
 
-  it('renders the spend total + top shop from getSpend', async () => {
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [{ kind: 'shop', status: 'confirmed' }],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 17500,
-      purchases: 3,
-      top_shop: 'SCShop_Aparelli_NewBabbage',
-    });
-
-    const node = await economyWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    // 7d => 168 hours. Spend MUST share the commerce window, not be lifetime.
-    expect(getSpend).toHaveBeenCalledWith('tok', 168);
-    expect(container.textContent).toContain('17,500 aUEC');
-    // shop_name is prettified (SCShop_ prefix + underscores stripped).
-    expect(container.textContent).toContain('Aparelli NewBabbage');
-  });
-
   it('passes the ctx.range window (hours) to getSpend', async () => {
     (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
       transactions: [{ kind: 'shop', status: 'confirmed' }],
@@ -108,88 +59,6 @@ describe('economyWidget range-awareness', () => {
 
     // 30d => 24*30 = 720 hours, passed as the 2nd arg.
     expect(getSpend).toHaveBeenCalledWith('tok', 720);
-  });
-
-  it('compares the windowed spend against the lifetime baseline when present', async () => {
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [{ kind: 'shop', status: 'confirmed' }],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 17_500,
-      purchases: 3,
-      top_shop: 'SCShop_Aparelli_NewBabbage',
-      lifetime: { total_auec: 1_250_000, purchases: 412 },
-    });
-
-    const node = await economyWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    expect(container.textContent).toContain('17,500 aUEC');
-    expect(container.textContent).toContain('lifetime 1,250,000 aUEC');
-    // The pre-existing confirmed/pending breakdown is a separate, still-true
-    // caveat about the transaction counts — the comparison JOINS it.
-    expect(container.textContent).toContain('1 confirmed');
-    expect(container.textContent).toContain('top shop Aparelli NewBabbage');
-  });
-
-  it('renders the bare spend with NO comparison when lifetime is absent', async () => {
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [{ kind: 'shop', status: 'confirmed' }],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 17_500,
-      purchases: 3,
-      top_shop: null,
-    });
-
-    const node = await economyWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    expect(container.textContent).toContain('17,500 aUEC');
-    expect(container.textContent).not.toContain('lifetime');
-    // Guards the `?? 0` failure mode: a fabricated "0 aUEC" career total.
-    expect(container.textContent).not.toMatch(/lifetime 0 aUEC/);
-    // Existing note survives.
-    expect(container.textContent).toContain('1 confirmed');
-  });
-
-  it('carries the lifetime comparison into the compact size too', async () => {
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [{ kind: 'shop', status: 'confirmed' }],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 17_500,
-      purchases: 3,
-      top_shop: null,
-      lifetime: { total_auec: 1_250_000, purchases: 412 },
-    });
-
-    const node = await economyWidget.render(ownerCtx('7d'), 'compact');
-    const { container } = render(node as React.ReactElement);
-
-    // `spent` is displayed at compact too, so it needs the baseline there.
-    expect(container.textContent).toContain('17,500 aUEC');
-    expect(container.textContent).toContain('lifetime 1,250,000 aUEC');
-  });
-
-  it('omits the comparison when there is no spend figure to compare', async () => {
-    // A baseline hanging off nothing is noise: with no windowed spend the
-    // widget shows no aUEC at all.
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [{ kind: 'shop', status: 'confirmed' }],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 0,
-      purchases: 0,
-      top_shop: null,
-      lifetime: { total_auec: 1_250_000, purchases: 412 },
-    });
-
-    const node = await economyWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    expect(container.textContent).not.toContain('aUEC');
-    expect(container.textContent).not.toContain('lifetime');
   });
 
   it('scopes spend to the SAME window as the commerce list', async () => {
@@ -212,33 +81,6 @@ describe('economyWidget range-awareness', () => {
     expect(spendArgs).toHaveLength(2);
     expect(spendArgs[1]).toBe(commerceHours);
     expect(spendArgs[1]).toBe(2160);
-  });
-
-  // The trend branch is unreachable without `previous`: the widget
-  // renders `spendTrend ?? lifetimeSpend`, so every other assertion in
-  // this file exercises only the fallback.
-  it('leads with the spend trend and drops the lifetime note', async () => {
-    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
-      transactions: [
-        { kind: 'shop', status: 'confirmed', shop_name: 'SCShop_X' },
-      ],
-    });
-    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
-      total_auec: 30_000,
-      purchases: 5,
-      top_shop: null,
-      lifetime: { total_auec: 1_250_000, purchases: 412 },
-      previous: { total_auec: 20_000, purchases: 4 },
-    });
-
-    const node = await economyWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    expect(container.textContent).toContain('+10,000 aUEC');
-    expect(container.textContent).toContain('(+50%)');
-    expect(container.textContent).toContain('vs prev 7d');
-    // Trend REPLACES the lifetime note rather than joining it.
-    expect(container.textContent).not.toContain('lifetime 1,250,000');
   });
 });
 
@@ -313,5 +155,64 @@ describe('economyWidget empty window vs empty account', () => {
     (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue(null);
 
     expect(await economyWidget.render(ownerCtx('7d'), 'compact')).toBeNull();
+  });
+});
+
+// The spend-display tests that stood here are gone with the display itself.
+// Every one of their subjects is already covered in `spend.test.tsx` — the
+// lifetime baseline, the bare-number case, the `all`-range rule, the
+// trend-over-lifetime precedence and the top-shop line. The duplication this
+// change removes ran to the TESTS as well as the code: two widgets, two
+// suites, the same assertions about the same getSpend call.
+
+describe('economy does not restate the spend widget', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  async function renderWithSpend(size: 'compact' | 'expanded') {
+    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactions: [
+        { kind: 'shop', status: 'confirmed', shop_name: 'SCShop_X' },
+        { kind: 'commodity_buy', status: 'confirmed', shop_name: null },
+      ],
+    });
+    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
+      total_auec: 1_250_000,
+      purchases: 412,
+      top_shop: null,
+      lifetime: { total_auec: 4_000_000, purchases: 900 },
+      previous: { total_auec: 1_000_000, purchases: 300 },
+    });
+    const node = await economyWidget.render(ownerCtx('7d'), size);
+    return render(node as React.ReactElement).container;
+  }
+
+  it('shows no aUEC figure in either size', async () => {
+    for (const size of ['compact', 'expanded'] as const) {
+      const c = await renderWithSpend(size);
+      expect(c.textContent, `${size} must not restate spend`).not.toContain('aUEC');
+    }
+  });
+
+  it('keeps the activity figures it alone can report', async () => {
+    const c = await renderWithSpend('compact');
+    expect(c.textContent).toContain('buys');
+    expect(c.textContent).toContain('sells');
+    expect(c.textContent).toContain('confirmed');
+  });
+
+  it('still renders when the window is empty but the account is not', async () => {
+    // The getSpend call STAYS even though its figure does not: the lifetime
+    // purchase count is what tells an empty WINDOW from an empty ACCOUNT.
+    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactions: [],
+    });
+    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
+      total_auec: 0,
+      purchases: 0,
+      top_shop: null,
+      lifetime: { total_auec: 4_000_000, purchases: 900 },
+    });
+    const node = await economyWidget.render(ownerCtx('7d'), 'compact');
+    expect(node).not.toBeNull();
   });
 });

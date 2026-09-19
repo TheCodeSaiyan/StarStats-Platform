@@ -119,44 +119,21 @@ export const economyWidget = defineWidget<EconomyData>({
         />
       );
     }
-    const spentValue =
-      spend != null && spend.total_auec > 0 ? `${fmtNum(spend.total_auec)} aUEC` : null;
-    // Baseline for `spent` only. `buys`/`sells` come off the commerce list,
-    // which has no lifetime twin — inventing one for them would be worse
-    // than leaving them bare. Null when there is no windowed spend to
-    // compare against, and on the `all` range, where the twin spans the
-    // same rows as the window and would only restate it.
-    const lifetimeSpend =
-      spentValue != null &&
-      spend?.lifetime != null &&
-      rangeHasLifetimeBaseline(ctx.range)
-        ? `lifetime ${fmtNum(spend.lifetime.total_auec)} aUEC`
-        : null;
-    // Trend on SPEND only, for the same reason the lifetime baseline is
-    // spend-only: `buys`/`sells` come off the commerce list, which has no
-    // previous-period twin. Not range-gated — the server already omits
-    // `previous` for `all` and for a handle with no prior activity.
-    const spendTrend =
-      spentValue != null && spend?.previous != null
-        ? formatTrend(
-            computeTrend(spend.total_auec, spend.previous.total_auec),
-            previousWindowLabel(ctx.range),
-            fmtNum,
-            'aUEC',
-          )
-        : null;
-    // Trend when we have a predecessor, otherwise fall back to the
-    // lifetime share. One comparison, not two: three clauses in a note
-    // wrapped these tiles onto a second line and left dead space, and
-    // the sizing contract is that a tile never scrolls and never wastes
-    // room. Direction is the more useful of the two, so it wins.
-    const spendComparison = spendTrend ?? lifetimeSpend;
+    // NO aUEC FIGURE HERE. `spend` is the money widget and carries a better
+    // version of every part of it: the same total with an InfoTip explaining
+    // the kiosk inference, a lifetime baseline covering both its readouts,
+    // and a trend. This tile was rendering a poorer copy TWICE — a readout
+    // and a `Spent` row — off the same getSpend call, two tiles away in a
+    // two-tile lens. economy owns transaction activity; spend owns money.
+    //
+    // The getSpend call itself STAYS: `lifetimePurchases` above uses it to
+    // tell an empty WINDOW from an empty ACCOUNT, which is the difference
+    // between "widen the range" and a blank box.
 
     if (size === 'compact') {
       const readouts: Readout[] = [
         { label: 'buys', value: fmtNum(buys) },
         { label: 'sells', value: fmtNum(sells) },
-        ...(spentValue ? [{ label: 'spent', value: spentValue } as Readout] : []),
       ];
       return (
         <ReadoutGroup
@@ -165,7 +142,6 @@ export const economyWidget = defineWidget<EconomyData>({
             <>
               {fmtNum(confirmed)} confirmed
               {pending > 0 && <> · {fmtNum(pending)} pending</>}
-              {spendComparison && <> · {spendComparison}</>}
             </>
           }
         />
@@ -176,7 +152,6 @@ export const economyWidget = defineWidget<EconomyData>({
       { key: 'shop', label: 'Shop', value: fmtNum(perKind.shop) },
       { key: 'commodity_buy', label: 'Commodity buy', value: fmtNum(perKind.commodity_buy) },
       { key: 'commodity_sell', label: 'Commodity sell', value: fmtNum(perKind.commodity_sell) },
-      ...(spentValue ? [{ key: 'spent', label: 'Spent', value: spentValue } as Row] : []),
     ];
     return (
       <RankedList
@@ -185,7 +160,6 @@ export const economyWidget = defineWidget<EconomyData>({
           <>
             {fmtNum(confirmed)} confirmed · {fmtNum(pending)} pending
             {spend?.top_shop && <> · top shop {prettyShop(spend.top_shop)}</>}
-            {spendComparison && <> · {spendComparison}</>}
           </>
         }
       />
