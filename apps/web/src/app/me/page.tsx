@@ -87,6 +87,10 @@ const OWNER_SHARE_SCOPES = {
   orgs: true,
 } as const;
 
+/** What a figure reads when its fetch FAILED, as opposed to returned zero.
+ *  Matches the projection's own placeholder (`elements.tsx`). */
+const MISSING = '—';
+
 export default async function MePage(props: PageProps) {
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/me');
@@ -256,10 +260,32 @@ export default async function MePage(props: PageProps) {
       supporterTier={supporterTier}
       enlistmentYear={enlistmentYear(profile?.enlistment_date ?? null)}
       lifetime={{
-        playtime: formatPlaytime(playtime?.total_playtime_secs ?? 0),
-        events: fmtNum(summary?.total ?? 0),
-        locations: fmtNum(locations?.unique_locations ?? 0),
-        kd: formatKd(kills, deaths),
+        // A FAILED FETCH IS NOT A ZERO.
+        //
+        // `playtime?.total_playtime_secs ?? 0` rendered "0h" whenever the
+        // call failed, and that is the whole of the "logged flight time
+        // resets to 0" report: the server correctly returned 500
+        // (event_timeline.rs:1093), `settledOr` correctly resolved it to
+        // null, and then this line invented a zero and formatted it. The
+        // data was never gone — `session_summary` held 2,289 sessions and
+        // 2,359 hours while the page said 0h.
+        //
+        // The trigger is load: `stat_rollup_state.sessions_dirty` is set by
+        // ingest and cleared by a rebuild, so an actively-syncing account is
+        // perpetually dirty and EVERY read rebuilds the rollup — a DELETE
+        // plus a window-function re-INSERT over the entire event history.
+        // Past a certain history size that exceeds its timeout. Which is why
+        // the figure came back on its own, and why it broke at a threshold
+        // rather than at a number in the code.
+        //
+        // `—` when the call failed; a real 0 still reads "0h", because an
+        // account with no flight time genuinely has none.
+        playtime:
+          playtime == null ? MISSING : formatPlaytime(playtime.total_playtime_secs),
+        events: summary == null ? MISSING : fmtNum(summary.total),
+        locations:
+          locations == null ? MISSING : fmtNum(locations.unique_locations),
+        kd: combat == null ? MISSING : formatKd(kills, deaths),
         // K/D is derived from deaths, and deaths are partly reconstructed — so
         // a partly-guessed death count makes the RATIO partly a guess, which
         // the reader should be able to see. Stated, never rounded away.
