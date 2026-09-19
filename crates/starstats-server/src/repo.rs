@@ -1301,6 +1301,15 @@ pub mod test_support {
     }
 
     pub struct MemoryQuery {
+        /// Make the aggregate reads fail, so a handler's behaviour on a
+        /// BROKEN query can be asserted rather than assumed.
+        ///
+        /// Every stats handler used to end its reads in `.unwrap_or(0)` /
+        /// `.unwrap_or_default()`, so a failed query rendered as a zero and
+        /// "0 quantum jumps" meant either "you did not travel" or "the
+        /// database did not answer". Nothing could tell them apart, and no
+        /// test could reach the second case at all.
+        fail_reads: bool,
         rows: Vec<StoredQueryEvent>,
         /// (actor_handle, row) pairs. The production read path filters
         /// audit_log by `actor_handle`, so the test stub keeps the
@@ -1317,6 +1326,7 @@ pub mod test_support {
     impl MemoryQuery {
         pub fn new(rows: Vec<StoredQueryEvent>) -> Self {
             Self {
+                fail_reads: false,
                 rows,
                 ingest_history: Vec::new(),
                 export_rows: Vec::new(),
@@ -1330,6 +1340,12 @@ pub mod test_support {
 
         pub fn with_ingest_history(mut self, history: Vec<(String, IngestBatchRow)>) -> Self {
             self.ingest_history = history;
+            self
+        }
+
+        /// Every aggregate read returns `RepoError` from here on.
+        pub fn failing(mut self) -> Self {
+            self.fail_reads = true;
             self
         }
     }
@@ -1854,6 +1870,9 @@ pub mod test_support {
             until: Option<DateTime<Utc>>,
             limit: i64,
         ) -> Result<Vec<PayloadFieldBucket>, RepoError> {
+            if self.fail_reads {
+                return Err(RepoError::Database(sqlx::Error::PoolTimedOut));
+            }
             use std::collections::HashMap;
             let mut counts: HashMap<String, i64> = HashMap::new();
             for r in &self.rows {
@@ -2100,6 +2119,9 @@ pub mod test_support {
             since: Option<DateTime<Utc>>,
             until: Option<DateTime<Utc>>,
         ) -> Result<u64, RepoError> {
+            if self.fail_reads {
+                return Err(RepoError::Database(sqlx::Error::PoolTimedOut));
+            }
             let mut n = 0u64;
             for r in &self.rows {
                 if !r.claimed_handle.eq_ignore_ascii_case(claimed_handle)

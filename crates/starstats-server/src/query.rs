@@ -3192,7 +3192,16 @@ pub async fn stats_travel<Q: EventQuery>(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let quantum_jumps = query
+    // A FAILED QUERY IS NOT A ZERO. These reads used to end in
+    // `.unwrap_or(0)` / `.unwrap_or_default()`, so a pool timeout rendered as
+    // "0 quantum jumps" — indistinguishable from a week with no travel in it.
+    // That is how a dashboard tells a user with 300k events that they have
+    // none, and it is worse than an error because it looks like an answer.
+    //
+    // 500 instead. The caller degrades ONE tile (`/me` fans out per widget
+    // under `Promise.allSettled`), and the web layer now renders a failed
+    // load as "couldn't load" rather than "nothing recorded yet".
+    let quantum_jumps = match query
         .count_event_type(
             &user.preferred_username,
             "quantum_target_selected",
@@ -3201,7 +3210,13 @@ pub async fn stats_travel<Q: EventQuery>(
             None,
         )
         .await
-        .unwrap_or(0);
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "stats_travel quantum_jumps failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "query failed").into_response();
+        }
+    };
     let top_destinations = query
         .payload_field_breakdown(
             &user.preferred_username,
@@ -3213,7 +3228,13 @@ pub async fn stats_travel<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty, and the
+            // headline figure above already hard-fails on its own error, so
+            // the response cannot silently claim a complete picture.
+            tracing::error!(error = %e, "stats_travel breakdown failed");
+            Vec::new()
+        });
     let planets_visited = query
         .payload_field_breakdown(
             &user.preferred_username,
@@ -3225,7 +3246,13 @@ pub async fn stats_travel<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty, and the
+            // headline figure above already hard-fails on its own error, so
+            // the response cannot silently claim a complete picture.
+            tracing::error!(error = %e, "stats_travel breakdown failed");
+            Vec::new()
+        });
     (
         StatusCode::OK,
         Json(TravelStatsResponse {
@@ -4061,6 +4088,7 @@ mod tests {
                 get(location_current::<MemoryQuery>),
             )
             .route("/v1/me/stats/combat", get(stats_combat::<MemoryQuery>))
+            .route("/v1/me/stats/travel", get(stats_travel::<MemoryQuery>))
             .route("/v1/me/stats/playtime", get(stats_playtime::<MemoryQuery>))
             .route(
                 "/v1/me/stats/biggest-trade",
@@ -7460,6 +7488,40 @@ mod tests {
         assert!(
             body.location.entered_at_is_lower_bound,
             "expected lower-bound flag when the batch saturates without a key change"
+        );
+    }
+
+    /// A broken query must not render as a zero.
+    ///
+    /// `stats_travel` ended every read in `.unwrap_or(0)` /
+    /// `.unwrap_or_default()`, so a pool timeout produced a 200 OK carrying
+    /// `quantum_jumps: 0` — the same body a week with no travel produces.
+    /// That is how the dashboard told users holding hundreds of thousands of
+    /// records that they had none, and why it looked like their data had been
+    /// wiped and then come back: the burst that broke the query is transient.
+    ///
+    /// No test could reach this path before, because the mock had no way to
+    /// fail.
+    #[tokio::test]
+    async fn stats_travel_reports_a_broken_query_instead_of_zero() {
+        let mq = Arc::new(MemoryQuery::new(vec![]).failing());
+        let (issuer, verifier) = fresh_pair();
+        let app = router(mq, Arc::new(verifier));
+        let token = sign_token(&issuer, "Alice");
+        let resp = app
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/me/stats/travel?hours=24")
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "a failed aggregate must surface as an error, never as 0 travel"
         );
     }
 
