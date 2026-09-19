@@ -264,6 +264,33 @@ impl Default for EventFilters {
 /// distinct play sessions cleanly.
 pub const SESSION_IDLE_GAP_MINUTES: i64 = 30;
 
+/// How long a freshly rebuilt session rollup is served without rebuilding
+/// again, even while `sessions_dirty` is set.
+///
+/// See [`PostgresStore::ensure_session_stats_fresh`] for why this exists.
+pub const SESSION_ROLLUP_MIN_INTERVAL_SECS: i64 = 60;
+
+/// Whether a session rollup should be rebuilt now.
+///
+/// Pure so the POLICY is testable without a database — the surrounding SQL
+/// is not the interesting part, and the behaviour that caused an incident
+/// (rebuild on every read) lives entirely in this decision.
+pub fn should_rebuild_session_stats(
+    dirty: bool,
+    rebuilt_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> bool {
+    if !dirty {
+        return false;
+    }
+    match rebuilt_at {
+        // Never built. Always build, however hot the handle — otherwise a
+        // busy account would never get a rollup at all.
+        None => true,
+        Some(built) => now - built >= chrono::Duration::seconds(SESSION_ROLLUP_MIN_INTERVAL_SECS),
+    }
+}
+
 /// Event types that are NOT active gameplay and must not anchor or
 /// bridge a play session. `launcher_activity` comes from the RSI
 /// launcher log (a separate log the tray tails) which writes while the
@@ -2468,20 +2495,48 @@ impl PostgresStore {
         Ok(())
     }
 
-    /// Rebuild session rollups for `handle` iff dirty or the state row is
-    /// missing (a missing row is treated as dirty so pre-0058 handles and
-    /// never-seen handles both recompute on first read). Cheap when clean:
-    /// one point SELECT against `stat_rollup_state`'s primary key.
+    /// Rebuild session rollups for `handle` iff dirty, the state row is
+    /// missing, AND the last successful rebuild is older than
+    /// [`SESSION_ROLLUP_MIN_INTERVAL_SECS`].
+    ///
+    /// THE INTERVAL IS THE POINT. `sessions_dirty` is set by ingest on every
+    /// batch, so a tray that is actively syncing re-dirties the row faster
+    /// than a rebuild can clear it: measured in production, a handle showed
+    /// `sessions_dirty = true` with `updated_at` 17 seconds old, and 12 of 23
+    /// handles were dirty at once. With no interval, "dirty" meant "rebuild"
+    /// on EVERY read, and a rebuild is not cheap — 831 ms and ~2.5 GB of
+    /// buffer reads for a 440k-event handle (a parallel seq scan over the
+    /// whole 2.6M-row events table; `events_handle_ts_idx` exists, the
+    /// planner declines it at 17% selectivity, and it is right to).
+    ///
+    /// `/me` reaches this from `total_playtime_secs`, `count_sessions_since`
+    /// and `records_for_handle`, each taking the same per-handle advisory
+    /// lock — so roughly 2.5 s of serialised rollup work per dashboard load,
+    /// holding connections from a pool of 16 while 37 other calls queue. That
+    /// is what produced the timeouts behind "logged flight time reset to 0".
+    ///
+    /// Gate on `rebuilt_at`, NEVER on `updated_at`: ingest bumps
+    /// `updated_at`, so a continuously-syncing handle would look permanently
+    /// fresh and never rebuild at all. `rebuilt_at` answers the question that
+    /// matters — when was this rollup last actually built.
+    ///
+    /// Cost: session figures may lag by up to the interval. Against a full
+    /// table scan per read, that is the correct trade.
     pub(crate) async fn ensure_session_stats_fresh(&self, handle: &str) -> Result<(), RepoError> {
-        let dirty: bool = sqlx::query_scalar(
-            "SELECT COALESCE(
-                (SELECT sessions_dirty FROM stat_rollup_state WHERE claimed_handle = LOWER($1)),
-                TRUE)",
+        let row: Option<(bool, Option<DateTime<Utc>>)> = sqlx::query_as(
+            "SELECT sessions_dirty, rebuilt_at FROM stat_rollup_state
+             WHERE claimed_handle = LOWER($1)",
         )
         .bind(handle)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await?;
-        if dirty {
+        // A missing row is treated as dirty, so pre-0058 handles and
+        // never-seen handles both recompute on first read.
+        let (dirty, rebuilt_at) = match row {
+            Some((d, r)) => (d, r),
+            None => (true, None),
+        };
+        if should_rebuild_session_stats(dirty, rebuilt_at, Utc::now()) {
             self.rebuild_handle_session_stats(handle).await?;
         }
         Ok(())
@@ -4360,6 +4415,75 @@ impl EventStore for MemoryStore {
 
 #[cfg(test)]
 mod tests {
+    /// The rollup policy, which is where an incident lived.
+    ///
+    /// `sessions_dirty` is set by ingest on every batch, so an actively
+    /// syncing handle is permanently dirty. Without an interval that meant a
+    /// full rebuild on every read: 831 ms and a seq scan of the whole events
+    /// table, three times per dashboard load, on 12 of 23 handles at once.
+    mod session_rollup_policy {
+        use super::super::{should_rebuild_session_stats, SESSION_ROLLUP_MIN_INTERVAL_SECS};
+        use chrono::{Duration, Utc};
+
+        #[test]
+        fn clean_never_rebuilds() {
+            let now = Utc::now();
+            assert!(!should_rebuild_session_stats(false, None, now));
+            assert!(!should_rebuild_session_stats(
+                false,
+                Some(now - Duration::days(7)),
+                now
+            ));
+        }
+
+        #[test]
+        fn never_built_always_rebuilds() {
+            // However hot the handle. Otherwise a busy account never gets a
+            // rollup at all, which would be a worse bug than the one this
+            // interval fixes.
+            assert!(should_rebuild_session_stats(true, None, Utc::now()));
+        }
+
+        #[test]
+        fn dirty_inside_the_window_is_served_stale() {
+            let now = Utc::now();
+            let just_built = now - Duration::seconds(SESSION_ROLLUP_MIN_INTERVAL_SECS - 1);
+            assert!(
+                !should_rebuild_session_stats(true, Some(just_built), now),
+                "a rebuild seconds ago must not be repeated because ingest re-dirtied the row"
+            );
+        }
+
+        #[test]
+        fn dirty_past_the_window_rebuilds() {
+            let now = Utc::now();
+            let stale = now - Duration::seconds(SESSION_ROLLUP_MIN_INTERVAL_SECS + 1);
+            assert!(should_rebuild_session_stats(true, Some(stale), now));
+        }
+
+        #[test]
+        fn three_reads_in_one_page_load_cost_one_rebuild() {
+            // /me reaches ensure_session_stats_fresh from total_playtime_secs,
+            // count_sessions_since and records_for_handle. Before the window,
+            // that was three full rebuilds serialised on one advisory lock.
+            let now = Utc::now();
+            let built = now;
+            let reads = [
+                now,
+                now + Duration::milliseconds(900),
+                now + Duration::seconds(2),
+            ];
+            let rebuilds = reads
+                .iter()
+                .filter(|t| should_rebuild_session_stats(true, Some(built), **t))
+                .count();
+            assert_eq!(
+                rebuilds, 0,
+                "the rollup was just built; none of these should rebuild"
+            );
+        }
+    }
+
     use super::test_support::MemoryQuery;
     use super::*;
     use chrono::DateTime;
