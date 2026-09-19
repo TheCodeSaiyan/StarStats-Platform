@@ -685,8 +685,12 @@ function locationsPlane(d: LocationsData, refs?: ProjectionRefs): React.ReactNod
 
 interface CombatMissionData {
   deaths: number;
-  /** Server-computed; `null` when the combat call failed. */
-  kills: number | null;
+  // No `kills`. Nothing can supply one: `ACTOR_DEATH_RE` in
+  // starstats-core/src/parser.rs is a guess at a line shape the 4.x game has
+  // not been confirmed to write ("derived from community captures, NOT this
+  // fixture"), and its only test feeds it a synthetic line. The server's
+  // kill/death separation is correct and tested; nothing reaches it. See the
+  // longer note in `_components/widgets/combat_mission.tsx`.
   /** Downed but alive. Deliberately NOT part of `deaths` — this widget used
    *  to fold it in, alongside every kill the reader scored. */
   incapacitated: number;
@@ -770,9 +774,6 @@ function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNo
   const rows: RankedRow[] = [
     { name: 'Contracts started', value: fmtNum(d.missionsStarted), pct: 0 },
     { name: 'Contracts ended', value: fmtNum(d.missionsEnded), pct: 0 },
-    ...(d.kills != null
-      ? [{ name: 'Kills', value: fmtNum(d.kills), pct: 0 }]
-      : []),
     { name: 'Deaths', value: fmtNum(d.deaths), pct: 0 },
     // Downed and recovered is a different outcome from killed, and reporting
     // them as one number made both wrong.
