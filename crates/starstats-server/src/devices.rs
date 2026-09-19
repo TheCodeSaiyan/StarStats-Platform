@@ -451,6 +451,12 @@ pub mod test_support {
     struct Inner {
         pairings: HashMap<String, PairingRow>,
         devices: HashMap<Uuid, DeviceRow>,
+        /// Make `device_auth_status` fail like a database would.
+        ///
+        /// There was no way to reach that arm, so nothing tested what the
+        /// auth extractor does when the lookup ERRORS rather than answers —
+        /// and what it did was report the caller's token as invalid.
+        fail_auth_status: bool,
     }
 
     #[derive(Clone)]
@@ -487,6 +493,12 @@ pub mod test_support {
             Self {
                 inner: Mutex::new(Inner::default()),
             }
+        }
+
+        /// Test-only: make the device-status lookup fail the way a pool
+        /// timeout does, so the extractor's error arm can be asserted.
+        pub fn fail_auth_status(&self) {
+            self.inner.lock().unwrap().fail_auth_status = true;
         }
 
         /// Test-only: force a pairing into the past so we can assert
@@ -606,6 +618,9 @@ pub mod test_support {
             device_id: Uuid,
         ) -> Result<DeviceAuthStatus, DeviceError> {
             let inner = self.inner.lock().unwrap();
+            if inner.fail_auth_status {
+                return Err(DeviceError::Database(sqlx::Error::PoolTimedOut));
+            }
             Ok(match inner.devices.get(&device_id) {
                 None => DeviceAuthStatus::Missing,
                 Some(row) if row.revoked_at.is_none() => DeviceAuthStatus::Active,
