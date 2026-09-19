@@ -41,8 +41,23 @@ const MISSION_END_TYPES = ['mission_end'];
 
 interface CombatMissionData {
   deaths: number;
-  /** Server-computed kills. `null` when the combat call failed. */
-  kills: number | null;
+  // NO `kills` FIELD, DELIBERATELY. There is no way to collect a kill.
+  //
+  // The server does the separation correctly — `stats_combat` filters
+  // `actor_death` on killer==caller and has a test for it — but nothing
+  // reaches it. `ACTOR_DEATH_RE` in `starstats-core/src/parser.rs` sits under
+  // a comment saying the combat patterns were "derived from community
+  // captures, NOT this fixture" and are "easy to update when we get a real
+  // combat capture"; its only test feeds it a hand-written line and is named
+  // `classifies_synthetic_actor_death`. So the regex is a guess at a line
+  // shape nobody has confirmed the 4.x game writes.
+  //
+  // This widget used to carry `kills` and render it only when non-null, so
+  // the readout never appeared and the dead branch read as working code. It
+  // was nearly promoted to a row in the expanded list, which would have put a
+  // permanent `0` on the tile — and a zero ASSERTS you killed nothing, where
+  // the absence at least says nothing. Restore this when the parser block
+  // does; that block is the place that will know first.
   /** Downed but not killed — never folded into `deaths`, which is what this
    *  widget used to do. */
   incapacitated: number;
@@ -119,7 +134,6 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
     // kill from a death, because that distinction lives in the payload rather
     // than in the event type.
     const deaths = combat?.deaths ?? sumCounts(breakdown.types, DEATH_TYPES_FALLBACK);
-    const kills = combat?.kills ?? null;
     const incapacitated = sumCounts(breakdown.types, INCAPACITATED_TYPES);
     const vehicleLosses = sumCounts(breakdown.types, VEHICLE_LOSS_TYPES);
     const missionsStarted = sumCounts(breakdown.types, MISSION_START_TYPES);
@@ -138,7 +152,6 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
 
     return {
       deaths,
-      kills,
       incapacitated,
       vehicleLosses,
       missionsStarted,
@@ -154,7 +167,6 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
   body(data, _ctx, size) {
     const {
       deaths,
-      kills,
       vehicleLosses,
       missionsStarted,
       missionsEnded,
@@ -166,9 +178,6 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
 
     if (size === 'compact') {
       const readouts: Readout[] = [
-        ...(kills != null
-          ? [{ label: 'kills', value: fmtNum(kills) } as Readout]
-          : []),
         { label: 'deaths', value: fmtNum(deaths) },
         { label: 'veh loss', value: fmtNum(vehicleLosses) },
         { label: 'missions', value: fmtNum(missionsStarted) },

@@ -209,12 +209,14 @@ describe('combatMissionWidget death accounting', () => {
 
     const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
       deaths: number;
-      kills: number | null;
       incapacitated: number;
     } | null;
     expect(data).not.toBeNull();
     expect(data!.deaths, 'kills must not be added to deaths').toBe(12);
-    expect(data!.kills).toBe(21);
+    // The `kills` assertion that stood here is gone with the field: nothing
+    // can supply a kill (see the note in combat_mission.tsx). What this test
+    // is really for survives intact — 21 actor_death rows must not become 21
+    // deaths.
     // Downed is its own outcome, never folded into deaths.
     expect(data!.incapacitated).toBe(5);
   });
@@ -234,12 +236,10 @@ describe('combatMissionWidget death accounting', () => {
 
     const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
       deaths: number;
-      kills: number | null;
       incapacitated: number;
     } | null;
     expect(data).not.toBeNull();
     expect(data!.deaths).toBe(8);
-    expect(data!.kills).toBeNull();
     expect(data!.incapacitated).toBe(4);
   });
 });
