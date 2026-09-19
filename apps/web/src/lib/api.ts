@@ -17,6 +17,7 @@
  */
 
 import 'server-only';
+import { cache } from 'react';
 import type { components as apiSchema } from 'api-client-ts';
 import { IN_TRANSIT_HIDDEN_TYPES, filterMovementNoise } from './event-filter';
 
@@ -761,7 +762,7 @@ export type SessionDto = apiSchema['schemas']['SessionDto'];
 
 export type MetricsRange = '24h' | '7d' | '30d' | '90d' | 'all';
 
-export async function getMetricsEventTypes(
+async function _getMetricsEventTypes(
   bearer: string,
   range: MetricsRange = '30d',
 ): Promise<EventTypeBreakdownResponse> {
@@ -1840,7 +1841,7 @@ export type LoadoutActivityResponse =
   apiSchema['schemas']['LoadoutActivityResponse'];
 export type LoadoutItemRow = apiSchema['schemas']['LoadoutItemRow'];
 
-export async function getLocationTrace(
+async function _getLocationTrace(
   bearer: string,
   hours: number = 24,
 ): Promise<TraceResponse> {
@@ -1864,7 +1865,7 @@ export async function getLocationBreakdown(
   );
 }
 
-export async function getCombatStats(
+async function _getCombatStats(
   bearer: string,
   hours: number = 24 * 30,
 ): Promise<CombatStatsResponse> {
@@ -1876,7 +1877,7 @@ export async function getCombatStats(
   );
 }
 
-export async function getTravelStats(
+async function _getTravelStats(
   bearer: string,
   hours: number = 24 * 30,
 ): Promise<TravelStatsResponse> {
@@ -1996,7 +1997,7 @@ export async function getStabilityStats(
   );
 }
 
-export async function getPlaytime(
+async function _getPlaytime(
   bearer: string,
   hours?: number,
   allTime?: boolean,
@@ -2145,7 +2146,7 @@ export async function getDocking(
  *   - spend: kiosk spending totals (`shop_buy_request.price`)
  *   - loadout-activity: gear equip/store churn (`item_equip_change`)
  */
-export async function getRoutes(
+async function _getRoutes(
   bearer: string,
   hours?: number,
 ): Promise<RoutesResponse> {
@@ -2153,7 +2154,7 @@ export async function getRoutes(
   return request<RoutesResponse>('GET', `/v1/me/stats/routes${qs}`, undefined, bearer);
 }
 
-export async function getObjectives(
+async function _getObjectives(
   bearer: string,
   hours?: number,
 ): Promise<ObjectivesResponse> {
@@ -2189,7 +2190,7 @@ export async function getContracts(
   );
 }
 
-export async function getSpend(
+async function _getSpend(
   bearer: string,
   hours?: number,
 ): Promise<SpendResponse> {
@@ -2589,7 +2590,7 @@ export interface SessionEventsResponse {
 
 type EventEnvelopeFromGen = apiSchema['schemas']['EventEnvelopeSchema'];
 
-export async function getSessions(
+async function _getSessions(
   bearer: string,
   handle: string,
   hours?: number,
@@ -2838,7 +2839,7 @@ export async function unshareWithOrg(
 // just lagging behind its own TODO.
 export type UserPreferences = apiSchema['schemas']['UserPreferencesSchema'];
 
-export async function getPreferences(
+async function _getPreferences(
   bearer: string,
 ): Promise<UserPreferences> {
   return request<UserPreferences>(
@@ -3277,3 +3278,31 @@ export async function setAdminAppearance(
     token,
   );
 }
+
+/**
+ * READ-DEDUPED. `cache()` is request-scoped: two widgets asking the same
+ * question of the same window in one render share one round trip, and nothing
+ * leaks between readers.
+ *
+ * `/me` fans out ~37 calls across 23 widgets and several of them want the same
+ * endpoint — `journey` + `corridors` (location trace), `combat_mission` +
+ * `objectives`, `travel` + `routes`, `economy` + `spend`. Every request is
+ * `cache: 'no-store'`, so there was no data cache to collapse them and each
+ * duplicate was a real HTTP call holding a connection from a pool of 16 with a
+ * 5s acquire timeout. Measured on a default dashboard render before this:
+ * location trace ×2, objectives ×2, preferences ×3.
+ *
+ * `lib/reference.ts` already did this for the KB after beta's logs showed
+ * "every slug fetched exactly twice". Same remedy, the surface that needed it
+ * most.
+ */
+export const getMetricsEventTypes = cache(_getMetricsEventTypes);
+export const getLocationTrace = cache(_getLocationTrace);
+export const getCombatStats = cache(_getCombatStats);
+export const getTravelStats = cache(_getTravelStats);
+export const getPlaytime = cache(_getPlaytime);
+export const getRoutes = cache(_getRoutes);
+export const getObjectives = cache(_getObjectives);
+export const getSpend = cache(_getSpend);
+export const getSessions = cache(_getSessions);
+export const getPreferences = cache(_getPreferences);
