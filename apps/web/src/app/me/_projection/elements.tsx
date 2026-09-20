@@ -45,6 +45,8 @@ import { logger } from '@/lib/logger';
 import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
 import type { DockingResponse, EnemyBucket, StatsBucket } from '@/lib/api';
+import type { RangeId } from '@/lib/range';
+import { withRange } from '@/lib/range-href';
 import { loadAllReferenceBundles } from '@/lib/reference';
 import type {
   ReferenceCatalog,
@@ -73,6 +75,12 @@ type Catalogs = ReferenceCatalogs;
  */
 interface ProjectionRefs {
   catalogs?: Catalogs;
+  /**
+   * The window the reader currently has selected, so "see all" links carry it.
+   * Without it the range survived only while you stayed on one page: picking
+   * 90d and following a "see all" landed on the default 7d.
+   */
+  range?: RangeId;
   /** Display-name maps, for the sentence formatters that predate `catalogs`. */
   lookup?: ReferenceLookup;
   counts?: Record<ReferenceCategory, number>;
@@ -865,7 +873,9 @@ function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNo
           ? `${fmtPct(d.completionPct, true)} completed`
           : undefined
       }
-      trailing={<Link href={'/me/contracts' as Route}>see all →</Link>}
+      trailing={
+        <Link href={withRange('/me/contracts', refs?.range)}>see all →</Link>
+      }
       empty={<span className="hp-empty">{MISSING} nothing in this window</span>}
     >
       {rows.map((r, i) => (
@@ -1005,7 +1015,9 @@ function recentActivityPlane(
       tilt="flat"
       cap="Recent activity"
       hint="most recent first"
-      trailing={<Link href={'/me/activity' as Route}>see all →</Link>}
+      trailing={
+        <Link href={withRange('/me/activity', refs?.range)}>see all →</Link>
+      }
       empty={<span className="hp-empty">{MISSING} nothing in this window</span>}
     >
       {rows.map((r) => (
@@ -1363,10 +1375,15 @@ export async function buildElements(
   // is a memory read, not a fetch — and it is already loaded on this request by
   // the hover cards. Degrades to undefined, which `entityRow` renders as plain
   // text: a row is never worse off than the raw value it showed before.
-  let refs: ProjectionRefs | undefined;
+  // Seeded with the range BEFORE the catalogue load, and merged into rather
+  // than replaced: the catalogues are allowed to fail (they degrade to plain
+  // text), and a failure there must not also cost the reader their selected
+  // window on every "see all" link.
+  let refs: ProjectionRefs | undefined = { range: ctx.range };
   try {
     const bundle = await loadAllReferenceBundles();
     refs = {
+      ...refs,
       catalogs: bundle.catalogs,
       lookup: bundle.lookup,
       counts: bundle.counts,

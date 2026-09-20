@@ -17,6 +17,8 @@
  * Plain data with no React and no server-only import, so both server chrome and
  * client chrome can read it.
  */
+import type { RangeId } from './range';
+import { withRange } from './range-href';
 import type { Route } from 'next';
 
 export type NavAccess = 'public' | 'user' | 'admin';
@@ -124,6 +126,12 @@ export interface NavOpts {
    * as `[]`, which correctly hides the console rather than guessing.
    */
   staffRoles?: readonly string[];
+  /**
+   * The window the reader currently has selected. Passed through to every
+   * destination that honours one; `withRange` ignores the rest, so a page
+   * with no window never gets a parameter implying a filter it does not apply.
+   */
+  range?: RangeId;
 }
 
 /**
@@ -160,8 +168,26 @@ export function isPrimaryNav(n: NavDestination, signedIn: boolean): boolean {
   return !signedIn;
 }
 
-/** Which nav entries a session may see. Signed out gets public only. */
-export function navFor({ signedIn, staffRoles }: NavOpts): NavDestination[] {
+/**
+ * Which nav entries a session may see. Signed out gets public only.
+ *
+ * `range` carries the reader's selected window across the hop, for the
+ * destinations that honour one. The range is URL state by design — the tabs
+ * are `<Link>`s so the back button stays correct and a view stays shareable —
+ * but every nav href here was a bare path, so picking 90d on `/me` and
+ * clicking "Travel" landed on the default 7d, and coming back landed on 7d
+ * again. It read as a persistent view setting and behaved as a per-page one.
+ *
+ * That hides data rather than merely annoying: a reader whose events are
+ * months old sees an empty page and concludes the data is missing, not that
+ * the window silently reset. It is how a real ship-loss count got reported as
+ * "not coming through".
+ *
+ * Applied HERE rather than at each call site because this is the one function
+ * every consumer already goes through; doing it per-page is how three of the
+ * six links got fixed and the rest did not.
+ */
+export function navFor({ signedIn, staffRoles, range }: NavOpts): NavDestination[] {
   const isStaff = (staffRoles ?? []).some(
     (r) => r === 'admin' || r === 'moderator',
   );
@@ -170,7 +196,9 @@ export function navFor({ signedIn, staffRoles }: NavOpts): NavDestination[] {
     if (!signedIn) return false;
     if (n.access === 'admin') return isStaff;
     return true;
-  });
+  }).map((n) =>
+    range ? { ...n, href: withRange(n.href, range) } : n,
+  );
 }
 
 const NAV_GROUPS: Record<NavAccess, string> = {

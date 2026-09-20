@@ -282,7 +282,10 @@ export default async function ActivityPage(props: PageProps) {
       calibration={calibration}
       range={q.range}
       filterQuery={filterQuery(q)}
-      nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'me')}
+      nav={navSections(
+        { signedIn: true, staffRoles: session.staffRoles, range: q.range },
+        'me',
+      )}
       sections={sections}
       notice={null}
       banner={
