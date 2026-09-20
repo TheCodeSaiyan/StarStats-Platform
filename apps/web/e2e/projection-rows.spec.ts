@@ -507,10 +507,34 @@ const COMBAT_SCENARIO: Record<string, unknown> = {
       hours: 168,
       kills: 21,
       deaths: 12,
-      deaths_inferred: 3,
       top_weapons: [
         { value: 'apar_hmg_ballistic_01', count: 14 },
         { value: 'behr_rifle_ballistic_01', count: 5 },
+      ],
+      top_damage_types: [{ value: 'Bullet', count: 19 }],
+      // Humanised server-side. `group_key` is the engine name with its entity
+      // id stripped; `display` is what a reader should see. The unclassified
+      // row is deliberate — an unrecognised shape must be COUNTED and marked,
+      // never dropped, or the board understates its own total.
+      top_enemies: [
+        {
+          display: 'Human Criminal Pilot Light',
+          group_key: 'PU_Pilots-Human-Criminal-Pilot_Light',
+          family: 'human',
+          count: 14,
+        },
+        {
+          display: 'Kopion Irradiated',
+          group_key: 'Kopion_Irradiated',
+          family: 'creature',
+          count: 5,
+        },
+        {
+          display: 'Rs Thing',
+          group_key: 'RS_Thing',
+          family: 'unclassified',
+          count: 2,
+        },
       ],
       deaths_by_zone: [
         { value: 'Stanton|Crusader|Orison', count: 7 },
@@ -552,5 +576,50 @@ test.describe('combat lens', () => {
     // Zone keys are pipe-joined like every other location field.
     await expect(zones).not.toContainText('|');
     await expect(zones).toContainText('Orison');
+  });
+
+  /**
+   * The kill count, and what it killed.
+   *
+   * Removed in 6a7184e on the reasoning that nothing could supply a kill —
+   * the parser's only `actor_death` test is named
+   * `classifies_synthetic_actor_death`, and this machine's 314 game logs hold
+   * zero `<Actor Death>` lines. Production holds thousands of such rows with
+   * populated killer and victim, and `ACTOR_DEATH_RE` is all-or-nothing: it
+   * cannot match without capturing weapon, zone and damage type too. The
+   * parser was working; only the caller was missing.
+   *
+   * Labelled NPC because that is what it counts — CIG no longer logs a player
+   * killing another player.
+   */
+  test('counts NPC kills and names the enemy rather than the engine id', async ({
+    page,
+  }) => {
+    test.slow();
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    const lens = page.locator('.hp-lens button', { hasText: 'Combat' });
+    await expect(lens).toBeVisible({ timeout: 20_000 });
+    await expect(async () => {
+      await lens.click();
+      await expect(page.locator('.hp-plane').first()).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 40_000 });
+
+    const combat = page.locator('.hp-plane', { hasText: 'Combat & contracts' });
+    await expect(combat).toBeVisible();
+    await expect(
+      combat,
+      'the figure has to say what it counts — these are not players',
+    ).toContainText('NPC kills');
+
+    const enemies = page.locator('.hp-plane', { hasText: 'What you kill' }).filter({
+      hasNotText: 'What you kill with',
+    });
+    await expect(enemies).toBeVisible();
+    await expect(enemies).toContainText('Human Criminal Pilot Light');
+    // The engine identifier must not reach the screen.
+    await expect(enemies).not.toContainText('PU_Pilots');
+    // An unrecognised shape is shown AND marked, never silently dropped.
+    await expect(enemies).toContainText('(unrecognised)');
   });
 });

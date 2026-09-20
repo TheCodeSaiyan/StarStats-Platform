@@ -805,6 +805,42 @@ pub trait EventQuery: Send + Sync + 'static {
         limit: i64,
     ) -> Result<Vec<PayloadFieldBucket>, RepoError>;
 
+    /// `payload_field` breakdown over the caller's KILLS specifically.
+    ///
+    /// Not expressible with [`Self::payload_field_breakdown`], which takes a
+    /// single-field `PayloadFilter`. A kill is a two-field predicate — killer
+    /// is the subject AND victim is not — and filtering on `killer` alone
+    /// puts the weapon of every fall and every crash into "weapons you killed
+    /// with". The headline count excludes them (see [`Self::combat_counts`]);
+    /// its breakdowns must agree with it.
+    async fn kill_field_breakdown(
+        &self,
+        claimed_handle: &str,
+        subject: &str,
+        payload_field: &str,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<PayloadFieldBucket>, RepoError>;
+
+    /// The caller's kills grouped by enemy ARCHETYPE.
+    ///
+    /// Its own method rather than `kill_field_breakdown(.., "victim", ..)`
+    /// because the grouping cannot happen after the limit. The engine appends
+    /// a unique entity id to every spawn (`Kopion_Irradiated_7712094`), so
+    /// grouping on the raw victim gives one row per kill; taking the top 100
+    /// of those and folding them afterwards yields 100 arbitrary enemies each
+    /// killed once. The id is therefore stripped IN SQL, before `GROUP BY`.
+    ///
+    /// The returned `value` is the stripped name — a group key, not a label.
+    /// Run it through `starstats_core::humanize_combatant` to display it.
+    async fn kill_enemy_breakdown(
+        &self,
+        claimed_handle: &str,
+        subject: &str,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<PayloadFieldBucket>, RepoError>;
+
     /// Exact count of distinct values of `payload_field` for `event_type`,
     /// over the optional `[since, until)` window.
     ///
@@ -1441,6 +1477,52 @@ pub mod test_support {
             self
         }
 
+        /// One pass over the caller's KILL rows, bucketed by whatever
+        /// `key_of` pulls out of the payload.
+        ///
+        /// The kill predicate lives here once so the two kill-scoped
+        /// breakdowns cannot drift apart from each other — or from
+        /// `combat_counts`, which states the same rule.
+        fn kill_rows_grouped(
+            &self,
+            claimed_handle: &str,
+            subject: &str,
+            since: Option<DateTime<Utc>>,
+            limit: i64,
+            key_of: impl Fn(&Value) -> Option<String>,
+        ) -> Result<Vec<PayloadFieldBucket>, RepoError> {
+            if self.fail_reads {
+                return Err(RepoError::Database(sqlx::Error::PoolTimedOut));
+            }
+            use std::collections::HashMap;
+            let mut counts: HashMap<String, i64> = HashMap::new();
+            for r in &self.rows {
+                if !r.claimed_handle.eq_ignore_ascii_case(claimed_handle)
+                    || r.event_type != "actor_death"
+                    || !in_window(r.event_timestamp, since, None)
+                {
+                    continue;
+                }
+                let field = |k: &str| r.payload.get(k).and_then(|v| v.as_str());
+                // A self-kill is a death, not a kill.
+                if field("killer") != Some(subject) || field("victim") == Some(subject) {
+                    continue;
+                }
+                if let Some(k) = key_of(&r.payload) {
+                    *counts.entry(k).or_insert(0) += 1;
+                }
+            }
+            let mut out: Vec<PayloadFieldBucket> = counts
+                .into_iter()
+                .map(|(value, count)| PayloadFieldBucket { value, count })
+                .collect();
+            // Mirror the SQL ordering exactly, ties included, or a test that
+            // passes against Memory can still fail against Postgres.
+            out.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.value.cmp(&b.value)));
+            out.truncate(limit.max(0) as usize);
+            Ok(out)
+        }
+
         /// Every aggregate read returns `RepoError` from here on.
         pub fn failing(mut self) -> Self {
             self.fail_reads = true;
@@ -1981,6 +2063,37 @@ pub mod test_support {
                 }
             }
             Ok(seen.len() as u64)
+        }
+
+        async fn kill_field_breakdown(
+            &self,
+            claimed_handle: &str,
+            subject: &str,
+            payload_field: &str,
+            since: Option<DateTime<Utc>>,
+            limit: i64,
+        ) -> Result<Vec<PayloadFieldBucket>, RepoError> {
+            self.kill_rows_grouped(claimed_handle, subject, since, limit, |payload| {
+                payload
+                    .get(payload_field)
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+        }
+
+        async fn kill_enemy_breakdown(
+            &self,
+            claimed_handle: &str,
+            subject: &str,
+            since: Option<DateTime<Utc>>,
+            limit: i64,
+        ) -> Result<Vec<PayloadFieldBucket>, RepoError> {
+            self.kill_rows_grouped(claimed_handle, subject, since, limit, |payload| {
+                payload
+                    .get("victim")
+                    .and_then(|v| v.as_str())
+                    .map(|s| starstats_core::combatant::strip_entity_id(s).to_string())
+            })
         }
 
         async fn payload_field_breakdown(
@@ -4000,6 +4113,84 @@ impl EventQuery for PostgresStore {
         .fetch_one(&self.pool)
         .await?;
         Ok(count.max(0) as u64)
+    }
+
+    async fn kill_field_breakdown(
+        &self,
+        claimed_handle: &str,
+        subject: &str,
+        payload_field: &str,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<PayloadFieldBucket>, RepoError> {
+        // Field name stays a BIND, never an interpolation, so a hostile
+        // caller cannot escape into another column. Served by
+        // `events_lower_handle_event_type_idx`; actor_death is a small
+        // fraction of the table, so no further index is warranted until a
+        // plan says otherwise.
+        let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+            "SELECT payload->>$2 AS value, COUNT(*)::BIGINT AS count
+               FROM events
+              WHERE claimed_handle = LOWER($1)
+                AND event_type = 'actor_death'
+                AND payload->>'killer' = $3
+                -- A self-kill is a death, not a kill.
+                AND payload->>'victim' IS DISTINCT FROM $3
+                AND ($4::timestamptz IS NULL OR event_timestamp >= $4)
+                AND payload ? $2
+              GROUP BY payload->>$2
+              ORDER BY count DESC, value ASC
+              LIMIT $5",
+        )
+        .bind(claimed_handle)
+        .bind(payload_field)
+        .bind(subject)
+        .bind(since)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(value, count)| value.map(|v| PayloadFieldBucket { value: v, count }))
+            .collect())
+    }
+
+    async fn kill_enemy_breakdown(
+        &self,
+        claimed_handle: &str,
+        subject: &str,
+        since: Option<DateTime<Utc>>,
+        limit: i64,
+    ) -> Result<Vec<PayloadFieldBucket>, RepoError> {
+        // `(.)_[0-9]+$` — the leading capture requires a NON-EMPTY head, so a
+        // name that is only an id (`_123`) is left alone rather than reduced
+        // to the empty string. That is the same edge `strip_entity_id` guards
+        // in Rust, and the two must agree: Memory-backed tests assert on the
+        // Rust one and would otherwise pass while production disagreed.
+        let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
+            "SELECT regexp_replace(payload->>'victim', '(.)_[0-9]+$', '\\1') AS value,
+                    COUNT(*)::BIGINT AS count
+               FROM events
+              WHERE claimed_handle = LOWER($1)
+                AND event_type = 'actor_death'
+                AND payload->>'killer' = $2
+                AND payload->>'victim' IS DISTINCT FROM $2
+                AND ($3::timestamptz IS NULL OR event_timestamp >= $3)
+                AND payload ? 'victim'
+              GROUP BY 1
+              ORDER BY count DESC, value ASC
+              LIMIT $4",
+        )
+        .bind(claimed_handle)
+        .bind(subject)
+        .bind(since)
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|(value, count)| value.map(|v| PayloadFieldBucket { value: v, count }))
+            .collect())
     }
 
     async fn payload_field_breakdown(

@@ -31,6 +31,7 @@ use chrono::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use starstats_core::character_life::LifeEnd;
+use starstats_core::combatant::{humanize_combatant, CombatantFamily};
 use starstats_core::contract_life::{ContractStep, StepState};
 use starstats_core::location_catalog::LocationCatalog;
 use starstats_core::location_classifier::{
@@ -1482,17 +1483,55 @@ impl From<PayloadFieldBucket> for StatsBucket {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct CombatStatsResponse {
     pub hours: i64,
-    /// Times the user appeared as the killer in `actor_death`.
+    /// Kills the log recorded: `actor_death` rows where the caller is the
+    /// killer AND is not also the victim.
+    ///
+    /// IN PRACTICE THIS IS A COUNT OF NPCs. CIG no longer writes a log line
+    /// when one player kills another, so what survives in the log is what the
+    /// caller killed in PvE. `top_enemies` carries the evidence for that
+    /// reading — every entry has a `family`, and a `player_like` one showing
+    /// up is the signal that this sentence has stopped being true.
+    ///
+    /// The second clause is not a detail. Dying to a fall, a crash or your own
+    /// grenade writes `killer == victim == you`; without it, every death by
+    /// misadventure was also counted here (572 rows on one production handle).
     pub kills: u64,
     /// Times the user (or their character) appeared as the victim.
     pub deaths: u64,
-    /// How many of `deaths` were INFERRED rather than observed.
+    /// Weapons the caller KILLED with, over the same window.
     ///
-    /// CIG removed the Actor Death log lines, so a death is frequently
-    /// reconstructed from a `Corpse` line and arrives as a
-    /// `player_death` carrying `body_class = "inferred"`. Summing the
+    /// Scoped by the same two-field kill rule as `kills` — the filter used to
+    /// be `killer = caller` alone, which put the "weapon" of every fall and
+    /// crash in the list.
     pub top_weapons: Vec<StatsBucket>,
+    /// Damage types the caller DEALT. Same scoping as `top_weapons`.
+    pub top_damage_types: Vec<StatsBucket>,
+    /// What the caller killed, grouped by archetype and humanised.
+    ///
+    /// Grouped in SQL on the victim name with its entity id stripped: the
+    /// engine gives every spawn a unique id, so grouping on the raw name
+    /// returns one row per kill.
+    pub top_enemies: Vec<EnemyBucket>,
     pub deaths_by_zone: Vec<StatsBucket>,
+}
+
+/// One enemy archetype the caller killed.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct EnemyBucket {
+    /// Humanised name — what to show. `Kopion Irradiated`, not
+    /// `Kopion_Irradiated_7712094`.
+    pub display: String,
+    /// The engine name with its entity id stripped. Kept so a reader can be
+    /// shown what was actually in the log, and so an unrecognised shape can
+    /// be reported rather than guessed at.
+    pub group_key: String,
+    /// `human` | `creature` | `environment` | `player_like` | `unclassified`.
+    ///
+    /// `unclassified` is a real answer, not a failure to produce one: the
+    /// naming rules are derived from the shapes production has been observed
+    /// to hold, and anything else is counted and shown rather than dropped.
+    pub family: String,
+    pub count: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -3043,10 +3082,6 @@ pub async fn stats_combat<Q: EventQuery>(
         Err(r) => return r,
     };
     let handle = user.preferred_username.as_str();
-    let killer_filter = PayloadFilter {
-        field: "killer",
-        equals: handle,
-    };
     let victim_filter = PayloadFilter {
         field: "victim",
         equals: handle,
@@ -3070,21 +3105,19 @@ pub async fn stats_combat<Q: EventQuery>(
             }
         };
     let deaths = deaths_actor.saturating_add(deaths_player);
-    // Top weapons used by the caller — scoped to kills, otherwise
-    // we'd be showing weapons that killed the caller (a different,
-    // less-flattering stat that lives under deaths_by_zone next door).
-    // player_death has no weapon field in modern logs, so kill-side
-    // weapons stay actor_death-only.
+    // Weapons and damage types the caller KILLED with — scoped to kills,
+    // otherwise we'd be showing what killed the CALLER (a different, less
+    // flattering stat, which lives under deaths_by_zone next door).
+    //
+    // `kill_field_breakdown` rather than `payload_field_breakdown` with a
+    // `killer = caller` filter: that filter also matches a self-kill, so the
+    // engine's stand-in for a fall appeared as a weapon you killed with while
+    // the headline count next to it excluded the very same row.
+    //
+    // player_death has no weapon field in modern logs, so kill-side weapons
+    // stay actor_death-only.
     let top_weapons = query
-        .payload_field_breakdown(
-            handle,
-            "actor_death",
-            "weapon",
-            Some(killer_filter),
-            since,
-            None,
-            STATS_BUCKET_LIMIT,
-        )
+        .kill_field_breakdown(handle, handle, "weapon", since, STATS_BUCKET_LIMIT)
         .await
         .unwrap_or_else(|e| {
             // Soft: a breakdown that fails leaves the list empty. The
@@ -3094,6 +3127,38 @@ pub async fn stats_combat<Q: EventQuery>(
             tracing::error!(error = %e, "stats_combat top_weapons failed");
             Vec::new()
         });
+    let top_damage_types = query
+        .kill_field_breakdown(handle, handle, "damage_type", since, STATS_BUCKET_LIMIT)
+        .await
+        .unwrap_or_else(|e| {
+            // Soft, like the breakdown above it: the headline hard-fails on
+            // its own error, so the response can never claim a complete
+            // picture on the strength of an empty list here.
+            tracing::error!(error = %e, "stats_combat top_damage_types failed");
+            Vec::new()
+        });
+    // Enemies: grouped in SQL by archetype, humanised here. The humanising is
+    // deliberately NOT stamped onto stored events — per the architecture rule
+    // that classification is derived at query time, so improving the rules
+    // improves every row already in the database.
+    let top_enemies: Vec<EnemyBucket> = query
+        .kill_enemy_breakdown(handle, handle, since, STATS_BUCKET_LIMIT)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::error!(error = %e, "stats_combat top_enemies failed");
+            Vec::new()
+        })
+        .into_iter()
+        .map(|b| {
+            let label = humanize_combatant(&b.value);
+            EnemyBucket {
+                display: label.display,
+                group_key: label.group_key,
+                family: combatant_family_str(label.family).to_string(),
+                count: b.count,
+            }
+        })
+        .collect();
     // Deaths by zone: merge actor_death.zone (victim=caller) and
     // player_death.zone (no filter needed — player_death rows are
     // intrinsically the caller's). Rows where zone is null are
@@ -3153,6 +3218,11 @@ pub async fn stats_combat<Q: EventQuery>(
             kills,
             deaths,
             top_weapons: top_weapons.into_iter().map(StatsBucket::from).collect(),
+            top_damage_types: top_damage_types
+                .into_iter()
+                .map(StatsBucket::from)
+                .collect(),
+            top_enemies,
             deaths_by_zone: deaths_by_zone.into_iter().map(StatsBucket::from).collect(),
         }),
     )
@@ -3163,6 +3233,21 @@ pub async fn stats_combat<Q: EventQuery>(
 /// by descending count (tie-broken by value asc) and cap at `limit`.
 /// Used to merge the same logical dimension from two event sources
 /// (e.g. zone from `actor_death` and `player_death`).
+/// Wire spelling for a combatant family.
+///
+/// Written out rather than taken from `serde` so the API's vocabulary is
+/// visible at the boundary it is part of: a rename in core would otherwise
+/// silently change the strings clients switch on.
+fn combatant_family_str(f: CombatantFamily) -> &'static str {
+    match f {
+        CombatantFamily::Human => "human",
+        CombatantFamily::Creature => "creature",
+        CombatantFamily::Environment => "environment",
+        CombatantFamily::PlayerLike => "player_like",
+        CombatantFamily::Unclassified => "unclassified",
+    }
+}
+
 fn merge_buckets(
     a: Vec<PayloadFieldBucket>,
     b: Vec<PayloadFieldBucket>,
@@ -7654,6 +7739,109 @@ mod tests {
             "dying to your own mistake is not a kill, however the engine attributes it"
         );
         assert_eq!(body.deaths, 1, "but it IS a death");
+    }
+
+    /// The breakdowns beside the kill count must be scoped the SAME way the
+    /// count is, and must name the enemy in a way a reader recognises.
+    ///
+    /// Two faults this pins down:
+    ///
+    /// 1. `top_weapons` filtered on `killer = caller` alone, so the weapon
+    ///    of every self-kill — a crash, a fall — appeared in "weapons you
+    ///    killed with". The headline count stopped counting those; its own
+    ///    breakdown carried on.
+    ///
+    /// 2. Grouping enemies on the raw victim name is useless. The engine
+    ///    appends a unique entity id to every spawn, so one archetype killed
+    ///    twice is two rows of 1 rather than one row of 2.
+    #[tokio::test]
+    async fn kill_breakdowns_exclude_self_kills_and_group_the_enemy_by_archetype() {
+        let now = Utc::now() - Duration::hours(1);
+        let mq = Arc::new(MemoryQuery::new(vec![
+            // Same enemy archetype, two spawns, two different entity ids.
+            evt_with_payload(
+                1,
+                "Alice",
+                "actor_death",
+                now,
+                json!({
+                    "killer": "Alice",
+                    "victim": "Kopion_Irradiated_7712094",
+                    "weapon": "behr_rifle_ballistic_01",
+                    "zone": "Daymar",
+                    "damage_type": "Bullet"
+                }),
+            ),
+            evt_with_payload(
+                2,
+                "Alice",
+                "actor_death",
+                now + Duration::minutes(2),
+                json!({
+                    "killer": "Alice",
+                    "victim": "Kopion_Irradiated_9910233",
+                    "weapon": "behr_rifle_ballistic_01",
+                    "zone": "Daymar",
+                    "damage_type": "Bullet"
+                }),
+            ),
+            // Fell off a cliff. Alice is both killer and victim.
+            evt_with_payload(
+                3,
+                "Alice",
+                "actor_death",
+                now + Duration::minutes(4),
+                json!({
+                    "killer": "Alice",
+                    "victim": "Alice",
+                    "weapon": "JackAndJillFell",
+                    "zone": "Daymar",
+                    "damage_type": "Collision"
+                }),
+            ),
+        ]));
+        let (issuer, verifier) = fresh_pair();
+        let app = router(mq, Arc::new(verifier));
+        let token = sign_token(&issuer, "Alice");
+        let (status, body) =
+            get_json::<CombatStatsResponse>(app, "/v1/me/stats/combat?hours=24", &token).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body.kills, 2);
+
+        let weapons: Vec<&str> = body.top_weapons.iter().map(|b| b.value.as_str()).collect();
+        assert!(
+            !weapons.contains(&"JackAndJillFell"),
+            "a fall is not a weapon you killed with: {weapons:?}"
+        );
+        assert_eq!(
+            body.top_weapons
+                .iter()
+                .find(|b| b.value == "behr_rifle_ballistic_01")
+                .map(|b| b.count),
+            Some(2),
+        );
+
+        let dmg: Vec<&str> = body
+            .top_damage_types
+            .iter()
+            .map(|b| b.value.as_str())
+            .collect();
+        assert!(
+            !dmg.contains(&"Collision"),
+            "the damage that killed YOU is not damage you dealt: {dmg:?}"
+        );
+
+        assert_eq!(
+            body.top_enemies.len(),
+            1,
+            "two spawns of one archetype are one enemy, not two: {:?}",
+            body.top_enemies
+        );
+        let enemy = &body.top_enemies[0];
+        assert_eq!(enemy.count, 2);
+        assert_eq!(enemy.display, "Kopion Irradiated");
+        assert_eq!(enemy.family, "creature");
     }
 
     #[tokio::test]

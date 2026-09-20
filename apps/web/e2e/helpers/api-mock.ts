@@ -602,6 +602,8 @@ export const combatStats = {
     kills: 0,
     deaths: 0,
     top_weapons: [],
+    top_damage_types: [],
+    top_enemies: [],
     deaths_by_zone: [],
   },
 };

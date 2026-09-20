@@ -44,7 +44,7 @@ import type {
 import { logger } from '@/lib/logger';
 import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
 import { fmtDuration, fmtNum, fmtPct } from '@/app/_components/widgets/kit/format';
-import type { DockingResponse, StatsBucket } from '@/lib/api';
+import type { DockingResponse, EnemyBucket, StatsBucket } from '@/lib/api';
 import { loadAllReferenceBundles } from '@/lib/reference';
 import type {
   ReferenceCatalog,
@@ -688,12 +688,16 @@ function locationsPlane(d: LocationsData, refs?: ProjectionRefs): React.ReactNod
 
 interface CombatMissionData {
   deaths: number;
-  // No `kills`. Nothing can supply one: `ACTOR_DEATH_RE` in
-  // starstats-core/src/parser.rs is a guess at a line shape the 4.x game has
-  // not been confirmed to write ("derived from community captures, NOT this
-  // fixture"), and its only test feeds it a synthetic line. The server's
-  // kill/death separation is correct and tested; nothing reaches it. See the
-  // longer note in `_components/widgets/combat_mission.tsx`.
+  /**
+   * Kills the log recorded — NPCs in practice. `null` when the read failed,
+   * and omitted from the render when null, because a zero would assert you
+   * killed nothing. See the longer note in
+   * `_components/widgets/combat_mission.tsx` for why this was once deleted
+   * and why the reasoning that deleted it was wrong about the premise.
+   */
+  npcKills: number | null;
+  topEnemies: EnemyBucket[];
+  topDamageTypes: StatsBucket[];
   /** Downed but alive. Deliberately NOT part of `deaths` — this widget used
    *  to fold it in, alongside every kill the reader scored. */
   incapacitated: number;
@@ -743,6 +747,46 @@ function combatDetailPlanes(
       ),
     );
   }
+  const enemies = d.topEnemies ?? [];
+  if (enemies.length > 0) {
+    const max = Math.max(...enemies.map((e) => e.count), 0);
+    out.push(
+      rankedPlane(
+        'What you kill',
+        enemies.slice(0, 6).map((e) => ({
+          // `display` is already humanised server-side; the raw group key
+          // rides along in `title` so an odd label can be traced back to the
+          // log rather than argued about. An unrecognised shape is LABELLED
+          // as unrecognised, not dropped — a board that hides what it could
+          // not parse misreports its own total.
+          name: (
+            <span title={e.group_key}>
+              {e.display}
+              {e.family === 'unclassified' ? ' (unrecognised)' : ''}
+            </span>
+          ),
+          value: fmtNum(e.count),
+          pct: pctOf(e.count, max),
+        })),
+        { hint: 'kills by enemy' },
+      ),
+    );
+  }
+  const damage = d.topDamageTypes ?? [];
+  if (damage.length > 0) {
+    const max = Math.max(...damage.map((x) => x.count), 0);
+    out.push(
+      rankedPlane(
+        'How you kill',
+        damage.slice(0, 6).map((x) => ({
+          name: x.value,
+          value: fmtNum(x.count),
+          pct: pctOf(x.count, max),
+        })),
+        { hint: 'kills by damage type' },
+      ),
+    );
+  }
   const zones = d.deathsByZone ?? [];
   if (zones.length > 0) {
     // Zones are `system|planet|city` keys like every other location field, so
@@ -777,6 +821,13 @@ function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNo
   const rows: RankedRow[] = [
     { name: 'Contracts started', value: fmtNum(d.missionsStarted), pct: 0 },
     { name: 'Contracts ended', value: fmtNum(d.missionsEnded), pct: 0 },
+    // Named for what it counts. CIG stopped logging player-versus-player
+    // kills, so what reaches us is PvE; `topEnemies` carries the evidence,
+    // and a `player_like` family appearing there is the signal that this
+    // label has stopped being true. Omitted when null — see the field.
+    ...(d.npcKills != null
+      ? [{ name: 'NPC kills', value: fmtNum(d.npcKills), pct: 0 }]
+      : []),
     { name: 'Deaths', value: fmtNum(d.deaths), pct: 0 },
     // Downed and recovered is a different outcome from killed, and reporting
     // them as one number made both wrong.
@@ -790,6 +841,9 @@ function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNo
     d.missionsEnded,
     d.deaths,
     d.vehicleLosses,
+    // Kills dwarf every other figure on this plane (thousands against tens),
+    // so leaving them out of the scale would peg every other bar to full.
+    d.npcKills ?? 0,
     0,
   );
   // The headline plane, then the two lists that were being discarded. A

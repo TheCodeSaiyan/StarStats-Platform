@@ -220,6 +220,105 @@ describe('combatMissionWidget death accounting', () => {
     expect(data!.incapacitated).toBe(5);
   });
 
+  /**
+   * The kill figure is back, and it is named for what it counts.
+   *
+   * It was removed in 6a7184e on the reasoning that nothing could supply a
+   * kill: `ACTOR_DEATH_RE` sits under a comment calling the combat patterns
+   * "derived from community captures, NOT this fixture", and its only test is
+   * named `classifies_synthetic_actor_death`. That reasoning was wrong about
+   * the conclusion while being right about the fixture. This machine's logs
+   * genuinely contain no combat — 314 files, zero `<Actor Death>` lines, which
+   * is why the fixture test had to be synthetic — but production holds
+   * thousands of `actor_death` rows with populated `killer` and `victim`,
+   * and the regex is all-or-nothing: it cannot match without also capturing
+   * `weapon`, `zone` and `damage type`. The parser works; the capture was
+   * missing.
+   *
+   * What it is NOT is a count of players killed. CIG stopped writing a line
+   * when one player kills another, so the label says NPC and the enemy board
+   * below carries the evidence for that claim.
+   */
+  it('reports NPC kills and names the enemy rather than the engine id', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [{ event_type: 'actor_death', count: 21 }],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockResolvedValue({
+      hours: 168,
+      kills: 2120,
+      deaths: 12,
+      top_weapons: [{ value: 'behr_rifle_ballistic_01', count: 1074 }],
+      top_damage_types: [{ value: 'Bullet', count: 2120 }],
+      top_enemies: [
+        {
+          display: 'Human Criminal Pilot Light',
+          group_key: 'PU_Pilots-Human-Criminal-Pilot_Light',
+          family: 'human',
+          count: 1074,
+        },
+        {
+          display: 'Kopion Irradiated',
+          group_key: 'Kopion_Irradiated',
+          family: 'creature',
+          count: 1046,
+        },
+      ],
+      deaths_by_zone: [],
+    } as never);
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      npcKills: number | null;
+      topEnemies: { display: string; family: string; count: number }[];
+    } | null;
+    expect(data).not.toBeNull();
+    expect(data!.npcKills).toBe(2120);
+    expect(data!.topEnemies).toHaveLength(2);
+
+    const html = render(
+      <>{await combatMissionWidget.render(ownerCtx('7d'), 'expanded')}</>,
+    ).container.textContent;
+
+    expect(html, 'the count has to be labelled for what it counts').toContain(
+      'NPC kills',
+    );
+    expect(html).toContain('Human Criminal Pilot Light');
+    expect(
+      html,
+      'the raw engine identifier is not a name a reader recognises',
+    ).not.toContain('PU_Pilots');
+  });
+
+  /**
+   * A FAILED combat call must not render as "0 NPC kills".
+   *
+   * This is the reason the field was nullable before it was deleted, and the
+   * reason 6a7184e gave for deleting it rather than promoting it to a always-
+   * rendered row: a zero ASSERTS you killed nothing, where an absence says
+   * nothing. That argument was right, and survives the field's return.
+   */
+  it('omits the kill readout entirely when the combat call failed', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [{ event_type: 'actor_death', count: 6 }],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockRejectedValue(new Error('boom'));
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      npcKills: number | null;
+    } | null;
+    expect(data!.npcKills).toBeNull();
+
+    const html = render(
+      <>{await combatMissionWidget.render(ownerCtx('7d'), 'expanded')}</>,
+    ).container.textContent;
+    // NOT a vacuous pass: the tile still rendered, it simply has no kill
+    // row. Without this the assertion above would also hold for a render
+    // that returned null and produced an empty string.
+    expect(html).toContain('Player deaths');
+    expect(html).not.toContain('NPC kills');
+  });
+
   it('falls back to the event count when the combat call fails', async () => {
     // An over-count beats a blank when the authoritative source is down —
     // but incapacitation stays out of it either way.
