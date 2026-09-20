@@ -48,7 +48,7 @@ const TRAVEL_FIXTURES = {
   'GET /v1/me/stats/routes': { status: 200, body: { routes: [] } },
   'GET /v1/me/stats/travel': {
     status: 200,
-    body: { quantum_jumps: 42, planets_visited: ['Hurston'] },
+    body: { quantum_jumps: 42, distinct_planets: 1 },
   },
 };
 

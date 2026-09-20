@@ -81,7 +81,10 @@ export const travelWidget = defineWidget<TravelData>({
       // raw target-selection count when travel-stats degraded.
       quantums: travelStats?.quantum_jumps ?? counts['quantum_target_selected'] ?? 0,
       serverHops: (counts['join_pu'] ?? 0) + (counts['change_server'] ?? 0),
-      planets: travelStats?.planets_visited?.length ?? 0,
+      // A REAL COUNT now. This was `planets_visited?.length` — the number of
+      // BUCKETS the server returned, capped at 100, so the figure pinned there
+      // and stopped reporting. The server returns the distinct count itself.
+      planets: travelStats?.distinct_planets ?? 0,
       routes,
       locations: catalogs.locations,
     };

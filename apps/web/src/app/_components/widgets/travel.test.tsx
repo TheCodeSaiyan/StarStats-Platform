@@ -150,10 +150,10 @@ describe('travelWidget metric depth (getTravelStats)', () => {
     (getTravelStats as ReturnType<typeof vi.fn>).mockResolvedValue({
       hours: 168,
       quantum_jumps: 42,
-      planets_visited: [
-        { value: 'Crusader', count: 3 },
-        { value: 'microTech', count: 2 },
-      ],
+      // A real count now, not a bucket list whose length was the figure.
+      // The server caps nothing: 150 distinct planets reports 150, where the
+      // old breakdown pinned at STATS_BUCKET_LIMIT (100).
+      distinct_planets: 2,
       top_destinations: [{ value: 'Stanton_Crusader_Orison', count: 4 }],
     });
 

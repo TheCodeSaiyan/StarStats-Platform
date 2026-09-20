@@ -394,12 +394,7 @@ const richDashboard = {
   'GET /v1/me/stats/travel': s200({
     hours: 2160,
     quantum_jumps: 1840,
-    planets_visited: [
-      { value: 'Crusader', count: 312 },
-      { value: 'Hurston', count: 246 },
-      { value: 'microTech', count: 198 },
-      { value: 'ArcCorp', count: 144 },
-    ],
+    distinct_planets: 8,
     top_destinations: [
       { value: 'Port Tressler', count: 96 },
       { value: 'Everus Harbor', count: 82 },

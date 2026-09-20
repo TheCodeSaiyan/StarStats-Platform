@@ -40,7 +40,7 @@ const FIXTURES = {
   },
   'GET /v1/me/stats/travel': {
     status: 200,
-    body: { quantum_jumps: 31, planets_visited: ['Crusader', 'Hurston'] },
+    body: { quantum_jumps: 31, distinct_planets: 2 },
   },
 };
 
