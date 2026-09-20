@@ -1,6 +1,6 @@
 import React from 'react';
 import { getCombatStats, getMetricsEventTypes, getObjectives } from '@/lib/api';
-import type { ObjectivesResponse, StatsBucket } from '@/lib/api';
+import type { EnemyBucket, ObjectivesResponse, StatsBucket } from '@/lib/api';
 import { rangeToMetricsRange, rangeToHours } from '@/lib/range';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
@@ -41,23 +41,32 @@ const MISSION_END_TYPES = ['mission_end'];
 
 interface CombatMissionData {
   deaths: number;
-  // NO `kills` FIELD, DELIBERATELY. There is no way to collect a kill.
-  //
-  // The server does the separation correctly — `stats_combat` filters
-  // `actor_death` on killer==caller and has a test for it — but nothing
-  // reaches it. `ACTOR_DEATH_RE` in `starstats-core/src/parser.rs` sits under
-  // a comment saying the combat patterns were "derived from community
-  // captures, NOT this fixture" and are "easy to update when we get a real
-  // combat capture"; its only test feeds it a hand-written line and is named
-  // `classifies_synthetic_actor_death`. So the regex is a guess at a line
-  // shape nobody has confirmed the 4.x game writes.
-  //
-  // This widget used to carry `kills` and render it only when non-null, so
-  // the readout never appeared and the dead branch read as working code. It
-  // was nearly promoted to a row in the expanded list, which would have put a
-  // permanent `0` on the tile — and a zero ASSERTS you killed nothing, where
-  // the absence at least says nothing. Restore this when the parser block
-  // does; that block is the place that will know first.
+  /**
+   * Kills the log recorded. `null` when the combat call FAILED.
+   *
+   * Null rather than 0 on failure, and omitted from the render when null: a
+   * zero asserts you killed nothing, where an absence says nothing. That was
+   * the argument for deleting this field in 6a7184e and it is still right —
+   * what was wrong there was the premise, not the caution.
+   *
+   * The premise was that nothing can supply a kill, because `ACTOR_DEATH_RE`
+   * is only covered by a test named `classifies_synthetic_actor_death`. The
+   * fixture really is combat-free — this machine's 314 log files hold zero
+   * `<Actor Death>` lines — but production holds thousands of `actor_death`
+   * rows with populated `killer` and `victim`, and the regex is all-or-
+   * nothing: it cannot match without also capturing weapon, zone and damage
+   * type. The parser was working the whole time; the CAPTURE was missing.
+   *
+   * Named for NPCs because that is what it counts. CIG no longer writes a log
+   * line when one player kills another, so a kill that reaches us is PvE.
+   * `topEnemies` carries the evidence — if a `player_like` family ever shows
+   * up there, this name has stopped being true.
+   */
+  npcKills: number | null;
+  /** What was killed, grouped by archetype and already humanised server-side. */
+  topEnemies: EnemyBucket[];
+  /** Damage types DEALT — same kill-side scoping as `topWeapons`. */
+  topDamageTypes: StatsBucket[];
   /** Downed but not killed — never folded into `deaths`, which is what this
    *  widget used to do. */
   incapacitated: number;
@@ -160,6 +169,11 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
       objectivePct,
       counts,
       objectives,
+      // `?? null`, never `?? 0`: see the field's note. `combat` is undefined
+      // when the call rejected, and 0 is a different claim from "unknown".
+      npcKills: combat?.kills ?? null,
+      topEnemies: combat?.top_enemies ?? [],
+      topDamageTypes: combat?.top_damage_types ?? [],
       topWeapons: combat?.top_weapons ?? [],
       deathsByZone: combat?.deaths_by_zone ?? [],
     };
@@ -167,6 +181,10 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
   body(data, _ctx, size) {
     const {
       deaths,
+      npcKills,
+      topEnemies,
+      topWeapons,
+      topDamageTypes,
       vehicleLosses,
       missionsStarted,
       missionsEnded,
@@ -178,6 +196,9 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
 
     if (size === 'compact') {
       const readouts: Readout[] = [
+        ...(npcKills != null
+          ? [{ label: 'npc kills', value: fmtNum(npcKills) } as Readout]
+          : []),
         { label: 'deaths', value: fmtNum(deaths) },
         { label: 'veh loss', value: fmtNum(vehicleLosses) },
         { label: 'missions', value: fmtNum(missionsStarted) },
@@ -196,6 +217,10 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
     }
 
     const rows: Row[] = [
+      // Omitted entirely when null. A failed read must not render as a zero.
+      ...(npcKills != null
+        ? [{ key: 'npc_kills', label: 'NPC kills', value: fmtNum(npcKills) }]
+        : []),
       { key: 'player_death', label: 'Player deaths', value: fmtNum(counts['player_death'] ?? 0) },
       {
         key: 'player_incapacitated',
@@ -216,6 +241,59 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
           ]
         : []),
     ];
-    return <RankedList rows={rows} />;
+    // The boards beneath the counts. Each is capped at five: the response
+    // carries up to STATS_BUCKET_LIMIT (100) and a tile is not a report.
+    //
+    // `display` is what the server humanised; `group_key` — the engine name
+    // with its entity id stripped — rides along in the title so an odd label
+    // can be traced back to what was actually in the log rather than argued
+    // about. An `unclassified` family is shown, not hidden: a board that drops
+    // what it could not parse misreports its own total.
+    const boards: { key: string; heading: string; rows: Row[] }[] = [
+      {
+        key: 'enemies',
+        heading: 'Most killed',
+        rows: topEnemies.slice(0, 5).map((e) => ({
+          key: `enemy:${e.group_key}`,
+          label: (
+            <span title={e.group_key}>
+              {e.display}
+              {e.family === 'unclassified' ? ' (unrecognised)' : ''}
+            </span>
+          ),
+          value: fmtNum(e.count),
+        })),
+      },
+      {
+        key: 'weapons',
+        heading: 'Killed with',
+        rows: topWeapons.slice(0, 5).map((w) => ({
+          key: `weapon:${w.value}`,
+          label: w.value,
+          value: fmtNum(w.count),
+        })),
+      },
+      {
+        key: 'damage',
+        heading: 'Damage dealt',
+        rows: topDamageTypes.slice(0, 5).map((d) => ({
+          key: `damage:${d.value}`,
+          label: d.value,
+          value: fmtNum(d.count),
+        })),
+      },
+    ].filter((b) => b.rows.length > 0);
+
+    return (
+      <div className="hud-readout-stack">
+        <RankedList rows={rows} />
+        {boards.map((b) => (
+          <div key={b.key}>
+            <p className="hud-tile__eyebrow">{b.heading}</p>
+            <RankedList rows={b.rows} />
+          </div>
+        ))}
+      </div>
+    );
   },
 });

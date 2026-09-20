@@ -3816,15 +3816,36 @@ export interface components {
             hours: number;
             /**
              * Format: int64
-             * @description Times the user appeared as the killer in `actor_death`.
+             * @description Kills the log recorded: `actor_death` rows where the caller is the
+             *     killer AND is not also the victim.
+             *
+             *     IN PRACTICE THIS IS A COUNT OF NPCs. CIG no longer writes a log line
+             *     when one player kills another, so what survives in the log is what the
+             *     caller killed in PvE. `top_enemies` carries the evidence for that
+             *     reading — every entry has a `family`, and a `player_like` one showing
+             *     up is the signal that this sentence has stopped being true.
+             *
+             *     The second clause is not a detail. Dying to a fall, a crash or your own
+             *     grenade writes `killer == victim == you`; without it, every death by
+             *     misadventure was also counted here (572 rows on one production handle).
              */
             kills: number;
+            /** @description Damage types the caller DEALT. Same scoping as `top_weapons`. */
+            top_damage_types: components["schemas"]["StatsBucket"][];
             /**
-             * @description How many of `deaths` were INFERRED rather than observed.
+             * @description What the caller killed, grouped by archetype and humanised.
              *
-             *     CIG removed the Actor Death log lines, so a death is frequently
-             *     reconstructed from a `Corpse` line and arrives as a
-             *     `player_death` carrying `body_class = "inferred"`. Summing the
+             *     Grouped in SQL on the victim name with its entity id stripped: the
+             *     engine gives every spawn a unique id, so grouping on the raw name
+             *     returns one row per kill.
+             */
+            top_enemies: components["schemas"]["EnemyBucket"][];
+            /**
+             * @description Weapons the caller KILLED with, over the same window.
+             *
+             *     Scoped by the same two-field kill rule as `kills` — the filter used to
+             *     be `killer = caller` alone, which put the "weapon" of every fall and
+             *     crash in the list.
              */
             top_weapons: components["schemas"]["StatsBucket"][];
         };
@@ -4341,6 +4362,30 @@ export interface components {
         };
         EmailChangeVerifyResponse: {
             email: string;
+        };
+        /** @description One enemy archetype the caller killed. */
+        EnemyBucket: {
+            /** Format: int64 */
+            count: number;
+            /**
+             * @description Humanised name — what to show. `Kopion Irradiated`, not
+             *     `Kopion_Irradiated_7712094`.
+             */
+            display: string;
+            /**
+             * @description `human` | `creature` | `environment` | `player_like` | `unclassified`.
+             *
+             *     `unclassified` is a real answer, not a failure to produce one: the
+             *     naming rules are derived from the shapes production has been observed
+             *     to hold, and anything else is counted and shown rather than dropped.
+             */
+            family: string;
+            /**
+             * @description The engine name with its entity id stripped. Kept so a reader can be
+             *     shown what was actually in the log, and so an unrecognised shape can
+             *     be reported rather than guessed at.
+             */
+            group_key: string;
         };
         EntitiesListResponse: {
             entities: components["schemas"]["EntitySummary"][];

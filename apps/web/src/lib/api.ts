@@ -1814,6 +1814,8 @@ export type TraceEntry = apiSchema['schemas']['TraceEntry'];
 export type BreakdownResponse = apiSchema['schemas']['BreakdownResponse'];
 export type BreakdownEntry = apiSchema['schemas']['BreakdownEntry'];
 export type StatsBucket = apiSchema['schemas']['StatsBucket'];
+/// One enemy archetype the caller killed, already humanised server-side.
+export type EnemyBucket = apiSchema['schemas']['EnemyBucket'];
 export type CombatStatsResponse =
   apiSchema['schemas']['CombatStatsResponse'];
 export type TravelStatsResponse =

@@ -8,6 +8,7 @@
 
 pub mod character_life;
 pub mod cohort;
+pub mod combatant;
 pub mod contract_life;
 pub mod contract_taxonomy;
 pub mod events;
@@ -28,6 +29,7 @@ pub mod validators;
 pub mod wire;
 
 pub use character_life::{derive_lives, Life, LifeConfig, LifeEnd, LifeSummary};
+pub use combatant::{humanize_combatant, CombatantFamily, CombatantLabel};
 pub use contract_life::{
     derive_contract_runs, ClosedBy, ContractConfig, ContractRun, ContractState, ContractStep,
     StepState,

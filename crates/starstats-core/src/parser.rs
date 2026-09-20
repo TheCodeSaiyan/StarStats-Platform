@@ -273,9 +273,26 @@ static SEED_SS_RE: Lazy<Regex> = Lazy::new(|| {
 static RESOLVE_SPAWN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"player id:\s*\[(?P<geid>\d+)\]").expect("RESOLVE_SPAWN_RE compiles"));
 
-// Combat events — patterns derived from community captures, NOT this
-// fixture (which has no combat). Kept in their own block so they're
-// easy to update when we get a real combat capture.
+// Combat events. The patterns were derived from community captures rather
+// than from the bundled fixture, which has no combat in it — and the machine
+// this was written on still has none: 314 game logs, zero `<Actor Death>`
+// lines. That is why the test below is `classifies_synthetic_actor_death`.
+//
+// A SYNTHETIC TEST IS NOT A BROKEN PARSER, and reading it as one cost a
+// working metric. On 2026-09-19 the kill figure was deleted from the web
+// (6a7184e) on the reasoning that "there is no way to collect a kill",
+// citing this comment and that test name. Production disagreed: one handle
+// alone holds thousands of `actor_death` rows with populated killer and
+// victim, top victims `PU_Pilots-Human-Criminal-Pilot_Light` (1074) and
+// `Kopion_Irradiated` (1046). ACTOR_DEATH_RE is all-or-nothing — it cannot
+// match without also capturing zone, weapon and damage type — so those rows
+// are proof that all four fields arrive. The metric was restored, and named
+// for what it counts (NPCs), in the same sweep.
+//
+// So: still the place to update when a real combat capture turns up, and
+// still worth treating the exact line shape as unconfirmed on THIS machine.
+// Not evidence that nothing is being parsed. Check the database before
+// concluding a combat field is unreachable; the fixture cannot tell you.
 static ACTOR_DEATH_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?:CActor::Kill:\s*)?'(?P<victim>[^']+)'(?:\s*\[(?P<vgeid>\d+)\])?\s*in zone\s*'(?P<zone>[^']+)'\s*killed by\s*'(?P<killer>[^']+)'(?:\s*\[(?P<kgeid>\d+)\])?\s*using\s*'(?P<weapon>[^']+)'.*?with damage type\s*'(?P<dmg>[^']+)'"

@@ -400,6 +400,7 @@ impl Modify for SecurityAddon {
         query::BreakdownResponse,
         query::BreakdownEntry,
         query::StatsBucket,
+        query::EnemyBucket,
         query::CombatStatsResponse,
         query::SpendLifetime,
         query::TravelStatsResponse,
