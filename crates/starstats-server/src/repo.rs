@@ -4605,7 +4605,10 @@ impl EventStore for PostgresStore {
                 resolved_location
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-            ON CONFLICT (claimed_handle, idempotency_key) DO NOTHING
+            -- Untargeted, for the same reason as the batch insert above:
+            -- events_content_uq (0069) must be able to skip a re-uploaded
+            -- line, not raise.
+            ON CONFLICT DO NOTHING
             RETURNING TRUE
             "#,
         )
@@ -4695,7 +4698,18 @@ impl EventStore for PostgresStore {
                     $1::uuid[], $2::text[], $3::text[], $4::text[], $5::timestamptz[],
                     $6::text[], $7::bigint[], $8::text[], $9::jsonb[], $10::jsonb[], $11::jsonb[]
                 )
-                ON CONFLICT (claimed_handle, idempotency_key) DO NOTHING
+                -- NO CONFLICT TARGET, deliberately. A named target covers
+                -- that index alone, and there are now two: the original
+                -- (claimed_handle, idempotency_key), and events_content_uq
+                -- from 0069 which catches the same LINE arriving again under
+                -- a different idempotency key. The tray key hashes a position
+                -- in a file, so a log that rotated into logbackups and got
+                -- backfilled produces a new key for an event already stored —
+                -- 47.7% of one measured user database. A bare DO NOTHING
+                -- skips a row that violates EITHER index instead of failing
+                -- the whole batch, which matters because every tray already
+                -- installed keeps uploading duplicates until its user updates.
+                ON CONFLICT DO NOTHING
                 RETURNING idempotency_key, claimed_handle, event_type, event_timestamp
             ),
             roll AS (
