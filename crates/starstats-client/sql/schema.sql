@@ -124,6 +124,26 @@ CREATE TABLE IF NOT EXISTS parser_def_manifest (
     payload_json  TEXT    NOT NULL
 );
 
+-- What the last successful re-parse was run WITH. One row, `id = 1`
+-- sentinel, same shape as parser_def_manifest.
+--
+-- Drives the automatic re-parse: a parser that has learned to read a line it
+-- previously skipped is no use to history unless something goes back over it,
+-- and until now that was a button a user had to know to press. On one measured
+-- install that left 371 `[ActorState] Dead` lines sitting unread in the
+-- unknown queue, and "Hulls lost" reading 0.
+--
+-- Written ONLY after a re-parse succeeds, so a crash or an error means the
+-- work is still owed and the next launch picks it up again.
+CREATE TABLE IF NOT EXISTS reparse_state (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    parser_revision INTEGER NOT NULL,
+    -- The remote parser-definition manifest version it ran with, when there
+    -- was one. NULL means the install had no definitions cached at the time.
+    def_version     INTEGER,
+    ran_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Per-device monotonic ingest-batch counter (F7 `batch_sequence`). One
 -- row at a time — `id = 1` sentinel, same shape as parser_def_manifest.
 -- `value` is the highest batch ordinal this install has SUCCESSFULLY

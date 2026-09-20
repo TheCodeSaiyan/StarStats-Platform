@@ -287,6 +287,29 @@ fn main() {
                 ));
             }
 
+            // Automatic re-parse, in the BACKGROUND.
+            //
+            // A parser that has learned to read a line it used to skip does
+            // nothing for history unless something goes back over it, and
+            // until now that was a button a user had to know to press. One
+            // measured install was holding 371 unread `[ActorState] Dead`
+            // lines with "Hulls lost" showing 0 as a result.
+            //
+            // Spawned, never awaited: `run_reparse` walks every stored event,
+            // and `Storage::open` already spends one-off time collapsing
+            // duplicates. Blocking launch on both would turn a correctness fix
+            // into a complaint about a slow-starting tray.
+            //
+            // Rules are snapshotted AFTER hydration above, so a cached
+            // definition set is honoured even on an offline cold start.
+            {
+                let storage_for_reparse = Arc::clone(&storage);
+                let rules_snapshot = parser_def_cache.snapshot();
+                tauri::async_runtime::spawn_blocking(move || {
+                    commands::maybe_auto_reparse(&storage_for_reparse, &rules_snapshot);
+                });
+            }
+
             // 2. Live tail stats holder
             let tail_stats = Arc::new(parking_lot::Mutex::new(gamelog::TailStats::default()));
             let sync_stats = Arc::new(parking_lot::Mutex::new(sync::SyncStats::default()));

@@ -216,6 +216,101 @@ pub fn apply_remote_rules(line: &LogLine<'_>, rules: &[CompiledRemoteRule]) -> O
 
 #[cfg(test)]
 mod tests {
+    /// THE RULE DEFINITION PUBLISHED FOR `[ActorState] Dead`, verbatim.
+    ///
+    /// Kept here, and exercised against a real log line, because a published
+    /// rule runs on EVERY collector the moment the manifest refreshes — there
+    /// is no staging step and no per-client rollout. A regex that fails to
+    /// compile is dropped with a logged error, but one that compiles and
+    /// quietly matches nothing is indistinguishable from a game that stopped
+    /// writing the line. Proving it here is the only cheap check there is.
+    ///
+    /// Publish with:
+    ///
+    /// ```text
+    /// POST /v1/admin/parser-rules   (moderator auth)
+    /// ```
+    ///
+    /// The point of publishing it at all, given the tray also has a compiled
+    /// parser for this line: the rule reaches every install within the 6h
+    /// manifest refresh and needs no release, so capture starts immediately
+    /// instead of when each user updates. It lands as a generic
+    /// `remote_match`, which cannot drive the "Hulls lost" metric on its own —
+    /// re-parse upgrades those rows to the typed `actor_ejected` once a client
+    /// ships that knows the line. See
+    /// `a_remote_match_row_is_upgraded_to_the_typed_event_by_reparse`.
+    const ACTORSTATE_DEAD_RULE_JSON: &str = r#"{
+      "id": "actorstate-dead-ejected-v1",
+      "event_name": "[ActorState] Dead",
+      "match_kind": "event_name",
+      "body_regex": "Actor\\s*'(?P<actor>[^']+)'(?:\\s*\\[(?P<actor_geid>\\d+)\\])?\\s*ejected from zone\\s*'(?P<vehicle>[^']+)'(?:\\s*\\[\\d+\\])?\\s*to zone\\s*'(?P<to_zone>[^']+)'(?:\\s*\\[\\d+\\])?\\s*due to previous zone being in a destroyed vehicle",
+      "fields": ["actor", "actor_geid", "vehicle", "to_zone"]
+    }"#;
+
+    #[test]
+    fn the_published_actorstate_dead_rule_matches_a_real_line() {
+        let rule: RemoteRule =
+            serde_json::from_str(ACTORSTATE_DEAD_RULE_JSON).expect("rule JSON parses");
+        let (compiled, bad) = compile_rules(std::slice::from_ref(&rule));
+        assert!(bad.is_empty(), "regex must compile: {bad:?}");
+        assert_eq!(compiled.len(), 1);
+
+        // Verbatim from the local tray database's unknown-line queue.
+        let line = "<2026-06-19T16:15:56.148Z> [Notice] <[ActorState] Dead> \
+[ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'TheCodeSaiyan' \
+[204056438813] ejected from zone 'VNCL_Scythe_565224538552' [565224538552] to zone \
+'SolarSystem_526028952021' [526028952021] due to previous zone being in a destroyed \
+vehicle with detached interior. [Team_ActorFeatures][Actor]";
+        let parsed = crate::parser::structural_parse(line).expect("structural parse");
+
+        match apply_remote_rules(&parsed, &compiled) {
+            Some(GameEvent::RemoteMatch(m)) => {
+                assert_eq!(m.rule_id, "actorstate-dead-ejected-v1");
+                assert_eq!(
+                    m.fields.get("actor").map(String::as_str),
+                    Some("TheCodeSaiyan")
+                );
+                assert_eq!(
+                    m.fields.get("actor_geid").map(String::as_str),
+                    Some("204056438813")
+                );
+                // Captured RAW, entity id and all. The typed parser strips it
+                // to a class later; a remote rule has no business guessing at
+                // a shape it cannot type.
+                assert_eq!(
+                    m.fields.get("vehicle").map(String::as_str),
+                    Some("VNCL_Scythe_565224538552")
+                );
+                assert_eq!(
+                    m.fields.get("to_zone").map(String::as_str),
+                    Some("SolarSystem_526028952021")
+                );
+            }
+            other => panic!("rule did not match the real line: {other:?}"),
+        }
+    }
+
+    /// The same cause-clause guard the compiled parser carries.
+    ///
+    /// A published rule reaches every collector at once, so a rule that reads
+    /// ANY ejection as a destroyed vehicle would mislabel hull losses fleet-
+    /// wide with no way to take it back except retracting the rule.
+    #[test]
+    fn the_published_rule_ignores_an_ejection_with_another_cause() {
+        let rule: RemoteRule =
+            serde_json::from_str(ACTORSTATE_DEAD_RULE_JSON).expect("rule JSON parses");
+        let (compiled, _) = compile_rules(std::slice::from_ref(&rule));
+        let line = "<2026-06-19T16:15:56.148Z> [Notice] <[ActorState] Dead> \
+[ACTOR STATE] Actor 'TheCodeSaiyan' [204056438813] ejected from zone \
+'VNCL_Scythe_565224538552' [565224538552] to zone 'SolarSystem_526028952021' \
+[526028952021] due to the interior being unstreamed. [Team_ActorFeatures][Actor]";
+        let parsed = crate::parser::structural_parse(line).expect("structural parse");
+        assert!(
+            apply_remote_rules(&parsed, &compiled).is_none(),
+            "an unrecognised cause must not be published as a hull loss"
+        );
+    }
+
     use super::*;
     use crate::parser::structural_parse;
 

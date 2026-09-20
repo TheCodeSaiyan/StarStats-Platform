@@ -66,6 +66,7 @@ pub use metadata::{
     provenance_for_inferred_field, stamp, EntityKind, EntityRef, EventMetadata, EventSource,
     FieldProvenance,
 };
+pub use parser::PARSER_REVISION;
 pub use parser::{
     classify, classify_launcher_message, classify_or_capture, classify_with_metadata,
     parse_launcher_line, structural_parse, ClassifyOutcome, LauncherLogLine, LogLine, ParseStats,
