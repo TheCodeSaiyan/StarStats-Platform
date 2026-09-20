@@ -702,7 +702,7 @@ interface CombatMissionData {
    *  to fold it in, alongside every kill the reader scored. */
   incapacitated: number;
   vehicleLosses: number;
-  missionsStarted: number;
+  missionsStarted: number | null;
   missionsEnded: number;
   completionPct: number | null;
   /** Weapon → kill count, zone → death count. Both come from
@@ -819,7 +819,13 @@ function combatDetailPlanes(
 
 function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNode {
   const rows: RankedRow[] = [
-    { name: 'Contracts started', value: fmtNum(d.missionsStarted), pct: 0 },
+    // Omitted when the event type is absent entirely rather than rendered
+    // as 0: `mission_start` holds no rows on modern builds, and "Contracts
+    // started 0" beside "Contracts ended 1,238" is a missing number wearing
+    // a real one's clothes.
+    ...(d.missionsStarted != null
+      ? [{ name: 'Contracts started', value: fmtNum(d.missionsStarted), pct: 0 }]
+      : []),
     { name: 'Contracts ended', value: fmtNum(d.missionsEnded), pct: 0 },
     // Named for what it counts. CIG stopped logging player-versus-player
     // kills, so what reaches us is PvE; `topEnemies` carries the evidence,
@@ -837,7 +843,7 @@ function combatPlane(d: CombatMissionData, refs?: ProjectionRefs): React.ReactNo
     { name: 'Hulls lost', value: fmtNum(d.vehicleLosses), pct: 0 },
   ];
   const max = Math.max(
-    d.missionsStarted,
+    d.missionsStarted ?? 0,
     d.missionsEnded,
     d.deaths,
     d.vehicleLosses,

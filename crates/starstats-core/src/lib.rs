@@ -43,7 +43,7 @@ pub use location_taxonomy::{
 };
 
 pub use events::{
-    ActorDeath, AttachmentReceived, BurstSummary, ChangeServer, CommodityBuyRequest,
+    ActorDeath, ActorEjected, AttachmentReceived, BurstSummary, ChangeServer, CommodityBuyRequest,
     CommoditySellRequest, EquipAction, GameCrash, GameEvent, HudNotification, ItemEquipChange,
     JoinPu, LauncherActivity, LauncherCategory, LegacyLogin, LocationChanged,
     LocationInventoryRequested, MissionEnd, MissionMarkerKind, MissionObjective,

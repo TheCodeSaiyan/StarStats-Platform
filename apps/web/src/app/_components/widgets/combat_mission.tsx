@@ -35,7 +35,19 @@ import { fmtNum, countsByType, sumCounts } from './kit/format';
  */
 const DEATH_TYPES_FALLBACK = ['player_death', 'actor_death'];
 const INCAPACITATED_TYPES = ['player_incapacitated'];
-const VEHICLE_LOSS_TYPES = ['vehicle_destruction'];
+/**
+ * Both sources of a lost hull.
+ *
+ * `vehicle_destruction` holds ZERO rows on a 320,945-event database — CIG
+ * appears to have stopped writing `<Vehicle Destruction>` in modern builds,
+ * exactly as it did `<Actor Death>`. `actor_ejected` is what survives: the
+ * `[ActorState] Dead` line that fires when you are thrown out of a vehicle
+ * destroyed around you, which names the ship. It appeared 371 times on that
+ * same database while "Hulls lost" read 0.
+ *
+ * Both are counted because the old type is still right for historical rows.
+ */
+const VEHICLE_LOSS_TYPES = ['vehicle_destruction', 'actor_ejected'];
 const MISSION_START_TYPES = ['mission_start'];
 const MISSION_END_TYPES = ['mission_end'];
 
@@ -71,7 +83,7 @@ interface CombatMissionData {
    *  widget used to do. */
   incapacitated: number;
   vehicleLosses: number;
-  missionsStarted: number;
+  missionsStarted: number | null;
   missionsEnded: number;
   completionPct: number | null;
   objectivePct: number | null;
@@ -145,15 +157,41 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
     const deaths = combat?.deaths ?? sumCounts(breakdown.types, DEATH_TYPES_FALLBACK);
     const incapacitated = sumCounts(breakdown.types, INCAPACITATED_TYPES);
     const vehicleLosses = sumCounts(breakdown.types, VEHICLE_LOSS_TYPES);
-    const missionsStarted = sumCounts(breakdown.types, MISSION_START_TYPES);
+    // `null`, not 0, when the event type is absent from the breakdown
+    // ENTIRELY. `mission_start` holds zero rows on a 320,945-event database
+    // while `mission_end` holds 1,238, so the tile rendered "Contracts
+    // started 0 / Contracts ended 1,238" — which is not a low number, it is
+    // a missing one, and a 0 asserts you started nothing.
+    //
+    // A handle that genuinely started no contracts in the window still has
+    // the type present with a count of 0 once it has ever fired, so a real
+    // zero is preserved.
+    // `counts` is the record; `breakdown.types` is the ARRAY it came from.
+    // Presence has to be asked of the record — `t in array` tests INDICES.
+    const missionsStarted = MISSION_START_TYPES.some((t) => t in counts)
+      ? sumCounts(breakdown.types, MISSION_START_TYPES)
+      : null;
     const missionsEnded = sumCounts(breakdown.types, MISSION_END_TYPES);
     const completionPct =
-      missionsStarted > 0 ? Math.round((missionsEnded / missionsStarted) * 100) : null;
+      missionsStarted != null && missionsStarted > 0
+        ? Math.round((missionsEnded / missionsStarted) * 100)
+        : null;
     const objectivePct = objectives?.completion_pct ?? null;
 
-    // Empty when there's no combat/mission activity AND no objectives.
+    // Empty when there is no combat/mission activity AND no objectives.
+    //
+    // `missionsEnded` and `incapacitated` are in the sum deliberately. They
+    // were not, and `mission_start` reports nothing on modern builds — so an
+    // account with 1,238 completed contracts and no deaths in the window had
+    // the whole tile disappear, which reads as "you did nothing" rather than
+    // "one of these five numbers is unavailable".
     if (
-      deaths + vehicleLosses + missionsStarted === 0 &&
+      deaths +
+        vehicleLosses +
+        incapacitated +
+        missionsEnded +
+        (missionsStarted ?? 0) ===
+        0 &&
       !(objectives && objectives.total > 0)
     ) {
       return null;
@@ -201,7 +239,9 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
           : []),
         { label: 'deaths', value: fmtNum(deaths) },
         { label: 'veh loss', value: fmtNum(vehicleLosses) },
-        { label: 'missions', value: fmtNum(missionsStarted) },
+        ...(missionsStarted != null
+          ? [{ label: 'missions', value: fmtNum(missionsStarted) } as Readout]
+          : []),
         ...(objectivePct != null
           ? [{ label: 'obj done', value: `${objectivePct}%` } as Readout]
           : []),
@@ -228,7 +268,9 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
         value: fmtNum(counts['player_incapacitated'] ?? 0),
       },
       { key: 'vehicle_losses', label: 'Vehicle losses', value: fmtNum(vehicleLosses) },
-      { key: 'missions_started', label: 'Missions started', value: fmtNum(missionsStarted) },
+      ...(missionsStarted != null
+        ? [{ key: 'missions_started', label: 'Missions started', value: fmtNum(missionsStarted) }]
+        : []),
       { key: 'missions_completed', label: 'Missions completed', value: fmtNum(missionsEnded) },
       ...(objectives && objectives.total > 0
         ? [

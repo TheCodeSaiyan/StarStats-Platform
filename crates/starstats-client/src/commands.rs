@@ -1769,6 +1769,11 @@ fn format_summary(event: &GameEvent) -> String {
             "{} killed by {} ({}, {})",
             e.victim, e.killer, e.weapon, e.damage_type
         ),
+        // Reads as the hull loss it records, not as the engine state that
+        // reveals it: nobody wants "CSCActorControlStateDead" in a timeline.
+        GameEvent::ActorEjected(e) => {
+            format!("{} destroyed — ejected to {}", e.vehicle_class, e.to_zone)
+        }
         GameEvent::PlayerDeath(e) => {
             // Strip the leading `body_` so the body class reads as
             // a recognisable variant name (e.g. `01_noMagicPocket`)

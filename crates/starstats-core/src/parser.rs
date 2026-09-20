@@ -19,11 +19,11 @@
 //! user.
 
 use crate::events::{
-    ActorDeath, AttachmentReceived, ChangeServer, CommodityBuyRequest, CommoditySellRequest,
-    EquipAction, GameEvent, HudNotification, ItemEquipChange, JoinPu, LauncherCategory,
-    LegacyLogin, LocationInventoryRequested, MissionEnd, MissionMarkerKind, MissionObjective,
-    MissionObjectiveState, MissionQuantumDestinationSelected, MissionStart, PlanetTerrainLoad,
-    PlayerDeath, PlayerIncapacitated, ProcessInit, QuantumArrived, QuantumRoute,
+    ActorDeath, ActorEjected, AttachmentReceived, ChangeServer, CommodityBuyRequest,
+    CommoditySellRequest, EquipAction, GameEvent, HudNotification, ItemEquipChange, JoinPu,
+    LauncherCategory, LegacyLogin, LocationInventoryRequested, MissionEnd, MissionMarkerKind,
+    MissionObjective, MissionObjectiveState, MissionQuantumDestinationSelected, MissionStart,
+    PlanetTerrainLoad, PlayerDeath, PlayerIncapacitated, ProcessInit, QuantumArrived, QuantumRoute,
     QuantumTargetPhase, QuantumTargetSelected, ResolveSpawn, SeedSolarSystem, ServerPhase,
     SessionEnd, SessionEndKind, ShopBuyRequest, ShopFlowResponse, VehicleDestruction,
     VehicleStowed,
@@ -293,6 +293,18 @@ static RESOLVE_SPAWN_RE: Lazy<Regex> =
 // still worth treating the exact line shape as unconfirmed on THIS machine.
 // Not evidence that nothing is being parsed. Check the database before
 // concluding a combat field is unreachable; the fixture cannot tell you.
+static ACTOR_EJECTED_RE: Lazy<Regex> = Lazy::new(|| {
+    // Anchored on the trailing clause as well as the shape: the phrase
+    // "due to previous zone being in a destroyed vehicle" is what licenses
+    // reading `from` as a destroyed vehicle at all. A future `[ActorState]
+    // Dead` line with a different cause simply will not match, and lands in
+    // the unknown-line queue where it can be looked at — rather than being
+    // silently recorded as a hull loss that never happened.
+    Regex::new(
+        r"Actor\s*'(?P<actor>[^']+)'(?:\s*\[(?P<ageid>\d+)\])?\s*ejected from zone\s*'(?P<from>[^']+)'(?:\s*\[(?P<fid>\d+)\])?\s*to zone\s*'(?P<to>[^']+)'(?:\s*\[\d+\])?\s*due to previous zone being in a destroyed vehicle"
+    ).expect("ACTOR_EJECTED_RE compiles")
+});
+
 static ACTOR_DEATH_RE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(
         r"(?:CActor::Kill:\s*)?'(?P<victim>[^']+)'(?:\s*\[(?P<vgeid>\d+)\])?\s*in zone\s*'(?P<zone>[^']+)'\s*killed by\s*'(?P<killer>[^']+)'(?:\s*\[(?P<kgeid>\d+)\])?\s*using\s*'(?P<weapon>[^']+)'.*?with damage type\s*'(?P<dmg>[^']+)'"
@@ -631,6 +643,29 @@ pub fn classify(line: &LogLine<'_>) -> Option<GameEvent> {
                 timestamp: ts.clone(),
                 player_geid: c["geid"].to_string(),
                 fallback: true,
+            }))
+        }
+        "[ActorState] Dead" => {
+            let c = ACTOR_EJECTED_RE.captures(body)?;
+            // Split the entity id off the zone name so the class groups:
+            // `VNCL_Scythe_565224538552` is one spawn of `VNCL_Scythe`, and
+            // grouping on the raw zone would make every loss unique.
+            let from = &c["from"];
+            let (vehicle_class, vehicle_id) = match from.rsplit_once('_') {
+                Some((head, tail))
+                    if !head.is_empty() && tail.chars().all(|ch| ch.is_ascii_digit()) =>
+                {
+                    (head.to_string(), Some(tail.to_string()))
+                }
+                _ => (from.to_string(), None),
+            };
+            Some(GameEvent::ActorEjected(ActorEjected {
+                timestamp: ts.clone(),
+                actor: c["actor"].to_string(),
+                actor_geid: c.name("ageid").map(|m| m.as_str().to_string()),
+                vehicle_class,
+                vehicle_id,
+                to_zone: c["to"].to_string(),
             }))
         }
         "Actor Death" => {
@@ -1752,6 +1787,85 @@ mod tests {
                 assert_eq!(t.planet, "OOC_Stanton_2b_Daymar");
             }
             other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    /// A REAL line, verbatim from this machine's own logs.
+    ///
+    /// Unlike the combat patterns above, nothing about this one is
+    /// synthesised: it appears 371 times in the local tray database, sitting
+    /// unparsed in the unknown-line queue the whole time, and every occurrence
+    /// has the same shape. The only variation across them is the zone names.
+    #[test]
+    fn classifies_actor_ejected_from_a_real_capture() {
+        let line = "<2026-06-19T16:15:56.148Z> [Notice] <[ActorState] Dead> \
+[ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'TheCodeSaiyan' \
+[204056438813] ejected from zone 'VNCL_Scythe_565224538552' [565224538552] to zone \
+'SolarSystem_526028952021' [526028952021] due to previous zone being in a destroyed \
+vehicle with detached interior. [Team_ActorFeatures][Actor]";
+        let p = structural_parse(line).unwrap();
+        let event = classify(&p).unwrap();
+        match event {
+            GameEvent::ActorEjected(e) => {
+                assert_eq!(e.timestamp, "2026-06-19T16:15:56.148Z");
+                assert_eq!(e.actor, "TheCodeSaiyan");
+                assert_eq!(e.actor_geid.as_deref(), Some("204056438813"));
+                // The zone ejected FROM is the destroyed vehicle, and the
+                // entity id is split off so one ship groups across spawns.
+                assert_eq!(e.vehicle_class, "VNCL_Scythe");
+                assert_eq!(e.vehicle_id.as_deref(), Some("565224538552"));
+                assert_eq!(e.to_zone, "SolarSystem_526028952021");
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    /// The cause clause is load-bearing, not decoration.
+    ///
+    /// Reading "ejected from zone X" as "X was destroyed" is only licensed by
+    /// the trailing "due to previous zone being in a destroyed vehicle". A
+    /// future `[ActorState] Dead` with any other cause must NOT be recorded as
+    /// a hull loss — it should fall through to the unknown-line queue where a
+    /// person can look at it.
+    #[test]
+    fn an_ejection_for_any_other_reason_is_not_a_hull_loss() {
+        let line = "<2026-06-19T16:15:56.148Z> [Notice] <[ActorState] Dead> \
+[ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'TheCodeSaiyan' \
+[204056438813] ejected from zone 'VNCL_Scythe_565224538552' [565224538552] to zone \
+'SolarSystem_526028952021' [526028952021] due to the interior being unstreamed. \
+[Team_ActorFeatures][Actor]";
+        let p = structural_parse(line).unwrap();
+        assert!(
+            classify(&p).is_none(),
+            "an unrecognised cause must not be guessed at as a destroyed vehicle"
+        );
+    }
+
+    /// The other real shapes: the destination varies widely (a solar system,
+    /// a planet OOC zone, a mission zone, a mine), and none of it changes
+    /// which vehicle was lost.
+    #[test]
+    fn actor_ejected_handles_the_destination_zones_seen_in_the_wild() {
+        for (to_zone, vehicle) in [
+            ("OOC_Stanton_2c_Yela", "XIAN_Nox"),
+            ("keeger_segment_mission_genrl_002_015", "AEGS_Tiburon"),
+            ("ab_mine_stanton4_med_003", "RSI_Polaris"),
+        ] {
+            let line = format!(
+                "<2026-08-04T21:07:49.708Z> [Notice] <[ActorState] Dead> [ACTOR STATE]\
+[CSCActorControlStateDead::PrePhysicsUpdate] Actor 'TheCodeSaiyan' [204056438813] \
+ejected from zone '{vehicle}_751484151184' [751484151184] to zone '{to_zone}' \
+[730164412896] due to previous zone being in a destroyed vehicle with detached \
+interior. [Team_ActorFeatures][Actor]"
+            );
+            let p = structural_parse(&line).unwrap();
+            match classify(&p).unwrap() {
+                GameEvent::ActorEjected(e) => {
+                    assert_eq!(e.vehicle_class, vehicle);
+                    assert_eq!(e.to_zone, to_zone);
+                }
+                other => panic!("unexpected variant: {other:?}"),
+            }
         }
     }
 

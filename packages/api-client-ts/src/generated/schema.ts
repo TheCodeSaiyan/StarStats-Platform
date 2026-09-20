@@ -3102,6 +3102,21 @@ export interface components {
             weapon: string;
             zone: string;
         };
+        /**
+         * @description `<[ActorState] Dead>` — ejected from a vehicle destroyed around you.
+         *
+         *     NOT a death. See `starstats_core::events::ActorEjected` for why: only
+         *     ~60% of sampled occurrences pair with a `player_death`, so emitting a
+         *     death here would double-count the majority already recorded.
+         */
+        ActorEjectedSchema: {
+            actor: string;
+            actor_geid?: string | null;
+            timestamp: string;
+            to_zone: string;
+            vehicle_class: string;
+            vehicle_id?: string | null;
+        };
         AddMemberRequest: {
             handle: string;
             /**
@@ -5136,6 +5151,9 @@ export interface components {
         }) | (components["schemas"]["VehicleDestructionSchema"] & {
             /** @enum {string} */
             type: "vehicle_destruction";
+        }) | (components["schemas"]["ActorEjectedSchema"] & {
+            /** @enum {string} */
+            type: "actor_ejected";
         }) | (components["schemas"]["HudNotificationSchema"] & {
             /** @enum {string} */
             type: "hud_notification";

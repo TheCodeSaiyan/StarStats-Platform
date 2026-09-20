@@ -357,6 +357,7 @@ impl Modify for SecurityAddon {
         ingest::SeedSolarSystemSchema,
         ingest::ResolveSpawnSchema,
         ingest::ActorDeathSchema,
+        ingest::ActorEjectedSchema,
         ingest::PlayerDeathSchema,
         ingest::PlayerIncapacitatedSchema,
         ingest::VehicleDestructionSchema,
