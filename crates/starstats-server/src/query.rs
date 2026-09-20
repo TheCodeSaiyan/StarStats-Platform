@@ -7613,6 +7613,49 @@ mod tests {
         );
     }
 
+    /// A self-kill is a death, not a kill.
+    ///
+    /// CIG attributes fall damage, your own crash and your own grenade to YOU:
+    /// the row carries `killer == victim == you`. `combat_counts` filtered
+    /// kills on `killer = $2` and deaths on `victim = $2` with neither
+    /// excluding the other, so every such row counted as BOTH. Measured on one
+    /// production handle: 572 rows, inflating kills by 572 and double-counting
+    /// deaths against the corpse-derived `player_death` path.
+    #[tokio::test]
+    async fn a_self_kill_counts_as_a_death_and_not_a_kill() {
+        let now = Utc::now() - Duration::hours(1);
+        let mq = Arc::new(MemoryQuery::new(vec![
+            // Killed an NPC — a real kill.
+            evt_with_payload(
+                1,
+                "Alice",
+                "actor_death",
+                now,
+                json!({ "killer": "Alice", "victim": "PU_Human-NineTails-Grunt-Male-Light_01_123" }),
+            ),
+            // Fell off a cliff — the engine names Alice as both.
+            evt_with_payload(
+                2,
+                "Alice",
+                "actor_death",
+                now + Duration::minutes(1),
+                json!({ "killer": "Alice", "victim": "Alice" }),
+            ),
+        ]));
+        let (issuer, verifier) = fresh_pair();
+        let app = router(mq, Arc::new(verifier));
+        let token = sign_token(&issuer, "Alice");
+        let (status, body) =
+            get_json::<CombatStatsResponse>(app, "/v1/me/stats/combat?hours=24", &token).await;
+
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body.kills, 1,
+            "dying to your own mistake is not a kill, however the engine attributes it"
+        );
+        assert_eq!(body.deaths, 1, "but it IS a death");
+    }
+
     #[tokio::test]
     async fn stats_combat_splits_kills_and_deaths_via_payload_filter() {
         // Three actor_death events in the user's stream:

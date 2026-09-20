@@ -963,41 +963,26 @@ pub trait EventQuery: Send + Sync + 'static {
     /// queries (Memory/tests); `PostgresStore` overrides it with a single
     /// `COUNT(*) FILTER` scan instead of three separate index scans, so a
     /// combat-widget render issues one query for the counts, not three.
+    /// `(kills, deaths_actor, deaths_player)` for `subject` within the
+    /// optional window.
+    ///
+    /// A SELF-KILL IS A DEATH, NOT A KILL. CIG attributes fall damage, your
+    /// own crash and your own grenade to you: the row carries
+    /// `killer == victim == subject`. Kills MUST therefore exclude rows whose
+    /// victim is the subject, or every death by misadventure is also counted
+    /// as a kill. Measured on one production handle: 572 such rows.
+    ///
+    /// No default implementation on purpose. The obvious one — two
+    /// `count_event_type` calls with a single-field `PayloadFilter` each —
+    /// cannot express "killer is the subject AND victim is not", and that is
+    /// exactly the shape that was wrong here. Requiring it forces each store
+    /// to state the two-field rule for itself.
     async fn combat_counts(
         &self,
         claimed_handle: &str,
         subject: &str,
         since: Option<DateTime<Utc>>,
-    ) -> Result<(u64, u64, u64), RepoError> {
-        let kills = self
-            .count_event_type(
-                claimed_handle,
-                "actor_death",
-                Some(PayloadFilter {
-                    field: "killer",
-                    equals: subject,
-                }),
-                since,
-                None,
-            )
-            .await?;
-        let deaths_actor = self
-            .count_event_type(
-                claimed_handle,
-                "actor_death",
-                Some(PayloadFilter {
-                    field: "victim",
-                    equals: subject,
-                }),
-                since,
-                None,
-            )
-            .await?;
-        let deaths_player = self
-            .count_event_type(claimed_handle, "player_death", None, since, None)
-            .await?;
-        Ok((kills, deaths_actor, deaths_player))
-    }
+    ) -> Result<(u64, u64, u64), RepoError>;
 }
 
 /// Filter clause for the activity-stats queries. Both methods that
@@ -2279,6 +2264,50 @@ pub mod test_support {
                 n += 1;
             }
             Ok(n)
+        }
+
+        /// Mirrors the Postgres FILTER clauses row by row.
+        ///
+        /// Written as one pass over the rows rather than three
+        /// `count_event_type` calls, because the kill rule needs TWO payload
+        /// fields — `killer == subject AND victim != subject` — and
+        /// `PayloadFilter` carries one. That gap is what let the self-kill
+        /// bug live: the three-call version could only ask "who killed", and
+        /// dying to your own crash answers `subject`.
+        async fn combat_counts(
+            &self,
+            claimed_handle: &str,
+            subject: &str,
+            since: Option<DateTime<Utc>>,
+        ) -> Result<(u64, u64, u64), RepoError> {
+            if self.fail_reads {
+                return Err(RepoError::Database(sqlx::Error::PoolTimedOut));
+            }
+            let (mut kills, mut deaths_actor, mut deaths_player) = (0u64, 0u64, 0u64);
+            for r in &self.rows {
+                if !r.claimed_handle.eq_ignore_ascii_case(claimed_handle)
+                    || !in_window(r.event_timestamp, since, None)
+                {
+                    continue;
+                }
+                match r.event_type.as_str() {
+                    "actor_death" => {
+                        let field = |k: &str| r.payload.get(k).and_then(|v| v.as_str());
+                        let killer = field("killer");
+                        let victim = field("victim");
+                        if victim == Some(subject) {
+                            deaths_actor += 1;
+                        }
+                        // A self-kill is a death, not a kill.
+                        if killer == Some(subject) && victim != Some(subject) {
+                            kills += 1;
+                        }
+                    }
+                    "player_death" => deaths_player += 1,
+                    _ => {}
+                }
+            }
+            Ok((kills, deaths_actor, deaths_player))
         }
 
         async fn has_events_in_window(
@@ -4328,7 +4357,10 @@ impl EventQuery for PostgresStore {
         // separate count_event_type index scans with identical results.
         let (kills, deaths_actor, deaths_player): (i64, i64, i64) = sqlx::query_as(
             "SELECT
-                 COUNT(*) FILTER (WHERE event_type = 'actor_death' AND payload->>'killer' = $2)::BIGINT,
+                 COUNT(*) FILTER (WHERE event_type = 'actor_death'
+                                    AND payload->>'killer' = $2
+                                    -- A self-kill is a death, not a kill.
+                                    AND payload->>'victim' IS DISTINCT FROM $2)::BIGINT,
                  COUNT(*) FILTER (WHERE event_type = 'actor_death' AND payload->>'victim' = $2)::BIGINT,
                  COUNT(*) FILTER (WHERE event_type = 'player_death')::BIGINT
                FROM events
