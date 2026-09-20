@@ -293,6 +293,33 @@
   width: 100%;
   margin-left: -50%;
 }
+
+/* Pending: the tab you just clicked, while the server re-renders.
+ *
+ * A range change is a navigation that re-renders the whole dashboard, so the
+ * payload takes a moment. With no pending state the control read as dead —
+ * readers clicked again, and each extra click cost another full render, making
+ * the wait they were reacting to longer. The span carries `data-pending` from
+ * `useLinkStatus` (MeProjection).
+ *
+ * Deliberately a pulse on the LABEL rather than the underline: the underline
+ * is how `aria-current` says "this is the active range", and borrowing it
+ * would claim the switch had already happened. */
+.hp-rng a [data-pending] {
+  animation: hp-rng-pending 900ms ease-in-out infinite;
+}
+@keyframes hp-rng-pending {
+  50% {
+    opacity: 0.35;
+  }
+}
+/* Reduced motion gets the same information without the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .hp-rng a [data-pending] {
+    animation: none;
+    opacity: 0.55;
+  }
+}
 .hp-rng a:focus-visible {
   outline: 1px solid var(--hot);
   outline-offset: 3px;
