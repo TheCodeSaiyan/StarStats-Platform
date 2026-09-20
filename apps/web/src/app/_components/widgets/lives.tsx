@@ -94,7 +94,10 @@ export const livesWidget = defineWidget<LivesData>({
       },
       { label: 'deaths/session', value: deathsPerSession },
       { label: 'mean life', value: meanLife },
-      { label: 'lives', value: fmtNum(data.total_lives) },
+      // NO `lives` READOUT. For a player alive at the start of the window,
+      // lives and deaths differ by at most one — two readouts, one fact, and
+      // no decision changes between them. `total_lives` stays on the data: it
+      // is what decides whether this widget renders at all.
     ];
 
     const win = data.window;
