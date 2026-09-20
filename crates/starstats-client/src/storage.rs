@@ -209,12 +209,92 @@ impl Storage {
         Self::migrate_events_metadata(&conn).context("migrate events.metadata column")?;
         Self::migrate_events_sent_at(&conn).context("migrate events.sent_at column")?;
         Self::migrate_tail_cursor_sig(&conn).context("migrate tail_cursor.file_sig column")?;
+        Self::migrate_events_content_key(&conn).context("migrate events.content_key column")?;
         Self::seed_default_noise(&conn).context("seed default noise list")?;
         Self::purge_noise_from_unknowns(&conn).context("purge stale noise samples")?;
         Self::purge_garbage_from_unknown_lines(&conn).context("purge garbage unknown lines")?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
+    }
+
+    /// Identity of the EVENT, independent of which file it was read from.
+    ///
+    /// `idempotency_key` is `UUIDv5(log_source : file_sig : offset : line)`,
+    /// which identifies a POSITION IN A FILE rather than a happening in the
+    /// game. Game.log is tailed live, rotates into `logbackups/`, and the
+    /// backfill reads the same bytes again under a different source with a
+    /// different signature — three of the four key components change, so the
+    /// key changes and nothing dedupes.
+    ///
+    /// Measured on one real tray database: 73,052 physical lines stored more
+    /// than once, 118,465 excess rows, 36.9% of 320,945 — all already
+    /// uploaded. Deaths read 476 where 188 happened.
+    ///
+    /// `type` and `payload` are in the hash, not just `raw`, and BOTH are
+    /// load-bearing. A burst summary is stored with its anchor member's line
+    /// as `raw`, so hashing the line alone would make a summary and the
+    /// member it summarises collide and silently drop one of them. Two
+    /// inference rules firing on one trigger line are separated the same way.
+    fn content_key(event_type: &str, timestamp: &str, raw: &str, payload_json: &str) -> String {
+        // Unit Separator: cannot occur in a log line or in JSON, so the
+        // fields cannot be made to run together into a false match.
+        let material = format!("{event_type}\u{1f}{timestamp}\u{1f}{raw}\u{1f}{payload_json}");
+        uuid::Uuid::new_v5(&uuid::Uuid::NAMESPACE_OID, material.as_bytes()).to_string()
+    }
+
+    /// Add `events.content_key` and backfill it for rows already stored.
+    ///
+    /// The backfill is what makes the guard in [`Storage::insert_event`] work
+    /// against history: without it, a line already in the table from a
+    /// previous run would be re-inserted the next time the backfill walks
+    /// logbackups, because nothing would match.
+    ///
+    /// The index is deliberately NOT UNIQUE. Existing databases already hold
+    /// the duplicates this prevents — a UNIQUE index could not be built
+    /// without first deleting rows, and deleting a user's stored events is a
+    /// decision for the user, not for a migration that runs on startup.
+    /// Uniqueness is enforced in `insert_event` instead, so nothing new can
+    /// duplicate while the existing rows are left exactly as they are.
+    fn migrate_events_content_key(conn: &Connection) -> Result<()> {
+        let mut stmt = conn.prepare("PRAGMA table_info(events)")?;
+        let has_col = stmt
+            .query_map([], |row| row.get::<_, String>(1))?
+            .filter_map(|r| r.ok())
+            .any(|name| name == "content_key");
+        drop(stmt);
+        if !has_col {
+            conn.execute("ALTER TABLE events ADD COLUMN content_key TEXT", [])?;
+        }
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_events_content_key ON events(content_key)",
+            [],
+        )?;
+
+        // Backfill in one pass. Only rows with a NULL content_key are read,
+        // so this is a no-op on every startup after the first.
+        let rows: Vec<(i64, String, String, String, String)> = {
+            let mut stmt = conn.prepare(
+                "SELECT id, type, timestamp, raw, payload FROM events WHERE content_key IS NULL",
+            )?;
+            let mapped = stmt.query_map([], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+            })?;
+            mapped.filter_map(|r| r.ok()).collect()
+        };
+        if rows.is_empty() {
+            return Ok(());
+        }
+        tracing::info!(count = rows.len(), "backfilling events.content_key");
+        let tx = conn.unchecked_transaction()?;
+        {
+            let mut up = tx.prepare("UPDATE events SET content_key = ? WHERE id = ?")?;
+            for (id, ty, ts, raw, payload) in &rows {
+                up.execute(params![Self::content_key(ty, ts, raw, payload), id])?;
+            }
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// Idempotently add the `metadata` column to `events` for databases
@@ -437,12 +517,28 @@ impl Storage {
         source_offset: u64,
     ) -> Result<bool> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
-        // ON CONFLICT keeps the table append-only-ish: same line
-        // re-tailed (after a rotation/replay) won't double-insert.
+        let content_key = Self::content_key(event_type, timestamp, raw, payload_json);
+        // TWO guards, because they catch different things.
+        //
+        // ON CONFLICT(idempotency_key) is the original: the same line
+        // re-tailed from the same file at the same offset (a crash replay)
+        // won't double-insert.
+        //
+        // The `WHERE NOT EXISTS` on content_key is the one that matters for
+        // rotation. The idempotency key names a position in a FILE, so the
+        // same line read again out of logbackups carries a different source
+        // and signature and sails straight past the first guard. That is
+        // 36.9% of one measured production database. See `content_key`.
+        //
+        // Stated as a sub-select rather than a UNIQUE constraint so that
+        // existing rows — which already contain duplicates — are left alone;
+        // see `migrate_events_content_key`.
         let inserted = conn.execute(
             "INSERT INTO events
-                (idempotency_key, type, timestamp, raw, payload, log_source, source_offset)
-             VALUES (?, ?, ?, ?, ?, ?, ?)
+                (idempotency_key, type, timestamp, raw, payload, log_source,
+                 source_offset, content_key)
+             SELECT ?, ?, ?, ?, ?, ?, ?, ?
+              WHERE NOT EXISTS (SELECT 1 FROM events WHERE content_key = ?)
              ON CONFLICT(idempotency_key) DO NOTHING",
             params![
                 idempotency_key,
@@ -452,6 +548,8 @@ impl Storage {
                 payload_json,
                 log_source,
                 source_offset as i64,
+                &content_key,
+                &content_key,
             ],
         )?;
         Ok(inserted > 0)
@@ -1862,12 +1960,19 @@ mod tests {
     /// constraint doesn't fire.
     fn insert_with_type(storage: &Storage, event_type: &str, offset: u64) -> i64 {
         let key = format!("k-{event_type}-{offset}");
+        // The raw line carries the offset because a REAL log line does: two
+        // distinct events are two distinct lines. This fixture used to pass
+        // a constant "raw" and rely on `offset` alone to tell rows apart,
+        // which made every row here a content-level duplicate of the last —
+        // the exact shape `content_key` now collapses. The assertions below
+        // are unchanged; only the fixture stopped fabricating duplicates.
+        let raw = format!("raw line {offset}");
         storage
             .insert_event(
                 &key,
                 event_type,
                 "2026-05-18T12:00:00Z",
-                "raw",
+                &raw,
                 "{}",
                 "live",
                 offset,
@@ -2315,6 +2420,144 @@ mod tests {
         // Only id=3 should remain unsent; ids 1+2 were below the
         // cursor and got back-stamped.
         assert_eq!(ids, vec![3]);
+    }
+
+    /// A burst summary and the member it summarises share a `raw` line, and
+    /// must NOT be collapsed into each other.
+    ///
+    /// `insert_event` stores a burst summary with its ANCHOR MEMBER's log
+    /// line as `raw` (see `gamelog.rs`, where `synthetic_line` is built from
+    /// `anchor_line`). So the obvious content key — hash the line — would
+    /// make the summary and its own anchor member collide, and the dedup
+    /// guard would silently drop whichever arrived second. The loadout
+    /// paperdoll is built from `burst_summary` rows, so that failure would
+    /// take out a feature while looking like successful deduplication.
+    ///
+    /// `type` in the hash is what prevents it. This test exists so that
+    /// stays true.
+    #[test]
+    fn a_burst_summary_does_not_collide_with_its_own_anchor_member() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::open(&dir.path().join("burst.db")).expect("open storage");
+
+        let anchor_line =
+            "<2026-06-12T02:26:51.673Z> [Notice] <AttachmentReceived> Item 'helmet_01'";
+        let ts = "2026-06-12T02:26:51.673Z";
+
+        let member = storage
+            .insert_event(
+                "key-member",
+                "attachment_received",
+                ts,
+                anchor_line,
+                r#"{"class":"helmet_01"}"#,
+                "live",
+                100,
+            )
+            .expect("insert member");
+        let summary = storage
+            .insert_event(
+                "key-summary",
+                "burst_summary",
+                ts,
+                anchor_line,
+                r#"{"rule_id":"loadout_restore","size":7}"#,
+                "live",
+                100,
+            )
+            .expect("insert summary");
+
+        assert!(member, "the member event must store");
+        assert!(
+            summary,
+            "a burst summary is a different event from its anchor member, \
+             even though it carries the same raw line"
+        );
+
+        let conn = storage.conn.lock().expect("mutex");
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+            .expect("count");
+        assert_eq!(rows, 2);
+    }
+
+    /// ONE LOG LINE MUST BE ONE ROW, whichever file it was read from.
+    ///
+    /// `idempotency_key` is `UUIDv5(log_source : file_sig : offset : line)`
+    /// and its own doc says it dedupes a line "in the same physical file".
+    /// That is the defect: Game.log is tailed live, rotates into
+    /// `logbackups/`, and the backfill reads the SAME BYTES again as a
+    /// different source with a different file signature. Three components of
+    /// the key change; the key changes; nothing dedupes.
+    ///
+    /// Measured on one real tray database — 320,945 rows, every one already
+    /// uploaded (`sent_at` set on all of them):
+    ///
+    ///   73,052 physical lines ingested more than once under >1 log_source
+    ///   118,465 excess rows = 36.9% of the database
+    ///   deaths 476 stored / 188 real (2.53x), quantum jumps 2.43x,
+    ///   ship stows 2.31x, planet loads 2.21x
+    ///
+    /// Every COUNT metric the product reports is inflated by roughly that
+    /// factor. Distinct-value metrics are unaffected, which is why "planets
+    /// visited" looked right while "deaths" did not.
+    ///
+    /// The fix is a content-addressed uniqueness constraint at the storage
+    /// layer rather than a new key scheme. Changing the key would give every
+    /// already-uploaded line a NEW key, and the server would accept the lot
+    /// as fresh rows — the doc on `idempotency_key` warns about exactly that.
+    #[test]
+    fn one_log_line_is_one_row_however_many_files_it_was_read_from() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::open(&dir.path().join("dedup.db")).expect("open storage");
+
+        // A real line, at the real offset it was found at, from the database
+        // this was measured on.
+        let line = "<2026-06-12T02:26:51.673Z> [Notice] <Adding non kept item \
+[CSCActorCorpseUtils::PopulateItemPortForItemRecoveryEntitlement]> Item \
+'body_01_noMagicPocket_200131811186 - Class(body_01_noMagicPocket)' \
+[Team_CoreGameplayFeatures][Unknown]";
+        let offset = 745_570u64;
+        let payload = r#"{"body_class":"body_01_noMagicPocket"}"#;
+
+        // Pass 1: the live tail of Game.log.
+        let first = storage
+            .insert_event(
+                &crate::gamelog::idempotency_key("live", Some("sig-gamelog"), offset, line),
+                "player_death",
+                "2026-06-12T02:26:51.673Z",
+                line,
+                payload,
+                "live",
+                offset,
+            )
+            .expect("insert live");
+        assert!(first, "the first sighting must store");
+
+        // Pass 2: the same file, rotated into logbackups and backfilled.
+        // Same bytes, same offset — a different source and signature.
+        let second = storage
+            .insert_event(
+                &crate::gamelog::idempotency_key("other", Some("sig-backup"), offset, line),
+                "player_death",
+                "2026-06-12T02:26:51.673Z",
+                line,
+                payload,
+                "other",
+                offset,
+            )
+            .expect("insert backfill");
+
+        assert!(
+            !second,
+            "the same physical line read from a second file is not a second death"
+        );
+
+        let conn = storage.conn.lock().expect("mutex");
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+            .expect("count");
+        assert_eq!(rows, 1, "one line, one row");
     }
 
     #[test]
