@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import Link from 'next/link';
+import Link, { useLinkStatus } from 'next/link';
 import { bucketSeries } from './series';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
 import { OutstandingTasks } from '@/components/projection/OutstandingTasks';
@@ -122,6 +122,24 @@ export interface MeProjectionProps {
   onCalibrate: (id: CalibrationId) => void;
 }
 
+
+/**
+ * A range tab that shows it was clicked.
+ *
+ * Changing the range is a NAVIGATION — `/me?range=…` re-renders the whole
+ * dashboard on the server — and a bare `<Link>` gives no sign it is working.
+ * So the control looked dead: readers clicked, nothing moved, they clicked
+ * again, and every one of those clicks cost another full server render, which
+ * made the thing they were waiting for slower still.
+ *
+ * `useLinkStatus` reports the parent Link's pending state (Next 15.3+). It
+ * must be called from a component INSIDE the Link, which is why this exists
+ * rather than a prop on the anchor.
+ */
+function RangeTabLabel({ children }: { children: React.ReactNode }) {
+  const { pending } = useLinkStatus();
+  return <span data-pending={pending || undefined}>{children}</span>;
+}
 
 export function MeProjection({
   handle,
@@ -475,7 +493,7 @@ export function MeProjection({
                   aria-current={isActive ? 'page' : undefined}
                   scroll={false}
                 >
-                  {label}
+                  <RangeTabLabel>{label}</RangeTabLabel>
                 </Link>
               )}
             />
