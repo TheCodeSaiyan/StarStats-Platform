@@ -27,7 +27,14 @@ CREATE TABLE IF NOT EXISTS events (
     -- [AND type IN (...)]` filter. Existing rows are backfilled at
     -- migration time from the legacy cursor — see
     -- `Storage::migrate_events_sent_at`.
-    sent_at         TEXT
+    sent_at         TEXT,
+    -- Identity of the EVENT rather than of a position in a file. See
+    -- `Storage::content_key`: `idempotency_key` hashes
+    -- (log_source, file_sig, offset, line), so the same line read again out
+    -- of a rotated logbackup gets a different key and duplicates. Added by
+    -- `Storage::migrate_events_content_key`, which also backfills it; NULL
+    -- only between the ALTER and the backfill in the same open().
+    content_key     TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_type_ts ON events(type, timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_inserted ON events(inserted_at);
