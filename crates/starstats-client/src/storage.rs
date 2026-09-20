@@ -256,6 +256,23 @@ impl Storage {
     /// decision for the user, not for a migration that runs on startup.
     /// Uniqueness is enforced in `insert_event` instead, so nothing new can
     /// duplicate while the existing rows are left exactly as they are.
+    /// Is `idx_events_content_key` present AND unique?
+    ///
+    /// The migration builds a non-unique index, backfills, collapses, then
+    /// swaps in a unique one. If an open is interrupted partway the column is
+    /// populated but the table is not yet protected, and a plain
+    /// "is the column filled?" check would skip the rest forever.
+    fn has_unique_content_index(conn: &Connection) -> Result<bool> {
+        let mut stmt = conn.prepare("PRAGMA index_list(events)")?;
+        let found = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
+            })?
+            .filter_map(|r| r.ok())
+            .any(|(name, unique)| name == "idx_events_content_key" && unique == 1);
+        Ok(found)
+    }
+
     fn migrate_events_content_key(conn: &Connection) -> Result<()> {
         let mut stmt = conn.prepare("PRAGMA table_info(events)")?;
         let has_col = stmt
@@ -266,15 +283,55 @@ impl Storage {
         if !has_col {
             conn.execute("ALTER TABLE events ADD COLUMN content_key TEXT", [])?;
         }
-        conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_events_content_key ON events(content_key)",
+
+        // The unique index is the finish line. Its presence — not "is the
+        // column populated?" — is what says the job is done, so an open
+        // interrupted midway is picked up and completed next time.
+        if Self::has_unique_content_index(conn)? {
+            return Ok(());
+        }
+
+        let tx = conn.unchecked_transaction()?;
+
+        // 1. Collapse the duplicates this database already holds.
+        //
+        // The insert guard only stops NEW ones. Every tray that has been
+        // running carries history recorded before it — 153,039 of 320,945
+        // rows on the database this was measured on — and left alone every
+        // count stays ~2.3x too high for as long as that tray exists.
+        //
+        // Partitioned on the same four columns `content_key` hashes, so no
+        // hash has to exist yet and this runs entirely inside SQLite. Doing
+        // it the other way round — backfill 320,945 hashes, then dedupe on
+        // them — did the work twice and cost 11s of that.
+        //
+        // WHICH COPY SURVIVES IS NOT ARBITRARY. `sent_at IS NULL` sorts
+        // last, so a DELIVERED row always beats an undelivered one and the
+        // lowest id breaks the tie. Keeping a never-sent copy and deleting
+        // its delivered twin would hand the row back to the outbox, upload
+        // it, and re-create on the server the very duplicate being removed.
+        let removed = tx.execute(
+            "DELETE FROM events WHERE id IN (
+                 SELECT id FROM (
+                     SELECT id, ROW_NUMBER() OVER (
+                         PARTITION BY type, timestamp, raw, payload
+                         ORDER BY (sent_at IS NULL), id
+                     ) AS rn
+                       FROM events
+                 ) WHERE rn > 1
+             )",
             [],
         )?;
+        if removed > 0 {
+            tracing::info!(removed, "collapsed duplicate events");
+        }
 
-        // Backfill in one pass. Only rows with a NULL content_key are read,
-        // so this is a no-op on every startup after the first.
+        // 2. Backfill the survivors only. After step 1 that is ~half the
+        //    rows it would have been, and there is deliberately NO index on
+        //    content_key yet — building it first made every one of these
+        //    UPDATEs maintain it.
         let rows: Vec<(i64, String, String, String, String)> = {
-            let mut stmt = conn.prepare(
+            let mut stmt = tx.prepare(
                 "SELECT id, type, timestamp, raw, payload FROM events WHERE content_key IS NULL",
             )?;
             let mapped = stmt.query_map([], |r| {
@@ -282,18 +339,27 @@ impl Storage {
             })?;
             mapped.filter_map(|r| r.ok()).collect()
         };
-        if rows.is_empty() {
-            return Ok(());
-        }
-        tracing::info!(count = rows.len(), "backfilling events.content_key");
-        let tx = conn.unchecked_transaction()?;
-        {
+        if !rows.is_empty() {
+            tracing::info!(count = rows.len(), "backfilling events.content_key");
             let mut up = tx.prepare("UPDATE events SET content_key = ? WHERE id = ?")?;
             for (id, ty, ts, raw, payload) in &rows {
                 up.execute(params![Self::content_key(ty, ts, raw, payload), id])?;
             }
         }
+        drop(rows);
         tx.commit()?;
+
+        // 3. Now the table holds one row per event, let the DATABASE keep it
+        //    that way. The guard in `insert_event` runs first and returns a
+        //    civil `false`, so this never fires in normal operation; it is
+        //    here so a future insert path that forgets the guard fails loudly
+        //    instead of quietly re-introducing what was just removed.
+        conn.execute("DROP INDEX IF EXISTS idx_events_content_key", [])?;
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_events_content_key
+                 ON events(content_key)",
+            [],
+        )?;
         Ok(())
     }
 
@@ -2558,6 +2624,107 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
             .expect("count");
         assert_eq!(rows, 1, "one line, one row");
+    }
+
+    /// Opening a database that already holds the duplicates COLLAPSES them.
+    ///
+    /// The insert guard stops new duplication, but every existing tray holds
+    /// history recorded before it: 153,039 of 320,945 rows on the database
+    /// this was measured on. Left alone, every count stays ~2.3x too high
+    /// forever, so the migration has to clean up as well as prevent.
+    ///
+    /// WHICH ROW SURVIVES MATTERS. A delivered row (`sent_at` set) is
+    /// preferred over an undelivered one, tie-broken on lowest id. Keeping a
+    /// never-sent copy and dropping its delivered twin would put the row back
+    /// in the outbox and upload it again — re-creating on the server exactly
+    /// the duplicate being removed here.
+    #[test]
+    fn opening_a_legacy_database_collapses_the_duplicates_it_already_holds() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("dupes.sqlite3");
+
+        // One physical log line, recorded three times: once from the live
+        // tail, twice more when the rotated copy was backfilled. Distinct
+        // idempotency keys, because that is the bug.
+        let line = "<2026-06-12T02:26:51.673Z> [Notice] <Corpse> body_01";
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE events (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    idempotency_key TEXT    NOT NULL UNIQUE,
+                    type            TEXT    NOT NULL,
+                    timestamp       TEXT    NOT NULL,
+                    raw             TEXT    NOT NULL,
+                    payload         TEXT    NOT NULL,
+                    log_source      TEXT    NOT NULL DEFAULT 'live',
+                    source_offset   INTEGER NOT NULL DEFAULT 0,
+                    inserted_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+                    metadata        TEXT,
+                    sent_at         TEXT
+                );",
+            )
+            .unwrap();
+            // id 1: never sent.  id 2: DELIVERED.  id 3: never sent.
+            for (key, src, sent) in [
+                ("k-live", "live", None),
+                ("k-backup", "other", Some("2026-06-12T03:00:00Z")),
+                ("k-backup-2", "other", None),
+            ] {
+                conn.execute(
+                    "INSERT INTO events
+                        (idempotency_key, type, timestamp, raw, payload, log_source,
+                         source_offset, sent_at)
+                     VALUES (?, 'player_death', '2026-06-12T02:26:51.673Z', ?, '{}', ?, 745570, ?)",
+                    params![key, line, src, sent],
+                )
+                .unwrap();
+            }
+            // A genuinely different line must survive untouched.
+            conn.execute(
+                "INSERT INTO events
+                    (idempotency_key, type, timestamp, raw, payload, log_source, source_offset)
+                 VALUES ('k-other', 'player_death', '2026-06-12T04:00:00Z', 'a different line',
+                         '{}', 'live', 999)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let s = Storage::open(&path).unwrap();
+        let conn = s.conn.lock().unwrap();
+
+        let total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            total, 2,
+            "three recordings of one line, plus one other line"
+        );
+
+        // The DELIVERED copy is the one that survived.
+        let (id, sent): (i64, Option<String>) = conn
+            .query_row(
+                "SELECT id, sent_at FROM events WHERE raw = ?",
+                params![line],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(id, 2, "the delivered row is kept, not merely the earliest");
+        assert!(
+            sent.is_some(),
+            "keeping an unsent copy would re-upload the duplicate we just removed"
+        );
+
+        // And the unrelated line is untouched.
+        let others: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM events WHERE raw = 'a different line'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(others, 1);
     }
 
     #[test]
