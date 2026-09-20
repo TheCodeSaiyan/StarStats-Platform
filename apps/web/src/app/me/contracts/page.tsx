@@ -237,7 +237,7 @@ export default async function ContractsPage(props: PageProps) {
       calibration={calibration}
       range={range}
       nav={navSections(
-        { signedIn: true, staffRoles: session.staffRoles },
+        { signedIn: true, staffRoles: session.staffRoles, range },
         'contracts',
       )}
       sections={sections}

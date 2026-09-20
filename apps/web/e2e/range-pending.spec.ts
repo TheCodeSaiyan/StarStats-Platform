@@ -82,3 +82,54 @@ test.describe('range tabs show pending', () => {
     });
   });
 });
+
+/**
+ * The selected range must survive a hop between pages.
+ *
+ * The range is URL state deliberately — the tabs are `<Link>`s so the back
+ * button stays correct and a view is shareable. But every link BETWEEN pages
+ * was a bare path, so picking 90d on `/me` and following a "see all" landed on
+ * the default 7d, and going back landed on 7d again.
+ *
+ * That is worse than a cosmetic reset. A reader whose events are months old
+ * sees an empty page and concludes the data is missing, rather than that the
+ * window quietly changed under them — which is exactly how a real ship-loss
+ * count got reported as "not coming through".
+ */
+test.describe('range survives navigation', () => {
+  test.beforeEach(async ({ request }) => {
+    await resetScenario(request);
+    await setScenario(request, scenarioFor('range-nav'));
+  });
+
+  test('carries the chosen range through a see-all link', async ({ page }) => {
+    test.slow();
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.setViewportSize({ width: 1600, height: 950 });
+    await page.goto('/me?range=90d', {
+      waitUntil: 'domcontentloaded',
+      timeout: 40_000,
+    });
+
+    const tabs = liveIn(page, '.hp-rng');
+    await expect(tabs).toBeVisible({ timeout: 20_000 });
+
+    // Every link that leads to a WINDOWED page must carry the range. A bare
+    // `/me/contracts` here is the bug.
+    // Unconditional: these links are always rendered on /me, so a missing
+    // one is a failure rather than a skipped assertion. The earlier shape of
+    // this test guarded every expect with `if (count())`, which passes
+    // happily when the link is absent - the exact vacuous pass that lets a
+    // nav regression through.
+    const contracts = page.locator('a[href*="/me/contracts"]').first();
+    await expect(contracts).toHaveAttribute('href', /range=90d/);
+
+    const travel = page.locator('a[href*="/me/travel"]').first();
+    await expect(travel).toHaveAttribute('href', /range=90d/);
+
+    // And a page with no window must NOT carry one - a parameter there would
+    // imply a filter the page does not apply.
+    const loadout = page.locator('a[href*="/me/loadout"]').first();
+    await expect(loadout).toHaveAttribute('href', '/me/loadout');
+  });
+});

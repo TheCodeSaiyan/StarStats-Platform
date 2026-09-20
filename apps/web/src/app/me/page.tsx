@@ -306,7 +306,12 @@ export default async function MePage(props: PageProps) {
       ringMap={ringMap}
       traceValues={traceValues}
       traceDays={TRACE_DAYS}
-      nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'me')}
+      nav={navSections(
+        // `range` so the reader's window survives the hop. Without it,
+        // picking 90d here and clicking Travel landed on the default 7d.
+        { signedIn: true, staffRoles: session.staffRoles, range },
+        'me',
+      )}
       onSaveLayout={async (ids: string[]) => {
         'use server';
         // The result was being dropped here, so `{ok:false}` reached the

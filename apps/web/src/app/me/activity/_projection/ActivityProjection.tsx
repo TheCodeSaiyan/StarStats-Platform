@@ -11,6 +11,7 @@ import {
   type PaneSurfaceProps,
 } from '@/components/projection/PaneSurface';
 import type { RangeId } from '@/lib/range';
+import { withRange } from '@/lib/range-href';
 
 /**
  * `/me/activity` — the full event log.
@@ -44,9 +45,14 @@ export function ActivityProjection({
     <PaneSurface
       {...props}
       groups={ACTIVITY_GROUPS}
-      crumb={[{ label: 'Projection', href: '/me' }, { label: 'Activity' }]}
+      crumb={[
+        // Carries the reader's window back with them; without it a hop
+        // to the projection and back silently reset to the default.
+        { label: 'Projection', href: withRange('/me', range) },
+        { label: 'Activity' },
+      ]}
       account={[
-        { id: 'me', label: 'Projection', href: '/me' },
+        { id: 'me', label: 'Projection', href: withRange('/me', range) },
         { id: 'sharing', label: 'Sharing', href: '/sharing' },
         { id: 'settings', label: 'Calibrate', href: '/settings' },
       ]}

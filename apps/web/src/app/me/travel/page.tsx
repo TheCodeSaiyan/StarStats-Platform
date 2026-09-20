@@ -471,7 +471,7 @@ export default async function TravelPage(props: PageProps) {
       calibration={calibration}
       range={range}
       nav={navSections(
-        { signedIn: true, staffRoles: session.staffRoles },
+        { signedIn: true, staffRoles: session.staffRoles, range },
         'travel',
       )}
       sections={sections}
