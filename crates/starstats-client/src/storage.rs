@@ -1420,6 +1420,52 @@ impl Storage {
     /// the rule-set the collector was running. `None` = no manifest
     /// fetched yet (first run) — the batch ships with `parser_version:
     /// None`, which the server reads as "unknown rule-set".
+    /// What the last SUCCESSFUL re-parse ran with, as
+    /// `(parser_revision, def_version)`. `None` when none has run.
+    pub fn read_reparse_state(&self) -> Result<Option<(u32, Option<u32>)>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt =
+            conn.prepare("SELECT parser_revision, def_version FROM reparse_state WHERE id = 1")?;
+        let mut rows = stmt.query([])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some((row.get(0)?, row.get(1)?)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Record a re-parse as done. Call ONLY after one has succeeded — a
+    /// failure must leave the work owed so the next launch retries it.
+    pub fn write_reparse_state(
+        &self,
+        parser_revision: u32,
+        def_version: Option<u32>,
+    ) -> Result<()> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        conn.execute(
+            "INSERT INTO reparse_state (id, parser_revision, def_version, ran_at)
+             VALUES (1, ?, ?, datetime('now'))
+             ON CONFLICT(id) DO UPDATE SET
+                 parser_revision = excluded.parser_revision,
+                 def_version     = excluded.def_version,
+                 ran_at          = excluded.ran_at",
+            params![parser_revision, def_version],
+        )?;
+        Ok(())
+    }
+
+    /// Is there anything in the store for a re-parse to work on?
+    ///
+    /// A fresh install has nothing to revisit, so it records the current
+    /// revision and skips the walk rather than spending a startup on zero
+    /// rows — and, more to the point, rather than logging a re-parse that
+    /// did nothing and reading as though it had.
+    pub fn has_any_events(&self) -> Result<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let n: i64 = conn.query_row("SELECT EXISTS(SELECT 1 FROM events)", [], |r| r.get(0))?;
+        Ok(n != 0)
+    }
+
     pub fn read_parser_def_manifest_version(&self) -> Result<Option<u32>> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let mut stmt = conn.prepare("SELECT version FROM parser_def_manifest WHERE id = 1")?;

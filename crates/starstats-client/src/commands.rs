@@ -1124,6 +1124,135 @@ pub async fn reparse_events(state: State<'_, AppState>) -> Result<ReparseStats, 
 /// re-equip while sitting far below any inter-session gap.
 const RETRO_BURST_MAX_MEMBER_GAP_SECS: i64 = 120;
 
+/// Why an automatic re-parse is (or is not) owed.
+///
+/// Its own type rather than a bare bool so the reason reaches the log. When a
+/// user asks why their history changed on launch, "parser revision 1 -> 2" is
+/// an answer and "true" is not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReparseNeed {
+    /// Nothing changed since the last successful run.
+    UpToDate,
+    /// Compiled-in parsing changed: new patterns, or corrected ones.
+    ParserRevision { from: Option<u32>, to: u32 },
+    /// The downloaded rule definitions advanced.
+    Definitions { from: Option<u32>, to: u32 },
+    /// Nothing stored to revisit — record the revision and skip the walk.
+    NothingToDo,
+}
+
+/// Decide whether history needs re-reading.
+///
+/// Pure, so the decision can be tested without a store or a parser. The rule:
+/// a re-parse is owed when EITHER the compiled parser revision or the remote
+/// definition version has moved past what the last successful run used.
+///
+/// `PARSER_REVISION` is a hand-maintained constant, NOT the app version —
+/// see its doc. Keying on the app version would walk every row of a
+/// multi-million-event store on every release, almost always to no effect.
+///
+/// A revision that goes BACKWARDS (a user downgrading the tray) is not a
+/// re-parse: the older parser cannot know anything the newer one did not, and
+/// re-running it would only discard classifications. Strictly greater-than,
+/// deliberately.
+pub fn decide_reparse(
+    stored: Option<(u32, Option<u32>)>,
+    current_revision: u32,
+    current_def_version: Option<u32>,
+    store_has_events: bool,
+) -> ReparseNeed {
+    if !store_has_events {
+        return ReparseNeed::NothingToDo;
+    }
+    let (stored_rev, stored_defs) = match stored {
+        // Never run. Anything already in the store predates the mechanism and
+        // has never been revisited, so it is owed one.
+        None => {
+            return ReparseNeed::ParserRevision {
+                from: None,
+                to: current_revision,
+            }
+        }
+        Some(v) => v,
+    };
+    if current_revision > stored_rev {
+        return ReparseNeed::ParserRevision {
+            from: Some(stored_rev),
+            to: current_revision,
+        };
+    }
+    if let Some(cur) = current_def_version {
+        if stored_defs.is_none_or(|prev| cur > prev) {
+            return ReparseNeed::Definitions {
+                from: stored_defs,
+                to: cur,
+            };
+        }
+    }
+    ReparseNeed::UpToDate
+}
+
+/// Run the automatic re-parse if one is owed.
+///
+/// Spawned in the BACKGROUND at startup, never awaited by it. `run_reparse`
+/// walks every stored event; on a 320,945-row store that is real work, and
+/// `Storage::open` already spends one-off time collapsing duplicates. Holding
+/// the tray's launch behind both would turn a correctness fix into a
+/// complaint about the app being slow to start.
+///
+/// The state row is written ONLY on success, so an error or a crash leaves
+/// the work owed and the next launch tries again.
+pub fn maybe_auto_reparse(
+    storage: &crate::storage::Storage,
+    rules: &[starstats_core::CompiledRemoteRule],
+) -> Option<ReparseStats> {
+    let stored = storage.read_reparse_state().unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "read_reparse_state failed; assuming none");
+        None
+    });
+    let defs = storage.read_parser_def_manifest_version().unwrap_or(None);
+    let has_events = storage.has_any_events().unwrap_or(true);
+    let need = decide_reparse(stored, starstats_core::PARSER_REVISION, defs, has_events);
+
+    match need {
+        ReparseNeed::UpToDate => return None,
+        ReparseNeed::NothingToDo => {
+            // Record it so a store that fills up later is not treated as
+            // having missed every revision since install.
+            if let Err(e) = storage.write_reparse_state(starstats_core::PARSER_REVISION, defs) {
+                tracing::warn!(error = %e, "write_reparse_state failed");
+            }
+            return None;
+        }
+        ReparseNeed::ParserRevision { from, to } => {
+            tracing::info!(?from, to, "auto re-parse: parser revision advanced");
+        }
+        ReparseNeed::Definitions { from, to } => {
+            tracing::info!(?from, to, "auto re-parse: rule definitions advanced");
+        }
+    }
+
+    match run_reparse(storage, rules) {
+        Ok(stats) => {
+            if let Err(e) = storage.write_reparse_state(starstats_core::PARSER_REVISION, defs) {
+                tracing::warn!(error = %e, "write_reparse_state failed after re-parse");
+            }
+            tracing::info!(
+                examined = stats.examined,
+                updated = stats.updated,
+                promoted_unknowns = stats.promoted_unknowns,
+                "auto re-parse finished"
+            );
+            Some(stats)
+        }
+        Err(e) => {
+            // Deliberately NOT recorded: the work is still owed.
+            tracing::warn!(error = %e, "auto re-parse failed; will retry next launch");
+            None
+        }
+    }
+}
+
 fn run_reparse(
     storage: &crate::storage::Storage,
     rules: &[starstats_core::CompiledRemoteRule],
@@ -3286,9 +3415,10 @@ pub async fn set_autostart_enabled(app: tauri::AppHandle, enabled: bool) -> Resu
 #[cfg(test)]
 mod tests {
     use super::{
-        clamp_timeline_limit, format_session_summary, redact, resolve_client_anon_id,
-        resolve_location, run_reparse, search_events_impl, synced_from_sent_at, validate_pair_url,
-        EventCount, GameEvent, TimelineEntry, DEFAULT_TIMELINE_LIMIT, MAX_TIMELINE_LIMIT,
+        clamp_timeline_limit, decide_reparse, format_session_summary, redact,
+        resolve_client_anon_id, resolve_location, run_reparse, search_events_impl,
+        synced_from_sent_at, validate_pair_url, EventCount, GameEvent, ReparseNeed, TimelineEntry,
+        DEFAULT_TIMELINE_LIMIT, MAX_TIMELINE_LIMIT,
     };
     use crate::storage::Storage;
     use tempfile::TempDir;
@@ -3324,6 +3454,164 @@ mod tests {
 
     /// Phase 3 retro-burst end-to-end test. Seeds a fresh SQLite with a
     /// 5-line `AttachmentReceived` run (matches the
+    /// A store that has never been re-parsed is owed one.
+    ///
+    /// Everything in it predates the mechanism, so it has never been revisited
+    /// by any parser improvement — including the one that would promote the
+    /// unknown lines it is sitting on.
+    #[test]
+    fn a_store_that_has_never_been_reparsed_is_owed_one() {
+        assert_eq!(
+            decide_reparse(None, 1, None, true),
+            ReparseNeed::ParserRevision { from: None, to: 1 }
+        );
+    }
+
+    #[test]
+    fn nothing_changed_means_no_work() {
+        assert_eq!(
+            decide_reparse(Some((1, Some(7))), 1, Some(7), true),
+            ReparseNeed::UpToDate
+        );
+    }
+
+    #[test]
+    fn a_new_parser_revision_triggers_a_reparse() {
+        assert_eq!(
+            decide_reparse(Some((1, Some(7))), 2, Some(7), true),
+            ReparseNeed::ParserRevision {
+                from: Some(1),
+                to: 2
+            }
+        );
+    }
+
+    #[test]
+    fn newer_rule_definitions_trigger_a_reparse() {
+        assert_eq!(
+            decide_reparse(Some((1, Some(7))), 1, Some(8), true),
+            ReparseNeed::Definitions {
+                from: Some(7),
+                to: 8
+            }
+        );
+        // First definitions ever fetched count as newer.
+        assert_eq!(
+            decide_reparse(Some((1, None)), 1, Some(3), true),
+            ReparseNeed::Definitions { from: None, to: 3 }
+        );
+    }
+
+    /// A DOWNGRADE must not re-parse.
+    ///
+    /// If a user rolls the tray back, the older parser knows strictly less
+    /// than the one that last ran. Re-running it would walk the whole store
+    /// to DISCARD classifications the newer build had made — losing data in
+    /// the name of keeping it fresh. Strictly greater-than, deliberately.
+    #[test]
+    fn rolling_the_tray_back_does_not_reparse() {
+        assert_eq!(
+            decide_reparse(Some((5, Some(9))), 2, Some(9), true),
+            ReparseNeed::UpToDate
+        );
+        // Same for definitions going backwards.
+        assert_eq!(
+            decide_reparse(Some((5, Some(9))), 5, Some(4), true),
+            ReparseNeed::UpToDate
+        );
+    }
+
+    /// A fresh install has nothing to revisit.
+    ///
+    /// Reported distinctly from `UpToDate` because the caller does something
+    /// different with it: it records the current revision without walking, so
+    /// a store that fills up later is not treated as having missed every
+    /// revision since install.
+    #[test]
+    fn an_empty_store_has_nothing_to_reparse() {
+        assert_eq!(
+            decide_reparse(None, 3, Some(1), false),
+            ReparseNeed::NothingToDo
+        );
+    }
+
+    /// The state row round-trips, and is what the decision reads.
+    /// A row captured by a REMOTE RULE is upgraded to the typed event once a
+    /// client ships that knows the line.
+    ///
+    /// This is the whole point of pairing the two mechanisms. A remote rule
+    /// reaches every install within 6h and needs no release, but everything it
+    /// matches lands as `event_type = "remote_match"` with a generic string
+    /// map — so it captures the data without being able to drive a metric.
+    /// `VEHICLE_LOSS_TYPES` looks for `actor_ejected`, and a `remote_match`
+    /// row would leave "Hulls lost" reading 0 forever.
+    ///
+    /// Re-parse is what closes that gap: built-in `classify` wins over remote
+    /// rules, so on the pass after the typed parser lands the row is rewritten
+    /// in place, keeping its id, its raw line and its sent state. Nothing is
+    /// re-uploaded and nothing is lost.
+    #[test]
+    fn a_remote_match_row_is_upgraded_to_the_typed_event_by_reparse() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::open(&dir.path().join("upgrade.db")).expect("open storage");
+
+        // Exactly what a remote rule would have stored: the real line, under
+        // the generic type, with a flat field map and no vehicle typing.
+        let line = "<2026-06-19T16:15:56.148Z> [Notice] <[ActorState] Dead> \
+[ACTOR STATE][CSCActorControlStateDead::PrePhysicsUpdate] Actor 'TheCodeSaiyan' \
+[204056438813] ejected from zone 'VNCL_Scythe_565224538552' [565224538552] to zone \
+'SolarSystem_526028952021' [526028952021] due to previous zone being in a destroyed \
+vehicle with detached interior. [Team_ActorFeatures][Actor]";
+        storage
+            .insert_event(
+                "remote-captured-key",
+                "remote_match",
+                "2026-06-19T16:15:56.148Z",
+                line,
+                r#"{"type":"remote_match","rule_id":"actorstate-dead-v1","event_name":"[ActorState] Dead","fields":{"vehicle":"VNCL_Scythe_565224538552"}}"#,
+                "live",
+                100,
+            )
+            .expect("insert remote_match row");
+
+        let stats = run_reparse(&storage, &[]).expect("reparse");
+        assert!(stats.updated >= 1, "the row should have been rewritten");
+
+        let counts: std::collections::HashMap<String, u64> = storage
+            .event_counts()
+            .expect("counts")
+            .into_iter()
+            .collect();
+        assert_eq!(
+            counts.get("actor_ejected"),
+            Some(&1),
+            "the captured row must become the typed event: {counts:?}"
+        );
+        assert_eq!(
+            counts.get("remote_match"),
+            None,
+            "and must not ALSO remain as a generic capture — that would \
+             double-count the hull loss"
+        );
+    }
+
+    #[test]
+    fn reparse_state_round_trips() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let storage = Storage::open(&dir.path().join("rp.db")).expect("open");
+        assert_eq!(storage.read_reparse_state().expect("read"), None);
+
+        storage.write_reparse_state(2, Some(9)).expect("write");
+        assert_eq!(
+            storage.read_reparse_state().expect("read"),
+            Some((2, Some(9)))
+        );
+
+        // Single row, overwritten rather than appended.
+        storage.write_reparse_state(3, None).expect("write again");
+        assert_eq!(storage.read_reparse_state().expect("read"), Some((3, None)));
+    }
+
     /// `loadout_restore_burst` rule's min_burst_size of 3), runs
     /// `run_reparse`, and asserts the row count collapsed to 1
     /// `burst_summary` plus the expected stat fields.

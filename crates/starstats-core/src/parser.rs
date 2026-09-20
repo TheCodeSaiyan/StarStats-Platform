@@ -273,6 +273,26 @@ static SEED_SS_RE: Lazy<Regex> = Lazy::new(|| {
 static RESOLVE_SPAWN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"player id:\s*\[(?P<geid>\d+)\]").expect("RESOLVE_SPAWN_RE compiles"));
 
+/// Bump when a change here would RECLASSIFY rows already stored, or promote
+/// lines already sitting in the unknown queue.
+///
+/// This is the trigger for the tray's automatic re-parse, and it is a
+/// deliberate constant rather than the application version because most
+/// releases do not touch parsing at all. Keying on the app version would walk
+/// every row of a multi-million-event store on every update, for nothing.
+///
+/// DO bump for: a new event pattern (so old unknown lines get promoted), a
+/// widened or corrected regex, a changed payload shape.
+///
+/// Do NOT bump for: refactors, comments, changes that only affect lines the
+/// parser already handled identically.
+///
+/// History:
+///   1  baseline — the revision at which automatic re-parse was introduced,
+///      carrying `ActorEjected` (`[ActorState] Dead`), which promotes the
+///      371 unknown lines a measured install had been holding.
+pub const PARSER_REVISION: u32 = 1;
+
 // Combat events. The patterns were derived from community captures rather
 // than from the bundled fixture, which has no combat in it — and the machine
 // this was written on still has none: 314 game logs, zero `<Actor Death>`
