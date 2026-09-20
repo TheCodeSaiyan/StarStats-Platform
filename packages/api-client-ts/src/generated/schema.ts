@@ -7868,9 +7868,18 @@ export interface components {
             hours: number;
         };
         TravelStatsResponse: {
+            /**
+             * Format: int64
+             * @description Distinct planets whose terrain streamed in during the window.
+             *
+             *     Was `planets_visited: Vec<StatsBucket>`, capped at
+             *     `STATS_BUCKET_LIMIT`, with the only consumer taking `.length` — a list
+             *     length standing in for a count, pinned at 100. Nothing rendered the
+             *     buckets themselves, so they are no longer shipped.
+             */
+            distinct_planets: number;
             /** Format: int64 */
             hours: number;
-            planets_visited: components["schemas"]["StatsBucket"][];
             /** Format: int64 */
             quantum_jumps: number;
             top_destinations: components["schemas"]["StatsBucket"][];

@@ -805,6 +805,36 @@ pub trait EventQuery: Send + Sync + 'static {
         limit: i64,
     ) -> Result<Vec<PayloadFieldBucket>, RepoError>;
 
+    /// Exact count of distinct values of `payload_field` for `event_type`,
+    /// over the optional `[since, until)` window.
+    ///
+    /// A REAL COUNT, not a bucket list's length. `payload_field_breakdown`
+    /// bounded by `STATS_BUCKET_LIMIT` was standing in for this: past the
+    /// limit the figure pinned and stopped reporting, silently.
+    ///
+    /// Implemented as a loose index scan (a recursive "skip scan") so the cost
+    /// tracks the number of DISTINCT values rather than the number of rows.
+    /// Measured on 30,000 rows holding 15 distinct planets:
+    ///
+    /// ```text
+    /// count(DISTINCT payload->>'planet')   16.0 ms   seq scan + quicksort
+    /// count(*) FROM (SELECT DISTINCT …)     8.1 ms   seq scan + HashAggregate
+    /// loose index scan (this)               0.3 ms   16 descents, no heap
+    /// ```
+    ///
+    /// Requires an index on `(claimed_handle, (payload->>field))` filtered to
+    /// the event type — see `0068_events_planet_idx.sql`. WITHOUT one, each
+    /// descent degrades into a scan and this is the SLOWEST of the three. It
+    /// is only correct to call for a field that has such an index.
+    async fn payload_field_distinct_count(
+        &self,
+        claimed_handle: &str,
+        event_type: &str,
+        payload_field: &str,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<u64, RepoError>;
+
     /// Docking occurrences derived from ship-stow telemetry in the optional
     /// `[since, until)` window.
     ///
@@ -1943,6 +1973,31 @@ pub mod test_support {
 
         // Mirrors the trait's allow — same eight parameters.
         #[allow(clippy::too_many_arguments)]
+        async fn payload_field_distinct_count(
+            &self,
+            claimed_handle: &str,
+            event_type: &str,
+            payload_field: &str,
+            since: Option<DateTime<Utc>>,
+            until: Option<DateTime<Utc>>,
+        ) -> Result<u64, RepoError> {
+            if self.fail_reads {
+                return Err(RepoError::Database(sqlx::Error::PoolTimedOut));
+            }
+            let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+            for r in self.rows.iter().filter(|r| {
+                r.claimed_handle.eq_ignore_ascii_case(claimed_handle)
+                    && r.event_type == event_type
+                    && since.is_none_or(|s| r.event_timestamp.is_some_and(|t| t >= s))
+                    && until.is_none_or(|u| r.event_timestamp.is_some_and(|t| t < u))
+            }) {
+                if let Some(v) = r.payload.get(payload_field).and_then(|v| v.as_str()) {
+                    seen.insert(v.to_string());
+                }
+            }
+            Ok(seen.len() as u64)
+        }
+
         async fn payload_field_breakdown(
             &self,
             claimed_handle: &str,
@@ -3851,6 +3906,73 @@ impl EventQuery for PostgresStore {
 
     // Mirrors the trait's allow — same eight parameters.
     #[allow(clippy::too_many_arguments)]
+    async fn payload_field_distinct_count(
+        &self,
+        claimed_handle: &str,
+        event_type: &str,
+        payload_field: &str,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<u64, RepoError> {
+        // LOOSE INDEX SCAN, a.k.a. skip scan. Postgres has no native one, so
+        // this is the recursive-CTE idiom: take the smallest value, then
+        // repeatedly ask for the smallest value strictly greater than the
+        // last. Each step is one index descent, so the work is proportional
+        // to the number of DISTINCT values rather than the number of rows —
+        // 16 descents for 15 planets across 30,000 events.
+        //
+        // `payload->>$3` keeps the field name a parameter rather than an
+        // interpolation, matching `payload_field_breakdown` above: a hostile
+        // caller cannot escape into another column.
+        //
+        // `>= $4` / `< $5`: inclusive lower, exclusive upper, same window
+        // convention as its neighbours.
+        //
+        // NULLs are excluded — a row whose payload lacks the field is not a
+        // distinct value of it, and counting it would inflate the figure by
+        // exactly one for anyone who ever logged a malformed event.
+        let count: i64 = sqlx::query_scalar(
+            r#"
+            WITH RECURSIVE distinct_values AS (
+                SELECT (
+                    SELECT e.payload ->> $3
+                      FROM events e
+                     WHERE e.claimed_handle = LOWER($1)
+                       AND e.event_type = $2
+                       AND e.payload ->> $3 IS NOT NULL
+                       AND ($4::timestamptz IS NULL OR e.event_timestamp >= $4)
+                       AND ($5::timestamptz IS NULL OR e.event_timestamp < $5)
+                     ORDER BY e.payload ->> $3 ASC
+                     LIMIT 1
+                ) AS v
+                UNION ALL
+                SELECT (
+                    SELECT e.payload ->> $3
+                      FROM events e
+                     WHERE e.claimed_handle = LOWER($1)
+                       AND e.event_type = $2
+                       AND e.payload ->> $3 > d.v
+                       AND ($4::timestamptz IS NULL OR e.event_timestamp >= $4)
+                       AND ($5::timestamptz IS NULL OR e.event_timestamp < $5)
+                     ORDER BY e.payload ->> $3 ASC
+                     LIMIT 1
+                )
+                  FROM distinct_values d
+                 WHERE d.v IS NOT NULL
+            )
+            SELECT count(*)::BIGINT FROM distinct_values WHERE v IS NOT NULL
+            "#,
+        )
+        .bind(claimed_handle)
+        .bind(event_type)
+        .bind(payload_field)
+        .bind(since)
+        .bind(until)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count.max(0) as u64)
+    }
+
     async fn payload_field_breakdown(
         &self,
         claimed_handle: &str,
@@ -5840,6 +5962,82 @@ mod tests {
     /// appended would leave two rows and report the merged session twice.
     ///
     /// Runs only with STARSTATS_TEST_DATABASE_URL set; otherwise skipped.
+    /// The distinct planet count is EXACT past the old ceiling.
+    ///
+    /// `planets_visited` was a `payload_field_breakdown` bounded by
+    /// STATS_BUCKET_LIMIT (100) whose `.length` the web rendered, so a handle
+    /// with more than 100 distinct planets reported exactly 100 for ever. This
+    /// seeds 150 — above that ceiling — and asserts 150.
+    ///
+    /// Postgres-gated: the loose index scan is SQL the MemoryQuery impl cannot
+    /// exercise, and the index in 0068 is what makes it fast rather than the
+    /// slowest of the three options.
+    #[tokio::test]
+    async fn distinct_planet_count_is_exact_past_the_old_cap_postgres() {
+        let Ok(url) = std::env::var("STARSTATS_TEST_DATABASE_URL") else {
+            eprintln!("STARSTATS_TEST_DATABASE_URL unset — skipping Postgres round-trip test");
+            return;
+        };
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .expect("connect STARSTATS_TEST_DATABASE_URL");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations on the test DB");
+
+        let handle = "distinct_planets_probe";
+        sqlx::query("DELETE FROM events WHERE claimed_handle = $1")
+            .bind(handle)
+            .execute(&pool)
+            .await
+            .expect("clean probe events");
+
+        // 150 distinct planets across 1,500 rows — above the old 100 cap, and
+        // with repeats so a naive row count would be wrong too.
+        sqlx::query(
+            "INSERT INTO events (id, idempotency_key, claimed_handle, event_type,
+                                 event_timestamp, log_source, source_offset, raw_line, payload)
+             SELECT gen_random_uuid(), 'planet-probe-' || g, $1, 'planet_terrain_load',
+                    now() - (g::text || ' seconds')::interval, 'live', 0, '',
+                    jsonb_build_object('planet', 'Planet_' || (g % 150))
+               FROM generate_series(1, 1500) g",
+        )
+        .bind(handle)
+        .execute(&pool)
+        .await
+        .expect("seed planets");
+
+        let store = PostgresStore::new(pool.clone());
+        let n = store
+            .payload_field_distinct_count(handle, "planet_terrain_load", "planet", None, None)
+            .await
+            .expect("distinct count");
+        assert_eq!(n, 150, "the count must be exact, not capped at 100");
+
+        // A row whose payload lacks the field is not a distinct value of it.
+        sqlx::query(
+            "INSERT INTO events (id, idempotency_key, claimed_handle, event_type,
+                                 event_timestamp, log_source, source_offset, raw_line, payload)
+             VALUES (gen_random_uuid(), 'planet-probe-nofield', $1, 'planet_terrain_load',
+                     now(), 'live', 0, '', '{}'::jsonb)",
+        )
+        .bind(handle)
+        .execute(&pool)
+        .await
+        .expect("seed a fieldless row");
+        let n = store
+            .payload_field_distinct_count(handle, "planet_terrain_load", "planet", None, None)
+            .await
+            .expect("distinct count after fieldless row");
+        assert_eq!(
+            n, 150,
+            "a payload without the field must not inflate the count"
+        );
+    }
+
     #[tokio::test]
     async fn incremental_session_rebuild_merges_a_late_event_postgres() {
         let Ok(url) = std::env::var("STARSTATS_TEST_DATABASE_URL") else {

@@ -1021,7 +1021,7 @@ export const noTravelStats = {
   status: 200,
   body: {
     hours: 0,
-    planets_visited: [] as Array<unknown>,
+    distinct_planets: 0,
     quantum_jumps: 0,
     top_destinations: [] as Array<unknown>,
   },

@@ -124,7 +124,7 @@ const FIXTURES: Record<string, { status: number; body: unknown }> = {
   'GET /v1/me/stats/objectives': s200({ total: 42, completed: 29, in_progress: 6, failed: 7, completion_rate: 0.69 }),
   'GET /v1/me/stats/spend': s200({ total_auec: 72364, purchases: 4, sells: 0, top_shop: 'Dumpers Depot' }),
   'GET /v1/me/stats/travel': s200({
-    quantum_jumps: 7436, planets_visited: ['Crusader', 'Hurston', 'microTech', 'ArcCorp'],
+    quantum_jumps: 7436, distinct_planets: 4,
     top_destinations: [
       { value: 'MIC-L1', count: 40 }, { value: 'Everus Harbor', count: 33 },
       { value: 'ARC-L1', count: 22 }, { value: 'Port Tressler', count: 18 }, { value: 'CRU-L1', count: 12 },

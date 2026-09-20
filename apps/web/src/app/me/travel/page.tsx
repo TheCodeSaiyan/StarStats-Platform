@@ -232,7 +232,7 @@ export default async function TravelPage(props: PageProps) {
   const counts = countsByType(breakdown?.types);
   const quantums = travelStats?.quantum_jumps ?? counts['quantum_target_selected'] ?? 0;
   const serverHops = (counts['join_pu'] ?? 0) + (counts['change_server'] ?? 0);
-  const planets = travelStats?.planets_visited?.length ?? 0;
+  const planets = travelStats?.distinct_planets ?? 0;
 
   // Locations catalog for KB deep-links (dual-keyed by display_name).
   const { catalogs } = await loadAllReferenceBundles();

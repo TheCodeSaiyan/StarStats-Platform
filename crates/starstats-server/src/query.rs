@@ -1500,7 +1500,13 @@ pub struct TravelStatsResponse {
     pub hours: i64,
     pub quantum_jumps: u64,
     pub top_destinations: Vec<StatsBucket>,
-    pub planets_visited: Vec<StatsBucket>,
+    /// Distinct planets whose terrain streamed in during the window.
+    ///
+    /// Was `planets_visited: Vec<StatsBucket>`, capped at
+    /// `STATS_BUCKET_LIMIT`, with the only consumer taking `.length` — a list
+    /// length standing in for a count, pinned at 100. Nothing rendered the
+    /// buckets themselves, so they are no longer shipped.
+    pub distinct_planets: u64,
 }
 
 /// One ship the caller flies, from quantum_target_selected.vehicle_class.
@@ -3241,24 +3247,35 @@ pub async fn stats_travel<Q: EventQuery>(
             tracing::error!(error = %e, "stats_travel breakdown failed");
             Vec::new()
         });
-    let planets_visited = query
-        .payload_field_breakdown(
+    // A REAL DISTINCT COUNT, not a bucket list's length.
+    //
+    // This was `payload_field_breakdown(..., STATS_BUCKET_LIMIT)` and the web
+    // rendered `planets_visited.length` — so past 100 distinct planets the
+    // figure pinned and stopped reporting, silently, and 100 buckets were
+    // shipped for a number nobody displayed.
+    //
+    // The loose index scan makes the honest count cheaper than the capped
+    // list was: cost tracks distinct planets (~15) rather than events. See
+    // `payload_field_distinct_count` and `0068_events_planet_idx.sql`.
+    //
+    // Hard-fails like the headline beside it: a zero here would read as "you
+    // have not landed anywhere", which is a claim about the player.
+    let distinct_planets = match query
+        .payload_field_distinct_count(
             &user.preferred_username,
             "planet_terrain_load",
             "planet",
-            None,
             since,
             None,
-            STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_else(|e| {
-            // Soft: a breakdown that fails leaves the list empty, and the
-            // headline figure above already hard-fails on its own error, so
-            // the response cannot silently claim a complete picture.
-            tracing::error!(error = %e, "stats_travel breakdown failed");
-            Vec::new()
-        });
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "stats_travel distinct_planets failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "query failed").into_response();
+        }
+    };
     (
         StatusCode::OK,
         Json(TravelStatsResponse {
@@ -3268,7 +3285,7 @@ pub async fn stats_travel<Q: EventQuery>(
                 .into_iter()
                 .map(StatsBucket::from)
                 .collect(),
-            planets_visited: planets_visited.into_iter().map(StatsBucket::from).collect(),
+            distinct_planets,
         }),
     )
         .into_response()
