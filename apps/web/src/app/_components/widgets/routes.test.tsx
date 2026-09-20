@@ -12,6 +12,8 @@ vi.mock('@/lib/reference', () => ({
 }));
 
 import { getRoutes } from '@/lib/api';
+import { loadAllReferenceBundles } from '@/lib/reference';
+import type { ReferenceEntry } from '@/lib/reference-types';
 import { routesWidget } from './routes';
 import { DEFAULT_SHARE_SCOPES, type ViewerCtx } from './types';
 
@@ -189,5 +191,49 @@ describe('routesWidget', () => {
     mockRoutes().mockResolvedValue({ routes: [], lifetime: null });
     const node = await routesWidget.render(ownerCtx(true, 'all'), 'compact');
     expect(node).toBeNull();
+  });
+});
+
+describe('routes location links', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /// Moved here from travel.test.tsx when `travel` stopped rendering its own
+  /// copy of this list. The BEHAVIOUR did not go away — `routes` does the same
+  /// EntityLink resolution — so the coverage follows it rather than being
+  /// deleted with the duplicate.
+  it('links a real location and leaves a synthetic label as plain text', async () => {
+    (getRoutes as ReturnType<typeof vi.fn>).mockResolvedValue({
+      routes: [
+        // Real place: the friendly label "microTech" hits the dual-keyed
+        // catalog by display_name → resolves a slug → KB link.
+        { destination: 'microTech', count: 4 },
+        // Synthetic per-mission beacon → "Mission beacon" → no catalog match
+        // → plain text, never a broken link.
+        { destination: 'MISSION_QT_Quantum_Beacon_718', count: 2 },
+      ],
+    });
+    const microTech: ReferenceEntry = {
+      category: 'location',
+      class_name: 'microTech',
+      display_name: 'microTech',
+      slug: 'microtech',
+      summary: { category: 'location' },
+    };
+    (loadAllReferenceBundles as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      catalogs: { locations: new Map([['microtech', microTech]]) },
+    });
+
+    const node = await routesWidget.render(ownerCtx(), 'expanded');
+    const { container } = render(node as React.ReactElement);
+
+    const link = container.querySelector('a[href="/kb/location/microtech"]');
+    expect(link).not.toBeNull();
+    expect(link?.textContent).toBe('microTech');
+
+    expect(container.textContent).toContain('Mission beacon');
+    const anchorTexts = Array.from(container.querySelectorAll('a')).map(
+      (a) => a.textContent?.trim() ?? '',
+    );
+    expect(anchorTexts).not.toContain('Mission beacon');
   });
 });

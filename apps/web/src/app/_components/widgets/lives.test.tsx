@@ -107,3 +107,27 @@ describe('lives widget death provenance', () => {
     expect(screen.getByText('4')).toBeInTheDocument();
   });
 });
+
+describe('lives does not state one fact twice', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('shows deaths but not a near-identical lives count', async () => {
+    // A player alive when the window opened has lives = deaths + 1. Rendering
+    // both spends a readout slot to say the same thing again.
+    mockLives().mockResolvedValue(fixture({ total_lives: 5, deaths: 4 }));
+    const node = await livesWidget.render(ownerCtx(), 'compact');
+    const { container } = render(node as React.ReactElement);
+    const labels = Array.from(container.querySelectorAll('.k')).map(
+      (k) => k.textContent?.trim() ?? '',
+    );
+    // `.k` holds the label AND the InfoTip trigger, so 'deaths' reads as
+    // 'deathsi' — match on the prefix rather than equality.
+    expect(labels).not.toContain('lives');
+    expect(labels.some((l) => l.startsWith('deaths'))).toBe(true);
+  });
+
+  it('still uses total_lives to decide whether to render at all', async () => {
+    mockLives().mockResolvedValue(fixture({ total_lives: 0 }));
+    expect(await livesWidget.render(ownerCtx(), 'compact')).toBeNull();
+  });
+});

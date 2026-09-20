@@ -5,12 +5,11 @@ import { getMetricsEventTypes, getRoutes, getTravelStats } from '@/lib/api';
 import { InfoTip } from '@/components/hud/InfoTip';
 import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
 import { rangeToMetricsRange, rangeToHours } from '@/lib/range';
-import { prettyLocationLabel, aggregateLocationBuckets } from '@/lib/class-name-parts';
+import { prettyLocationLabel } from '@/lib/class-name-parts';
 import { loadAllReferenceBundles, type ReferenceCatalog } from '@/lib/reference';
-import { EntityLink } from '@/components/kb/EntityLink';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
-import { ReadoutGroup, RankedList, type Readout } from './kit/archetypes';
+import { ReadoutGroup, type Readout } from './kit/archetypes';
 import { fmtNum, countsByType, sumCounts } from './kit/format';
 
 /**
@@ -118,39 +117,29 @@ export const travelWidget = defineWidget<TravelData>({
       );
     }
 
-    // Resolve + merge raw destination ids (LOC_RR_*, mission beacons, pipe
-    // hierarchies) into readable, deduped rows, then deep-link each to the
-    // KB. The classKey is the FRIENDLY label (not the raw pipe-string /
-    // engine id, which never matches): the reference catalog is dual-keyed
-    // by `display_name`, so "microTech" / "New Babbage" resolve and link.
-    // Synthetic labels ("Rest Stop S1 L1", "Mission beacon") simply miss
-    // the catalog and EntityLink degrades to plain text. `label` is pinned
-    // so the class-id prettifier never rewrites the friendly destination.
-    const rows = aggregateLocationBuckets(
-      data.routes.map((r) => ({ value: r.destination, count: r.count })),
-    ).map((a) => ({
-      key: a.label,
-      label: (
-        <EntityLink
-          category="location"
-          classKey={a.label}
-          catalog={data.locations}
-          label={a.label}
-        />
-      ),
-      value: fmtNum(a.count),
-    }));
+    // NO ROUTE LIST HERE, at either size. Expanded used to render
+    // `aggregateLocationBuckets(data.routes)` as an EntityLink'd RankedList —
+    // the same data, the same transform and the same rendering as the `routes`
+    // widget, off the same getRoutes call, in the same lens. Two tiles showing
+    // one list.
+    //
+    // `routes` is the better of the two: it carries the window's trips against
+    // their lifetime total and a period trend, and deliberately withholds
+    // `lifetime.destinations` because that counts RAW destinations while its
+    // rows are MERGED buckets. This tile keeps what only it reports — quantum,
+    // server hops, planets — names the top route in its note, and sends depth
+    // to the map rather than restating a neighbour.
+    const top = data.routes[0];
     return (
       <div>
-        <ReadoutGroup readouts={readouts} />
-        {rows.length > 0 && (
-          <>
-            <div className="hud-tile__eyebrow" style={{ marginTop: 10, marginBottom: 4 }}>
-              Top routes
-            </div>
-            <RankedList rows={rows} cap={6} />
-          </>
-        )}
+        <ReadoutGroup
+          readouts={readouts}
+          note={
+            top
+              ? `Top route: ${prettyLocationLabel(top.destination)} (${fmtNum(top.count)})`
+              : undefined
+          }
+        />
         <p className="hud-note">
           <Link href={'/me/travel' as Route}>See travel map →</Link>
         </p>

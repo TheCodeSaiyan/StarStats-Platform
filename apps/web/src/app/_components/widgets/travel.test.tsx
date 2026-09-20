@@ -166,86 +166,11 @@ describe('travelWidget metric depth (getTravelStats)', () => {
     expect(container.textContent).toContain('planets');
     expect(container.textContent).toContain('2');
   });
-
-  it('expanded shows top routes + a "See travel map" link (no raw event dump)', async () => {
-    (getMetricsEventTypes as ReturnType<typeof vi.fn>).mockResolvedValue({
-      types: [{ event_type: 'quantum_target_selected', count: 5 }],
-    });
-    (getRoutes as ReturnType<typeof vi.fn>).mockResolvedValue({
-      routes: [
-        { destination: 'Crusader', count: 4 },
-        { destination: 'microTech', count: 1 },
-      ],
-    });
-    (getTravelStats as ReturnType<typeof vi.fn>).mockResolvedValue({
-      hours: 168,
-      quantum_jumps: 5,
-      planets_visited: [],
-      top_destinations: [{ value: 'Stanton_Crusader_Orison', count: 4 }],
-    });
-
-    const node = await travelWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    expect(container.textContent).toContain('Top routes');
-    expect(container.textContent).toContain('Crusader');
-    // Full map depth lives behind a link, not an inline (clipping) panel.
-    expect(container.textContent).toContain('See travel map');
-    const link = container.querySelector('a[href="/me/travel"]');
-    expect(link).not.toBeNull();
-    // The raw event-type dump is gone.
-    expect(container.textContent).not.toContain('Joined PU');
-  });
 });
 
-describe('travelWidget location KB links (classKey = friendly label)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('links a real location (catalog display_name match) and leaves a synthetic label as plain text', async () => {
-    (getMetricsEventTypes as ReturnType<typeof vi.fn>).mockResolvedValue({
-      types: [{ event_type: 'quantum_target_selected', count: 5 }],
-    });
-    (getRoutes as ReturnType<typeof vi.fn>).mockResolvedValue({
-      routes: [
-        // Real place: friendly label "microTech" hits the dual-keyed
-        // catalog by display_name → resolves a slug → KB link.
-        { destination: 'microTech', count: 4 },
-        // Synthetic per-mission beacon → "Mission beacon" → no catalog
-        // match → plain text.
-        { destination: 'MISSION_QT_Quantum_Beacon_718', count: 2 },
-      ],
-    });
-    // Populate the locations catalog keyed by lowercased display_name
-    // (dual-keying), mirroring how loadAllReferenceBundles resolves.
-    const microTech: ReferenceEntry = {
-      category: 'location',
-      class_name: 'microTech',
-      display_name: 'microTech',
-      slug: 'microtech',
-      summary: { category: 'location' },
-    };
-    (loadAllReferenceBundles as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      catalogs: { locations: new Map([['microtech', microTech]]) },
-    });
-
-    const node = await travelWidget.render(ownerCtx('7d'), 'expanded');
-    const { container } = render(node as React.ReactElement);
-
-    // Real location resolves to a KB deep-link.
-    const link = container.querySelector('a[href="/kb/location/microtech"]');
-    expect(link).not.toBeNull();
-    expect(link?.textContent).toBe('microTech');
-
-    // The synthetic beacon label is present but NOT wrapped in an anchor.
-    expect(container.textContent).toContain('Mission beacon');
-    const anchorTexts = Array.from(container.querySelectorAll('a')).map(
-      (a) => a.textContent?.trim() ?? '',
-    );
-    expect(anchorTexts).not.toContain('Mission beacon');
-  });
-});
+// The KB-link tests that stood here moved to routes.test.tsx with the list
+// they exercised: `travel` no longer renders one, and the EntityLink behaviour
+// they covered is `routes`' now. Relocated, not dropped.
 
 describe('travelWidget C2 owner-only gating', () => {
   const visitorCtx: ViewerCtx = {
@@ -276,5 +201,46 @@ describe('travelWidget C2 owner-only gating', () => {
     const result = await travelWidget.render(visitorCtx, 'compact');
     expect(result).toBeNull();
     expect(getMetricsEventTypes).not.toHaveBeenCalled();
+  });
+});
+
+describe('travel does not restate the routes widget', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  // Expanded used to render the same aggregated route list as the `routes`
+  // widget, off the same getRoutes call, in the same lens. What survives here
+  // is what only this tile reports — quantum, server hops, planets — plus the
+  // top route as a NOTE and a link out to the map. The ranked list, and the
+  // EntityLink coverage that went with it, moved to routes.test.tsx.
+  it('shows the summary figures and the map link, not a route list', async () => {
+    (getMetricsEventTypes as ReturnType<typeof vi.fn>).mockResolvedValue({
+      types: [{ event_type: 'quantum_target_selected', count: 5 }],
+    });
+    (getRoutes as ReturnType<typeof vi.fn>).mockResolvedValue({
+      routes: [
+        { destination: 'Crusader', count: 4 },
+        { destination: 'microTech', count: 1 },
+      ],
+    });
+    (getTravelStats as ReturnType<typeof vi.fn>).mockResolvedValue({
+      hours: 168,
+      quantum_jumps: 5,
+      planets_visited: [],
+      top_destinations: [],
+    });
+
+    const node = await travelWidget.render(ownerCtx('7d'), 'expanded');
+    const { container } = render(node as React.ReactElement);
+
+    // No ranked rows — that list belongs to `routes`.
+    expect(container.querySelectorAll('.hud-readout-row')).toHaveLength(0);
+    expect(container.textContent).not.toContain('Top routes');
+
+    // The top route still gets a mention, as a note rather than a list.
+    expect(container.textContent).toContain('Crusader');
+    // Depth lives behind the link, not an inline panel.
+    expect(container.querySelector('a[href="/me/travel"]')).not.toBeNull();
+    // And the raw event-type dump stays gone.
+    expect(container.textContent).not.toContain('Joined PU');
   });
 });
