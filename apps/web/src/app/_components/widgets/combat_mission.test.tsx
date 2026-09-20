@@ -380,6 +380,19 @@ describe('combatMissionWidget death accounting', () => {
     expect(html).toContain('Missions completed');
   });
 
+  /**
+   * NOTE: this fixture is SYNTHETIC in a way production is not.
+   *
+   * `/v1/me/metrics/event-types` is windowed and omits a type with no rows in
+   * the window — it never returns one with `count: 0` (see the note on
+   * `event_type_breakdown`). So the "type present with a zero count" case
+   * below cannot currently arrive from the real API.
+   *
+   * The test is kept because the BRANCH is what matters: if a type is ever
+   * reported present-and-zero, it must render as 0 rather than vanish. It
+   * documents intent, not observed behaviour, and is labelled so nobody reads
+   * it as proof the endpoint does this.
+   */
   it('keeps a REAL zero when the type has reported before', async () => {
     vi.mocked(getMetricsEventTypes).mockResolvedValue({
       types: [
@@ -397,6 +410,70 @@ describe('combatMissionWidget death accounting', () => {
       data!.missionsStarted,
       'a genuine zero is an answer and must survive',
     ).toBe(0);
+  });
+
+  /**
+   * A metric the game no longer emits must not render as 0.
+   *
+   * The newest `actor_death` row in the entire database is 2025-11-19 — 306
+   * days before this was written, with zero rows in 2026 across every handle.
+   * CIG stopped writing the line. So for almost every reader "NPC kills 0"
+   * asserts they killed nothing, when the truth is that nothing can report a
+   * kill; that is the same fault this widget's own history is littered with.
+   */
+  it('omits NPC kills when the window holds no kill events', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [{ event_type: 'player_death', count: 9 }],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockResolvedValue({
+      hours: 168,
+      kills: 0,
+      deaths: 9,
+      top_weapons: [],
+      top_damage_types: [],
+      top_enemies: [],
+      deaths_by_zone: [],
+    } as never);
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      npcKills: number | null;
+    } | null;
+    expect(data!.npcKills).toBeNull();
+
+    const html = render(
+      <>{await combatMissionWidget.render(ownerCtx('7d'), 'expanded')}</>,
+    ).container.textContent;
+    expect(html).not.toContain('NPC kills');
+    // Not vacuous - the tile rendered.
+    expect(html).toContain('Player deaths');
+  });
+
+  /**
+   * The accounts that DO have kill history keep the figure.
+   *
+   * Four handles hold 49,541 kill rows between them. Omitting the metric
+   * outright would throw their history away to spare everyone else a zero.
+   */
+  it('still reports kills for a window that has them', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [{ event_type: 'actor_death', count: 21 }],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockResolvedValue({
+      hours: 168,
+      kills: 19,
+      deaths: 2,
+      top_weapons: [],
+      top_damage_types: [],
+      top_enemies: [],
+      deaths_by_zone: [],
+    } as never);
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      npcKills: number | null;
+    } | null;
+    expect(data!.npcKills).toBe(19);
   });
 
   it('falls back to the event count when the combat call fails', async () => {

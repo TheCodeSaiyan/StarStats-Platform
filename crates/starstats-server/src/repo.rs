@@ -3522,10 +3522,25 @@ impl EventQuery for PostgresStore {
         claimed_handle: &str,
         since: Option<DateTime<Utc>>,
     ) -> Result<Vec<EventTypeStats>, RepoError> {
-        // Two queries lets us keep the SQL simple. The first scopes
-        // counts to the optional `since` window; the second lifts the
-        // last_seen for each (unscoped) event_type so the column is
-        // meaningful even if the type had zero rows in the window.
+        // ONE query, windowed. An earlier comment here described two — the
+        // second lifting an UNSCOPED last_seen "so the column is meaningful
+        // even if the type had zero rows in the window". There is no second
+        // query and there never was, so:
+        //
+        //   * `last_seen` is the max WITHIN the window, not overall;
+        //   * a type with no rows in the window is ABSENT from the result,
+        //     never present with a count of 0.
+        //
+        // The second point is load-bearing for callers. A client cannot use
+        // this response to tell "this never happened" from "none in this
+        // window" — both are absence. `combat_mission.tsx` wants exactly
+        // that distinction (a permanently-impossible metric should be
+        // omitted, a quiet week should arguably still show 0) and cannot get
+        // it here. Doing so properly means sourcing existence + unscoped
+        // last_seen from `stat_event_counts`, which already holds per
+        // (handle, type) totals, and LEFT JOINing the windowed counts onto
+        // it — cheap, because it avoids an unscoped GROUP BY over events.
+        // Not done yet; do not re-add the claim above without the query.
         let rows: Vec<(String, i64, Option<DateTime<Utc>>)> = sqlx::query_as(
             "SELECT event_type,
                     COUNT(*)::BIGINT AS count,
