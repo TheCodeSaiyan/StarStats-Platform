@@ -270,6 +270,62 @@ pub const SESSION_IDLE_GAP_MINUTES: i64 = 30;
 /// See [`PostgresStore::ensure_session_stats_fresh`] for why this exists.
 pub const SESSION_ROLLUP_MIN_INTERVAL_SECS: i64 = 60;
 
+/// The bounds of one already-materialised session row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionBounds {
+    pub started_at: DateTime<Utc>,
+    pub ended_at: DateTime<Utc>,
+}
+
+/// Which events must be re-sessionised, and which existing session rows must
+/// be discarded, given the earliest pending event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionRebuildWindow {
+    /// Re-read events with `event_timestamp >= from_ts`.
+    pub from_ts: DateTime<Utc>,
+    /// Delete existing session rows with `ended_at >= discard_ending_at_or_after`.
+    pub discard_ending_at_or_after: DateTime<Utc>,
+}
+
+/// Work out the smallest range a session rebuild can safely recompute.
+///
+/// THE HAZARD THIS ENCODES. A late event does not simply append. Landing
+/// inside an old idle gap it MERGES two previously separate sessions into one
+/// (0056's comment: "not trivially incremental (a late event can merge
+/// sessions)"). So the affected range is not "after the newest row" — it
+/// starts wherever in history the earliest pending event fell.
+///
+/// Two rules:
+///
+///   * Any existing session ending within `gap` of the pending event is
+///     suspect: the new event may extend it, or bridge it to the next one.
+///     Inclusive, because the sessioniser splits on `> gap`, so a session
+///     ending EXACTLY `gap` earlier still merges.
+///   * Recomputation must then start at the START of the earliest suspect
+///     session, not at the event — otherwise a merged session would be
+///     rebuilt with its head missing and report a truncated duration.
+///
+/// With no suspect sessions (a backfill older than everything, or a first
+/// rebuild) recomputation starts at the pending event itself.
+pub fn session_rebuild_window(
+    dirty_from_ts: DateTime<Utc>,
+    gap: chrono::Duration,
+    sessions: &[SessionBounds],
+) -> SessionRebuildWindow {
+    let discard_ending_at_or_after = dirty_from_ts - gap;
+    let from_ts = sessions
+        .iter()
+        .filter(|s| s.ended_at >= discard_ending_at_or_after)
+        .map(|s| s.started_at)
+        .min()
+        .unwrap_or(dirty_from_ts)
+        .min(dirty_from_ts);
+    SessionRebuildWindow {
+        from_ts,
+        discard_ending_at_or_after,
+    }
+}
+
 /// Whether a session rollup should be rebuilt now.
 ///
 /// Pure so the POLICY is testable without a database — the surrounding SQL
@@ -2301,27 +2357,102 @@ impl PostgresStore {
         // never-seen handle). If a sibling rebuild already cleared it while we
         // waited on the lock, skip the recompute (the tx rolls back on return,
         // releasing the advisory lock).
-        let state: Option<(bool, DateTime<Utc>)> = sqlx::query_as(
-            "SELECT sessions_dirty, updated_at FROM stat_rollup_state
+        let state: Option<(bool, DateTime<Utc>, Option<DateTime<Utc>>)> = sqlx::query_as(
+            "SELECT sessions_dirty, updated_at, sessions_dirty_from_ts
+               FROM stat_rollup_state
              WHERE claimed_handle = LOWER($1)",
         )
         .bind(handle)
         .fetch_optional(&mut *tx)
         .await?;
-        let (still_dirty, captured_updated_at) = match state {
-            Some((dirty, ts)) => (dirty, Some(ts)),
-            None => (true, None),
+        let (still_dirty, captured_updated_at, dirty_from_ts) = match state {
+            Some((dirty, ts, from_ts)) => (dirty, Some(ts), from_ts),
+            None => (true, None, None),
         };
         if !still_dirty {
             return Ok(());
         }
 
-        // (1) session_summary: DELETE then re-INSERT from the gap-sessionized events.
-        //     session_id is the running-sum ordinal cast to TEXT (the column is TEXT).
-        sqlx::query("DELETE FROM session_summary WHERE claimed_handle = LOWER($1)")
-            .bind(handle)
-            .execute(&mut *tx)
-            .await?;
+        // The pending range, if it is known. `None` means either a handle
+        // dirtied before 0067 (watermark unknown) or a first-ever build — both
+        // owe one FULL recompute, after which every rebuild is incremental.
+        //
+        // When it IS known, only the sessions that a late event could have
+        // merged are discarded, and only the events from the head of that run
+        // are re-read. See `session_rebuild_window` for the merge hazard this
+        // encodes.
+        let window = match dirty_from_ts {
+            None => None,
+            Some(from_ts) => {
+                let existing: Vec<(DateTime<Utc>, DateTime<Utc>)> = sqlx::query_as(
+                    "SELECT started_at, ended_at FROM session_summary
+                      WHERE claimed_handle = LOWER($1)
+                        AND started_at IS NOT NULL AND ended_at IS NOT NULL",
+                )
+                .bind(handle)
+                .fetch_all(&mut *tx)
+                .await?;
+                let bounds: Vec<SessionBounds> = existing
+                    .into_iter()
+                    .map(|(started_at, ended_at)| SessionBounds {
+                        started_at,
+                        ended_at,
+                    })
+                    .collect();
+                Some(session_rebuild_window(
+                    from_ts,
+                    chrono::Duration::minutes(SESSION_IDLE_GAP_MINUTES),
+                    &bounds,
+                ))
+            }
+        };
+
+        // (1) session_summary: discard the sessions the pending events can
+        //     reach, then re-sessionise only from the head of that run.
+        //
+        //     FULL when the window is unknown (pre-0067 dirty row, or a
+        //     first build): discard everything, re-read everything — the
+        //     original behaviour, now the exception rather than the rule.
+        //
+        //     session_id is a running ordinal cast to TEXT. It is INTERNAL:
+        //     the public sessions API derives its own id from the game's
+        //     `local_session` on ProcessInit and never reads this table, so
+        //     renumbering breaks no URL. It must still not collide with the
+        //     rows being kept, hence the offset below.
+        let (from_ts, discard_from) = match window {
+            Some(w) => (Some(w.from_ts), Some(w.discard_ending_at_or_after)),
+            None => (None, None),
+        };
+
+        match discard_from {
+            Some(cutoff) => {
+                sqlx::query(
+                    "DELETE FROM session_summary
+                      WHERE claimed_handle = LOWER($1)
+                        AND (ended_at IS NULL OR ended_at >= $2)",
+                )
+                .bind(handle)
+                .bind(cutoff)
+                .execute(&mut *tx)
+                .await?;
+            }
+            None => {
+                sqlx::query("DELETE FROM session_summary WHERE claimed_handle = LOWER($1)")
+                    .bind(handle)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+
+        // Continue the ordinals above whatever survived the delete.
+        let offset: i64 = sqlx::query_scalar(
+            "SELECT COALESCE(MAX(session_id::bigint), 0) FROM session_summary
+              WHERE claimed_handle = LOWER($1)",
+        )
+        .bind(handle)
+        .fetch_one(&mut *tx)
+        .await?;
+
         sqlx::query(
             r#"
             WITH gaps AS (
@@ -2330,6 +2461,7 @@ impl PostgresStore {
                 FROM events
                 WHERE claimed_handle = LOWER($1) AND event_timestamp IS NOT NULL
                   AND event_type NOT IN ('launcher_activity','game_crash')
+                  AND ($3::timestamptz IS NULL OR event_timestamp >= $3)
             ), labeled AS (
                 SELECT event_timestamp, event_type,
                        SUM(CASE WHEN prev_ts IS NULL
@@ -2340,7 +2472,7 @@ impl PostgresStore {
             )
             INSERT INTO session_summary
                 (claimed_handle, session_id, started_at, ended_at, event_count, death_count)
-            SELECT LOWER($1), session_id::text,
+            SELECT LOWER($1), (session_id + $4)::text,
                    MIN(event_timestamp), MAX(event_timestamp),
                    COUNT(*)::bigint,
                    COUNT(*) FILTER (WHERE event_type = 'player_death')::bigint
@@ -2349,6 +2481,8 @@ impl PostgresStore {
         )
         .bind(handle)
         .bind(gap_minutes)
+        .bind(from_ts)
+        .bind(offset)
         .execute(&mut *tx)
         .await?;
 
@@ -2480,10 +2614,12 @@ impl PostgresStore {
         //     a racing batch that created the row first has a non-NULL
         //     updated_at, so the WHERE is false and its dirty=TRUE is preserved.
         sqlx::query(
-            "INSERT INTO stat_rollup_state (claimed_handle, sessions_dirty, rebuilt_at, updated_at)
-             VALUES (LOWER($1), FALSE, now(), now())
+            "INSERT INTO stat_rollup_state
+                 (claimed_handle, sessions_dirty, sessions_dirty_from_ts, rebuilt_at, updated_at)
+             VALUES (LOWER($1), FALSE, NULL, now(), now())
              ON CONFLICT (claimed_handle) DO UPDATE
-                 SET sessions_dirty = FALSE, rebuilt_at = now(), updated_at = now()
+                 SET sessions_dirty = FALSE, sessions_dirty_from_ts = NULL,
+                     rebuilt_at = now(), updated_at = now()
                  WHERE stat_rollup_state.updated_at = $2",
         )
         .bind(handle)
@@ -4231,13 +4367,34 @@ impl EventStore for PostgresStore {
                     updated_at    = now()
             ),
             dirty AS (
+                -- The watermark is the EARLIEST event timestamp in this batch,
+                -- not the latest and not a sequence: a late event merges
+                -- sessions backwards, so the affected range starts wherever in
+                -- history the oldest new event fell. LEAST() ignores NULLs, so
+                -- a first dirtying takes the batch's own minimum.
                 INSERT INTO stat_rollup_state
-                    (claimed_handle, sessions_dirty, contracts_dirty, counts_last_seq)
-                SELECT DISTINCT claimed_handle, TRUE, TRUE, 0 FROM ins
+                    (claimed_handle, sessions_dirty, contracts_dirty, counts_last_seq,
+                     sessions_dirty_from_ts)
+                SELECT claimed_handle, TRUE, TRUE, 0, MIN(event_timestamp)
+                FROM ins GROUP BY claimed_handle
                 ON CONFLICT (claimed_handle) DO UPDATE SET
                     sessions_dirty = TRUE,
                     contracts_dirty = TRUE,
-                    updated_at = now()
+                    updated_at = now(),
+                    -- dirty + NULL means "pre-0067, pending range unknown" and
+                    -- a FULL rebuild is still owed. Narrowing that to this
+                    -- batch's minimum would silently drop whatever was pending
+                    -- before the deploy, so the unknown state is preserved
+                    -- until one full rebuild clears it.
+                    sessions_dirty_from_ts = CASE
+                        WHEN stat_rollup_state.sessions_dirty
+                             AND stat_rollup_state.sessions_dirty_from_ts IS NULL
+                        THEN NULL
+                        ELSE LEAST(
+                            stat_rollup_state.sessions_dirty_from_ts,
+                            EXCLUDED.sessions_dirty_from_ts
+                        )
+                    END
             )
             SELECT idempotency_key FROM ins
             "#,
@@ -4421,6 +4578,96 @@ mod tests {
     /// syncing handle is permanently dirty. Without an interval that meant a
     /// full rebuild on every read: 831 ms and a seq scan of the whole events
     /// table, three times per dashboard load, on 12 of 23 handles at once.
+    /// The incremental-rebuild window, which is where a merge goes wrong.
+    ///
+    /// The three cases named before this was written: a late event merging two
+    /// sessions, a backfill older than every existing row, and an event landing
+    /// exactly on the 30-minute edge.
+    mod session_rebuild_window_tests {
+        use super::super::{session_rebuild_window, SessionBounds, SESSION_IDLE_GAP_MINUTES};
+        use chrono::{DateTime, Duration, TimeZone, Utc};
+
+        fn t(h: i64, m: i64) -> DateTime<Utc> {
+            Utc.with_ymd_and_hms(2026, 3, 1, 0, 0, 0).unwrap()
+                + Duration::hours(h)
+                + Duration::minutes(m)
+        }
+        fn gap() -> Duration {
+            Duration::minutes(SESSION_IDLE_GAP_MINUTES)
+        }
+        fn sess(a: (i64, i64), b: (i64, i64)) -> SessionBounds {
+            SessionBounds {
+                started_at: t(a.0, a.1),
+                ended_at: t(b.0, b.1),
+            }
+        }
+
+        #[test]
+        fn a_late_event_between_two_sessions_recomputes_from_the_first() {
+            // 10:00-10:20 and 11:00-11:30, and an event arrives at 10:40 —
+            // within 30 min of BOTH. All three become one session, so the
+            // recompute has to start at 10:00, not at 10:40. Starting at the
+            // event would rebuild the merged session with its head missing and
+            // report a 50-minute session as 20.
+            let sessions = [sess((10, 0), (10, 20)), sess((11, 0), (11, 30))];
+            let w = session_rebuild_window(t(10, 40), gap(), &sessions);
+            assert_eq!(
+                w.from_ts,
+                t(10, 0),
+                "must recompute from the head of the merged run"
+            );
+            assert_eq!(w.discard_ending_at_or_after, t(10, 10));
+        }
+
+        #[test]
+        fn a_backfill_older_than_everything_starts_at_the_event() {
+            // Nothing existing is within a gap of it, so there is no session to
+            // extend — recompute from the event itself.
+            let sessions = [sess((10, 0), (10, 20)), sess((11, 0), (11, 30))];
+            let w = session_rebuild_window(t(2, 0), gap(), &sessions);
+            assert_eq!(w.from_ts, t(2, 0));
+            assert_eq!(w.discard_ending_at_or_after, t(1, 30));
+        }
+
+        #[test]
+        fn exactly_on_the_gap_edge_still_merges() {
+            // The sessioniser splits on `> gap`, so a session ending EXACTLY
+            // 30 minutes before the new event does NOT split — it merges. The
+            // discard test is inclusive for that reason; `>` here would leave a
+            // stale row behind and double-count the overlap.
+            let sessions = [sess((10, 0), (10, 20))];
+            let w = session_rebuild_window(t(10, 50), gap(), &sessions);
+            assert_eq!(w.discard_ending_at_or_after, t(10, 20));
+            assert_eq!(
+                w.from_ts,
+                t(10, 0),
+                "a session ending exactly on the edge is suspect"
+            );
+        }
+
+        #[test]
+        fn one_minute_past_the_edge_does_not_merge() {
+            // The other side of the same boundary: 31 minutes of idle IS a
+            // split, so the old session stands and only the new event moves.
+            let sessions = [sess((10, 0), (10, 20))];
+            let w = session_rebuild_window(t(10, 51), gap(), &sessions);
+            assert_eq!(w.from_ts, t(10, 51));
+        }
+
+        #[test]
+        fn an_event_inside_an_existing_session_recomputes_that_session() {
+            let sessions = [sess((10, 0), (12, 0))];
+            let w = session_rebuild_window(t(11, 0), gap(), &sessions);
+            assert_eq!(w.from_ts, t(10, 0));
+        }
+
+        #[test]
+        fn no_existing_sessions_starts_at_the_event() {
+            let w = session_rebuild_window(t(10, 0), gap(), &[]);
+            assert_eq!(w.from_ts, t(10, 0));
+        }
+    }
+
     mod session_rollup_policy {
         use super::super::{should_rebuild_session_stats, SESSION_ROLLUP_MIN_INTERVAL_SECS};
         use chrono::{Duration, Utc};
@@ -5581,6 +5828,134 @@ mod tests {
     // to the bulk-ingest CTE alongside this test, plus the rebuild's UNNEST
     // insert + JSONB `steps` decode + advisory-lock dirty-clear — none of
     // which any MemoryQuery test above can catch.
+    /// The incremental session rebuild, against a real Postgres.
+    ///
+    /// The pure `session_rebuild_window` tests pin the ARITHMETIC; this pins
+    /// the SQL, which they cannot reach: the partial DELETE, the ordinal
+    /// offset that must not collide with retained rows, and the `$3` window
+    /// bound on the sessioniser.
+    ///
+    /// The case is the hazard 0056 warned about — a late event landing in an
+    /// old idle gap MERGES two sessions. An incremental rebuild that simply
+    /// appended would leave two rows and report the merged session twice.
+    ///
+    /// Runs only with STARSTATS_TEST_DATABASE_URL set; otherwise skipped.
+    #[tokio::test]
+    async fn incremental_session_rebuild_merges_a_late_event_postgres() {
+        let Ok(url) = std::env::var("STARSTATS_TEST_DATABASE_URL") else {
+            eprintln!("STARSTATS_TEST_DATABASE_URL unset — skipping Postgres round-trip test");
+            return;
+        };
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .expect("connect STARSTATS_TEST_DATABASE_URL");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations on the test DB");
+
+        let handle = "incremental_rebuild_probe";
+        for t in [
+            "events",
+            "session_summary",
+            "stat_rollup_state",
+            "character_records",
+        ] {
+            sqlx::query(&format!("DELETE FROM {t} WHERE claimed_handle = $1"))
+                .bind(handle)
+                .execute(&pool)
+                .await
+                .expect("clean probe rows");
+        }
+
+        let store = PostgresStore::new(pool.clone());
+        let ev = |key: &str, at: &str| StoredEvent {
+            id: Uuid::new_v4(),
+            idempotency_key: key.to_string(),
+            claimed_handle: handle.to_string(),
+            event_type: "hud_notification".to_string(),
+            event_timestamp: Some(ts(at)),
+            log_source: LogSource::Live,
+            source_offset: 0,
+            raw_line: String::new(),
+            payload: serde_json::json!({}),
+            metadata: None,
+            resolved_location: None,
+        };
+
+        // Two runs, 40 minutes apart — a clean split at a 30-minute gap.
+        store
+            .insert_batch(vec![
+                ev("inc-a1", "2026-03-01T10:00:00Z"),
+                ev("inc-a2", "2026-03-01T10:20:00Z"),
+                ev("inc-b1", "2026-03-01T11:00:00Z"),
+                ev("inc-b2", "2026-03-01T11:30:00Z"),
+            ])
+            .await
+            .expect("seed two sessions");
+        store
+            .rebuild_handle_session_stats(handle)
+            .await
+            .expect("first rebuild");
+
+        let (count, total): (i64, Option<i64>) = sqlx::query_as(
+            "SELECT count(*), SUM(EXTRACT(EPOCH FROM (ended_at - started_at)))::bigint
+               FROM session_summary WHERE claimed_handle = $1",
+        )
+        .bind(handle)
+        .fetch_one(&pool)
+        .await
+        .expect("read sessions");
+        assert_eq!(count, 2, "40 minutes idle must split into two sessions");
+        assert_eq!(total.unwrap_or_default(), 20 * 60 + 30 * 60);
+
+        // The late event: 10:40 is within 30 minutes of BOTH, so all of it
+        // becomes one session 10:00 -> 11:30.
+        store
+            .insert_batch(vec![ev("inc-late", "2026-03-01T10:40:00Z")])
+            .await
+            .expect("late event");
+        store
+            .rebuild_handle_session_stats(handle)
+            .await
+            .expect("incremental rebuild");
+
+        let (count, total): (i64, Option<i64>) = sqlx::query_as(
+            "SELECT count(*), SUM(EXTRACT(EPOCH FROM (ended_at - started_at)))::bigint
+               FROM session_summary WHERE claimed_handle = $1",
+        )
+        .bind(handle)
+        .fetch_one(&pool)
+        .await
+        .expect("read merged sessions");
+        assert_eq!(
+            count, 1,
+            "a late event bridging the gap must MERGE the two sessions, not add a third"
+        );
+        assert_eq!(
+            total.unwrap_or_default(),
+            90 * 60,
+            "the merged session runs 10:00 -> 11:30"
+        );
+
+        // And the watermark is cleared, so the next read does not rebuild.
+        let (dirty, from_ts): (bool, Option<DateTime<Utc>>) = sqlx::query_as(
+            "SELECT sessions_dirty, sessions_dirty_from_ts FROM stat_rollup_state
+              WHERE claimed_handle = $1",
+        )
+        .bind(handle)
+        .fetch_one(&pool)
+        .await
+        .expect("read rollup state");
+        assert!(!dirty, "a completed rebuild clears the flag");
+        assert!(
+            from_ts.is_none(),
+            "a completed rebuild clears the watermark"
+        );
+    }
+
     #[tokio::test]
     async fn contract_runs_postgres_round_trip() {
         let Ok(url) = std::env::var("STARSTATS_TEST_DATABASE_URL") else {
