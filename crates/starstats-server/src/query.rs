@@ -3052,10 +3052,17 @@ pub async fn stats_combat<Q: EventQuery>(
     //   deaths_player= all player_death rows (modern CIG format — what live
     //                  builds emit; without this union a current-build user
     //                  sees deaths=0 even after dying repeatedly)
-    let (kills, deaths_actor, deaths_player) = query
-        .combat_counts(handle, handle, since)
-        .await
-        .unwrap_or((0, 0, 0));
+    // A FAILED QUERY IS NOT A ZERO. `.unwrap_or((0, 0, 0))` rendered a broken
+    // read as "0 kills, 0 deaths" — the same body an evening with no combat
+    // produces, and indistinguishable from it.
+    let (kills, deaths_actor, deaths_player) =
+        match query.combat_counts(handle, handle, since).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!(error = %e, "stats_combat combat_counts failed");
+                return (StatusCode::INTERNAL_SERVER_ERROR, "query failed").into_response();
+            }
+        };
     let deaths = deaths_actor.saturating_add(deaths_player);
     // Top weapons used by the caller — scoped to kills, otherwise
     // we'd be showing weapons that killed the caller (a different,
@@ -3073,7 +3080,14 @@ pub async fn stats_combat<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty. The
+            // headline figure above hard-fails on its own error, so the
+            // response cannot claim a complete picture — but it must not
+            // vanish without trace either.
+            tracing::error!(error = %e, "stats_combat top_weapons failed");
+            Vec::new()
+        });
     // Deaths by zone: merge actor_death.zone (victim=caller) and
     // player_death.zone (no filter needed — player_death rows are
     // intrinsically the caller's). Rows where zone is null are
@@ -3089,7 +3103,14 @@ pub async fn stats_combat<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty. The
+            // headline figure above hard-fails on its own error, so the
+            // response cannot claim a complete picture — but it must not
+            // vanish without trace either.
+            tracing::error!(error = %e, "stats_combat deaths_by_zone (actor_death) failed");
+            Vec::new()
+        });
     let zone_player = query
         .payload_field_breakdown(
             handle,
@@ -3101,7 +3122,14 @@ pub async fn stats_combat<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty. The
+            // headline figure above hard-fails on its own error, so the
+            // response cannot claim a complete picture — but it must not
+            // vanish without trace either.
+            tracing::error!(error = %e, "stats_combat deaths_by_zone (player_death) failed");
+            Vec::new()
+        });
     let deaths_by_zone = merge_buckets(zone_actor, zone_player, STATS_BUCKET_LIMIT as usize);
     // NO PROVENANCE SPLIT. There was a `deaths_inferred` here, counting
     // `player_death` rows whose `body_class` is "inferred". Nothing writes
@@ -3268,7 +3296,10 @@ pub async fn stats_loadout<Q: EventQuery>(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let attachments = query
+    // A FAILED QUERY IS NOT A ZERO. Zero attachments reads as "you changed
+    // nothing this range", which is a claim about the player rather than
+    // about the database.
+    let attachments = match query
         .count_event_type(
             &user.preferred_username,
             "attachment_received",
@@ -3277,7 +3308,13 @@ pub async fn stats_loadout<Q: EventQuery>(
             None,
         )
         .await
-        .unwrap_or(0);
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "stats_loadout attachments failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "query failed").into_response();
+        }
+    };
     let top_items = query
         .payload_field_breakdown(
             &user.preferred_username,
@@ -3289,7 +3326,14 @@ pub async fn stats_loadout<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty. The
+            // headline figure above hard-fails on its own error, so the
+            // response cannot claim a complete picture — but it must not
+            // vanish without trace either.
+            tracing::error!(error = %e, "stats_loadout top_items failed");
+            Vec::new()
+        });
     (
         StatusCode::OK,
         Json(LoadoutStatsResponse {
@@ -3323,10 +3367,18 @@ pub async fn stats_stability<Q: EventQuery>(
         Ok(v) => v,
         Err(r) => return r,
     };
-    let crashes = query
+    // A FAILED QUERY IS NOT A ZERO. "0 crashes" is the best news this widget
+    // can give, and it rendered identically when the read simply broke.
+    let crashes = match query
         .count_event_type(&user.preferred_username, "game_crash", None, since, None)
         .await
-        .unwrap_or(0);
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!(error = %e, "stats_stability crashes failed");
+            return (StatusCode::INTERNAL_SERVER_ERROR, "query failed").into_response();
+        }
+    };
     let by_channel = query
         .payload_field_breakdown(
             &user.preferred_username,
@@ -3338,7 +3390,14 @@ pub async fn stats_stability<Q: EventQuery>(
             STATS_BUCKET_LIMIT,
         )
         .await
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // Soft: a breakdown that fails leaves the list empty. The
+            // headline figure above hard-fails on its own error, so the
+            // response cannot claim a complete picture — but it must not
+            // vanish without trace either.
+            tracing::error!(error = %e, "stats_stability by_channel failed");
+            Vec::new()
+        });
     (
         StatusCode::OK,
         Json(StabilityStatsResponse {
@@ -4056,6 +4115,11 @@ mod tests {
                 get(location_current::<MemoryQuery>),
             )
             .route("/v1/me/stats/combat", get(stats_combat::<MemoryQuery>))
+            .route("/v1/me/stats/loadout", get(stats_loadout::<MemoryQuery>))
+            .route(
+                "/v1/me/stats/stability",
+                get(stats_stability::<MemoryQuery>),
+            )
             .route("/v1/me/stats/travel", get(stats_travel::<MemoryQuery>))
             .route("/v1/me/stats/playtime", get(stats_playtime::<MemoryQuery>))
             .route(
@@ -7470,6 +7534,45 @@ mod tests {
     ///
     /// No test could reach this path before, because the mock had no way to
     /// fail.
+    /// Every stats handler must report a broken query, not a zero.
+    ///
+    /// `stats_travel` was fixed first because it had a reported symptom behind
+    /// it ("logged flight time resets to 0"). These are its siblings: each
+    /// ended its headline read in `.unwrap_or(0)` / `.unwrap_or((0, 0, 0))`,
+    /// so a pool timeout produced 200 OK with a figure that reads as a fact
+    /// about the player — "no combat", "no crashes", "changed nothing".
+    ///
+    /// None of these paths had any test coverage, because `MemoryQuery` could
+    /// not fail until `failing()` was added. That absence is why they survived.
+    #[tokio::test]
+    async fn stats_handlers_report_a_broken_query_instead_of_zero() {
+        for path in [
+            "/v1/me/stats/combat?hours=24",
+            "/v1/me/stats/loadout?hours=24",
+            "/v1/me/stats/stability?hours=24",
+        ] {
+            let mq = Arc::new(MemoryQuery::new(vec![]).failing());
+            let (issuer, verifier) = fresh_pair();
+            let app = router(mq, Arc::new(verifier));
+            let token = sign_token(&issuer, "Alice");
+            let resp = app
+                .oneshot(
+                    Request::builder()
+                        .uri(path)
+                        .header("authorization", format!("Bearer {token}"))
+                        .body(axum::body::Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(
+                resp.status(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "{path} must surface a failed read as an error, never as a zero"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn stats_travel_reports_a_broken_query_instead_of_zero() {
         let mq = Arc::new(MemoryQuery::new(vec![]).failing());
