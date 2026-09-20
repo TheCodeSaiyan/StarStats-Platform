@@ -3812,18 +3812,6 @@ export interface components {
              */
             deaths: number;
             deaths_by_zone: components["schemas"]["StatsBucket"][];
-            /**
-             * Format: int64
-             * @description How many of `deaths` were INFERRED rather than observed.
-             *
-             *     CIG removed the Actor Death log lines, so a death is frequently
-             *     reconstructed from a `Corpse` line and arrives as a
-             *     `player_death` carrying `body_class = "inferred"`. Summing the
-             *     two sources hides that, so the split travels with the total.
-             *
-             *     Always `<= deaths`.
-             */
-            deaths_inferred: number;
             /** Format: int64 */
             hours: number;
             /**
@@ -3831,6 +3819,13 @@ export interface components {
              * @description Times the user appeared as the killer in `actor_death`.
              */
             kills: number;
+            /**
+             * @description How many of `deaths` were INFERRED rather than observed.
+             *
+             *     CIG removed the Actor Death log lines, so a death is frequently
+             *     reconstructed from a `Corpse` line and arrives as a
+             *     `player_death` carrying `body_class = "inferred"`. Summing the
+             */
             top_weapons: components["schemas"]["StatsBucket"][];
         };
         /** @description Wire-format wrapper for the commerce endpoint. */
@@ -5431,7 +5426,6 @@ export interface components {
          *     `starstats_core::character_life::LifeEnd` variant.
          */
         LifeRow: {
-            death_inferred: boolean;
             death_zone?: string | null;
             /** Format: int64 */
             duration_secs?: number | null;
@@ -5483,16 +5477,6 @@ export interface components {
         LivesResponse: {
             /** Format: int32 */
             deaths: number;
-            /**
-             * Format: int32
-             * @description How many of `deaths` were inferred rather than observed.
-             *
-             *     Travels WITH the total so a surface showing "12 deaths" can say
-             *     how much of it is reconstructed. Aggregates otherwise hide
-             *     provenance precisely by aggregating: the per-life
-             *     `death_inferred` flag exists, but summing it away loses it.
-             */
-            deaths_inferred: number;
             /**
              * Format: float
              * @description `deaths / sessions`; `None` when `sessions == 0`.

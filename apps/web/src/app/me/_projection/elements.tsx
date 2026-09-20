@@ -161,7 +161,6 @@ function splitCount(label: string): { value: string; unit: string } {
 interface LivesData {
   total_lives: number;
   deaths: number;
-  deaths_inferred: number;
   longest_life_secs: number | null;
   mean_life_secs: number | null;
 }
@@ -182,12 +181,12 @@ function livesCallout(d: LivesData): CalloutVM {
       { k: 'Lives', v: fmtNum(d.total_lives) },
       { k: 'Deaths', v: fmtNum(d.deaths), tone: 'warn' },
     ],
-    // Deaths are partly reconstructed, and a life LENGTH is bounded by the
-    // deaths that end it — so the caveat travels with this figure too.
-    note:
-      d.deaths_inferred > 0
-        ? `${fmtNum(d.deaths_inferred)} of ${fmtNum(d.deaths)} deaths were reconstructed from Corpse lines, as the game no longer logs deaths directly. Lives are bounded by those deaths.`
-        : undefined,
+    // UNCONDITIONAL. This was gated on `deaths_inferred > 0`, a counter keyed
+    // on `body_class = "inferred"` that nothing ever writes — so it was always
+    // zero and the caveat never appeared, despite applying to every death.
+    // A life LENGTH is bounded by the death that ends it, so the caveat
+    // belongs on this figure too.
+    note: 'Deaths are reconstructed from Corpse lines, as the game no longer logs deaths directly. Lives are bounded by those deaths.',
   };
 }
 

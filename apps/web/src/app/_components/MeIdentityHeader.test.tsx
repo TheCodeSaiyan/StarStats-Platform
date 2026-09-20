@@ -89,60 +89,8 @@ describe('MeIdentityHeader', () => {
   });
 });
 
-describe('MeIdentityHeader K/D provenance', () => {
-  it('marks K/D when some deaths were reconstructed', () => {
-    // K/D is DERIVED from deaths, so a partly-reconstructed death count
-    // makes the ratio itself partly a guess.
-    render(
-      <MeIdentityHeader
-        handle="alice"
-        supporterTier={null}
-        enlistmentDate={null}
-        totalEvents={10}
-        deaths={4}
-        deathsInferred={3}
-        kills={8}
-        playtimeSecs={0}
-        locationsVisited={0}
-      />,
-    );
-    const marked = screen.getByRole('note');
-    expect(marked.getAttribute('aria-label')).toContain('3 of 4 inferred');
-    expect(marked.getAttribute('aria-label')).toContain('Corpse lines');
-  });
-
-  it('leaves K/D unmarked when every death was observed', () => {
-    const { container } = render(
-      <MeIdentityHeader
-        handle="alice"
-        supporterTier={null}
-        enlistmentDate={null}
-        totalEvents={10}
-        deaths={4}
-        deathsInferred={0}
-        kills={8}
-        playtimeSecs={0}
-        locationsVisited={0}
-      />,
-    );
-    expect(container.querySelector('[role="note"]')).toBeNull();
-  });
-
-  it('is unmarked when the prop is absent entirely', () => {
-    // Existing call sites that never pass it must not start showing a
-    // provenance marker they have no data for.
-    const { container } = render(
-      <MeIdentityHeader
-        handle="alice"
-        supporterTier={null}
-        enlistmentDate={null}
-        totalEvents={10}
-        deaths={4}
-        kills={8}
-        playtimeSecs={0}
-        locationsVisited={0}
-      />,
-    );
-    expect(container.querySelector('[role="note"]')).toBeNull();
-  });
-});
+// The K/D provenance tests that stood here are gone with the `deathsInferred`
+// prop. They asserted a marker gated on `body_class = "inferred"`, a value
+// nothing in the pipeline ever writes — so the "every death was observed" case
+// they covered was the ONLY one that ever occurred, and the marker never
+// rendered. The caveat is now unconditional and travels as `kdNote`.

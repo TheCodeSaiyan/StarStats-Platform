@@ -1,6 +1,7 @@
 import React from 'react';
-import { Provenance } from '@/components/Provenance';
 import { getLives } from '@/lib/api';
+import { InfoTip } from '@/components/hud/InfoTip';
+import { INFERENCE_EXPLANATIONS } from '@/lib/inference-explanations';
 import { rangeToHours } from '@/lib/range';
 import { logger } from '@/lib/logger';
 import { defineWidget } from './kit/defineWidget';
@@ -29,8 +30,6 @@ interface LivesWindow {
 interface LivesData {
   total_lives: number;
   deaths: number;
-  /** How many of `deaths` were inferred, not observed. */
-  deaths_inferred: number;
   longest_life_secs: number | null;
   mean_life_secs: number | null;
   deaths_per_session: number | null;
@@ -60,7 +59,6 @@ export const livesWidget = defineWidget<LivesData>({
     return {
       total_lives: lives.total_lives,
       deaths: lives.deaths,
-      deaths_inferred: lives.deaths_inferred ?? 0,
       longest_life_secs: lives.longest_life_secs ?? null,
       mean_life_secs: lives.mean_life_secs ?? null,
       deaths_per_session: lives.deaths_per_session ?? null,
@@ -85,19 +83,14 @@ export const livesWidget = defineWidget<LivesData>({
       { label: 'streak', value: streak },
       {
         label: 'deaths',
-        // Marked ONLY when some were reconstructed. CIG removed the
-        // Actor Death log lines, so a death is frequently derived from a
-        // Corpse line rather than read — and summing them away is
-        // exactly what hides that.
-        value: (
-          <Provenance
-            total={data.deaths}
-            inferred={data.deaths_inferred}
-            note="reconstructed from Corpse lines, as the game no longer logs deaths directly"
-          >
-            {fmtNum(data.deaths)}
-          </Provenance>
-        ),
+        // UNCONDITIONAL, because the caveat is unconditional. This used to
+        // wrap the figure in <Provenance total inferred>, marked only when
+        // `deaths_inferred > 0` — a counter keyed on `body_class =
+        // "inferred"`, which nothing in the pipeline ever writes. So it was
+        // always zero and the marker never rendered, while EVERY modern death
+        // is corpse-derived. The caveat was missing exactly where it applied.
+        info: <InfoTip label="deaths" text={INFERENCE_EXPLANATIONS.deaths} />,
+        value: fmtNum(data.deaths),
       },
       { label: 'deaths/session', value: deathsPerSession },
       { label: 'mean life', value: meanLife },

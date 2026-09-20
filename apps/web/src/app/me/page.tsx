@@ -202,7 +202,6 @@ export default async function MePage(props: PageProps) {
 
   const kills = combat?.kills ?? 0;
   const deaths = combat?.deaths ?? 0;
-  const deathsInferred = combat?.deaths_inferred ?? 0;
 
   // Supporter chip only shows for active/lapsed states.
   const supporterTier =
@@ -286,13 +285,17 @@ export default async function MePage(props: PageProps) {
         locations:
           locations == null ? MISSING : fmtNum(locations.unique_locations),
         kd: combat == null ? MISSING : formatKd(kills, deaths),
-        // K/D is derived from deaths, and deaths are partly reconstructed — so
-        // a partly-guessed death count makes the RATIO partly a guess, which
-        // the reader should be able to see. Stated, never rounded away.
+        // K/D is derived from deaths, and deaths are RECONSTRUCTED — so the
+        // ratio inherits that, which the reader should be able to see.
+        //
+        // Unconditional now. This was gated on `deaths_inferred > 0`, a
+        // counter keyed on `body_class = "inferred"` that nothing in the
+        // pipeline ever writes, so the note never appeared despite applying
+        // to every death.
         kdNote:
-          deathsInferred > 0
-            ? `Derived from deaths — ${fmtNum(deathsInferred)} of ${fmtNum(deaths)} were reconstructed from Corpse lines, as the game no longer logs deaths directly.`
-            : undefined,
+          combat == null
+            ? undefined
+            : 'Derived from deaths, which are reconstructed from Corpse lines as the game no longer logs them directly.',
       }}
       calibration={calibration}
       range={range}

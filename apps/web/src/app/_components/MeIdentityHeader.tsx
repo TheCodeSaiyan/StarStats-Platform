@@ -45,7 +45,6 @@ interface Props {
   /** How many of `deaths` were inferred rather than observed. K/D is
    *  derived from deaths, so a partly-reconstructed death count makes
    *  the RATIO partly a guess — which the reader should be able to see. */
-  deathsInferred?: number;
   /** Lifetime kills (combat stats: actor_death where killer == handle, max window). */
   kills: number;
   /** Lifetime playtime in seconds (max window). Formatted as whole hours. */
@@ -78,7 +77,6 @@ export function MeIdentityHeader({
   enlistmentDate,
   totalEvents,
   deaths,
-  deathsInferred = 0,
   kills,
   playtimeSecs,
   locationsVisited,
@@ -123,15 +121,12 @@ export function MeIdentityHeader({
         { k: 'loc', v: locationsVisited.toLocaleString() },
         {
           k: 'k/d',
-          v: (
-            <Provenance
-              total={deaths}
-              inferred={deathsInferred}
-              note="derived from deaths, some reconstructed from Corpse lines as the game no longer logs them directly"
-            >
-              {formatKd(kills, deaths)}
-            </Provenance>
-          ),
+          // The Provenance marker here was gated on a `deathsInferred` count
+          // keyed on `body_class = "inferred"`, which nothing ever writes —
+          // always zero, so it never rendered. The caveat it carried is true
+          // of EVERY death and now travels with the figure unconditionally,
+          // via the `kdNote` the projection renders beside it.
+          v: formatKd(kills, deaths),
         },
       ]}
     />
