@@ -202,7 +202,6 @@ describe('combatMissionWidget death accounting', () => {
       hours: 168,
       kills: 21,
       deaths: 12,
-      deaths_inferred: 3,
       top_weapons: [],
       deaths_by_zone: [],
     } as never);

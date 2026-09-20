@@ -70,8 +70,7 @@ describe('load failure is not emptiness', () => {
     (getLives as ReturnType<typeof vi.fn>).mockResolvedValue({
       total_lives: 0,
       deaths: 0,
-      deaths_inferred: 0,
-      mean_life_secs: null,
+        mean_life_secs: null,
       longest_life_secs: null,
       sessions: 0,
       deaths_per_session: null,

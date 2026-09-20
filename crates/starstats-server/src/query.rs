@@ -1491,10 +1491,6 @@ pub struct CombatStatsResponse {
     /// CIG removed the Actor Death log lines, so a death is frequently
     /// reconstructed from a `Corpse` line and arrives as a
     /// `player_death` carrying `body_class = "inferred"`. Summing the
-    /// two sources hides that, so the split travels with the total.
-    ///
-    /// Always `<= deaths`.
-    pub deaths_inferred: u64,
     pub top_weapons: Vec<StatsBucket>,
     pub deaths_by_zone: Vec<StatsBucket>,
 }
@@ -3107,39 +3103,21 @@ pub async fn stats_combat<Q: EventQuery>(
         .await
         .unwrap_or_default();
     let deaths_by_zone = merge_buckets(zone_actor, zone_player, STATS_BUCKET_LIMIT as usize);
-    // Provenance for the death total. Reuses the existing breakdown
-    // query rather than adding a repo method: `player_death` rows carry
-    // `body_class`, and the reconstructed ones are marked "inferred" —
-    // the same marker `character_life` keys `death_inferred` on.
-    //
-    // Best-effort: a breakdown failure means we cannot say how much was
-    // inferred, and claiming zero would assert "all observed" without
-    // evidence. `deaths_inferred` then stays 0 and the surface simply
-    // shows no provenance marker, which is the honest fallback.
-    let deaths_inferred = query
-        .payload_field_breakdown(
-            handle,
-            "player_death",
-            "body_class",
-            None,
-            since,
-            None,
-            STATS_BUCKET_LIMIT,
-        )
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|b| b.value.eq_ignore_ascii_case("inferred"))
-        .map(|b| b.count.max(0) as u64)
-        .sum::<u64>()
-        .min(deaths);
+    // NO PROVENANCE SPLIT. There was a `deaths_inferred` here, counting
+    // `player_death` rows whose `body_class` is "inferred". Nothing writes
+    // that value — the parser lifts `body_class` straight off the corpse
+    // line's regex (parser.rs:303), and the literal appears only in readers
+    // and test fixtures — so it was structurally always zero, and the "N of M
+    // reconstructed" caveat it fed rendered only when > 0, i.e. never. Every
+    // modern death IS corpse-reconstructed, so the note was missing exactly
+    // where it was warranted. Removed rather than left reading as "all
+    // observed".
     (
         StatusCode::OK,
         Json(CombatStatsResponse {
             hours,
             kills,
             deaths,
-            deaths_inferred,
             top_weapons: top_weapons.into_iter().map(StatsBucket::from).collect(),
             deaths_by_zone: deaths_by_zone.into_iter().map(StatsBucket::from).collect(),
         }),
@@ -3533,7 +3511,6 @@ pub struct LifeRow {
     pub ended_by: String,
     pub incap_count: u32,
     pub death_zone: Option<String>,
-    pub death_inferred: bool,
 }
 
 /// `ended_by` on the wire is the snake_case name of the `LifeEnd`
@@ -3563,13 +3540,6 @@ fn life_end_str(e: LifeEnd) -> &'static str {
 pub struct LivesResponse {
     pub total_lives: u32,
     pub deaths: u32,
-    /// How many of `deaths` were inferred rather than observed.
-    ///
-    /// Travels WITH the total so a surface showing "12 deaths" can say
-    /// how much of it is reconstructed. Aggregates otherwise hide
-    /// provenance precisely by aggregating: the per-life
-    /// `death_inferred` flag exists, but summing it away loses it.
-    pub deaths_inferred: u32,
     pub mean_life_secs: Option<i64>,
     pub longest_life_secs: Option<i64>,
     /// Canonical (marker-based) session count — see the struct doc.
@@ -3650,7 +3620,6 @@ pub async fn stats_lives<Q: EventQuery>(
             ended_by: life_end_str(l.ended_by).to_string(),
             incap_count: l.incap_count,
             death_zone: l.death_zone.clone(),
-            death_inferred: l.death_inferred,
         })
         .collect();
 
@@ -3693,7 +3662,6 @@ pub async fn stats_lives<Q: EventQuery>(
         Json(LivesResponse {
             total_lives: summary.total_lives,
             deaths: summary.deaths,
-            deaths_inferred: summary.deaths_inferred,
             mean_life_secs: summary.mean_life_secs,
             longest_life_secs: summary.longest_life_secs,
             sessions,
@@ -7596,12 +7564,24 @@ mod tests {
         assert_eq!(body.deaths_by_zone[0].value, "Daymar");
     }
 
-    /// A death total must say how much of itself was reconstructed.
-    /// CIG removed the Actor Death lines, so `player_death` rows with
-    /// `body_class = "inferred"` are the Corpse-derived ones — and
-    /// summing them into a single count is exactly what hides that.
+    /// Every `player_death` row counts toward the total, whatever its
+    /// `body_class`.
+    ///
+    /// This asserted a `deaths_inferred` split too, keyed on
+    /// `body_class = "inferred"`. NOTHING EVER WRITES THAT VALUE: the parser
+    /// takes `body_class` straight off the corpse line's regex
+    /// (`body_01_noMagicPocket` and friends, parser.rs:303), and the literal
+    /// "inferred" appears only in readers and in hand-built fixtures — this
+    /// one included, which is how the field looked alive.
+    ///
+    /// So the split was structurally always zero, and the provenance note it
+    /// fed never rendered — even though EVERY modern death is
+    /// corpse-reconstructed. The caveat was absent exactly when it was most
+    /// warranted, which is worse than not having one at all.
+    ///
+    /// The fixture keeps its "inferred" row to prove the total does not care.
     #[tokio::test]
-    async fn combat_deaths_report_how_many_were_inferred() {
+    async fn combat_deaths_count_every_player_death_row() {
         let now = Utc::now();
         let mq = Arc::new(MemoryQuery::new(vec![
             evt_with_payload(
@@ -7633,11 +7613,9 @@ mod tests {
             get_json::<CombatStatsResponse>(app, "/v1/me/stats/combat?hours=24", &token).await;
 
         assert_eq!(status, StatusCode::OK);
-        assert_eq!(body.deaths, 3);
-        assert_eq!(body.deaths_inferred, 2, "the observed death must not count");
-        assert!(
-            body.deaths_inferred <= body.deaths,
-            "a split can never exceed the total it describes"
+        assert_eq!(
+            body.deaths, 3,
+            "all three rows count, whatever the body_class"
         );
     }
 

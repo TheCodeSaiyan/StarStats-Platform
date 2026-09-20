@@ -13,10 +13,16 @@
  * A tip that is merely plausible is worse than no tip — it launders a guess
  * into an explanation.
  *
- * Don't add one where the widget already explains itself: `lives` marks
- * reconstructed deaths with <Provenance>, so a tip there would just repeat it.
+ * Don't add one where the widget already explains itself — but check that it
+ * DOES. This rule used to cite `lives`, which "marks reconstructed deaths with
+ * <Provenance>". It never did: that marker was gated on a `deaths_inferred`
+ * counter keyed on `body_class = "inferred"`, and nothing in the pipeline ever
+ * writes that value, so it was structurally always zero and the marker never
+ * rendered. The exemption was protecting an explanation that did not exist.
  */
 export const INFERENCE_EXPLANATIONS: Record<string, string> = {
+  deaths:
+    'Reconstructed from Corpse lines: the game stopped logging deaths directly, so a death is inferred from the corpse-cleanup burst that follows one. Traceable to a real log line, but derived rather than read.',
   quantum_jumps:
     'Inferred from “quantum target selected” log lines — one per time you chose a quantum destination. Picking a target is intent, not a confirmed jump, so read this as jumps initiated.',
   server_hops:

@@ -26,7 +26,6 @@ function fixture(overrides: Partial<LivesResponse> = {}): LivesResponse {
   return {
     total_lives: 5,
     deaths: 4,
-    deaths_inferred: 0,
     mean_life_secs: 600,
     longest_life_secs: 5400,
     sessions: 3,
@@ -91,24 +90,20 @@ describe('lives widget death provenance', () => {
     mockLives().mockReset();
   });
 
-  it('marks the death count when some were reconstructed', async () => {
-    // CIG removed the Actor Death log lines, so many deaths are derived
-    // from a Corpse line. Aggregating hides that unless the split rides
-    // along with the total.
-    mockLives().mockResolvedValue(fixture({ deaths: 4, deaths_inferred: 3 }));
+  it('always says deaths are reconstructed, because they always are', async () => {
+    // This replaces two tests that asserted a "N of M inferred" marker gated
+    // on `deaths_inferred > 0`. Nothing in the pipeline ever writes the
+    // `body_class = "inferred"` value that counter keyed on, so the split was
+    // structurally always zero and the marker never rendered — while EVERY
+    // modern death is corpse-derived, CIG having removed the Actor Death
+    // lines. The caveat was missing exactly where it applied.
+    mockLives().mockResolvedValue(fixture({ deaths: 4 }));
     render(<>{await livesWidget.render(ownerCtx(), 'expanded')}</>);
 
-    const marked = screen.getByRole('note');
-    expect(marked.getAttribute('aria-label')).toContain('3 of 4 inferred');
-    expect(marked.getAttribute('aria-label')).toContain('Corpse lines');
-  });
-
-  it('leaves a fully-observed death count unmarked', async () => {
-    // The signal is only worth having while it is rare.
-    mockLives().mockResolvedValue(fixture({ deaths: 4, deaths_inferred: 0 }));
-    const { container } = render(<>{await livesWidget.render(ownerCtx(), 'expanded')}</>);
-
-    expect(container.querySelector('[role="note"]')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /how deaths is calculated/i }),
+      'the provenance of a derived figure must travel with it, unconditionally',
+    ).toBeInTheDocument();
     expect(screen.getByText('4')).toBeInTheDocument();
   });
 });
