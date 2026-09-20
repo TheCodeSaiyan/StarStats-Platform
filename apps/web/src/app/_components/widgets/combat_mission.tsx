@@ -157,6 +157,14 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
     const deaths = combat?.deaths ?? sumCounts(breakdown.types, DEATH_TYPES_FALLBACK);
     const incapacitated = sumCounts(breakdown.types, INCAPACITATED_TYPES);
     const vehicleLosses = sumCounts(breakdown.types, VEHICLE_LOSS_TYPES);
+    // NOTE ON WHAT THIS CAN AND CANNOT TELL US. The breakdown endpoint is
+    // windowed and OMITS a type with no rows in the window — it never returns
+    // one with a count of 0 (see `event_type_breakdown` in repo.rs). So this
+    // means "no kills in this window", not "never killed anything", and the
+    // two are indistinguishable from here. For a metric the game stopped
+    // emitting 306 days ago that distinction does not matter; if kill logging
+    // ever returns, revisit it rather than assuming this still reads right.
+    const hasKillData = 'actor_death' in counts;
     // `null`, not 0, when the event type is absent from the breakdown
     // ENTIRELY. `mission_start` holds zero rows on a 320,945-event database
     // while `mission_end` holds 1,238, so the tile rendered "Contracts
@@ -209,7 +217,19 @@ export const combatMissionWidget = defineWidget<CombatMissionData>({
       objectives,
       // `?? null`, never `?? 0`: see the field's note. `combat` is undefined
       // when the call rejected, and 0 is a different claim from "unknown".
-      npcKills: combat?.kills ?? null,
+      //
+      // AND omitted entirely when the window holds no `actor_death` at all.
+      // Measured 2026-09-21: the newest kill row in the whole database is
+      // 2025-11-19, 306 days old, across four handles and zero rows in 2026 —
+      // the two biggest stop within a day of each other, which reads as a
+      // game patch rather than four people losing interest. CIG stopped
+      // writing `<Actor Death>`, exactly as it did `<Vehicle Destruction>`.
+      //
+      // So for almost every reader this figure can only ever be 0, and a 0
+      // asserts "you killed nothing" when the truth is "nothing can report a
+      // kill any more". The accounts that DO have history still see it, for
+      // any window containing their kills.
+      npcKills: hasKillData ? (combat?.kills ?? null) : null,
       topEnemies: combat?.top_enemies ?? [],
       topDamageTypes: combat?.top_damage_types ?? [],
       topWeapons: combat?.top_weapons ?? [],
