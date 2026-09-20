@@ -30,6 +30,46 @@
 //! enemies" list that silently omits what it failed to parse is a list
 //! that lies about its own total.
 
+//! # Known limits, from real names
+//!
+//! The rules below were written against the shapes one production query
+//! showed — `PU_Pilots-Human-Criminal-Pilot_Light`, `Kopion_Irradiated`,
+//! `JackAndJillFell`. A later query over a different handle's kills surfaced
+//! two families they handle badly. Recorded rather than guessed at, because
+//! fixing them properly needs more real names than the fifteen seen so far,
+//! and the metric receives no new data (see `CombatantFamily::Environment`
+//! and the note on `stats_combat`: the newest kill row anywhere is
+//! 2025-11-19).
+//!
+//! **1. Mission NPCs encode their SPAWN POINT, so one enemy becomes many.**
+//!
+//! ```text
+//! Shipjacker_HUB_Medium_03_003         -> group "Shipjacker_HUB_Medium_03"
+//! Shipjacker_MeetingRoom_Medium_05_001 -> group "Shipjacker_MeetingRoom_Medium_05"
+//! Shipjacker_LifeSupport_Medium_05_001 -> group "Shipjacker_LifeSupport_Medium_05"
+//! Shipjacker_Hangar_Medium_02_001      -> group "Shipjacker_Hangar_Medium_02"
+//! ```
+//!
+//! These are all ONE enemy type — `Shipjacker` — spawned in different rooms
+//! of a shipjacking mission. [`strip_entity_id`] removes the trailing id, but
+//! the room and size tokens survive, so a "most killed" board lists a dozen
+//! near-identical rows instead of one with the total. That is the exact
+//! failure the entity strip exists to prevent, one segment too shallow.
+//!
+//! A fix needs to know which tokens are the ARCHETYPE and which are spawn
+//! scaffolding, and `Medium`/`HUB`/`Hangar` are not safely droppable in
+//! general — `Hangar` could be part of a real name. Do not guess: get more
+//! names first.
+//!
+//! **2. A handle containing an underscore is misfiled.**
+//!
+//! `Luna_Sakara` classifies as [`CombatantFamily::Unclassified`], not
+//! `PlayerLike`, because the player test is "one token, no scaffolding" and
+//! an underscore splits it in two. Harmless for display (the name still
+//! renders readably) but wrong for the family, and `stats_combat` documents
+//! `player_like` appearing as the signal that PvP kill logging has returned —
+//! so a false negative there costs a signal rather than a label.
+
 use serde::{Deserialize, Serialize};
 
 /// What kind of thing a combatant name refers to.
