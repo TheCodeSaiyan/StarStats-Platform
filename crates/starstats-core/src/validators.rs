@@ -49,6 +49,7 @@ fn validate_game_event(event: &GameEvent) -> Result<(), ValidationError> {
         GameEvent::SeedSolarSystem(e) => &e.timestamp,
         GameEvent::ResolveSpawn(e) => &e.timestamp,
         GameEvent::ActorDeath(e) => &e.timestamp,
+        GameEvent::ActorEjected(e) => &e.timestamp,
         GameEvent::PlayerDeath(e) => &e.timestamp,
         GameEvent::PlayerIncapacitated(e) => &e.timestamp,
         GameEvent::VehicleDestruction(e) => &e.timestamp,

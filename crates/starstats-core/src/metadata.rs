@@ -246,6 +246,14 @@ pub fn primary_entity_for(event: &GameEvent, claimed_handle: Option<&str>) -> En
             id: e.player_geid.clone(),
             display_name: e.player_geid.clone(),
         },
+        // The VEHICLE is the subject, not the actor: this event exists to
+        // record which hull was lost, and the entity strip is what makes a
+        // ship group across spawns.
+        GameEvent::ActorEjected(e) => EntityRef {
+            kind: EntityKind::Vehicle,
+            id: e.vehicle_class.clone(),
+            display_name: e.vehicle_class.clone(),
+        },
         GameEvent::VehicleDestruction(e) => EntityRef {
             kind: EntityKind::Vehicle,
             id: e.vehicle_id.clone().unwrap_or_else(|| UNKNOWN_ID.into()),
@@ -412,6 +420,7 @@ pub fn event_type_key(event: &GameEvent) -> &'static str {
         GameEvent::PlayerDeath(_) => "player_death",
         GameEvent::PlayerIncapacitated(_) => "player_incapacitated",
         GameEvent::VehicleDestruction(_) => "vehicle_destruction",
+        GameEvent::ActorEjected(_) => "actor_ejected",
         GameEvent::HudNotification(_) => "hud_notification",
         GameEvent::LocationInventoryRequested(_) => "location_inventory_requested",
         GameEvent::PlanetTerrainLoad(_) => "planet_terrain_load",

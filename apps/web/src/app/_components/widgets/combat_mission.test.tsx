@@ -319,6 +319,86 @@ describe('combatMissionWidget death accounting', () => {
     expect(html).not.toContain('NPC kills');
   });
 
+  /**
+   * A hull lost through the only line that still reports it.
+   *
+   * `vehicle_destruction` holds ZERO rows on a 320,945-event database — CIG
+   * stopped writing `<Vehicle Destruction>` in modern builds, as it did
+   * `<Actor Death>`. The `[ActorState] Dead` line is what survives: it fires
+   * when you are ejected from a vehicle destroyed around you and it names the
+   * ship. It appeared 371 times on that database while "Hulls lost" read 0.
+   */
+  it('counts an ejection from a destroyed vehicle as a lost hull', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [
+        { event_type: 'actor_ejected', count: 7 },
+        { event_type: 'mission_start', count: 3 },
+      ],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockRejectedValue(new Error('no combat call'));
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      vehicleLosses: number;
+    } | null;
+    expect(
+      data!.vehicleLosses,
+      'the ship is gone whichever line the engine chose to report it with',
+    ).toBe(7);
+  });
+
+  /**
+   * A metric with NO events behind it must not render as 0.
+   *
+   * `mission_start` holds zero rows on that same database while `mission_end`
+   * holds 1,238, so the tile read "Contracts started 0 / Contracts ended
+   * 1,238". That is not a low number, it is a missing one — and a 0 asserts
+   * you started nothing, which is the same fault the kill count was deleted
+   * over. A handle that has genuinely started none still carries the type at
+   * count 0, so a real zero survives.
+   */
+  it('omits missions started when nothing has ever reported one', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [{ event_type: 'mission_end', count: 1238 }],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockRejectedValue(new Error('no combat call'));
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      missionsStarted: number | null;
+      completionPct: number | null;
+    } | null;
+    expect(data!.missionsStarted).toBeNull();
+    // And nothing divides by it.
+    expect(data!.completionPct).toBeNull();
+
+    const html = render(
+      <>{await combatMissionWidget.render(ownerCtx('7d'), 'expanded')}</>,
+    ).container.textContent;
+    expect(html).not.toContain('Missions started');
+    // Not a vacuous pass - the tile did render.
+    expect(html).toContain('Missions completed');
+  });
+
+  it('keeps a REAL zero when the type has reported before', async () => {
+    vi.mocked(getMetricsEventTypes).mockResolvedValue({
+      types: [
+        { event_type: 'mission_start', count: 0 },
+        { event_type: 'mission_end', count: 4 },
+      ],
+    } as never);
+    vi.mocked(getObjectives).mockResolvedValue(null as never);
+    vi.mocked(getCombatStats).mockRejectedValue(new Error('no combat call'));
+
+    const data = (await combatMissionWidget.load!(ownerCtx('7d'))) as {
+      missionsStarted: number | null;
+    } | null;
+    expect(
+      data!.missionsStarted,
+      'a genuine zero is an answer and must survive',
+    ).toBe(0);
+  });
+
   it('falls back to the event count when the combat call fails', async () => {
     // An over-count beats a blank when the authoritative source is down —
     // but incapacitation stays out of it either way.

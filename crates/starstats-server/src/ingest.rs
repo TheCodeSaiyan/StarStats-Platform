@@ -320,6 +320,22 @@ pub struct ActorDeathSchema {
     pub damage_type: String,
 }
 
+/// `<[ActorState] Dead>` — ejected from a vehicle destroyed around you.
+///
+/// NOT a death. See `starstats_core::events::ActorEjected` for why: only
+/// ~60% of sampled occurrences pair with a `player_death`, so emitting a
+/// death here would double-count the majority already recorded.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[allow(dead_code)]
+pub struct ActorEjectedSchema {
+    pub timestamp: String,
+    pub actor: String,
+    pub actor_geid: Option<String>,
+    pub vehicle_class: String,
+    pub vehicle_id: Option<String>,
+    pub to_zone: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[allow(dead_code)]
 pub struct PlayerDeathSchema {
@@ -552,6 +568,7 @@ pub enum GameEventSchema {
     PlayerDeath(PlayerDeathSchema),
     PlayerIncapacitated(PlayerIncapacitatedSchema),
     VehicleDestruction(VehicleDestructionSchema),
+    ActorEjected(ActorEjectedSchema),
     HudNotification(HudNotificationSchema),
     LocationInventoryRequested(LocationInventoryRequestedSchema),
     PlanetTerrainLoad(PlanetTerrainLoadSchema),

@@ -27,6 +27,7 @@ pub enum GameEvent {
     PlayerDeath(PlayerDeath),
     PlayerIncapacitated(PlayerIncapacitated),
     VehicleDestruction(VehicleDestruction),
+    ActorEjected(ActorEjected),
     HudNotification(HudNotification),
     LocationInventoryRequested(LocationInventoryRequested),
     PlanetTerrainLoad(PlanetTerrainLoad),
@@ -212,6 +213,47 @@ pub struct ActorDeath {
     pub killer_geid: Option<String>,
     pub weapon: String,
     pub damage_type: String,
+}
+
+/// `<[ActorState] Dead>` — the player thrown out of a vehicle that has
+/// been destroyed around them.
+///
+/// The engine writes one line form, whose wording is the whole reason this
+/// event exists:
+///
+/// ```text
+/// Actor 'Handle' [204…] ejected from zone 'VNCL_Scythe_565…' [565…]
+///   to zone 'SolarSystem_526…' [526…] due to previous zone being in a
+///   destroyed vehicle with detached interior.
+/// ```
+///
+/// WHY THIS IS NOT A DEATH EVENT, despite `[ActorState] Dead` and
+/// `CSCActorControlStateDead`. Only about 60% of the sampled occurrences sit
+/// near a `player_death` in the same log; the rest stand alone. Emitting a
+/// death here would therefore double-count the majority that ARE already
+/// recorded — the exact fault just removed from the event store — while
+/// adding an unverified death for the remainder. Deaths keep flowing through
+/// `PlayerDeath` alone.
+///
+/// WHAT IT DOES SAY, unambiguously, is that a vehicle was destroyed and which
+/// one: the zone the actor was ejected FROM is the vehicle. On the database
+/// this was written against, `vehicle_destruction` holds ZERO rows across
+/// 320,945 events while this line appears 371 times naming a Scythe, a Nox
+/// and a Tiburon — CIG appears to have stopped writing `<Vehicle Destruction>`
+/// in modern builds, exactly as it did `<Actor Death>`. So this is the
+/// surviving evidence for a hull loss, and the only evidence there is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActorEjected {
+    pub timestamp: String,
+    pub actor: String,
+    pub actor_geid: Option<String>,
+    /// The destroyed vehicle's class, entity id stripped: `VNCL_Scythe`.
+    pub vehicle_class: String,
+    /// The destroyed vehicle's entity id, when the zone carried one.
+    pub vehicle_id: Option<String>,
+    /// Where the actor ended up — a solar system, a planet OOC zone, a
+    /// mission zone. Kept raw; the location classifier resolves it.
+    pub to_zone: String,
 }
 
 /// `<Vehicle Destruction>` — ship / vehicle blown up.
