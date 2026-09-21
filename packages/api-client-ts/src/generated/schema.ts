@@ -2792,6 +2792,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/u/{handle}/commerce/recent": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The economy widget's friend-visitor path.
+         * @description `apps/web` has called this URL since the widget was written; nothing ever
+         *     answered it, so every visitor's economy tile 404'd into an empty card and
+         *     read as "they have not traded". Its comment cites "Plan 3b A.2" and the
+         *     note above `widget_allowed_for_scope` promised the enforcement "in a
+         *     follow-up PR" — this is that call site, the function's first in
+         *     production.
+         *
+         *     THREE gates, not one, and each rejects with the same bare 404 so a
+         *     stranger cannot tell "no share" from "shared but clamped":
+         *
+         *      1. `check_view_with_expiry` — the share exists and has not lapsed.
+         *      2. `scope_allows_timeline` — these are event ROWS (shop, item, quantity),
+         *         not an aggregate. A share cut to `aggregates` deliberately lets a
+         *         recipient see that someone played without seeing what they did, and
+         *         a purchase list is squarely "what they did". The alternative — serving
+         *         totals with an empty page to aggregate-only shares — was not taken:
+         *         it would make `confirmed`/`pending` read zero against a non-zero
+         *         total, which is the same shape of lie this endpoint's sibling commit
+         *         removes.
+         *      3. `widget_allowed_for_scope(scope, "economy")` — the owner's per-widget
+         *         toggle, which the web UI already honours client-side and which has to
+         *         be enforced here too, or it is a suggestion.
+         *
+         *     Hidden rows and the scope's type clamps reach the COUNTS as well as the
+         *     page, via `CommerceView` — see `count_event_type_shared`.
+         */
+        get: operations["friend_commerce_recent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/u/{handle}/events": {
         parameters: {
             query?: never;
@@ -16773,6 +16817,78 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    friend_commerce_recent: {
+        parameters: {
+            query?: {
+                /** @description How many transactions to return. Capped at 500. */
+                limit?: number;
+                /**
+                 * @description Window for the "if no response in N seconds, mark timed out"
+                 *     classification. Mirrors the tray client's default of 30s.
+                 *     This is a *pairing* timeout, NOT a time-range filter — see
+                 *     `hours` below for the range-filter knob.
+                 */
+                window_secs?: number;
+                /**
+                 * @description Optional time-range filter in hours. When set, only events
+                 *     newer than `now - hours` are considered when pairing. Bounds
+                 *     match the stats endpoints (1..=STATS_MAX_HOURS). Absent =
+                 *     no filter (legacy behavior — pull recent ~1000 events).
+                 */
+                hours?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Owner RSI handle */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Paired commerce transactions the share permits */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommerceRecentResponse"];
+                };
+            };
+            /** @description Invalid window */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not shared with you, the scope excludes the timeline, or the economy widget is denied */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description SpiceDB not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };

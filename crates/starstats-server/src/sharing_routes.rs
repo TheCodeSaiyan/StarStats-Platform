@@ -23,7 +23,10 @@ use crate::audit::{AuditEntry, AuditLog, AuditQuery};
 use crate::auth::AuthenticatedUser;
 use crate::location_catalog_cache::LocationCatalogCache;
 use crate::orgs::{OrgStore, PostgresOrgStore};
-use crate::query::derive_resolved_location;
+use crate::query::{
+    derive_resolved_location, render_commerce_recent, CommerceRecentParams, CommerceRecentResponse,
+    CommerceView,
+};
 use crate::repo::{EventFilters, EventQuery, PostgresStore, SeqCursor};
 use crate::restriction_guard::{PublicProfile, RequireUnrestricted, Sharing};
 use crate::share_metadata::{ShareMetadataStore, NOTE_MAX_LEN};
@@ -109,6 +112,13 @@ pub fn routes(
         // returns aggregates, which is why a recipient could see that
         // someone played but not what they did.
         .route("/v1/u/{handle}/events", get(friend_events::<PostgresStore>))
+        // The economy widget's friend path. Registered here rather than
+        // beside the owner route in main.rs because every gate it needs
+        // (SpiceDB, share metadata, audit) is wired on this sub-router.
+        .route(
+            "/v1/u/{handle}/commerce/recent",
+            get(friend_commerce_recent::<PostgresStore>),
+        )
         // Plan 3b Option B foundation — exposes the caller's per-
         // recipient ShareScope so the web framework can populate
         // ViewerCtx.recipientScopes once at page load instead of
@@ -2371,6 +2381,138 @@ pub async fn friend_events<Q: EventQuery>(
             }),
         )
             .into_response()
+    })
+    .await
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/u/{handle}/commerce/recent",
+    tag = "sharing",
+    params(
+        ("handle" = String, Path, description = "Owner RSI handle"),
+        CommerceRecentParams,
+    ),
+    responses(
+        (status = 200, description = "Paired commerce transactions the share permits", body = CommerceRecentResponse),
+        (status = 400, description = "Invalid window", body = ApiErrorBody),
+        (status = 401, description = "Missing or invalid bearer token"),
+        (status = 404, description = "Not shared with you, the scope excludes the timeline, or the economy widget is denied"),
+        (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
+    ),
+    security(("BearerAuth" = []))
+)]
+/// The economy widget's friend-visitor path.
+///
+/// `apps/web` has called this URL since the widget was written; nothing ever
+/// answered it, so every visitor's economy tile 404'd into an empty card and
+/// read as "they have not traded". Its comment cites "Plan 3b A.2" and the
+/// note above `widget_allowed_for_scope` promised the enforcement "in a
+/// follow-up PR" — this is that call site, the function's first in
+/// production.
+///
+/// THREE gates, not one, and each rejects with the same bare 404 so a
+/// stranger cannot tell "no share" from "shared but clamped":
+///
+///  1. `check_view_with_expiry` — the share exists and has not lapsed.
+///  2. `scope_allows_timeline` — these are event ROWS (shop, item, quantity),
+///     not an aggregate. A share cut to `aggregates` deliberately lets a
+///     recipient see that someone played without seeing what they did, and
+///     a purchase list is squarely "what they did". The alternative — serving
+///     totals with an empty page to aggregate-only shares — was not taken:
+///     it would make `confirmed`/`pending` read zero against a non-zero
+///     total, which is the same shape of lie this endpoint's sibling commit
+///     removes.
+///  3. `widget_allowed_for_scope(scope, "economy")` — the owner's per-widget
+///     toggle, which the web UI already honours client-side and which has to
+///     be enforced here too, or it is a suggestion.
+///
+/// Hidden rows and the scope's type clamps reach the COUNTS as well as the
+/// page, via `CommerceView` — see `count_event_type_shared`.
+pub async fn friend_commerce_recent<Q: EventQuery>(
+    State(query): State<Arc<Q>>,
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(audit): Extension<Arc<dyn AuditLog>>,
+    auth: AuthenticatedUser,
+    Path(handle): Path<String>,
+    Query(params): Query<CommerceRecentParams>,
+) -> Response {
+    if !validate_handle(&handle) {
+        return (StatusCode::NOT_FOUND, ()).into_response();
+    }
+    let limit = params.limit.clamp(1, 500);
+    let requested_since = match params.hours {
+        Some(h) if h > 0 && h <= crate::query::STATS_MAX_HOURS => {
+            Some(Utc::now() - chrono::Duration::hours(h))
+        }
+        Some(_) => return err(StatusCode::BAD_REQUEST, "invalid_hours"),
+        None => None,
+    };
+    let Some(client) = spicedb.as_ref() else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiErrorBody {
+                error: "spicedb_unavailable".into(),
+                detail: None,
+            }),
+        )
+            .into_response();
+    };
+
+    let check = check_view_with_expiry(
+        client,
+        meta.as_ref(),
+        audit.as_ref(),
+        &handle,
+        &auth.preferred_username,
+    )
+    .await;
+
+    let scope = meta
+        .find(&handle, &auth.preferred_username)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|m| m.scope)
+        .and_then(|v| scope_from_value(&v));
+    if let Some(s) = scope.as_ref() {
+        if !scope_allows_timeline(s) || !widget_allowed_for_scope(Some(s), "economy") {
+            return (StatusCode::NOT_FOUND, ()).into_response();
+        }
+    }
+
+    // `window_days` narrows the window; it must never widen it, and it
+    // applies even when the caller asked for no window at all.
+    let since = match scope.as_ref().and_then(|s| s.window_days) {
+        Some(w) => {
+            let floor = Utc::now() - chrono::Duration::days(w as i64);
+            Some(match requested_since {
+                Some(r) => r.max(floor),
+                None => floor,
+            })
+        }
+        None => requested_since,
+    };
+
+    let allow_event_types = scope.as_ref().and_then(|s| s.allow_event_types.clone());
+    let deny_event_types = scope.as_ref().and_then(|s| s.deny_event_types.clone());
+
+    render_or_404(check, || async {
+        emit_share_viewed(audit.as_ref(), &auth, &handle).await;
+        render_commerce_recent(
+            query.as_ref(),
+            CommerceView {
+                handle: &handle,
+                limit,
+                window_secs: params.window_secs,
+                since,
+                shared: true,
+                allow_event_types,
+                deny_event_types,
+            },
+        )
+        .await
     })
     .await
 }
