@@ -1407,7 +1407,7 @@ fn aggregate_dwell(stream: Vec<crate::repo::LatestLocationEvent>) -> Vec<Breakdo
 // query.rs surface — every read endpoint already lives in this file.
 
 const STATS_DEFAULT_HOURS: i64 = 24 * 30;
-const STATS_MAX_HOURS: i64 = 24 * 365;
+pub(crate) const STATS_MAX_HOURS: i64 = 24 * 365;
 /// Cap on raw rows returned per stats breakdown. The web app now
 /// performs client-side hierarchical roll-up (manufacturer → family →
 /// size for weapons / items; system → body → place for locations),
@@ -4055,6 +4055,64 @@ pub async fn commerce_recent<Q: EventQuery>(
         None => None,
     };
 
+    render_commerce_recent(
+        query.as_ref(),
+        CommerceView {
+            handle: &user.preferred_username,
+            limit,
+            window_secs: params.window_secs,
+            since,
+            // The owner's own view: their hidden rows are still their
+            // history, and no scope clamps apply to themselves.
+            shared: false,
+            allow_event_types: None,
+            deny_event_types: None,
+        },
+    )
+    .await
+}
+
+/// What a commerce read is allowed to see. Built by the owner handler above
+/// and by the friend handler in `sharing_routes.rs`, which is the reason this
+/// is a struct rather than six positional arguments: the clamps ARE the
+/// difference between the two callers, so they are named at both call sites.
+pub struct CommerceView<'a> {
+    /// Whose commerce to read — never the caller's own token on the friend
+    /// path, where the owner comes from the URL and the caller is the guest.
+    pub handle: &'a str,
+    pub limit: u32,
+    pub window_secs: i64,
+    pub since: Option<DateTime<Utc>>,
+    /// A recipient's view. Hidden rows leave BOTH the page and the counts,
+    /// and `allow`/`deny` below are enforced on both as well.
+    pub shared: bool,
+    pub allow_event_types: Option<Vec<String>>,
+    pub deny_event_types: Option<Vec<String>>,
+}
+
+impl CommerceView<'_> {
+    /// Mirrors the `allow`/`deny` predicates `list_filtered` puts in SQL, so
+    /// the counts cannot report a type the page is forbidden to show.
+    fn permits(&self, event_type: &str) -> bool {
+        if let Some(allow) = self.allow_event_types.as_ref() {
+            if !allow.iter().any(|t| t == event_type) {
+                return false;
+            }
+        }
+        if let Some(deny) = self.deny_event_types.as_ref() {
+            if deny.iter().any(|t| t == event_type) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+/// Page + totals for one commerce window, under whatever `view` permits.
+pub async fn render_commerce_recent<Q: EventQuery>(query: &Q, view: CommerceView<'_>) -> Response {
+    let limit = view.limit;
+    let since = view.since;
+
     // Fetch commerce events BY TYPE — the same per-type query
     // `stats_biggest_trade` uses. This previously pulled the newest N
     // events of ANY type and filtered commerce out in-process, which
@@ -4082,11 +4140,11 @@ pub async fn commerce_recent<Q: EventQuery>(
             since,
             until: None,
             limit: per_type_limit,
-            exclude_hidden: false,
-            allow_event_types: None,
-            deny_event_types: None,
+            exclude_hidden: view.shared,
+            allow_event_types: view.allow_event_types.clone(),
+            deny_event_types: view.deny_event_types.clone(),
         };
-        match query.list_filtered(&user.preferred_username, filters).await {
+        match query.list_filtered(view.handle, filters).await {
             Ok(rows) => game_events.extend(
                 rows.into_iter()
                     .filter_map(|e| serde_json::from_value(e.payload).ok()),
@@ -4099,7 +4157,7 @@ pub async fn commerce_recent<Q: EventQuery>(
     }
 
     let now = Utc::now().to_rfc3339();
-    let txs = starstats_core::pair_transactions(&game_events, &now, params.window_secs);
+    let txs = starstats_core::pair_transactions(&game_events, &now, view.window_secs);
 
     // Trim to the requested limit (newest first by started_at after
     // pair_transactions sorts ascending — reverse + take). Convert
@@ -4125,13 +4183,24 @@ pub async fn commerce_recent<Q: EventQuery>(
         ("commodity_buy_request", &mut totals.commodity_buy),
         ("commodity_sell_request", &mut totals.commodity_sell),
     ] {
-        match query
-            .count_event_type(&user.preferred_username, ty, None, since, None)
-            .await
-        {
+        // A type the view may not show stays at zero rather than being
+        // counted: a count is a disclosure too.
+        if !view.permits(ty) {
+            continue;
+        }
+        let counted = if view.shared {
+            query
+                .count_event_type_shared(view.handle, ty, since, None)
+                .await
+        } else {
+            query
+                .count_event_type(view.handle, ty, None, since, None)
+                .await
+        };
+        match counted {
             Ok(n) => *slot = n as i64,
             Err(e) => {
-                tracing::error!(error = %e, event_type = ty, "commerce_recent count_event_type failed");
+                tracing::error!(error = %e, event_type = ty, "commerce_recent count failed");
                 return err(StatusCode::INTERNAL_SERVER_ERROR, "query_failed");
             }
         }
@@ -8924,6 +8993,156 @@ mod tests {
         );
         assert_eq!(body["totals"]["commodity_buy"], 0);
         assert_eq!(body["totals"]["commodity_sell"], 0);
+    }
+    // The friend path's gates live in `sharing_routes.rs`, but what those
+    // gates hand down is a `CommerceView`, and THIS is where a clamp is
+    // either honoured or leaked. Route-level tests of the gate itself would
+    // need a live SpicedbClient — there is no fake, which is why no friend
+    // endpoint has one.
+
+    /// Mark a row hidden, the way the owner's "hide from shared views" does.
+    fn hide(mut e: StoredQueryEvent) -> StoredQueryEvent {
+        e.hidden_at = Some(Utc::now());
+        e
+    }
+
+    async fn view_body<'a>(query: &MemoryQuery, view: CommerceView<'a>) -> serde_json::Value {
+        let resp = render_commerce_recent(query, view).await;
+        let bytes = to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        serde_json::from_slice(&bytes).expect("json body")
+    }
+
+    fn shared_view(handle: &str) -> CommerceView<'_> {
+        CommerceView {
+            handle,
+            limit: 100,
+            window_secs: 30,
+            since: None,
+            shared: true,
+            allow_event_types: None,
+            deny_event_types: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn a_shared_view_counts_neither_hidden_rows_nor_shows_them() {
+        // Hiding exists so a recipient cannot see a purchase. A COUNT of it
+        // discloses the same thing more quietly: "5 purchases" over a list of
+        // three says two were hidden.
+        let at = Utc::now() - chrono::Duration::hours(3);
+        let mut rows = Vec::new();
+        for i in 0..3 {
+            rows.extend(shop_pair(
+                1 + i * 2,
+                "alice",
+                at + chrono::Duration::seconds(i * 10),
+                "shop-open",
+            ));
+        }
+        for i in 0..2 {
+            rows.extend(
+                shop_pair(
+                    100 + i * 2,
+                    "alice",
+                    at + chrono::Duration::seconds(500 + i * 10),
+                    "shop-secret",
+                )
+                .into_iter()
+                .map(hide),
+            );
+        }
+
+        let mq = MemoryQuery::new(rows);
+        let body = view_body(&mq, shared_view("alice")).await;
+
+        assert_eq!(body["transactions"].as_array().expect("array").len(), 3);
+        assert_eq!(
+            body["totals"]["shop"], 3,
+            "a hidden purchase must not be counted either; got {body}"
+        );
+        let text = body.to_string();
+        assert!(!text.contains("shop-secret"), "hidden shop leaked: {text}");
+    }
+
+    #[tokio::test]
+    async fn the_owners_own_view_still_counts_what_they_hid_from_others() {
+        // The mirror of the test above, and the reason the two counts are
+        // separate methods: hiding is "hide from SHARED views", not "delete".
+        let at = Utc::now() - chrono::Duration::hours(3);
+        let mut rows = shop_pair(1, "alice", at, "shop-open");
+        rows.extend(
+            shop_pair(
+                50,
+                "alice",
+                at + chrono::Duration::seconds(30),
+                "shop-secret",
+            )
+            .into_iter()
+            .map(hide),
+        );
+
+        let mq = MemoryQuery::new(rows);
+        let body = view_body(
+            &mq,
+            CommerceView {
+                shared: false,
+                ..shared_view("alice")
+            },
+        )
+        .await;
+
+        assert_eq!(
+            body["totals"]["shop"], 2,
+            "owner sees their own; got {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_denied_event_type_is_absent_from_the_totals_as_well_as_the_page() {
+        // `deny_event_types` reaches the page through SQL. The counts are a
+        // separate query, so the clamp has to be applied to them by hand —
+        // this is the test that fails if that is ever dropped.
+        let at = Utc::now() - chrono::Duration::hours(3);
+        let rows = shop_pair(1, "alice", at, "shop-open");
+
+        let mq = MemoryQuery::new(rows);
+        let body = view_body(
+            &mq,
+            CommerceView {
+                deny_event_types: Some(vec!["shop_buy_request".to_string()]),
+                ..shared_view("alice")
+            },
+        )
+        .await;
+
+        assert_eq!(body["transactions"].as_array().expect("array").len(), 0);
+        assert_eq!(
+            body["totals"]["shop"], 0,
+            "a denied type must not be counted; got {body}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_allowlist_that_omits_a_type_zeroes_its_total() {
+        let at = Utc::now() - chrono::Duration::hours(3);
+        let rows = shop_pair(1, "alice", at, "shop-open");
+
+        let mq = MemoryQuery::new(rows);
+        let body = view_body(
+            &mq,
+            CommerceView {
+                // Deliberately lists a DIFFERENT commerce type, so the
+                // allowlist is non-empty and shop is simply not on it.
+                allow_event_types: Some(vec!["commodity_sell_request".to_string()]),
+                ..shared_view("alice")
+            },
+        )
+        .await;
+
+        assert_eq!(body["totals"]["shop"], 0, "got {body}");
+        assert_eq!(body["totals"]["commodity_sell"], 0, "got {body}");
     }
 
     #[tokio::test]

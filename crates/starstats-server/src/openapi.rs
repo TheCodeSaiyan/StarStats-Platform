@@ -203,6 +203,7 @@ impl Modify for SecurityAddon {
         sharing_routes::friend_summary,
         sharing_routes::friend_timeline,
         sharing_routes::friend_events,
+        sharing_routes::friend_commerce_recent,
         sharing_routes::friend_scope,
         sharing_routes::preview_summary,
         sharing_routes::preview_timeline,

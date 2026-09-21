@@ -952,6 +952,25 @@ pub trait EventQuery: Send + Sync + 'static {
         until: Option<DateTime<Utc>>,
     ) -> Result<u64, RepoError>;
 
+    /// Count events of a type as a SHARED view may see them: the window
+    /// convention of [`Self::count_event_type`], minus every row the owner
+    /// hid (`hidden_at IS NOT NULL`).
+    ///
+    /// A separate method rather than a flag on `count_event_type` because
+    /// the two want opposite answers and each has exactly one kind of
+    /// caller. An owner counting their own history must include what they
+    /// hid from other people — it is still their history. A recipient must
+    /// not be told it exists at all, and a count is enough to reveal that:
+    /// "412 purchases" beside a list of 300 says 112 were hidden, which is
+    /// the one thing hiding is for.
+    async fn count_event_type_shared(
+        &self,
+        claimed_handle: &str,
+        event_type: &str,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<u64, RepoError>;
+
     /// Sum a numeric top-level JSON payload field across events of the
     /// given type for the user (optional `since`/`until` window, same
     /// bound convention as [`Self::payload_field_breakdown`]). Rows whose
@@ -2373,6 +2392,32 @@ pub mod test_support {
                     if actual != Some(filter.equals) {
                         continue;
                     }
+                }
+                n += 1;
+            }
+            Ok(n)
+        }
+
+        async fn count_event_type_shared(
+            &self,
+            claimed_handle: &str,
+            event_type: &str,
+            since: Option<DateTime<Utc>>,
+            until: Option<DateTime<Utc>>,
+        ) -> Result<u64, RepoError> {
+            if self.fail_reads {
+                return Err(RepoError::Database(sqlx::Error::PoolTimedOut));
+            }
+            let mut n = 0u64;
+            for r in &self.rows {
+                if !r.claimed_handle.eq_ignore_ascii_case(claimed_handle)
+                    || r.event_type != event_type
+                    || r.hidden_at.is_some()
+                {
+                    continue;
+                }
+                if !in_window(r.event_timestamp, since, until) {
+                    continue;
                 }
                 n += 1;
             }
@@ -4516,6 +4561,33 @@ impl EventQuery for PostgresStore {
         .bind(since)
         .bind(filter_field)
         .bind(filter_value)
+        .bind(until)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(count.max(0) as u64)
+    }
+
+    async fn count_event_type_shared(
+        &self,
+        claimed_handle: &str,
+        event_type: &str,
+        since: Option<DateTime<Utc>>,
+        until: Option<DateTime<Utc>>,
+    ) -> Result<u64, RepoError> {
+        // `hidden_at IS NULL` is the whole difference from
+        // `count_event_type`; same window convention otherwise.
+        let count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)::BIGINT
+               FROM events
+              WHERE claimed_handle = LOWER($1)
+                AND event_type = $2
+                AND hidden_at IS NULL
+                AND ($3::timestamptz IS NULL OR event_timestamp >= $3)
+                AND ($4::timestamptz IS NULL OR event_timestamp < $4)",
+        )
+        .bind(claimed_handle)
+        .bind(event_type)
+        .bind(since)
         .bind(until)
         .fetch_one(&self.pool)
         .await?;
