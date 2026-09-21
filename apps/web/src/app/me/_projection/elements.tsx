@@ -279,6 +279,8 @@ interface EconomyData {
   buys: number;
   sells: number;
   pending: number;
+  /** The window holds more transactions than the widget's page fetched. */
+  sampled: boolean;
 }
 
 function economyCallout(d: EconomyData): CalloutVM {
@@ -288,7 +290,14 @@ function economyCallout(d: EconomyData): CalloutVM {
       { k: 'Orders', v: fmtNum(d.buys + d.sells) },
       { k: 'Buys', v: fmtNum(d.buys) },
       { k: 'Sells', v: fmtNum(d.sells) },
-      ...(d.pending > 0 ? [{ k: 'Pending', v: fmtNum(d.pending), tone: 'warn' as const }] : []),
+      // Pending is a status of the rows the widget actually fetched, not of
+      // the window — `pair_transactions` decides it over the fetched events.
+      // A stat tile has nowhere to say "of the newest 100", so when the page
+      // is a sample the honest move is to omit it rather than print a number
+      // that reads as the window's. Orders/Buys/Sells above are true counts.
+      ...(d.pending > 0 && !d.sampled
+        ? [{ k: 'Pending', v: fmtNum(d.pending), tone: 'warn' as const }]
+        : []),
     ],
     label: 'Orders',
     value: fmtNum(d.buys + d.sells),

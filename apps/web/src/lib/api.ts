@@ -1932,8 +1932,17 @@ export type CommerceTransaction = Omit<
 // `CommerceRecentResponse` mirrors the server schema but with the
 // inner array re-typed to the narrowed `CommerceTransaction` so the
 // kind/status unions reach call sites.
+//
+// `totals` is OPTIONAL here although the server always sends it, because the
+// web and API containers roll independently — the documented lag has been
+// 10+ minutes — so a freshly rolled web container can be talking to an API
+// that predates the field. Callers fall back to counting the page for that
+// window, which is the old (wrong, capped) behaviour, but wrong-for-minutes
+// beats `undefined` reaching `fmtNum` and rendering "NaN".
+export type CommerceTotals = apiSchema['schemas']['CommerceTotalsDto'];
 export interface CommerceRecentResponse {
   transactions: CommerceTransaction[];
+  totals?: CommerceTotals;
 }
 
 export async function getCommerceRecent(

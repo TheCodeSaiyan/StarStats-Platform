@@ -4112,10 +4112,36 @@ pub async fn commerce_recent<Q: EventQuery>(
         .map(CommerceTransactionDto::from)
         .collect();
 
+    // Counted, not measured off the page above. Three counts rather than one
+    // so the per-kind breakdown the UI already draws is exact too; buys and
+    // sells are sums of these on the client.
+    let mut totals = CommerceTotalsDto {
+        shop: 0,
+        commodity_buy: 0,
+        commodity_sell: 0,
+    };
+    for (ty, slot) in [
+        ("shop_buy_request", &mut totals.shop),
+        ("commodity_buy_request", &mut totals.commodity_buy),
+        ("commodity_sell_request", &mut totals.commodity_sell),
+    ] {
+        match query
+            .count_event_type(&user.preferred_username, ty, None, since, None)
+            .await
+        {
+            Ok(n) => *slot = n as i64,
+            Err(e) => {
+                tracing::error!(error = %e, event_type = ty, "commerce_recent count_event_type failed");
+                return err(StatusCode::INTERNAL_SERVER_ERROR, "query_failed");
+            }
+        }
+    }
+
     (
         StatusCode::OK,
         Json(CommerceRecentResponse {
             transactions: trimmed,
+            totals,
         }),
     )
         .into_response()
@@ -4124,8 +4150,34 @@ pub async fn commerce_recent<Q: EventQuery>(
 /// Wire-format wrapper for the commerce endpoint.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CommerceRecentResponse {
-    /// Paired transactions, newest first by started_at.
+    /// Paired transactions, newest first by started_at. A PAGE, bounded by
+    /// `limit` — never count these to get a total, use [`Self::totals`].
     pub transactions: Vec<CommerceTransactionDto>,
+    /// True counts for the window, independent of `limit`.
+    pub totals: CommerceTotalsDto,
+}
+
+/// Per-kind transaction counts for the requested window.
+///
+/// These exist because every count the UI rendered used to come from
+/// `transactions.len()`, which is the page size. With the default limit of
+/// 100, "Buys" read exactly 100 for everyone who had traded more than a
+/// hundred times in the window — the same number on every account, because
+/// it was the cap and not their data. A count has to be counted.
+///
+/// One count per REQUEST event type. `shop_flow_response` is the other half
+/// of a shop pair rather than a transaction of its own, so it is not counted
+/// here; `pair_transactions` is what decides whether a request is confirmed,
+/// and that classification stays a property of the page.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CommerceTotalsDto {
+    /// `shop_buy_request` count. Matches `stats_spend.purchases` over the
+    /// same window — deliberately, since the two sit on one lens.
+    pub shop: i64,
+    /// `commodity_buy_request` count.
+    pub commodity_buy: i64,
+    /// `commodity_sell_request` count.
+    pub commodity_sell: i64,
 }
 
 /// Mirrors `starstats_core::Transaction` but in a utoipa-friendly
@@ -8833,6 +8885,45 @@ mod tests {
         assert_eq!(txs[0]["kind"], "shop");
         assert_eq!(txs[0]["status"], "confirmed");
         assert_eq!(txs[0]["shop_id"], "shop-cru-l1");
+    }
+
+    #[tokio::test]
+    async fn commerce_recent_totals_count_past_the_page_limit() {
+        // The list is a page; the totals are a count. 140 purchases, a page
+        // of 100: every count the UI renders came from `transactions.len()`,
+        // so "Buys" read 100 for anybody who had traded more than a hundred
+        // times in the window — the same number for everyone, because it was
+        // the cap rather than their data.
+        let at = Utc::now() - chrono::Duration::hours(6);
+        let mut rows = Vec::new();
+        for i in 0..140 {
+            rows.extend(shop_pair(
+                1 + i * 2,
+                "alice",
+                at + chrono::Duration::seconds(i * 10),
+                "shop-cru-l1",
+            ));
+        }
+
+        let mq = Arc::new(MemoryQuery::new(rows));
+        let (issuer, verifier) = fresh_pair();
+        let token = sign_token(&issuer, "alice");
+        let app = router(mq, Arc::new(verifier));
+
+        let (status, body): (StatusCode, serde_json::Value) =
+            get_json(app, "/v1/me/commerce/recent?limit=100", &token).await;
+        assert_eq!(status, StatusCode::OK);
+
+        let txs = body["transactions"].as_array().expect("transactions array");
+        assert_eq!(txs.len(), 100, "the page still honours `limit`; got {body}");
+
+        // The totals must describe the account, not the page.
+        assert_eq!(
+            body["totals"]["shop"], 140,
+            "shop total must count every purchase in the window, not the page; got {body}"
+        );
+        assert_eq!(body["totals"]["commodity_buy"], 0);
+        assert_eq!(body["totals"]["commodity_sell"], 0);
     }
 
     #[tokio::test]

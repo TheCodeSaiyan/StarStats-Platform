@@ -30,10 +30,16 @@ function isBuyKind(kind: CommerceTransaction['kind']): boolean {
 }
 
 interface EconomyData {
+  /** Counted over the whole window by the server, not off the page. */
   buys: number;
   sells: number;
+  /** Status counts for the SHOWN rows only — see `sampled`. */
   confirmed: number;
   pending: number;
+  /** The window holds more transactions than the page shows. */
+  sampled: boolean;
+  /** How many rows the page actually carried. */
+  shown: number;
   perKind: Record<CommerceTransaction['kind'], number>;
   spend: SpendResponse | null;
 }
@@ -85,27 +91,52 @@ export const economyWidget = defineWidget<EconomyData>({
       : 0;
     if (txs.length === 0 && lifetimePurchases === 0) return null;
 
-    let buys = 0;
-    let sells = 0;
+    // COUNTS COME FROM `totals`, NOT FROM `txs`. `transactions` is a page
+    // bounded by the `limit` above, so counting it reported the cap: "Buys"
+    // read exactly 100 on every account that had traded more than a hundred
+    // times in the window, which is how it came to be the same number for
+    // everyone. `totals` is counted server-side over the whole window.
+    //
+    // The fallback counts the page, and is only reachable while a rolled web
+    // container is talking to an API older than the `totals` field — the two
+    // containers roll independently. It restores the capped behaviour for
+    // those minutes rather than rendering nothing.
+    const totals = resp?.totals;
+    const perKind: Record<CommerceTransaction['kind'], number> = totals
+      ? {
+          shop: totals.shop,
+          commodity_buy: totals.commodity_buy,
+          commodity_sell: totals.commodity_sell,
+        }
+      : { shop: 0, commodity_buy: 0, commodity_sell: 0 };
+
+    // Confirmed/pending stay derived from the page: whether a request was
+    // answered is decided by `pair_transactions`, which runs over the fetched
+    // events, and there is no per-status count to ask for. They therefore
+    // describe the shown sample, and `sampled` below is what stops the body
+    // narrating them as if they described the window.
     let confirmed = 0;
     let pending = 0;
-    const perKind: Record<CommerceTransaction['kind'], number> = {
-      shop: 0,
-      commodity_buy: 0,
-      commodity_sell: 0,
-    };
     for (const tx of txs) {
-      perKind[tx.kind] += 1;
-      if (isBuyKind(tx.kind)) buys += 1;
-      else sells += 1;
+      if (!totals) perKind[tx.kind] += 1;
       if (tx.status === 'confirmed') confirmed += 1;
       else if (tx.status === 'pending' || tx.status === 'submitted') pending += 1;
     }
+    const buys = perKind.shop + perKind.commodity_buy;
+    const sells = perKind.commodity_sell;
+    // True when the page did not hold everything the totals counted, so the
+    // status line has to say which of the two it is describing.
+    const sampled = buys + sells > txs.length;
 
-    return { buys, sells, confirmed, pending, perKind, spend };
+    return { buys, sells, confirmed, pending, sampled, shown: txs.length, perKind, spend };
   },
   body(data, ctx, size) {
-    const { buys, sells, confirmed, pending, perKind, spend } = data;
+    const { buys, sells, confirmed, pending, sampled, shown, perKind, spend } = data;
+    // Confirmed/pending are the shown rows' statuses, and when the window
+    // holds more than the page they are NOT the window's. Say which, rather
+    // than letting "98 confirmed" sit under "3,412 buys" implying 3,314
+    // unanswered requests.
+    const statusScope = sampled ? `newest ${fmtNum(shown)}: ` : '';
     // Nothing traded in this window, but the account has traded before.
     // `load` only lets us reach here with a lifetime figure to name.
     // Counted in purchases, not aUEC: EmptyWindow renders the number
@@ -141,6 +172,7 @@ export const economyWidget = defineWidget<EconomyData>({
           readouts={readouts}
           note={
             <>
+              {statusScope}
               {fmtNum(confirmed)} confirmed
               {pending > 0 && <> · {fmtNum(pending)} pending</>}
             </>
@@ -159,6 +191,7 @@ export const economyWidget = defineWidget<EconomyData>({
         rows={rows}
         note={
           <>
+            {statusScope}
             {fmtNum(confirmed)} confirmed · {fmtNum(pending)} pending
             {spend?.top_shop && <> · top shop {prettyShop(spend.top_shop)}</>}
           </>

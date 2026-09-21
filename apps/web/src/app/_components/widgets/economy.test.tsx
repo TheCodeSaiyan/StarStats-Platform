@@ -216,3 +216,91 @@ describe('economy does not restate the spend widget', () => {
     expect(node).not.toBeNull();
   });
 });
+
+// The counts on this tile used to be `transactions.length`, which is the
+// PAGE size the widget asked for. Everyone who traded more than a hundred
+// times in the window saw "Buys 100" — the cap, not their data. The server
+// now sends `totals`, counted over the whole window.
+describe('economyWidget counts come from totals, not the page', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function pageOf(n: number) {
+    return Array.from({ length: n }, () => ({ kind: 'shop', status: 'confirmed' }));
+  }
+
+  // `WidgetDef.load` is optional on the registry type (types.ts:139) because
+  // not every widget fetches. These assertions are about what the loader
+  // computes, so pin it once rather than repeating a non-null assertion.
+  async function loadOwner(range: ViewerCtx['range']) {
+    const load = economyWidget.load;
+    if (!load) throw new Error('economyWidget must define a loader');
+    return (await load(ownerCtx(range))) as {
+      buys: number;
+      sells: number;
+      sampled: boolean;
+      shown: number;
+    };
+  }
+
+  it('reports the windows true buy count when the page is capped', async () => {
+    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactions: pageOf(100),
+      totals: { shop: 3412, commodity_buy: 0, commodity_sell: 0 },
+    });
+    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue({
+      total_auec: 9_100_000,
+      purchases: 3412,
+      top_shop: null,
+    });
+
+    const data = await loadOwner('30d');
+
+    expect(data.buys).toBe(3412);
+    expect(data.buys).not.toBe(100);
+    expect(data.sampled).toBe(true);
+    expect(data.shown).toBe(100);
+  });
+
+  it('adds commodity buys into buys and keeps sells separate', async () => {
+    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactions: pageOf(3),
+      totals: { shop: 200, commodity_buy: 45, commodity_sell: 17 },
+    });
+    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const data = await loadOwner('30d');
+
+    expect(data.buys).toBe(245);
+    expect(data.sells).toBe(17);
+  });
+
+  it('says the status line describes the sample when the page is capped', async () => {
+    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactions: pageOf(100),
+      totals: { shop: 3412, commodity_buy: 0, commodity_sell: 0 },
+    });
+    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const node = await economyWidget.render(ownerCtx('30d'), 'compact');
+    const { container } = render(node as React.ReactElement);
+
+    expect(container.textContent).toContain('3,412');
+    // "100 confirmed" beside "3,412 buys" would imply 3,312 unanswered.
+    expect(container.textContent).toMatch(/newest 100/i);
+  });
+
+  it('falls back to counting the page when the API predates totals', async () => {
+    // Rollout window only: web and API containers roll independently.
+    (getCommerceRecent as ReturnType<typeof vi.fn>).mockResolvedValue({
+      transactions: pageOf(7),
+    });
+    (getSpend as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+    const data = await loadOwner('30d');
+
+    expect(data.buys).toBe(7);
+    expect(data.sampled).toBe(false);
+  });
+});

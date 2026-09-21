@@ -3866,8 +3866,45 @@ export interface components {
         };
         /** @description Wire-format wrapper for the commerce endpoint. */
         CommerceRecentResponse: {
-            /** @description Paired transactions, newest first by started_at. */
+            /** @description True counts for the window, independent of `limit`. */
+            totals: components["schemas"]["CommerceTotalsDto"];
+            /**
+             * @description Paired transactions, newest first by started_at. A PAGE, bounded by
+             *     `limit` — never count these to get a total, use [`Self::totals`].
+             */
             transactions: components["schemas"]["CommerceTransactionDto"][];
+        };
+        /**
+         * @description Per-kind transaction counts for the requested window.
+         *
+         *     These exist because every count the UI rendered used to come from
+         *     `transactions.len()`, which is the page size. With the default limit of
+         *     100, "Buys" read exactly 100 for everyone who had traded more than a
+         *     hundred times in the window — the same number on every account, because
+         *     it was the cap and not their data. A count has to be counted.
+         *
+         *     One count per REQUEST event type. `shop_flow_response` is the other half
+         *     of a shop pair rather than a transaction of its own, so it is not counted
+         *     here; `pair_transactions` is what decides whether a request is confirmed,
+         *     and that classification stays a property of the page.
+         */
+        CommerceTotalsDto: {
+            /**
+             * Format: int64
+             * @description `commodity_buy_request` count.
+             */
+            commodity_buy: number;
+            /**
+             * Format: int64
+             * @description `commodity_sell_request` count.
+             */
+            commodity_sell: number;
+            /**
+             * Format: int64
+             * @description `shop_buy_request` count. Matches `stats_spend.purchases` over the
+             *     same window — deliberately, since the two sit on one lens.
+             */
+            shop: number;
         };
         /**
          * @description Mirrors `starstats_core::Transaction` but in a utoipa-friendly
