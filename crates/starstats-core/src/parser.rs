@@ -291,7 +291,12 @@ static RESOLVE_SPAWN_RE: Lazy<Regex> =
 ///   1  baseline — the revision at which automatic re-parse was introduced,
 ///      carrying `ActorEjected` (`[ActorState] Dead`), which promotes the
 ///      371 unknown lines a measured install had been holding.
-pub const PARSER_REVISION: u32 = 1;
+///   2  `MISSION_PHASE_RE` learned to tolerate `missionId [` with a space.
+///      It required `missionId[`, so `mission_start` held ZERO rows across
+///      13 handles and the whole history of the database while 10,053 of the
+///      lines sat unparsed on one machine. Every install has a backlog of
+///      these to promote, which is the entire point of bumping.
+pub const PARSER_REVISION: u32 = 2;
 
 // Combat events. The patterns were derived from community captures rather
 // than from the bundled fixture, which has no combat in it — and the machine
@@ -465,9 +470,35 @@ static STORE_ITEM_RE: Lazy<Regex> = Lazy::new(|| {
 
 // `<CLocalMissionPhaseMarker::CreateMarker>` body shape (best-effort):
 //   ... missionId[<uuid>] ... missionName[<name>]
+// `missionId [uuid]` — WITH A SPACE before the bracket.
+//
+// This pattern required `missionId\[`, and the game writes `missionId [`. The
+// event name matched, so the line reached `classify`, the regex missed, and
+// the row was dropped: `mission_start` held ZERO rows across 13 handles and
+// the entire history of the database while 10,053 of these lines sat unparsed
+// on one machine alone. "Contracts started 0" beside "Contracts ended 1,238"
+// was this.
+//
+// The spacing is INCONSISTENT WITHIN ONE LINE — `missionId [`, `objectiveId [`
+// and `contract [` take a space, `contractDefinitionId[` does not — which is
+// how the original was written against a real line and still got it wrong.
+// `\s*` everywhere rather than matching what today's sample happens to do.
+//
+// `contract [...]` is captured as the mission name because it is the only
+// human-readable identifier on the line: `NorthRock_Stanton1_EliminateBoss_
+// Standard_2` tells a reader what they were doing, the UUID does not. It is
+// matched with a word boundary and a following bracket so it cannot bind to
+// `contractDefinitionId[` — that one has no space, so `\s*\[` fails on its
+// `D`, and `contract [` appears first in the line regardless.
+//
+// `missionName[` is kept as an alternative: no sample carries it, but the old
+// pattern looked for it and removing a branch nothing disproves would be
+// guessing in the other direction.
 static MISSION_PHASE_RE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"missionId\[(?P<id>[0-9a-fA-F-]+)\](?:.*?missionName\[(?P<name>[^\]]+)\])?")
-        .expect("MISSION_PHASE_RE compiles")
+    Regex::new(
+        r"missionId\s*\[(?P<id>[0-9a-fA-F-]+)\](?:.*?(?:\bcontract\s*\[(?P<name>[^\]]+)\]|missionName\s*\[(?P<name2>[^\]]+)\]))?",
+    )
+    .expect("MISSION_PHASE_RE compiles")
 });
 
 // `CreateMissionObjectiveMarker(...)` function-call body. The args
@@ -895,7 +926,11 @@ pub fn classify(line: &LogLine<'_>) -> Option<GameEvent> {
                 timestamp: ts.clone(),
                 mission_id: c["id"].to_string(),
                 marker_kind: MissionMarkerKind::Phase,
-                mission_name: c.name("name").map(|m| m.as_str().to_string()),
+                // `contract` first, `missionName` as the legacy alternative.
+                mission_name: c
+                    .name("name")
+                    .or_else(|| c.name("name2"))
+                    .map(|m| m.as_str().to_string()),
             }))
         }
         "EndMission" => {
@@ -1816,6 +1851,63 @@ mod tests {
     /// synthesised: it appears 371 times in the local tray database, sitting
     /// unparsed in the unknown-line queue the whole time, and every occurrence
     /// has the same shape. The only variation across them is the zone names.
+    /// A REAL mission-marker line, verbatim, with the space that broke it.
+    ///
+    /// `mission_start` had ZERO rows across 13 handles and the whole history
+    /// of the database, while 10,053 of these sat unparsed on one machine.
+    /// The event name matched and the regex did not: it required
+    /// `missionId[` and the game writes `missionId [`.
+    ///
+    /// Note the spacing is inconsistent within the single line below —
+    /// `contractDefinitionId[` has no space where `missionId [` does. Matching
+    /// what one sample happens to do is exactly how this was written wrong the
+    /// first time.
+    #[test]
+    fn classifies_mission_start_from_a_real_capture() {
+        let line = "<2026-09-06T13:06:23.285Z> [Notice] \
+<CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: missionId \
+[f63eaa1a-5f00-46cf-b108-c200d9f1b0e6], generator name [NorthRock_FPSKill], \
+contract [NorthRock_Stanton1_EliminateBoss_Standard_2], \
+contractDefinitionId[2bc0334a-da56-4c93-b099-b1a0324c9a11], objectiveId \
+[1560c01e-4e08-4148-9273-3a745f3d7d55], markerEntityId [14619], zoneHostId \
+[782693197556], position [x: 200928.137781, y: 308739.605015, z: \
+-929820.080088] [Team_MissionFeatures][Missions]";
+        let p = structural_parse(line).unwrap();
+        match classify(&p).unwrap() {
+            GameEvent::MissionStart(m) => {
+                assert_eq!(m.mission_id, "f63eaa1a-5f00-46cf-b108-c200d9f1b0e6");
+                // The CONTRACT, not the definition id sitting next to it: the
+                // only human-readable identifier on the line.
+                assert_eq!(
+                    m.mission_name.as_deref(),
+                    Some("NorthRock_Stanton1_EliminateBoss_Standard_2")
+                );
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
+    /// The tight spelling must keep working.
+    ///
+    /// Whatever build produced `missionId[` without a space, rows parsed from
+    /// it are still in people's stores and a re-parse walks them again.
+    /// Narrowing the pattern to only the spaced form would drop them.
+    #[test]
+    fn mission_start_still_reads_the_unspaced_spelling() {
+        let line = "<2026-09-06T13:06:23.285Z> [Notice] \
+<CLocalMissionPhaseMarker::CreateMarker> Creating objective marker: \
+missionId[f63eaa1a-5f00-46cf-b108-c200d9f1b0e6], missionName[Some Mission] \
+[Team_MissionFeatures][Missions]";
+        let p = structural_parse(line).unwrap();
+        match classify(&p).unwrap() {
+            GameEvent::MissionStart(m) => {
+                assert_eq!(m.mission_id, "f63eaa1a-5f00-46cf-b108-c200d9f1b0e6");
+                assert_eq!(m.mission_name.as_deref(), Some("Some Mission"));
+            }
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
+
     #[test]
     fn classifies_actor_ejected_from_a_real_capture() {
         let line = "<2026-06-19T16:15:56.148Z> [Notice] <[ActorState] Dead> \
