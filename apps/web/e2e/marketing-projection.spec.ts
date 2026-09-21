@@ -158,6 +158,7 @@ test('the main landmark is the page body, not the chrome', async ({ page }) => {
 const INDEXED = [
   '/docs',
   '/docs/rsi-cookie',
+  '/docs/log-coverage',
   '/docs/troubleshooting',
   '/guides',
   '/guides/dashboard',
