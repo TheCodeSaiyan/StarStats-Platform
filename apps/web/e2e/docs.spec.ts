@@ -37,6 +37,15 @@ test('docs_rsi_cookie_renders', async ({ page, request }) => {
   ).toBeVisible();
 });
 
+test('docs_log_coverage_renders', async ({ page, request }) => {
+  await setScenario(request, scenarioFor('docs_log_coverage'));
+  await page.goto('/docs/log-coverage');
+
+  await expect(
+    page.getByRole('heading', { name: /what the logs say/i, level: 1 }),
+  ).toBeVisible();
+});
+
 test('docs_troubleshooting_renders', async ({ page, request }) => {
   await setScenario(request, scenarioFor('docs_troubleshooting'));
   await page.goto('/docs/troubleshooting');

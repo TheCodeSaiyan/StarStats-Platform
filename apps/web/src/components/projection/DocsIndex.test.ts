@@ -37,8 +37,8 @@ function hrefs(): string[] {
 
 describe('DocsIndex', () => {
   it('lists the whole reference set', () => {
-    // Four groups: Product (3), Help (4), Guides (5), Project (3).
-    expect(hrefs()).toHaveLength(15);
+    // Four groups: Product (3), Help (5), Guides (5), Project (3).
+    expect(hrefs()).toHaveLength(16);
   });
 
   it('every entry resolves to a real route', () => {

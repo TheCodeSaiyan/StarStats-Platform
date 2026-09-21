@@ -34,6 +34,7 @@ const GROUPS: readonly [string, readonly [string, string][]][] = [
     [
       ['/docs', 'Docs'],
       ['/docs/rsi-cookie', 'RSI cookie'],
+      ['/docs/log-coverage', 'Log coverage'],
       ['/docs/troubleshooting', 'Troubleshooting'],
       ['/support', 'Support'],
     ],
