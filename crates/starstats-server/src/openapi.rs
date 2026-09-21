@@ -439,6 +439,7 @@ impl Modify for SecurityAddon {
         query::LoadoutActivityResponse,
         query::LoadoutItemRow,
         query::CommerceRecentResponse,
+        query::CommerceTotalsDto,
         query::CommerceTransactionDto,
         // Submissions
         submission_routes::SubmissionDto,
