@@ -115,7 +115,7 @@ utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
 
 # Auth
 jsonwebtoken = { version = "11.0", default-features = false, features = ["aws_lc_rs", "use_pem"] }
-argon2 = "0.5"
+argon2 = "0.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # AES-256-GCM for TOTP secret encryption at rest. We hold the KEK in a
 # server-local file (analogous to the JWT signing key) and never write
