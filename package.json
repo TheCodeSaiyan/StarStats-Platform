@@ -20,10 +20,10 @@
     "tauri:build": "cd crates/starstats-client && pnpm exec tauri build"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
-    "turbo": "^2.10.12",
+    "@tauri-apps/cli": "^2.11.5",
+    "turbo": "^2.11.2",
     "typescript": "^5.7.2",
-    "@types/node": "^26.5.1"
+    "@types/node": "^26.6.2"
   },
   "pnpm": {
     "overrides": {
