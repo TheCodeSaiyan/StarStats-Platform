@@ -1,5 +1,5 @@
 {
-  "$comment": "Commit-subject rules. One source, read by the commit-msg hook (.githooks/commit-msg), the commit-rules CI job and the release-notes generator (scripts/release-notes.mjs). Release notes are built from commit subjects with no human or AI rewrite step, so a subject on a player-facing scope IS the release note. Adding a type or scope is a deliberate edit here. See CONTRIBUTING.md 'Commit conventions'.",
+  "$comment": "Commit-subject rules. One source, read by the commit-msg hook (installed by scripts/install-hooks.cjs at pnpm install), the commit-rules CI job and the release-notes generator (scripts/release-notes.mjs). Release notes are built from commit subjects with no human or AI rewrite step, so a subject on a player-facing scope IS the release note. Adding a type or scope is a deliberate edit here. See CONTRIBUTING.md 'Commit conventions'.",
   "types": ["feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "style", "revert"],
   "scopes": [
     "web", "tray", "server", "core", "client", "holo", "parser", "updater", "storage",
