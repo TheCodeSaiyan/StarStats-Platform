@@ -16,6 +16,16 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Tray 0.1.31] - 2026-09-26
+
+### New
+- Add a Friends tab and desktop notifications for friend requests.
+- Notify about new features, news and available updates.
+- Show news from the StarStats team in What's New.
+
+### Fixed
+- Group the Review tab by line type and show the ones worth a look first.
+
 ## [Platform 0.1.61] - 2026-09-21
 
 ### Fixed
