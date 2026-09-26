@@ -35,6 +35,7 @@
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { latestLiveTag } from "./lib/release-range.mjs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -916,6 +917,31 @@ export function bumpVersionFiles(runner, track, newVersion) {
   throw new Error(`unknown track: ${JSON.stringify(track)}`);
 }
 
+/**
+ * At the first pre-release of a cycle, write the track's latest LIVE
+ * release into CHANGELOG.md, and return the path to add to the bump
+ * commit (or nothing).
+ *
+ * Why here: a live promote usually makes no commit at all ("cargo already
+ * at bare X.Y.Z; tagging HEAD without commit"), and an extra commit on
+ * main rebuilds and redeploys the images. The alpha bump that opens the
+ * next cycle is a commit on next that happens anyway, and by then the
+ * previous live release is final.
+ *
+ * Never fatal: a changelog that could not be written must not stop a
+ * release. It warns, and the next cycle's bump writes the section.
+ */
+function changelogForNewCycle(runner, track, existingTags) {
+  const live = latestLiveTag(existingTags, track);
+  if (!live) return [];
+  const ok = runner.tryRun("node", ["scripts/update-changelog.mjs", "--tag", live]);
+  if (!ok) {
+    console.warn(`[${track}] CHANGELOG.md not updated for ${live}; bumping without it`);
+    return [];
+  }
+  return ["CHANGELOG.md"];
+}
+
 function bumpedPaths(track) {
   if (track === "platform") return ["Cargo.toml", "Cargo.lock"];
   if (track === "tray") {
@@ -1002,7 +1028,8 @@ function cmdPrerelease(args) {
   const needsBump = cargoNow !== bareNext;
   if (needsBump) {
     bumpVersionFiles(runner, track, bareNext);
-    runner.run("git", ["add", ...bumpedPaths(track)]);
+    const changelog = changelogForNewCycle(runner, track, existingTags);
+    runner.run("git", ["add", ...bumpedPaths(track), ...changelog]);
     runner.run("git", ["commit", "-m", `chore: bump ${track} to ${tag}`]);
   } else {
     console.log(`[${track}] cargo already at bare ${bareNext}; tagging HEAD without commit`);
