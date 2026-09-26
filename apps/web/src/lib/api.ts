@@ -341,6 +341,51 @@ export async function markNotificationsRead(
   );
 }
 
+// -- News (admin console) ---------------------------------------------
+
+export type NewsPost = apiSchema['schemas']['NewsPost'];
+
+export interface NewsWrite {
+  title: string;
+  body: string;
+  link_url?: string | null;
+  /** Create only: publish now rather than saving a draft. */
+  publish?: boolean;
+}
+
+export async function adminListNews(bearer: string): Promise<NewsPost[]> {
+  const r = await request<{ posts: NewsPost[] }>('GET', '/v1/admin/news', undefined, bearer);
+  return r.posts;
+}
+
+export async function adminCreateNews(bearer: string, post: NewsWrite): Promise<NewsPost> {
+  return postJson<NewsPost>('/v1/admin/news', post, bearer);
+}
+
+export async function adminUpdateNews(
+  bearer: string,
+  id: string,
+  post: NewsWrite,
+): Promise<NewsPost> {
+  return putJson<NewsPost>(`/v1/admin/news/${encodeURIComponent(id)}`, post, bearer);
+}
+
+export async function adminSetNewsPublished(
+  bearer: string,
+  id: string,
+  published: boolean,
+): Promise<NewsPost> {
+  return postJson<NewsPost>(
+    `/v1/admin/news/${encodeURIComponent(id)}/${published ? 'publish' : 'unpublish'}`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function adminDeleteNews(bearer: string, id: string): Promise<void> {
+  await request<void>('DELETE', `/v1/admin/news/${encodeURIComponent(id)}`, undefined, bearer);
+}
+
 export async function signup(input: {
   email: string;
   password: string;

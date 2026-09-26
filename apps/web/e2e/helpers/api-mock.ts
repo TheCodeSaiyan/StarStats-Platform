@@ -1090,6 +1090,7 @@ export function scenarioFor(
   const base: ScenarioRoutes = {
     'GET /v1/auth/me': currentUser,
     'GET /v1/me/notifications': noNotifications,
+    'GET /v1/news': { status: 200, body: { posts: [] } },
     'GET /v1/me/friends': noFriends,
     'GET /v1/me/blocks': { status: 200, body: { blocks: [] } },
     'GET /v1/me/mutes': { status: 200, body: { mutes: [] } },

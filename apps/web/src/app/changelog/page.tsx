@@ -1,7 +1,8 @@
 import { MarketingSurface } from '@/components/projection/MarketingSurface';
 import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata } from 'next';
-import { listChangelog } from '@/lib/roadmap';
+import { listChangelog, listNews, type NewsPost } from '@/lib/roadmap';
+import { logger } from '@/lib/logger';
 
 export const metadata: Metadata = {
   title: 'Changelog',
@@ -28,7 +29,20 @@ function fmtDate(iso: string): string {
 }
 
 export default async function ChangelogPage() {
-  const { entries } = await listChangelog();
+  // Two feeds, settled separately: news failing must not blank the
+  // release list, or the other way round.
+  const [changelogRes, newsRes] = await Promise.allSettled([
+    listChangelog(),
+    listNews(10),
+  ]);
+  if (changelogRes.status === 'rejected') {
+    logger.warn({ err: changelogRes.reason, call: 'changelog.list' }, 'changelog fetch failed');
+  }
+  if (newsRes.status === 'rejected') {
+    logger.warn({ err: newsRes.reason, call: 'changelog.news' }, 'news fetch failed');
+  }
+  const entries = changelogRes.status === 'fulfilled' ? changelogRes.value.entries : [];
+  const news: NewsPost[] = newsRes.status === 'fulfilled' ? newsRes.value.posts : [];
 
   return (
     <MarketingSurface
@@ -64,6 +78,54 @@ export default async function ChangelogPage() {
           What just shipped
         </h1>
       </header>
+
+      {news.length > 0 ? (
+        <section aria-labelledby="news-heading" style={{ marginBottom: 40 }}>
+          <h2
+            id="news-heading"
+            style={{ margin: '0 0 8px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}
+          >
+            News
+          </h2>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {news.map((n) => (
+              <li
+                key={n.id}
+                data-testid="news-post"
+                style={{ borderTop: '1px solid var(--border)', padding: 'var(--s4) 0' }}
+              >
+                <header
+                  style={{
+                    display: 'flex',
+                    alignItems: 'baseline',
+                    gap: 12,
+                    flexWrap: 'wrap',
+                    marginBottom: 8,
+                  }}
+                >
+                  <h3 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 600 }}>
+                    {n.title}
+                  </h3>
+                  {n.published_at ? (
+                    <span style={{ fontSize: 12, color: 'var(--fg-dim)' }}>
+                      {fmtDate(n.published_at)}
+                    </span>
+                  ) : null}
+                </header>
+                {/* Plain text, whitespace kept. Never rendered as HTML. */}
+                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{n.body}</div>
+                {n.link_url ? (
+                  <p style={{ margin: '8px 0 0' }}>
+                    <a href={n.link_url} rel="noopener noreferrer" target="_blank">
+                      Read more
+                    </a>
+                  </p>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {entries.length === 0 ? (
         <p style={{ color: 'var(--fg-dim)', fontStyle: 'italic' }}>

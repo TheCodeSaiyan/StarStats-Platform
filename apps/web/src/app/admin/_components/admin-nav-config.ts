@@ -32,7 +32,11 @@ export const ADMIN_NAV: readonly AdminNavCategory[] = [
   {
     key: 'overview',
     label: 'Overview',
-    items: [{ id: 'dashboard', label: 'Dashboard', href: '/admin' }],
+    items: [
+      { id: 'dashboard', label: 'Dashboard', href: '/admin' },
+      // Announcements to every player: What's New in the tray, /changelog on the web.
+      { id: 'news', label: 'News', href: '/admin/news' },
+    ],
   },
   {
     key: 'people',
