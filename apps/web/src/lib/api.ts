@@ -341,6 +341,41 @@ export async function markNotificationsRead(
   );
 }
 
+// -- What's New (signed-in reader) -----------------------------------
+//
+// The same two feeds the tray reads: staff news and shipped roadmap
+// items, each with this player's unread state.
+
+export type MyNewsItem = apiSchema['schemas']['MyNewsItem'];
+export type MyNewsResponse = apiSchema['schemas']['MyNewsResponse'];
+export type WhatsNewItem = apiSchema['schemas']['WhatsNewItem'];
+export type WhatsNewResponse = apiSchema['schemas']['WhatsNewResponse'];
+
+export async function getMyNews(bearer: string, limit = 20): Promise<MyNewsResponse> {
+  return request<MyNewsResponse>('GET', `/v1/me/news?limit=${limit}`, undefined, bearer);
+}
+
+export async function markNewsSeen(bearer: string, id: string): Promise<void> {
+  await request<void>('POST', `/v1/me/news/${encodeURIComponent(id)}/seen`, undefined, bearer);
+}
+
+export async function getWhatsNew(bearer: string): Promise<WhatsNewResponse> {
+  return request<WhatsNewResponse>('GET', '/v1/me/roadmap/whats-new', undefined, bearer);
+}
+
+export async function markWhatsNewSeen(
+  bearer: string,
+  roadmapItemId: string,
+  changelogEntryId: string,
+): Promise<void> {
+  await request<void>(
+    'POST',
+    '/v1/me/roadmap/whats-new/seen',
+    { roadmap_item_id: roadmapItemId, changelog_entry_id: changelogEntryId },
+    bearer,
+  );
+}
+
 // -- News (admin console) ---------------------------------------------
 
 export type NewsPost = apiSchema['schemas']['NewsPost'];

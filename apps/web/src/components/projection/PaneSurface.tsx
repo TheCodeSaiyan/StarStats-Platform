@@ -187,7 +187,7 @@ export function PaneSurface({
   measure = 'wide',
 }: PaneSurfaceProps) {
   const router = useRouter();
-  const { inboundShares, unreadNotifications } = useShellData();
+  const { inboundShares, unreadNotifications, unreadWhatsNew } = useShellData();
 
   /**
    * The inbound-share badge, put on the Sharing entry centrally.
@@ -211,6 +211,9 @@ export function PaneSurface({
       if (a.id === 'friends' && unreadNotifications > 0) {
         return { ...a, badge: unreadNotifications };
       }
+      if (a.id === 'whats-new' && unreadWhatsNew > 0) {
+        return { ...a, badge: unreadWhatsNew };
+      }
       return a;
     });
     if (unreadNotifications > 0 && !items.some((a) => a.id === 'friends')) {
@@ -221,8 +224,17 @@ export function PaneSurface({
         badge: unreadNotifications,
       });
     }
+    // Same rule for What's New: present while there is something unread.
+    if (unreadWhatsNew > 0 && !items.some((a) => a.id === 'whats-new')) {
+      items.push({
+        id: 'whats-new',
+        label: "What's new",
+        href: '/whats-new',
+        badge: unreadWhatsNew,
+      });
+    }
     return items;
-  }, [account, inboundShares, unreadNotifications]);
+  }, [account, inboundShares, unreadNotifications, unreadWhatsNew]);
   const [group, setGroup] = React.useState(0);
   const [recalKey, setRecalKey] = React.useState(0);
   // Local beam state, NOT the server prop. The persist action deliberately

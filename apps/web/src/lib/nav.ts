@@ -120,6 +120,14 @@ export const SITE_NAV: readonly NavDestination[] = [
     access: 'user',
     rowExempt: true,
   },
+  // Menu only, like Friends: the account-menu badge is the way in.
+  {
+    id: 'whats-new',
+    label: "What's new",
+    href: '/whats-new' as Route,
+    access: 'user',
+    rowExempt: true,
+  },
   { id: 'settings', label: 'Calibrate', href: '/settings' as Route, access: 'user' },
 
   { id: 'admin', label: 'Console', href: '/admin' as Route, access: 'admin' },
