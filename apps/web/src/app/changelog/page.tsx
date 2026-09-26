@@ -1,7 +1,9 @@
 import { MarketingSurface } from '@/components/projection/MarketingSurface';
 import { DocsIndex } from '@/components/projection/DocsIndex';
 import type { Metadata } from 'next';
-import { listChangelog, listNews, type NewsPost } from '@/lib/roadmap';
+import { listChangelog, listNews, listReleases, type NewsPost } from '@/lib/roadmap';
+import { pairByDay } from '@/lib/releases';
+import { ReleaseNotes } from '@/components/releases/ReleaseNotes';
 import { logger } from '@/lib/logger';
 
 export const metadata: Metadata = {
@@ -31,10 +33,17 @@ function fmtDate(iso: string): string {
 export default async function ChangelogPage() {
   // Two feeds, settled separately: news failing must not blank the
   // release list, or the other way round.
-  const [changelogRes, newsRes] = await Promise.allSettled([
+  const [changelogRes, newsRes, releasesRes] = await Promise.allSettled([
     listChangelog(),
     listNews(10),
+    listReleases(30),
   ]);
+  if (releasesRes.status === 'rejected') {
+    logger.warn({ err: releasesRes.reason, call: 'changelog.releases' }, 'releases fetch failed');
+  }
+  // One entry per day, pairing the tray and platform versions shipped that
+  // day: players do not think in release tracks.
+  const days = releasesRes.status === 'fulfilled' ? pairByDay(releasesRes.value.releases) : [];
   if (changelogRes.status === 'rejected') {
     logger.warn({ err: changelogRes.reason, call: 'changelog.list' }, 'changelog fetch failed');
   }
@@ -127,8 +136,43 @@ export default async function ChangelogPage() {
         </section>
       ) : null}
 
+      {days.length > 0 ? (
+        <section aria-labelledby="releases-heading" style={{ marginBottom: 40 }}>
+          <h2
+            id="releases-heading"
+            style={{ margin: '0 0 8px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}
+          >
+            Releases
+          </h2>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {days.map((d) => (
+              <li
+                key={`${d.date}-${d.channel}`}
+                data-testid="release-day"
+                style={{ borderTop: '1px solid var(--border)', padding: 'var(--s5) 0' }}
+              >
+                <header style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 10 }}>
+                  <h3 style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 600 }}>
+                    {[d.tray && `Tray ${d.tray}`, d.platform && `Platform ${d.platform}`]
+                      .filter(Boolean)
+                      .join(' · ')}
+                  </h3>
+                  <span style={{ fontSize: 12, color: 'var(--fg-dim)' }}>{fmtDate(d.date)}</span>
+                </header>
+                <ReleaseNotes groups={d.groups} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {entries.length > 0 ? (
+        <h2 style={{ margin: '0 0 8px', fontSize: 'var(--fs-lg)', fontWeight: 600 }}>
+          Roadmap updates
+        </h2>
+      ) : null}
       {entries.length === 0 ? (
-        <p style={{ color: 'var(--fg-dim)', fontStyle: 'italic' }}>
+        days.length > 0 ? null : <p style={{ color: 'var(--fg-dim)', fontStyle: 'italic' }}>
           No releases yet.
         </p>
       ) : (

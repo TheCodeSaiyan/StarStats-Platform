@@ -1093,6 +1093,8 @@ export function scenarioFor(
     'GET /v1/news': { status: 200, body: { posts: [] } },
     // Layout-level: every signed-in render reads both for the badge.
     'GET /v1/me/news': { status: 200, body: { items: [], unread_count: 0 } },
+    'GET /v1/me/releases': { status: 200, body: { releases: [], unread_count: 0 } },
+    'GET /v1/releases': { status: 200, body: { releases: [] } },
     'GET /v1/me/roadmap/whats-new': { status: 200, body: { items: [], seen_via_auth: true } },
     'GET /v1/me/friends': noFriends,
     'GET /v1/me/blocks': { status: 200, body: { blocks: [] } },
