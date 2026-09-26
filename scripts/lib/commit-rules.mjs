@@ -136,16 +136,21 @@ export function buildNotes(commits, rules, opts = {}) {
     if (opts.surface && !mapped.includes(opts.surface)) continue;
     const surfaces = opts.surface ? [opts.surface] : mapped;
     const kind = rules.player_types[parsed.type];
-    const key = c.roadmap ? `roadmap:${c.roadmap.slug}` : `text:${parsed.text.toLowerCase()}`;
-    const text = c.roadmap
-      ? `${c.roadmap.title}${c.roadmap.summary ? `: ${c.roadmap.summary.replace(/\.$/, '')}` : ''}`
+    // A roadmap item describes the FEATURE, so it stands in only for new
+    // work. A fix or improvement that shipped in the same pull request is
+    // a different thing to tell the player, and keeps its own subject;
+    // otherwise the feature's line appeared under Fixed as well as New.
+    const roadmap = kind === 'New' ? c.roadmap : null;
+    const key = roadmap ? `roadmap:${roadmap.slug}` : `text:${parsed.text.toLowerCase()}`;
+    const text = roadmap
+      ? `${roadmap.title}${roadmap.summary ? `: ${roadmap.summary.replace(/\.$/, '')}` : ''}`
       : toPlayerText(parsed.text, rules);
     const bucket = byKind.get(kind);
     const line = bucket.get(key) ?? {
       text,
       surfaces: [],
       prs: [],
-      roadmap: c.roadmap?.slug ?? null,
+      roadmap: roadmap?.slug ?? null,
     };
     for (const s of surfaces) if (!line.surfaces.includes(s)) line.surfaces.push(s);
     if (c.pr && !line.prs.includes(c.pr)) line.prs.push(c.pr);

@@ -95,6 +95,24 @@ test('notes: only player-facing commits, grouped, one line per roadmap item', ()
   assert.deepEqual(tray.map((g) => g.kind), ['New', 'Fixed'], 'web-only perf left out of the tray');
 });
 
+test('a fix inside a roadmap pull request keeps its own line', () => {
+  const item = { slug: 'friends-notifications', title: 'Friends & notifications', summary: 'Add friends.' };
+  const groups = buildNotes(
+    [
+      { sha: 'a', subject: 'feat(tray): add a Friends tab', pr: 134, roadmap: item },
+      { sha: 'b', subject: 'fix(tray): group the Review tab by line type', pr: 134, roadmap: item },
+    ],
+    rules,
+  );
+  assert.deepEqual(
+    groups.map((g) => [g.kind, g.lines.map((l) => l.text)]),
+    [
+      ['New', ['Friends & notifications: Add friends']],
+      ['Fixed', ['Group the Review tab by line type']],
+    ],
+  );
+});
+
 test('a core fix reaches both the tray and the platform notes', () => {
   const commits = [{ sha: 'a', subject: 'fix(core): read mission starts again' }];
   assert.deepEqual(buildNotes(commits, rules)[0].lines[0].surfaces, ['Tray', 'Web']);
