@@ -118,6 +118,8 @@ mod reference_routes;
 mod reference_stats;
 mod reference_store;
 mod reference_vectors;
+mod release_routes;
+mod releases;
 mod repo;
 mod restriction_guard;
 mod retention;
@@ -618,6 +620,10 @@ async fn main() -> anyhow::Result<()> {
     // News posts from the admin console (migration 0071).
     let news_dyn: Arc<dyn crate::news::NewsStore> =
         Arc::new(crate::news::PostgresNewsStore::new(pool.clone()));
+    // Release notes written by CI (migration 0072).
+    let releases_dyn: Arc<dyn crate::releases::ReleaseStore> =
+        Arc::new(crate::releases::PostgresReleaseStore::new(pool.clone()));
+    let releases_for_ingest = releases_dyn.clone();
     // Threaded through the request layer so sharing/discover handlers
     // can look up supporter chip info by handle. Same dyn-cast pattern
     // as share_metadata_dyn etc.
@@ -929,6 +935,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(sharing_router)
         .merge(social_routes::routes())
         .merge(news_routes::routes())
+        .merge(release_routes::routes())
         .merge(rsi_router)
         .merge(profile_router)
         .merge(rsi_orgs_router)
@@ -995,6 +1002,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(social_dyn))
         .layer(Extension(notifications_dyn))
         .layer(Extension(news_dyn))
+        .layer(Extension(releases_dyn))
         .layer(Extension(admin_parser_submissions_store))
         .layer(Extension(submissions_store_dyn))
         .layer(Extension(parser_rules_store))
@@ -1030,7 +1038,13 @@ async fn main() -> anyhow::Result<()> {
                 rc.ci_event_hmac_key.as_bytes().to_vec(),
                 rc.gh_project_id.clone(),
             );
-            app.merge(roadmap::routes::router(state))
+            // Release-notes ingest shares the CI signing key: CI already
+            // holds it for roadmap events, so no second credential.
+            let ingest = release_routes::internal_router(release_routes::ReleaseIngestState {
+                store: releases_for_ingest,
+                hmac_key: Arc::new(rc.ci_event_hmac_key.as_bytes().to_vec()),
+            });
+            app.merge(roadmap::routes::router(state)).merge(ingest)
         } else {
             app
         };

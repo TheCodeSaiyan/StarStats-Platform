@@ -57,6 +57,8 @@ use crate::reference_resolve;
 use crate::reference_routes;
 use crate::reference_stats;
 use crate::reference_vectors;
+use crate::release_routes;
+use crate::releases;
 use crate::retention_routes;
 use crate::revolut_routes;
 use crate::roadmap;
@@ -335,6 +337,11 @@ impl Modify for SecurityAddon {
         news_routes::admin_publish,
         news_routes::admin_unpublish,
         news_routes::admin_delete,
+        // Release notes
+        release_routes::ingest,
+        release_routes::list_public,
+        release_routes::list_mine,
+        release_routes::mark_seen,
         roadmap::public_routes::list_roadmap,
         roadmap::public_routes::get_roadmap_item,
         roadmap::public_routes::list_changelog,
@@ -768,6 +775,11 @@ impl Modify for SecurityAddon {
         news_routes::NewsListResponse,
         news_routes::MyNewsItem,
         news_routes::MyNewsResponse,
+        releases::Release,
+        release_routes::ReleaseIngestBody,
+        release_routes::ReleaseListResponse,
+        release_routes::MyRelease,
+        release_routes::MyReleasesResponse,
         // Reference resolve (batch class-name → rich entry)
         reference_resolve::ResolveRequest,
         reference_resolve::ResolvedEntry,
@@ -832,6 +844,7 @@ impl Modify for SecurityAddon {
         (name = "appearance", description = "Sitewide appearance defaults (theme-switch wave speed)"),
         (name = "social", description = "Friends, blocks, mutes and the notifications inbox"),
         (name = "news", description = "Staff news posts: admin authoring and the reader feeds"),
+        (name = "releases", description = "Release notes written by CI; public and per-player feeds"),
     )
 )]
 pub struct ApiDoc;
