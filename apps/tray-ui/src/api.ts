@@ -802,6 +802,8 @@ export interface NotificationsResponse {
 export interface SocialPrefs {
   toasts: boolean;
   quiet_in_game: boolean;
+  /** Toast new What's New entries and available updates. */
+  release_toasts: boolean;
 }
 
 export const api = {
@@ -978,6 +980,7 @@ export const api = {
     invoke<void>('social_set_prefs', {
       toasts: prefs.toasts,
       quiet_in_game: prefs.quiet_in_game,
+      release_toasts: prefs.release_toasts,
     }),
   /**
    * Mark a roadmap item's latest changelog entry seen for the paired

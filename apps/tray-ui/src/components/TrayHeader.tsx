@@ -31,6 +31,8 @@ interface Props {
   reviewBadge?: number;
   /** Unread friend notifications. Shown on the Friends tab. 0 hides it. */
   socialBadge?: number;
+  /** Unread What's New entries. Shown on the What's New tab. 0 hides it. */
+  whatsNewBadge?: number;
 }
 
 const TABS: ReadonlyArray<TrayView> = [
@@ -76,6 +78,7 @@ export function TrayHeader({
   version,
   reviewBadge = 0,
   socialBadge = 0,
+  whatsNewBadge = 0,
 }: Props) {
   return (
     <header
@@ -126,7 +129,13 @@ export function TrayHeader({
         {TABS.map((tab) => {
           const active = view === tab;
           const badge =
-            tab === 'review' ? reviewBadge : tab === 'social' ? socialBadge : 0;
+            tab === 'review'
+              ? reviewBadge
+              : tab === 'social'
+                ? socialBadge
+                : tab === 'whats-new'
+                  ? whatsNewBadge
+                  : 0;
           const showBadge = badge > 0;
           return (
             <button
@@ -142,7 +151,9 @@ export function TrayHeader({
                   ? undefined
                   : tab === 'review'
                     ? `Review, ${badge} unknown ${badge === 1 ? 'line' : 'lines'}`
-                    : `Friends, ${badge} unread ${badge === 1 ? 'notification' : 'notifications'}`
+                    : tab === 'social'
+                      ? `Friends, ${badge} unread ${badge === 1 ? 'notification' : 'notifications'}`
+                      : `What's New, ${badge} unread`
               }
               style={{
                 background: active ? 'var(--accent-soft)' : 'transparent',

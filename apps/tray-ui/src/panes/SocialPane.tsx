@@ -406,7 +406,7 @@ export function SocialPane() {
       </TrayCard>
 
       {prefs ? (
-        <TrayCard title="Toasts">
+        <TrayCard title="Desktop notifications">
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input
               type="checkbox"
@@ -429,6 +429,17 @@ export function SocialPane() {
               }}
             />
             Hold them while Star Citizen is running
+          </label>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+            <input
+              type="checkbox"
+              checked={prefs.release_toasts}
+              onChange={(e) => {
+                const next = { ...prefs, release_toasts: e.target.checked };
+                void act(() => api.socialSetPrefs(next), 'Saved.');
+              }}
+            />
+            Tell me about new features and StarStats updates
           </label>
         </TrayCard>
       ) : null}

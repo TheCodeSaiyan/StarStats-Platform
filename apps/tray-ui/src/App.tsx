@@ -197,6 +197,28 @@ function AppInner() {
     };
   }, []);
 
+  // Unread What's New entries for that tab's badge, from the poller's
+  // `whats-new-unread` event (`release_toasts::check`, every 30 min).
+  // Cleared when the reader opens the tab, since opening it is reading it.
+  const [whatsNewUnread, setWhatsNewUnread] = useState(0);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<{ unread_count: number }>('whats-new-unread', (e) => {
+      setWhatsNewUnread(e.payload.unread_count);
+    }).then((unl) => {
+      if (cancelled) unl();
+      else unlisten = unl;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+  useEffect(() => {
+    if (view === 'whats-new') setWhatsNewUnread(0);
+  }, [view]);
+
   // Remote-sync config downloads: the bulk-lane piggyback in
   // `crates/starstats-client/src/sync.rs` emits `config-changed` after
   // persisting a server-newer snapshot. Listening at the App level
@@ -249,6 +271,7 @@ function AppInner() {
         version={appVersion}
         reviewBadge={unknownCount}
         socialBadge={socialUnread}
+        whatsNewBadge={whatsNewUnread}
       />
       <main className="app__main">
         {error && <div className="error">Error: {error}</div>}

@@ -43,6 +43,7 @@ mod preferences_client;
 mod probes;
 #[allow(dead_code)]
 mod process_guard;
+mod release_toasts;
 mod secret;
 mod social;
 mod state;
@@ -185,6 +186,7 @@ fn main() {
                                 // "update available" to its log on every
                                 // launch. Observed 2026-09-17 on 0.1.25
                                 // with 0.1.26 published.
+                                crate::release_toasts::announce_update(&handle, &update.version);
                                 *found_update.lock() = Some(state::UpdateInfo {
                                     version: update.version.clone(),
                                     checked_at: chrono::Utc::now(),

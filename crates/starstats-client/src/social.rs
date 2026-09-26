@@ -457,6 +457,12 @@ pub async fn run_poller(app: tauri::AppHandle) {
             }
         };
 
+        // What's New changes at release cadence; check every 30 minutes.
+        if ticks % 30 == 1 {
+            let quiet = cfg.social.quiet_in_game && crate::process_guard::is_starcitizen_running();
+            crate::release_toasts::check(&app, &cfg, quiet).await;
+        }
+
         // The friends list changes rarely; refresh it every tenth tick.
         if ticks % 10 == 1 {
             match client.friends().await {
