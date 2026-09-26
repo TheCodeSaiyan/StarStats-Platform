@@ -18,6 +18,8 @@ export type RoadmapListResponse =
 export type ChangelogEntryPublic =
   apiSchema['schemas']['ChangelogEntryPublic'];
 export type ChangelogResponse = apiSchema['schemas']['ChangelogResponse'];
+export type NewsPost = apiSchema['schemas']['NewsPost'];
+export type NewsListResponse = apiSchema['schemas']['NewsListResponse'];
 
 async function getPublic<T>(path: string): Promise<T> {
   const resp = await fetch(`${apiBase()}${path}`, {
@@ -44,6 +46,11 @@ export async function getRoadmapItem(
   if (resp.status === 404) return null;
   if (!resp.ok) throw new Error(`roadmap item fetch → ${resp.status}`);
   return (await resp.json()) as RoadmapItemPublic;
+}
+
+/** Published staff news, newest first. Public: no bearer. */
+export async function listNews(limit = 10): Promise<NewsListResponse> {
+  return getPublic<NewsListResponse>(`/v1/news?limit=${limit}`);
 }
 
 export async function listChangelog(): Promise<ChangelogResponse> {
