@@ -53,6 +53,59 @@ pub struct WhatsNewResponse {
     pub seen_via_auth: bool,
 }
 
+/// One line of release notes, as scripts/release-notes.mjs emits it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleaseLine {
+    pub text: String,
+    #[serde(default)]
+    pub surfaces: Vec<String>,
+    #[serde(default)]
+    pub prs: Vec<u64>,
+    #[serde(default)]
+    pub roadmap: Option<String>,
+}
+
+/// "New", "Improved" or "Fixed", with its lines.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleaseGroup {
+    pub kind: String,
+    pub lines: Vec<ReleaseLine>,
+}
+
+/// Mirror of `release_routes::MyRelease` (a flattened `Release` plus the
+/// player's unread flag).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleaseItem {
+    pub id: Uuid,
+    pub track: String,
+    pub tag: String,
+    pub version: String,
+    pub channel: String,
+    pub released_on: String,
+    pub summary: String,
+    pub notes: Vec<ReleaseGroup>,
+    pub unread: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ReleasesResponse {
+    pub releases: Vec<ReleaseItem>,
+    pub unread_count: usize,
+}
+
+/// The release channels a player on `channel` sees: their own and every
+/// more stable one. An alpha tester also reads beta, rc and live notes;
+/// a live player reads live only.
+pub fn channels_for(channel: crate::config::ReleaseChannel) -> &'static [&'static str] {
+    use crate::config::ReleaseChannel as C;
+    match channel {
+        C::Alpha => &["alpha", "beta", "rc", "live"],
+        C::Beta => &["beta", "rc", "live"],
+        C::Rc => &["rc", "live"],
+        C::Live => &["live"],
+    }
+}
+
 /// Mirror of `news_routes::MyNewsItem`: a staff news post with this
 /// player's unread flag.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -169,6 +222,59 @@ impl WhatsNewClient {
             .context("decode news response")?)
     }
 
+    /// GET /v1/me/releases?track=tray&channels=... — tray release notes
+    /// with this player's unread flags. Requires a bearer.
+    pub async fn fetch_releases(
+        &self,
+        channels: &[&str],
+    ) -> Result<ReleasesResponse, WhatsNewClientError> {
+        let bearer = self
+            .bearer
+            .as_deref()
+            .ok_or(WhatsNewClientError::NotPaired)?;
+        let url = format!(
+            "{}/v1/me/releases?track=tray&limit=5&channels={}",
+            self.api_url,
+            channels.join(",")
+        );
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(bearer)
+            .send()
+            .await
+            .context("send GET releases")?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(WhatsNewClientError::Status(status));
+        }
+        Ok(resp
+            .json::<ReleasesResponse>()
+            .await
+            .context("decode releases response")?)
+    }
+
+    /// POST /v1/me/releases/{id}/seen
+    pub async fn mark_release_seen(&self, id: Uuid) -> Result<(), WhatsNewClientError> {
+        let bearer = self
+            .bearer
+            .as_deref()
+            .ok_or(WhatsNewClientError::NotPaired)?;
+        let url = format!("{}/v1/me/releases/{id}/seen", self.api_url);
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(bearer)
+            .send()
+            .await
+            .context("send POST release seen")?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(WhatsNewClientError::Status(status));
+        }
+        Ok(())
+    }
+
     /// POST /v1/me/news/{id}/seen
     pub async fn mark_news_seen(&self, id: Uuid) -> Result<(), WhatsNewClientError> {
         let bearer = self
@@ -261,5 +367,43 @@ mod tests {
         let parsed: WhatsNewResponse = serde_json::from_str(raw).unwrap();
         assert!(parsed.items.is_empty());
         assert!(!parsed.seen_via_auth);
+    }
+}
+
+#[cfg(test)]
+mod release_tests {
+    use super::*;
+    use crate::config::ReleaseChannel;
+
+    #[test]
+    fn a_player_sees_their_channel_and_every_more_stable_one() {
+        assert_eq!(channels_for(ReleaseChannel::Live), &["live"]);
+        assert_eq!(channels_for(ReleaseChannel::Rc), &["rc", "live"]);
+        assert_eq!(
+            channels_for(ReleaseChannel::Alpha),
+            &["alpha", "beta", "rc", "live"]
+        );
+    }
+
+    #[test]
+    fn release_payload_matches_the_server_shape() {
+        let json = serde_json::json!({
+            "releases": [{
+                "id": "0199c000-0000-7000-8000-000000000001",
+                "track": "tray",
+                "tag": "tray-v0.1.31",
+                "version": "0.1.31",
+                "channel": "live",
+                "released_on": "2026-09-26",
+                "summary": "1 new, 1 fixed",
+                "notes": [{ "kind": "New", "lines": [{ "text": "Friends", "surfaces": ["Tray"], "prs": [134], "roadmap": "friends-notifications" }] }],
+                "created_at": "2026-09-26T18:00:00Z",
+                "unread": true
+            }],
+            "unread_count": 1
+        });
+        let parsed: ReleasesResponse = serde_json::from_value(json).unwrap();
+        assert_eq!(parsed.releases[0].notes[0].lines[0].prs, vec![134]);
+        assert!(parsed.releases[0].unread);
     }
 }

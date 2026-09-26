@@ -770,6 +770,25 @@ export interface WhatsNewItem {
   unread: boolean;
 }
 
+/** One release's notes (`get_releases`), grouped New / Improved / Fixed. */
+export interface ReleaseItem {
+  id: string;
+  track: string;
+  tag: string;
+  version: string;
+  channel: string;
+  released_on: string;
+  /** "5 new, 1 improved, 1 fixed"; empty when nothing player-facing. */
+  summary: string;
+  notes: { kind: string; lines: { text: string }[] }[];
+  unread: boolean;
+}
+
+export interface ReleasesResponse {
+  releases: ReleaseItem[];
+  unread_count: number;
+}
+
 /** Staff news post with this player's unread flag (`get_news`). */
 export interface NewsItem {
   id: string;
@@ -1005,6 +1024,9 @@ export const api = {
    */
   getWhatsNew: () => invoke<WhatsNewResponse>('get_whats_new'),
   getNews: () => invoke<NewsResponse>('get_news'),
+  getReleases: () => invoke<ReleasesResponse>('get_releases'),
+  markReleaseSeen: (releaseId: string) =>
+    invoke<void>('mark_release_seen', { release_id: releaseId }),
   markNewsSeen: (newsId: string) => invoke<void>('mark_news_seen', { news_id: newsId }),
   /**
    * Social relays. Keys are byte-exact snake_case to match the Rust

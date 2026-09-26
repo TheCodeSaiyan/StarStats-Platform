@@ -3485,6 +3485,29 @@ pub async fn get_whats_new() -> Result<crate::whats_new::WhatsNewResponse, Strin
 /// got off the panel response; we parse them back into UUIDs here so
 /// a malformed string fails loudly at the IPC boundary rather than
 /// silently no-op'ing the read-state row.
+/// Tray release notes for the What's New pane: the player's channel and
+/// every more stable one, with unread flags.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_releases() -> Result<crate::whats_new::ReleasesResponse, String> {
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let client = crate::whats_new::WhatsNewClient::from_config(&cfg).map_err(|e| e.to_string())?;
+    client
+        .fetch_releases(crate::whats_new::channels_for(cfg.release_channel))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn mark_release_seen(release_id: String) -> Result<(), String> {
+    let id = uuid::Uuid::parse_str(&release_id).map_err(|e| format!("bad release_id: {e}"))?;
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let client = crate::whats_new::WhatsNewClient::from_config(&cfg).map_err(|e| e.to_string())?;
+    client
+        .mark_release_seen(id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Staff news for the What's New pane, with unread flags.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_news() -> Result<crate::whats_new::NewsResponse, String> {

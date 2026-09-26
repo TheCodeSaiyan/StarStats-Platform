@@ -131,6 +131,21 @@ pub async fn check(app: &tauri::AppHandle, cfg: &crate::config::Config, quiet: b
         Ok(_) => {}
         Err(e) => tracing::debug!(error = %e, "whats-new toast check failed"),
     }
+    // A new tray release on the player's channel: one toast naming the
+    // version and counting the notes, e.g. "5 new, 1 improved, 1 fixed".
+    let channels = crate::whats_new::channels_for(cfg.release_channel);
+    match client.fetch_releases(channels).await {
+        Ok(rel) => unread.extend(rel.releases.iter().filter(|r| r.unread).map(|r| Unread {
+            entry_id: format!("release:{}", r.id),
+            heading: format!("StarStats {} is out", r.version),
+            title: if r.summary.is_empty() {
+                "Open What's New to see what changed.".to_string()
+            } else {
+                format!("{}. Open What's New to see them.", r.summary)
+            },
+        })),
+        Err(e) => tracing::debug!(error = %e, "releases toast check failed"),
+    }
     match client.fetch_news().await {
         Ok(news) => unread.extend(news.items.iter().filter(|n| n.unread).map(|n| Unread {
             entry_id: format!("news:{}", n.id),
