@@ -3161,13 +3161,116 @@ pub fn list_unknown_lines(
         .map_err(|e| e.to_string())
 }
 
-/// Cheap counter for the tray badge. Returns how many shapes are
-/// currently above the review threshold and not dismissed.
+/// Counter for the Review tab badge: FEATURED groups, not raw shapes.
+/// It used to count shapes, which on a real install read 342,428 — a
+/// number nobody can act on and which never went down.
 #[tauri::command(rename_all = "snake_case")]
 pub fn count_unknown_lines(state: State<'_, AppState>) -> Result<u32, String> {
+    let groups = state
+        .storage
+        .review_group_stats(UNKNOWN_LINE_REVIEW_THRESHOLD)
+        .map_err(|e| e.to_string())?;
+    let (featured, _) = crate::review::triage(groups);
+    Ok(featured.len() as u32)
+}
+
+/// One featured group with the example line the pane shows and submits.
+#[derive(Debug, Serialize)]
+pub struct FeaturedReviewGroup {
+    #[serde(flatten)]
+    pub stats: crate::review::ReviewGroupStats,
+    pub example: Option<starstats_core::UnknownLine>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ReviewGroupsResponse {
+    /// Worth a look: reads like a gameplay event. Capped and ranked.
+    pub featured: Vec<FeaturedReviewGroup>,
+    /// Everything else, biggest first. Examples are loaded on demand.
+    pub other: Vec<crate::review::ReviewGroupStats>,
+}
+
+/// The review queue, grouped by log tag and split into featured and
+/// Other (`crate::review`). Examples are fetched only for featured groups
+/// — one indexed lookup each — because a windowed "example per group"
+/// over the whole table cost ~0.8s under the storage lock.
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_review_groups(state: State<'_, AppState>) -> Result<ReviewGroupsResponse, String> {
+    let groups = state
+        .storage
+        .review_group_stats(UNKNOWN_LINE_REVIEW_THRESHOLD)
+        .map_err(|e| e.to_string())?;
+    let (featured, other) = crate::review::triage(groups);
+    let featured = featured
+        .into_iter()
+        .map(|stats| {
+            let example = state
+                .storage
+                .review_group_example(&stats.shell_tag)
+                .map_err(|e| e.to_string())?;
+            Ok(FeaturedReviewGroup { stats, example })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(ReviewGroupsResponse { featured, other })
+}
+
+/// Example line for one group, for an Other group the user expands.
+#[tauri::command(rename_all = "snake_case")]
+pub fn review_group_example(
+    state: State<'_, AppState>,
+    shell_tag: String,
+) -> Result<Option<starstats_core::UnknownLine>, String> {
     state
         .storage
-        .count_unknown_lines(UNKNOWN_LINE_REVIEW_THRESHOLD)
+        .review_group_example(&shell_tag)
+        .map_err(|e| e.to_string())
+}
+
+/// Ignore groups in bulk. Hides current and future lines with these tags.
+#[tauri::command(rename_all = "snake_case")]
+pub fn ignore_review_groups(
+    state: State<'_, AppState>,
+    shell_tags: Vec<String>,
+) -> Result<u32, String> {
+    state
+        .storage
+        .ignore_review_groups(&shell_tags)
+        .map(|n| n as u32)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Serialize)]
+pub struct IgnoredReviewGroup {
+    pub shell_tag: String,
+    pub ignored_at: String,
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn list_ignored_review_groups(
+    state: State<'_, AppState>,
+) -> Result<Vec<IgnoredReviewGroup>, String> {
+    state
+        .storage
+        .ignored_review_groups()
+        .map(|rows| {
+            rows.into_iter()
+                .map(|(shell_tag, ignored_at)| IgnoredReviewGroup {
+                    shell_tag,
+                    ignored_at,
+                })
+                .collect()
+        })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn unignore_review_group(
+    state: State<'_, AppState>,
+    shell_tag: String,
+) -> Result<bool, String> {
+    state
+        .storage
+        .unignore_review_group(&shell_tag)
         .map_err(|e| e.to_string())
 }
 
@@ -3278,6 +3381,12 @@ pub async fn submit_unknown_lines(
                 error = %e,
                 "mark_submitted failed after successful POST",
             );
+        }
+        // The review queue works in groups: a submission reports the
+        // group's template, so its other variants leave the queue too.
+        let tag = p.shell_tag.clone().unwrap_or_default();
+        if let Err(e) = state.storage.mark_group_submitted(&tag, &now) {
+            tracing::warn!(error = %e, "mark_group_submitted failed after successful POST");
         }
     }
 
