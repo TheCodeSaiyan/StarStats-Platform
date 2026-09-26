@@ -1056,6 +1056,27 @@ export const noProfileViews = {
   },
 };
 
+/** Empty friends state — used in scenarioFor's base map. */
+export const noFriends = {
+  status: 200,
+  body: {
+    friends: [] as Array<unknown>,
+    incoming: [] as Array<unknown>,
+    outgoing: [] as Array<unknown>,
+    friend_request_policy: 'everyone',
+  },
+};
+
+/**
+ * Empty notifications inbox — used in scenarioFor's base map. `layout.tsx`
+ * fetches it on every signed-in render for the unread badge, so every
+ * scenario needs it or the layout 599s with `no_mock_fixture`.
+ */
+export const noNotifications = {
+  status: 200,
+  body: { items: [] as Array<unknown>, unread_count: 0 },
+};
+
 /** Empty discover listing — used in scenarioFor's base map. */
 export const noDiscoverProfiles = {
   status: 200,
@@ -1068,6 +1089,10 @@ export function scenarioFor(
 ): Scenario {
   const base: ScenarioRoutes = {
     'GET /v1/auth/me': currentUser,
+    'GET /v1/me/notifications': noNotifications,
+    'GET /v1/me/friends': noFriends,
+    'GET /v1/me/blocks': { status: 200, body: { blocks: [] } },
+    'GET /v1/me/mutes': { status: 200, body: { mutes: [] } },
     'GET /v1/me/summary': summaryWithEvents,
     'GET /v1/me/events': eventsPageDescending,
     'GET /v1/me/timeline': timeline30Days,

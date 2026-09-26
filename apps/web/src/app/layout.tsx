@@ -9,6 +9,7 @@ import {
 } from 'next/font/google';
 import {
   getAppearanceConfig,
+  getNotifications,
   getPreferences,
   listSharedWithMe,
 } from '@/lib/api';
@@ -196,22 +197,36 @@ export default async function RootLayout({
    * `allSettled` for one call is overkill, so this is a plain guarded fetch —
    * but the fail-soft is the same: a hiccup here must never take a page down.
    */
+  //
+  // The unread-notification count joined it for the same reason. Two calls
+  // now, so `allSettled`: one failing must not blank the other badge.
   let inboundShareCount = 0;
+  let unreadNotifications = 0;
   if (session) {
-    try {
-      const shared = await listSharedWithMe(session.token);
+    const [sharedRes, notesRes] = await Promise.allSettled([
+      listSharedWithMe(session.token),
+      // limit=1: only the count is wanted, and it covers the whole inbox
+      // regardless of page size.
+      getNotifications(session.token, { limit: 1 }),
+    ]);
+    if (sharedRes.status === 'fulfilled') {
       // EXPIRY, not revocation: an expired share stays in the inbound list
       // (recipients should know who used to share) but the badge should reflect
       // things to look at NOW. An expired badge would be noise and would never
       // clear.
       // eslint-disable-next-line react-hooks/purity -- server component: Date.now() is read once per request, not per re-render
       const now = Date.now();
-      inboundShareCount = shared.shared_with_me.filter(
+      inboundShareCount = sharedRes.value.shared_with_me.filter(
         (entry) =>
           !entry.expires_at || new Date(entry.expires_at).getTime() > now,
       ).length;
-    } catch (e) {
-      logger.warn({ err: e, call: 'shell.sharedWithMe' }, 'inbound share count fetch failed');
+    } else {
+      logger.warn({ err: sharedRes.reason, call: 'shell.sharedWithMe' }, 'inbound share count fetch failed');
+    }
+    if (notesRes.status === 'fulfilled') {
+      unreadNotifications = notesRes.value.unread_count;
+    } else {
+      logger.warn({ err: notesRes.reason, call: 'shell.notifications' }, 'unread notification count fetch failed');
     }
   }
 
@@ -237,7 +252,10 @@ export default async function RootLayout({
             the one place that still wraps every route and already had the
             inbound-share count, so the badge is fed from here rather than
             threaded through a dozen shells. */}
-        <ShellDataProvider inboundShares={inboundShareCount}>
+        <ShellDataProvider
+          inboundShares={inboundShareCount}
+          unreadNotifications={unreadNotifications}
+        >
         {hasSession ? (
           <div className="ss-app" style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>
             <div className="ss-main" id="main" tabIndex={-1}>

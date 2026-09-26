@@ -24,15 +24,28 @@ import React from 'react';
 export interface ShellData {
   /** Records other people have shared with this reader, unexpired. */
   inboundShares: number;
+  /**
+   * Unread notifications (friend requests, accepted requests). Same reason
+   * as the share count for living here: a badge that shows on some pages and
+   * not others teaches the reader the wrong place to look.
+   */
+  unreadNotifications: number;
 }
 
-const Ctx = React.createContext<ShellData>({ inboundShares: 0 });
+const Ctx = React.createContext<ShellData>({
+  inboundShares: 0,
+  unreadNotifications: 0,
+});
 
 export function ShellDataProvider({
   inboundShares,
+  unreadNotifications,
   children,
 }: ShellData & { children: React.ReactNode }) {
-  const value = React.useMemo(() => ({ inboundShares }), [inboundShares]);
+  const value = React.useMemo(
+    () => ({ inboundShares, unreadNotifications }),
+    [inboundShares, unreadNotifications],
+  );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

@@ -111,6 +111,15 @@ export const SITE_NAV: readonly NavDestination[] = [
   { id: 'kb', label: 'Catalogue', href: '/kb' as Route, access: 'user' },
   { id: 'discover', label: 'Directory', href: '/discover' as Route, access: 'user' },
   { id: 'sharing', label: 'Sharing', href: '/sharing' as Route, access: 'user' },
+  // Menu, not the inline row — see `rowExempt`. The unread-notification
+  // badge on the account menu is the usual way in.
+  {
+    id: 'friends',
+    label: 'Friends',
+    href: '/friends' as Route,
+    access: 'user',
+    rowExempt: true,
+  },
   { id: 'settings', label: 'Calibrate', href: '/settings' as Route, access: 'user' },
 
   { id: 'admin', label: 'Console', href: '/admin' as Route, access: 'admin' },

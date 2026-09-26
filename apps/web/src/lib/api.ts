@@ -226,6 +226,121 @@ async function putJson<T>(
   return request<T>('PUT', path, body, bearer);
 }
 
+// -- Social: friends, blocks, mutes, notifications ------------------
+//
+// The caller is always the bearer's owner; these calls only ever name
+// the OTHER party. A block is deliberately invisible to the blocked
+// user, so `sendFriendRequest` to someone who blocked you resolves
+// exactly like any other request.
+
+export type FriendsResponse = apiSchema['schemas']['FriendsResponse'];
+export type Friend = apiSchema['schemas']['Friend'];
+export type FriendRequest = apiSchema['schemas']['FriendRequest'];
+export type FriendRequestPolicy = apiSchema['schemas']['FriendRequestPolicy'];
+export type SendFriendRequestResponse =
+  apiSchema['schemas']['SendFriendRequestResponse'];
+export type ListedHandle = apiSchema['schemas']['ListedHandle'];
+export type BlocksResponse = apiSchema['schemas']['BlocksResponse'];
+export type MutesResponse = apiSchema['schemas']['MutesResponse'];
+export type SocialSettings = apiSchema['schemas']['SocialSettings'];
+export type AppNotification = apiSchema['schemas']['Notification'];
+export type NotificationsResponse =
+  apiSchema['schemas']['NotificationsResponse'];
+export type MarkNotificationsReadResponse =
+  apiSchema['schemas']['MarkNotificationsReadResponse'];
+
+const handlePath = (h: string) => encodeURIComponent(h.trim());
+
+export async function getFriends(bearer: string): Promise<FriendsResponse> {
+  return request<FriendsResponse>('GET', '/v1/me/friends', undefined, bearer);
+}
+
+export async function sendFriendRequest(
+  bearer: string,
+  handle: string,
+): Promise<SendFriendRequestResponse> {
+  return postJson<SendFriendRequestResponse>(
+    '/v1/me/friends/requests',
+    { handle: handle.trim() },
+    bearer,
+  );
+}
+
+export async function respondToFriendRequest(
+  bearer: string,
+  id: string,
+  action: 'accept' | 'decline' | 'cancel',
+): Promise<void> {
+  await request<unknown>(
+    'POST',
+    `/v1/me/friends/requests/${encodeURIComponent(id)}/${action}`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function removeFriend(bearer: string, handle: string): Promise<void> {
+  await request<void>('DELETE', `/v1/me/friends/${handlePath(handle)}`, undefined, bearer);
+}
+
+export async function listBlocks(bearer: string): Promise<BlocksResponse> {
+  return request<BlocksResponse>('GET', '/v1/me/blocks', undefined, bearer);
+}
+
+export async function blockUser(bearer: string, handle: string): Promise<void> {
+  await request<void>('PUT', `/v1/me/blocks/${handlePath(handle)}`, undefined, bearer);
+}
+
+export async function unblockUser(bearer: string, handle: string): Promise<void> {
+  await request<void>('DELETE', `/v1/me/blocks/${handlePath(handle)}`, undefined, bearer);
+}
+
+export async function listMutes(bearer: string): Promise<MutesResponse> {
+  return request<MutesResponse>('GET', '/v1/me/mutes', undefined, bearer);
+}
+
+export async function muteUser(bearer: string, handle: string): Promise<void> {
+  await request<void>('PUT', `/v1/me/mutes/${handlePath(handle)}`, undefined, bearer);
+}
+
+export async function unmuteUser(bearer: string, handle: string): Promise<void> {
+  await request<void>('DELETE', `/v1/me/mutes/${handlePath(handle)}`, undefined, bearer);
+}
+
+export async function updateSocialSettings(
+  bearer: string,
+  settings: SocialSettings,
+): Promise<SocialSettings> {
+  return putJson<SocialSettings>('/v1/me/social/settings', settings, bearer);
+}
+
+export async function getNotifications(
+  bearer: string,
+  opts: { since?: string; limit?: number } = {},
+): Promise<NotificationsResponse> {
+  const qs = new URLSearchParams();
+  if (opts.since) qs.set('since', opts.since);
+  if (opts.limit !== undefined) qs.set('limit', String(opts.limit));
+  const suffix = qs.size > 0 ? `?${qs.toString()}` : '';
+  return request<NotificationsResponse>(
+    'GET',
+    `/v1/me/notifications${suffix}`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function markNotificationsRead(
+  bearer: string,
+  target: { ids: string[] } | { all: true },
+): Promise<MarkNotificationsReadResponse> {
+  return postJson<MarkNotificationsReadResponse>(
+    '/v1/me/notifications/read',
+    target,
+    bearer,
+  );
+}
+
 export async function signup(input: {
   email: string;
   password: string;

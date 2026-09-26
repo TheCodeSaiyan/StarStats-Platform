@@ -161,7 +161,7 @@ export function MeProjection({
   onCalibrate,
 }: MeProjectionProps) {
   const router = useRouter();
-  const { inboundShares } = useShellData();
+  const { inboundShares, unreadNotifications } = useShellData();
   const [lens, setLens] = React.useState(initialLens);
   const [record, setRecord] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState(false);
@@ -516,6 +516,14 @@ export function MeProjection({
               // rather than going through `PaneSurface`, so it does not get
               // the central decoration and has to carry it itself.
               badge: inboundShares > 0 ? inboundShares : undefined,
+            },
+            {
+              id: 'friends',
+              label: 'Friends',
+              href: '/friends',
+              // Unread notifications, carried by hand for the same reason as
+              // the share badge above.
+              badge: unreadNotifications > 0 ? unreadNotifications : undefined,
             },
             { id: 'downloads', label: 'Emitter', href: '/downloads' },
           ]}
