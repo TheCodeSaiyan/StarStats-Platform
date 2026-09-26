@@ -14,9 +14,98 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 - `vX.Y.Z-rc[.N]`    → `rc.json`
 - `vX.Y.Z`           → `live.json`
 
-## [Unreleased]
+<!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
-- (nothing yet)
+## [Platform 0.1.61] - 2026-09-21
+
+### Fixed
+- Count the orders, not the page they arrived on. #127
+
+## [Platform 0.1.60] - 2026-09-21
+
+### New
+- Say which log lines are read, and which never arrive. #126
+
+## [Platform 0.1.59] - 2026-09-21
+
+### Fixed
+- Keep the selected range across a page change. #125
+- Stop NPC kills asserting a zero nothing can change. #125
+- Read mission starts, which a missing space had hidden entirely. #125
+
+## [Tray 0.1.30] - 2026-09-21
+
+### Fixed
+- Read mission starts, which a missing space had hidden entirely. #125
+
+## [Platform 0.1.58] - 2026-09-20
+
+No player-facing changes.
+
+## [Platform 0.1.57] - 2026-09-20
+
+No player-facing changes.
+
+## [Platform 0.1.56] - 2026-09-20
+
+### New
+- Bring back the kill count, named for what it counts. #122
+
+### Fixed
+- Stop two tiles in a lens showing one figure. #122
+
+## [Platform 0.1.55] - 2026-09-20
+
+No player-facing changes.
+
+## [Platform 0.1.54] - 2026-09-20
+
+### Fixed
+- Make the range tabs show they were clicked. #119
+
+## [Tray 0.1.29] - 2026-09-20
+
+### New
+- Re-parse history when the parser learns something. #124
+
+## [Tray 0.1.28] - 2026-09-20
+
+### Fixed
+- Stop storing one log line as several events. #122
+- Collapse the duplicate events already on disk. #122
+
+## [Tray 0.1.27] - 2026-09-17
+
+### Fixed
+- Tell somebody when the startup check finds an update.
+- Stop verbose logging enabling debug for the whole dep tree.
+
+## [Tray 0.1.26] - 2026-09-17
+
+### Fixed
+- Walk every page of the RSI pledge ledger, and log what happened.
+- Stop a device token being one careless log line away.
+- Request the pledge ledger at its canonical /en/ path.
+
+## [Tray 0.1.25] - 2026-09-16
+
+### Fixed
+- Keep the host-probe test off the Linux build.
+- Keep honouring WINEPREFIX when HOME is unset.
+
+## [Tray 0.1.24] - 2026-09-16
+
+### Fixed
+- Honour the Game.log override and find non-default installs.
+- Keep the launcher-log scanner off the Linux dead-code path.
+
+## [Tray 0.1.23] - 2026-09-14
+
+No player-facing changes.
+
+<!-- generated:end -->
+
+Entries below this line predate the August 2026 repository reset, when versions restarted at 0.1.x. They are kept as written.
 
 ## [1.8.1] - 2026-05-22
 
