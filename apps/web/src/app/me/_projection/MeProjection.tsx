@@ -161,7 +161,7 @@ export function MeProjection({
   onCalibrate,
 }: MeProjectionProps) {
   const router = useRouter();
-  const { inboundShares, unreadNotifications } = useShellData();
+  const { inboundShares, unreadNotifications, unreadWhatsNew } = useShellData();
   const [lens, setLens] = React.useState(initialLens);
   const [record, setRecord] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState(false);
@@ -524,6 +524,12 @@ export function MeProjection({
               // Unread notifications, carried by hand for the same reason as
               // the share badge above.
               badge: unreadNotifications > 0 ? unreadNotifications : undefined,
+            },
+            {
+              id: 'whats-new',
+              label: "What's new",
+              href: '/whats-new',
+              badge: unreadWhatsNew > 0 ? unreadWhatsNew : undefined,
             },
             { id: 'downloads', label: 'Emitter', href: '/downloads' },
           ]}

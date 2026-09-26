@@ -9,7 +9,9 @@ import {
 } from 'next/font/google';
 import {
   getAppearanceConfig,
+  getMyNews,
   getNotifications,
+  getWhatsNew,
   getPreferences,
   listSharedWithMe,
 } from '@/lib/api';
@@ -202,12 +204,15 @@ export default async function RootLayout({
   // now, so `allSettled`: one failing must not blank the other badge.
   let inboundShareCount = 0;
   let unreadNotifications = 0;
+  let unreadWhatsNew = 0;
   if (session) {
-    const [sharedRes, notesRes] = await Promise.allSettled([
+    const [sharedRes, notesRes, newsRes, whatsNewRes] = await Promise.allSettled([
       listSharedWithMe(session.token),
       // limit=1: only the count is wanted, and it covers the whole inbox
       // regardless of page size.
       getNotifications(session.token, { limit: 1 }),
+      getMyNews(session.token, 20),
+      getWhatsNew(session.token),
     ]);
     if (sharedRes.status === 'fulfilled') {
       // EXPIRY, not revocation: an expired share stays in the inbound list
@@ -227,6 +232,18 @@ export default async function RootLayout({
       unreadNotifications = notesRes.value.unread_count;
     } else {
       logger.warn({ err: notesRes.reason, call: 'shell.notifications' }, 'unread notification count fetch failed');
+    }
+    // What's New counts news and shipped items together, the same total the
+    // tray badges. Either feed failing just leaves its half out.
+    if (newsRes.status === 'fulfilled') {
+      unreadWhatsNew += newsRes.value.unread_count;
+    } else {
+      logger.warn({ err: newsRes.reason, call: 'shell.news' }, 'unread news count fetch failed');
+    }
+    if (whatsNewRes.status === 'fulfilled' && whatsNewRes.value.seen_via_auth) {
+      unreadWhatsNew += whatsNewRes.value.items.filter((i) => i.unread).length;
+    } else if (whatsNewRes.status === 'rejected') {
+      logger.warn({ err: whatsNewRes.reason, call: 'shell.whatsNew' }, 'whats-new count fetch failed');
     }
   }
 
@@ -255,6 +272,7 @@ export default async function RootLayout({
         <ShellDataProvider
           inboundShares={inboundShareCount}
           unreadNotifications={unreadNotifications}
+          unreadWhatsNew={unreadWhatsNew}
         >
         {hasSession ? (
           <div className="ss-app" style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>

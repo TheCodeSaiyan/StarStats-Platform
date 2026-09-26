@@ -30,21 +30,25 @@ export interface ShellData {
    * not others teaches the reader the wrong place to look.
    */
   unreadNotifications: number;
+  /** Unread staff news plus unread shipped roadmap items: What's New. */
+  unreadWhatsNew: number;
 }
 
 const Ctx = React.createContext<ShellData>({
   inboundShares: 0,
   unreadNotifications: 0,
+  unreadWhatsNew: 0,
 });
 
 export function ShellDataProvider({
   inboundShares,
   unreadNotifications,
+  unreadWhatsNew,
   children,
 }: ShellData & { children: React.ReactNode }) {
   const value = React.useMemo(
-    () => ({ inboundShares, unreadNotifications }),
-    [inboundShares, unreadNotifications],
+    () => ({ inboundShares, unreadNotifications, unreadWhatsNew }),
+    [inboundShares, unreadNotifications, unreadWhatsNew],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
