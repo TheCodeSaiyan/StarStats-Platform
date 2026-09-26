@@ -179,6 +179,8 @@ mod unknown_tags;
 // `mod.rs` enumerates the submodules; we only need the top-level mod
 // here. main.rs adds its own copy when it wires the routes (post-
 // Phase 7 follow-up).
+#[path = "../notifications.rs"]
+mod notifications;
 #[path = "../roadmap/mod.rs"]
 mod roadmap;
 #[path = "../rsi_org_routes.rs"]
@@ -209,6 +211,10 @@ mod ship_matrix_config_store;
 mod smtp_admin_routes;
 #[path = "../smtp_config_store.rs"]
 mod smtp_config_store;
+#[path = "../social.rs"]
+mod social;
+#[path = "../social_routes.rs"]
+mod social_routes;
 #[path = "../spicedb.rs"]
 mod spicedb;
 #[path = "../staff_roles.rs"]
