@@ -17,7 +17,8 @@
     "test": "turbo run test",
     "tauri": "pnpm exec tauri",
     "tauri:dev": "cd crates/starstats-client && pnpm exec tauri dev",
-    "tauri:build": "cd crates/starstats-client && pnpm exec tauri build"
+    "tauri:build": "cd crates/starstats-client && pnpm exec tauri build",
+    "prepare": "node -e \"try{const c=require('node:child_process');c.execFileSync('git',['rev-parse','--is-inside-work-tree'],{stdio:'ignore'});c.execFileSync('git',['config','core.hooksPath','.githooks'],{stdio:'ignore'})}catch(e){}\""
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.4",

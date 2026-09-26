@@ -1,0 +1,40 @@
+{
+  "$comment": "Commit-subject rules. One source, read by the commit-msg hook (.githooks/commit-msg), the commit-rules CI job and the release-notes generator (scripts/release-notes.mjs). Release notes are built from commit subjects with no human or AI rewrite step, so a subject on a player-facing scope IS the release note. Adding a type or scope is a deliberate edit here. See CONTRIBUTING.md 'Commit conventions'.",
+  "types": ["feat", "fix", "perf", "refactor", "docs", "test", "build", "ci", "chore", "style", "revert"],
+  "scopes": [
+    "web", "tray", "server", "core", "client", "holo", "parser", "updater", "storage",
+    "sharing", "api", "ci", "deps", "dependabot", "release", "docs", "scripts", "infra"
+  ],
+  "subject": {
+    "max_length": 72,
+    "lowercase_after_prefix": true,
+    "no_trailing_period": true
+  },
+  "player_types": { "feat": "New", "perf": "Improved", "fix": "Fixed" },
+  "player_scopes": {
+    "web": "Web",
+    "holo": "Web",
+    "sharing": "Web",
+    "tray": "Tray",
+    "client": "Tray",
+    "updater": "Tray",
+    "parser": "Tray",
+    "core": ["Tray", "Web"]
+  },
+  "jargon": [
+    "pii", "ipc", "migration", "schema", "endpoint", "spicedb", "sqlx", "rusqlite",
+    "utoipa", "handler", "mutex", "poller", "payload", "dto", "tauri", "webview", "csp",
+    "refactor", "admin console", "toast", "pane", "regression", "flaky", "stub", "fixture"
+  ],
+  "glossary": {
+    "notification toasts": "desktop notifications",
+    "toasts": "desktop notifications",
+    "toast": "desktop notification",
+    "panes": "tabs",
+    "pane": "tab"
+  },
+  "exempt": {
+    "subject_prefixes": ["release-manifests:", "merge ", "Merge ", "Revert \""],
+    "authors": ["github-actions[bot]", "release-promote", "dependabot[bot]"]
+  }
+}

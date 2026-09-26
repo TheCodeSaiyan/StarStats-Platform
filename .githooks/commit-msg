@@ -1,0 +1,8 @@
+#!/bin/sh
+# Check the commit subject against .github/commit-rules.json before the
+# commit is recorded. Switched on by the root `prepare` script at
+# `pnpm install`, which sets core.hooksPath and swallows any failure so an
+# image build without .git or scripts/ is never broken by it.
+# CI runs the same check, so skipping this with --no-verify only moves the
+# failure to the pull request.
+exec node "$(git rev-parse --show-toplevel)/scripts/check-commits.mjs" --message-file "$1"
