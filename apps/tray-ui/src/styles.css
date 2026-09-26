@@ -152,6 +152,71 @@ select:focus-visible,
   gap: var(--s4);
 }
 
+/* Grouped review queue (SubmissionsPane). One row per log tag. */
+.review-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+.review-toolbar__hint {
+  flex: 1 1 240px;
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+}
+.review-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s3) var(--s4);
+}
+.review-group__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.review-group__tag {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--fg);
+  overflow-wrap: anywhere;
+}
+.review-group__acts {
+  margin-left: auto;
+  display: inline-flex;
+  gap: var(--s2);
+}
+/* A one-line peek at the example; the full line is in Review. */
+.review-group__peek {
+  margin: 0;
+  max-height: 3.2em;
+  overflow: hidden;
+  opacity: 0.8;
+}
+.review-group__note {
+  color: var(--fg-muted);
+  font-size: var(--fs-xs);
+  margin: 0;
+}
+.review-other {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+.review-other > summary {
+  cursor: pointer;
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+  padding: var(--s2) 0;
+}
+.review-other[open] > * + * {
+  margin-top: var(--s3);
+}
+
 .review-pane-empty {
   color: var(--fg-muted);
   font-size: var(--fs-sm);

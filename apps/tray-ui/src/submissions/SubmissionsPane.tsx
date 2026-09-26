@@ -1,56 +1,68 @@
 /**
- * Tray-UI host for the unknown-line review queue. Owns the data
- * lifecycle: polls `list_unknown_lines` on mount + on demand, adapts
- * the SQLite row shape into the `UnknownShape` the ReviewPane
- * consumes, dispatches Submit / Dismiss back through the Tauri
- * bridge, and refreshes once a write lands.
+ * Tray-UI host for the unknown-line review queue.
  *
- * Kept in a sibling file (not inline in App.tsx) so the
- * data-fetching logic is testable with a mocked `api.*` surface
- * without spinning the whole app shell.
+ * The queue is GROUPED by log tag. It used to list every captured shape,
+ * which on a real install was 342,428 rows, almost all scoring just over
+ * the old review threshold; grouped by tag the same data is a few hundred
+ * groups. The Rust side (`crate::review`) splits them:
+ *
+ *  - **Worth a look** — tags that read like a gameplay event (a mission
+ *    ending, a quantum arrival), ranked and capped. Shown open.
+ *  - **Other** — engine and UI chatter. Collapsed by default, biggest
+ *    first, with "ignore all" for clearing it in one go.
+ *  - **Ignored** — what the user ignored, so a mistake can be undone.
+ *
+ * Ignoring is per GROUP and covers future captures of that tag too;
+ * per-shape dismissal could never keep up with a tag that mints a new
+ * variant on every line. Submitting a group sends its most frequent line,
+ * and the Rust side retires the group's other variants.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, type UnknownLine } from '../api';
-import { ReviewPane, type SubmitPayload, type UnknownShape } from './ReviewPane';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  api,
+  type FeaturedReviewGroup,
+  type IgnoredReviewGroup,
+  type ReviewGroupStats,
+  type UnknownLine,
+} from '../api';
+import { ReviewPane, type SubmitPayload } from './ReviewPane';
 
 interface Props {
-  /** Bumped by the parent when it wants the pane to refetch (e.g.
-   *  after the badge polls and detects a new count). Optional —
-   *  internal state changes already trigger a refetch via the
-   *  Submit/Dismiss callbacks. */
+  /** Bumped by the parent when it wants the pane to refetch. */
   refreshKey?: number;
-  /** Notifies the parent when the local cache count changes, so the
-   *  badge stays in sync without an extra round-trip. */
+  /** Notifies the parent of the featured count, which drives the badge. */
   onCountChange?: (count: number) => void;
-  /** Paired RSI handle (from the parent's already-loaded config), used
-   *  to label the "attribute to me" option in the review pane. Optional
-   *  — a null handle just yields a generic label. */
+  /** Paired RSI handle, for the "attribute to me" label. */
   handle?: string | null;
 }
 
 export function SubmissionsPane({ refreshKey, onCountChange, handle }: Props) {
-  // Keep the full `UnknownLine[]` (not just the derived `UnknownShape[]`)
-  // so the submit adapter can read fields the review pane intentionally
-  // doesn't surface — channel, partial_structured, context_before/after,
-  // game_build. Deriving shapes at render-time is cheap; refetching just
-  // to recover those fields would be wasteful and racy.
-  const [rows, setRows] = useState<UnknownLine[]>([]);
+  const [featured, setFeatured] = useState<FeaturedReviewGroup[]>([]);
+  const [other, setOther] = useState<ReviewGroupStats[]>([]);
+  const [ignored, setIgnored] = useState<IgnoredReviewGroup[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<string | null>(null);
+  const [examples, setExamples] = useState<Record<string, UnknownLine | null>>({});
   const [error, setError] = useState<string | null>(null);
-  // Memoized so `shapes` keeps a stable identity across renders that
-  // don't touch `rows` (e.g. an `error` state change). Without this the
-  // `.map` mints a fresh array every render, which would defeat the
-  // downstream `useMemo` sort in ReviewPane (new prop reference → recompute).
-  const shapes: UnknownShape[] = useMemo(() => rows.map(rowToShape), [rows]);
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const fresh = await api.listUnknownLines();
-      setRows(fresh);
+      const [groups, ign] = await Promise.all([
+        api.listReviewGroups(),
+        api.listIgnoredReviewGroups(),
+      ]);
+      setFeatured(groups.featured);
+      setOther(groups.other);
+      setIgnored(ign);
+      setSelected(new Set());
       setError(null);
-      onCountChange?.(fresh.length);
+      onCountChange?.(groups.featured.length);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setLoaded(true);
     }
   }, [onCountChange]);
 
@@ -58,14 +70,49 @@ export function SubmissionsPane({ refreshKey, onCountChange, handle }: Props) {
     void refresh();
   }, [refresh, refreshKey]);
 
+  const toggle = (tag: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+
+  const ignore = async (tags: string[]) => {
+    if (tags.length === 0) return;
+    try {
+      await api.ignoreReviewGroups(tags);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const restore = async (tag: string) => {
+    try {
+      await api.unignoreReviewGroup(tag);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
+  const exampleFor = (tag: string): UnknownLine | null | undefined =>
+    featured.find((g) => g.shell_tag === tag)?.example ?? examples[tag];
+
+  const openGroup = async (tag: string) => {
+    setOpen((cur) => (cur === tag ? null : tag));
+    if (exampleFor(tag) !== undefined) return;
+    try {
+      const ex = await api.reviewGroupExample(tag);
+      setExamples((m) => ({ ...m, [tag]: ex }));
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const onSubmit = useCallback(
-    async (payload: SubmitPayload) => {
-      // Find the source row so we can carry through the fields the
-      // server expects but the review UI doesn't surface (channel,
-      // partial_structured, context, game_build). The user only edited
-      // `raw_example`, `suggested_event_name`, and `notes`.
-      const row = rows.find((r) => r.shape_hash === payload.shape_hash);
-      if (!row) return;
+    async (row: UnknownLine, payload: SubmitPayload) => {
       try {
         await api.submitUnknownLines([
           {
@@ -76,76 +123,151 @@ export function SubmissionsPane({ refreshKey, onCountChange, handle }: Props) {
             suggested_event_name: payload.suggested_event_name,
             notes: payload.notes,
             context_examples: [
-              {
-                before: row.context_before ?? [],
-                after: row.context_after ?? [],
-              },
+              { before: row.context_before ?? [], after: row.context_after ?? [] },
             ],
             game_build: row.game_build ?? undefined,
-            // `LogSource` is lowercase on the wire (`live`/`ptu`/...)
-            // — `'live'` is the conservative default if a row somehow
-            // arrived without a channel set.
+            // `LogSource` is lowercase on the wire; `live` is the
+            // conservative default for a row that arrived without one.
             channel: row.channel ?? 'live',
             occurrence_count: row.occurrence_count,
-            // `client_anon_id` is filled in server-side inside the
-            // Tauri command (see `commands::submit_unknown_lines`).
-            // The frontend value is ignored — we send an empty string
-            // here purely to satisfy the TS type; the Rust path
-            // overwrites it before it hits the network.
+            // Overwritten Rust-side (`commands::submit_unknown_lines`).
             client_anon_id: '',
-            // Forced attribution choice made in the review pane. Rust
-            // preserves it (`..p` spread) all the way to the HTTP body;
-            // the server resolves the crediting identity when true.
             attributed: payload.attributed,
           },
         ]);
+        setOpen(null);
         await refresh();
       } catch (e) {
         setError(String(e));
       }
     },
-    [rows, refresh]
+    [refresh],
   );
 
-  const onDismiss = useCallback(
-    async (shapeHash: string) => {
-      try {
-        await api.dismissUnknownLine(shapeHash);
-        await refresh();
-      } catch (e) {
-        setError(String(e));
-      }
-    },
-    [refresh]
-  );
+  const renderGroup = (g: ReviewGroupStats) => {
+    const ex = exampleFor(g.shell_tag);
+    const isOpen = open === g.shell_tag;
+    return (
+      <div key={g.shell_tag} className="review-group" data-testid="review-group">
+        <div className="review-group__head">
+          <input
+            type="checkbox"
+            aria-label={`Select ${g.shell_tag}`}
+            checked={selected.has(g.shell_tag)}
+            onChange={() => toggle(g.shell_tag)}
+          />
+          <span className="review-group__tag">&lt;{g.shell_tag}&gt;</span>
+          <span className="badge">×{g.occurrences.toLocaleString()}</span>
+          {g.shapes > 1 ? (
+            <span className="badge" title="Distinct variants of this line">
+              {g.shapes.toLocaleString()} variants
+            </span>
+          ) : null}
+          <span className="review-group__acts">
+            <button type="button" onClick={() => void openGroup(g.shell_tag)}>
+              {isOpen ? 'Close' : 'Review'}
+            </button>
+            <button type="button" onClick={() => void ignore([g.shell_tag])}>
+              Ignore
+            </button>
+          </span>
+        </div>
+        {!isOpen && ex ? <pre className="raw review-group__peek">{ex.raw_line}</pre> : null}
+        {isOpen && ex ? (
+          <ReviewPane
+            shapes={[
+              {
+                shape_hash: ex.shape_hash,
+                raw_example: ex.raw_line,
+                interest_score: ex.interest_score,
+                occurrence_count: g.occurrences,
+                shell_tag: ex.shell_tag,
+                detected_pii: ex.detected_pii,
+              },
+            ]}
+            onSubmit={(p) => void onSubmit(ex, p)}
+            onDismiss={() => void ignore([g.shell_tag])}
+            handle={handle}
+          />
+        ) : null}
+        {isOpen && ex === null ? (
+          <p className="review-group__note">This group has no open lines left.</p>
+        ) : null}
+      </div>
+    );
+  };
+
+  const selectedCount = selected.size;
+  const otherLines = other.reduce((n, g) => n + g.occurrences, 0);
 
   return (
     <div className="submissions-pane">
       {error && <div className="error">Error: {error}</div>}
-      <ReviewPane
-        shapes={shapes}
-        onSubmit={onSubmit}
-        onDismiss={onDismiss}
-        handle={handle}
-      />
+
+      <div className="review-toolbar">
+        <strong>Worth a look</strong>
+        <span className="review-toolbar__hint">
+          Lines that read like something happening in game. Submitting one
+          helps a parser rule get written for it.
+        </span>
+        <button
+          type="button"
+          disabled={selectedCount === 0}
+          onClick={() => void ignore([...selected])}
+        >
+          Ignore selected{selectedCount > 0 ? ` (${selectedCount})` : ''}
+        </button>
+      </div>
+
+      {loaded && featured.length === 0 ? (
+        <div className="review-pane-empty">Nothing worth a look right now.</div>
+      ) : (
+        featured.map(renderGroup)
+      )}
+
+      {other.length > 0 ? (
+        <details className="review-other" data-testid="review-other">
+          <summary>
+            Other lines — {other.length.toLocaleString()} groups,{' '}
+            {otherLines.toLocaleString()} lines
+          </summary>
+          <p className="review-group__note">
+            Engine and interface chatter that rarely describes a gameplay
+            event. Ignoring a group also hides its future lines.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              if (
+                window.confirm(
+                  `Ignore all ${other.length} other groups? You can restore them from Ignored.`,
+                )
+              ) {
+                void ignore(other.map((g) => g.shell_tag));
+              }
+            }}
+          >
+            Ignore all other
+          </button>
+          {other.map(renderGroup)}
+        </details>
+      ) : null}
+
+      {ignored.length > 0 ? (
+        <details className="review-other" data-testid="review-ignored">
+          <summary>Ignored — {ignored.length.toLocaleString()} groups</summary>
+          {ignored.map((i) => (
+            <div key={i.shell_tag} className="review-group__head">
+              <span className="review-group__tag">&lt;{i.shell_tag}&gt;</span>
+              <span className="review-group__acts">
+                <button type="button" onClick={() => void restore(i.shell_tag)}>
+                  Restore
+                </button>
+              </span>
+            </div>
+          ))}
+        </details>
+      ) : null}
     </div>
   );
-}
-
-/**
- * Adapt one SQLite `UnknownLine` row into the `UnknownShape` the
- * review pane renders. We pick the most-recent raw_line off the row
- * (storage caches up to RAW_EXAMPLES_CAP) — that's `raw_line`
- * itself, which is the freshest capture per the storage upsert
- * semantics.
- */
-function rowToShape(row: UnknownLine): UnknownShape {
-  return {
-    shape_hash: row.shape_hash,
-    raw_example: row.raw_line,
-    interest_score: row.interest_score,
-    occurrence_count: row.occurrence_count,
-    shell_tag: row.shell_tag,
-    detected_pii: row.detected_pii,
-  };
 }

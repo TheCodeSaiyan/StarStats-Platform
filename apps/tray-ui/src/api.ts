@@ -664,6 +664,35 @@ export interface PiiToken {
  * needs a subset of these fields; the rest are passed through to the
  * submission payload so the server-side reviewer has full context.
  */
+/**
+ * The review queue grouped by log tag (`crate::review`). Mirrors the Rust
+ * `ReviewGroupStats`; `FeaturedReviewGroup` flattens the stats and adds the
+ * group's most frequent line.
+ */
+export interface ReviewGroupStats {
+  shell_tag: string;
+  /** Distinct variants in the group. */
+  shapes: number;
+  /** Total occurrences across them. */
+  occurrences: number;
+  last_seen: string;
+  max_interest: number;
+}
+
+export interface FeaturedReviewGroup extends ReviewGroupStats {
+  example: UnknownLine | null;
+}
+
+export interface ReviewGroupsResponse {
+  featured: FeaturedReviewGroup[];
+  other: ReviewGroupStats[];
+}
+
+export interface IgnoredReviewGroup {
+  shell_tag: string;
+  ignored_at: string;
+}
+
 export interface UnknownLine {
   id: string;
   raw_line: string;
@@ -923,6 +952,15 @@ export const api = {
   setUpdateAvailable: (version: string) => invoke<void>('set_update_available', { version }),
   listUnknownLines: () => invoke<UnknownLine[]>('list_unknown_lines'),
   countUnknownLines: () => invoke<number>('count_unknown_lines'),
+  listReviewGroups: () => invoke<ReviewGroupsResponse>('list_review_groups'),
+  reviewGroupExample: (shellTag: string) =>
+    invoke<UnknownLine | null>('review_group_example', { shell_tag: shellTag }),
+  ignoreReviewGroups: (shellTags: string[]) =>
+    invoke<number>('ignore_review_groups', { shell_tags: shellTags }),
+  listIgnoredReviewGroups: () =>
+    invoke<IgnoredReviewGroup[]>('list_ignored_review_groups'),
+  unignoreReviewGroup: (shellTag: string) =>
+    invoke<boolean>('unignore_review_group', { shell_tag: shellTag }),
   dismissUnknownLine: (shapeHash: string) =>
     invoke<void>('dismiss_unknown_line', { shape_hash: shapeHash }),
   submitUnknownLines: (payloads: ParserSubmission[]) =>

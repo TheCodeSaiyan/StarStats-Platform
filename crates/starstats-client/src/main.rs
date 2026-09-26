@@ -44,6 +44,7 @@ mod probes;
 #[allow(dead_code)]
 mod process_guard;
 mod release_toasts;
+mod review;
 mod secret;
 mod social;
 mod state;
@@ -689,6 +690,11 @@ fn main() {
             commands::client_anon_id,
             commands::get_reference_category,
             commands::get_whats_new,
+            commands::list_review_groups,
+            commands::review_group_example,
+            commands::ignore_review_groups,
+            commands::list_ignored_review_groups,
+            commands::unignore_review_group,
             commands::social_get_friends,
             commands::social_send_request,
             commands::social_respond,

@@ -1677,6 +1677,11 @@ impl Storage {
     /// interest cutoff. Tray badge calls this on a timer so it stays
     /// cheap — the dedicated index on `(dismissed, interest_score)`
     /// keeps the scan small.
+    ///
+    /// Test-only since the Review badge moved to counting featured GROUPS
+    /// (`commands::count_unknown_lines`); the ingest tests still use it to
+    /// assert what was captured.
+    #[cfg(test)]
     pub fn count_unknown_lines(&self, min_interest: u8) -> Result<u32> {
         let conn = self.conn.lock().expect("storage mutex poisoned");
         let n: i64 = conn.query_row(
@@ -1686,6 +1691,124 @@ impl Storage {
             |row| row.get(0),
         )?;
         Ok(n.max(0) as u32)
+    }
+
+    /// Open unknown lines grouped by shell tag, for the review queue. A tag
+    /// on the noise list (built-in chatter, or a group the user chose to
+    /// ignore) is left out, and so is everything already submitted or
+    /// dismissed. Rows with no shell tag are not listed: there is nothing
+    /// to group or ignore them by, and the capture path always sets one.
+    ///
+    /// `INDEXED BY` is deliberate. Left to itself the planner picked the
+    /// older `unknown_lines_interest` index for the interest filter and
+    /// took 0.64s on a 342k-row table; on the covering index the same
+    /// result takes 0.085s. The interest cut moved to HAVING for the same
+    /// reason. The schema creates the index at every open.
+    pub fn review_group_stats(
+        &self,
+        min_interest: u8,
+    ) -> Result<Vec<crate::review::ReviewGroupStats>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT shell_tag, COUNT(*), SUM(occurrence_count),
+                    MAX(last_seen), MAX(interest_score)
+             FROM unknown_lines INDEXED BY unknown_lines_review_group
+             WHERE dismissed = 0 AND submitted_at IS NULL
+               AND shell_tag NOT IN (SELECT event_name FROM event_noise_list)
+             GROUP BY shell_tag
+             HAVING MAX(interest_score) >= ?",
+        )?;
+        let rows = stmt.query_map(params![min_interest as i64], |r| {
+            Ok(crate::review::ReviewGroupStats {
+                shell_tag: r.get(0)?,
+                shapes: r.get::<_, i64>(1)?.max(0) as u64,
+                occurrences: r.get::<_, i64>(2)?.max(0) as u64,
+                last_seen: r.get(3)?,
+                max_interest: r.get::<_, i64>(4)?.clamp(0, 100) as u8,
+            })
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// The most frequent open shape in a group: what the review pane shows
+    /// and what a submission sends on the group's behalf.
+    pub fn review_group_example(&self, shell_tag: &str) -> Result<Option<UnknownLine>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT id, shape_hash, raw_examples_json, partial_structured_json,
+                    shell_tag, context_before_json, context_after_json,
+                    game_build, channel, interest_score, occurrence_count,
+                    first_seen, last_seen, detected_pii_json, dismissed, submitted_at
+             FROM unknown_lines INDEXED BY unknown_lines_review_group
+             WHERE dismissed = 0 AND submitted_at IS NULL AND shell_tag = ?
+             ORDER BY occurrence_count DESC, last_seen DESC
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(params![shell_tag], decode_unknown_line)?;
+        rows.next().transpose().map_err(Into::into)
+    }
+
+    /// Ignore whole groups at once: each tag joins the noise list as a
+    /// `user` entry, which hides every current shape AND every future
+    /// capture of that tag. Per-shape dismissal could never keep up — one
+    /// inventory tag held 111k shapes, and new ones kept arriving.
+    pub fn ignore_review_groups(&self, shell_tags: &[String]) -> Result<usize> {
+        let mut conn = self.conn.lock().expect("storage mutex poisoned");
+        let tx = conn.transaction()?;
+        let mut n = 0;
+        for tag in shell_tags {
+            n += tx.execute(
+                "INSERT INTO event_noise_list(event_name, source) VALUES (?, 'user')
+                 ON CONFLICT(event_name) DO NOTHING",
+                params![tag],
+            )?;
+        }
+        tx.commit()?;
+        Ok(n)
+    }
+
+    /// Groups the user ignored, newest first, so a mistaken "ignore all"
+    /// can be undone. Built-in entries are not listed: they are the app's
+    /// judgement, not the user's.
+    pub fn ignored_review_groups(&self) -> Result<Vec<(String, String)>> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let mut stmt = conn.prepare(
+            "SELECT event_name, added_at FROM event_noise_list
+             WHERE source = 'user' ORDER BY added_at DESC, event_name",
+        )?;
+        let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        let mut out = Vec::new();
+        for row in rows {
+            out.push(row?);
+        }
+        Ok(out)
+    }
+
+    /// Undo an ignore. Only a `user` entry can be removed this way.
+    pub fn unignore_review_group(&self, shell_tag: &str) -> Result<bool> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let n = conn.execute(
+            "DELETE FROM event_noise_list WHERE event_name = ? AND source = 'user'",
+            params![shell_tag],
+        )?;
+        Ok(n > 0)
+    }
+
+    /// Stamp every open shape in a group as submitted. A submission sends
+    /// the group's most frequent shape, but it reports the TEMPLATE; leaving
+    /// the other variants open would keep the group in the queue.
+    pub fn mark_group_submitted(&self, shell_tag: &str, submitted_at: &str) -> Result<usize> {
+        let conn = self.conn.lock().expect("storage mutex poisoned");
+        let n = conn.execute(
+            "UPDATE unknown_lines SET submitted_at = ?
+             WHERE shell_tag = ? AND submitted_at IS NULL",
+            params![submitted_at, shell_tag],
+        )?;
+        Ok(n)
     }
 
     /// Mark a shape as dismissed so it never resurfaces in
@@ -3011,6 +3134,121 @@ mod tests {
         assert_eq!(storage.count_unknown_lines(50).unwrap(), 2);
         // Drop the threshold — c counts but d still doesn't.
         assert_eq!(storage.count_unknown_lines(0).unwrap(), 3);
+    }
+
+    fn tagged(shape: &str, tag: &str, occurrences: i64) -> UnknownLine {
+        let mut l = make_unknown_line(shape, 55);
+        l.shell_tag = Some(tag.to_string());
+        l.raw_line = format!("<{tag}> {shape}");
+        l.occurrence_count = occurrences as u32;
+        l
+    }
+
+    #[test]
+    fn review_groups_collapse_shapes_by_tag() {
+        let (storage, _tmp) = fresh_storage();
+        for (shape, tag, n) in [
+            ("s1", "InventoryManagement", 3),
+            ("s2", "InventoryManagement", 1),
+            ("s3", "InventoryManagement", 1),
+            ("s4", "MissionEnded", 7),
+        ] {
+            storage.cache_unknown_line(&tagged(shape, tag, n)).unwrap();
+        }
+        let mut groups = storage.review_group_stats(50).unwrap();
+        groups.sort_by(|a, b| a.shell_tag.cmp(&b.shell_tag));
+        assert_eq!(groups.len(), 2, "four shapes, two tags");
+        assert_eq!(groups[0].shell_tag, "InventoryManagement");
+        assert_eq!(groups[0].shapes, 3);
+        assert_eq!(groups[0].occurrences, 5);
+        assert_eq!(groups[1].occurrences, 7);
+    }
+
+    #[test]
+    fn review_example_is_the_most_frequent_shape() {
+        let (storage, _tmp) = fresh_storage();
+        storage
+            .cache_unknown_line(&tagged("rare", "MissionEnded", 1))
+            .unwrap();
+        storage
+            .cache_unknown_line(&tagged("common", "MissionEnded", 9))
+            .unwrap();
+        let ex = storage
+            .review_group_example("MissionEnded")
+            .unwrap()
+            .unwrap();
+        assert_eq!(ex.shape_hash, "common");
+        assert!(storage.review_group_example("Nope").unwrap().is_none());
+    }
+
+    #[test]
+    fn ignoring_a_group_hides_current_and_future_shapes_until_undone() {
+        let (storage, _tmp) = fresh_storage();
+        storage
+            .cache_unknown_line(&tagged("s1", "InventoryManagement", 1))
+            .unwrap();
+        storage
+            .cache_unknown_line(&tagged("s2", "MissionEnded", 1))
+            .unwrap();
+        let n = storage
+            .ignore_review_groups(&["InventoryManagement".to_string()])
+            .unwrap();
+        assert_eq!(n, 1);
+        // A new variant captured after the ignore stays hidden too.
+        storage
+            .cache_unknown_line(&tagged("s3", "InventoryManagement", 1))
+            .unwrap();
+        let tags: Vec<String> = storage
+            .review_group_stats(50)
+            .unwrap()
+            .into_iter()
+            .map(|g| g.shell_tag)
+            .collect();
+        assert_eq!(tags, vec!["MissionEnded"]);
+
+        let ignored = storage.ignored_review_groups().unwrap();
+        assert_eq!(ignored.len(), 1);
+        assert_eq!(ignored[0].0, "InventoryManagement");
+        assert!(storage
+            .unignore_review_group("InventoryManagement")
+            .unwrap());
+        assert_eq!(storage.review_group_stats(50).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn builtin_noise_cannot_be_unignored_or_listed_as_the_users() {
+        let (storage, _tmp) = fresh_storage();
+        assert!(storage
+            .ignored_review_groups()
+            .unwrap()
+            .iter()
+            .all(|(t, _)| t != "Connection Flow"));
+        assert!(!storage.unignore_review_group("Connection Flow").unwrap());
+    }
+
+    #[test]
+    fn submitting_a_group_retires_all_its_variants() {
+        let (storage, _tmp) = fresh_storage();
+        storage
+            .cache_unknown_line(&tagged("s1", "MissionEnded", 4))
+            .unwrap();
+        storage
+            .cache_unknown_line(&tagged("s2", "MissionEnded", 1))
+            .unwrap();
+        storage
+            .cache_unknown_line(&tagged("s3", "ObjectiveUpserted", 1))
+            .unwrap();
+        let n = storage
+            .mark_group_submitted("MissionEnded", "2026-09-26T00:00:00Z")
+            .unwrap();
+        assert_eq!(n, 2);
+        let tags: Vec<String> = storage
+            .review_group_stats(50)
+            .unwrap()
+            .into_iter()
+            .map(|g| g.shell_tag)
+            .collect();
+        assert_eq!(tags, vec!["ObjectiveUpserted"]);
     }
 
     #[test]

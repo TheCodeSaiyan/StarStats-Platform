@@ -194,3 +194,9 @@ CREATE INDEX IF NOT EXISTS unknown_lines_interest
     ON unknown_lines(dismissed, interest_score DESC, occurrence_count DESC);
 CREATE INDEX IF NOT EXISTS unknown_lines_shape
     ON unknown_lines(shape_hash);
+-- Covering index for the review queue, which groups open rows by shell
+-- tag (`Storage::review_group_stats`) and fetches one example per group.
+-- Measured on a 342k-row table: the GROUP BY went from 0.59s to 0.055s,
+-- which matters because it runs under the same storage lock as ingest.
+CREATE INDEX IF NOT EXISTS unknown_lines_review_group
+    ON unknown_lines(dismissed, submitted_at, shell_tag, occurrence_count, last_seen, interest_score);
