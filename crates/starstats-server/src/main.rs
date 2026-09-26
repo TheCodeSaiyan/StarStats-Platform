@@ -90,6 +90,8 @@ mod locations;
 mod magic_link;
 mod magic_link_routes;
 mod mail;
+mod news;
+mod news_routes;
 mod notifications;
 mod openapi;
 mod orders;
@@ -613,6 +615,9 @@ async fn main() -> anyhow::Result<()> {
         crate::notifications::PostgresNotificationStore::new(pool.clone()),
     );
     let notifications_for_purge = notifications_dyn.clone();
+    // News posts from the admin console (migration 0071).
+    let news_dyn: Arc<dyn crate::news::NewsStore> =
+        Arc::new(crate::news::PostgresNewsStore::new(pool.clone()));
     // Threaded through the request layer so sharing/discover handlers
     // can look up supporter chip info by handle. Same dyn-cast pattern
     // as share_metadata_dyn etc.
@@ -923,6 +928,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(device_router)
         .merge(sharing_router)
         .merge(social_routes::routes())
+        .merge(news_routes::routes())
         .merge(rsi_router)
         .merge(profile_router)
         .merge(rsi_orgs_router)
@@ -988,6 +994,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(share_reports_dyn))
         .layer(Extension(social_dyn))
         .layer(Extension(notifications_dyn))
+        .layer(Extension(news_dyn))
         .layer(Extension(admin_parser_submissions_store))
         .layer(Extension(submissions_store_dyn))
         .layer(Extension(parser_rules_store))

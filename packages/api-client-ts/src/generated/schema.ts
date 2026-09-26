@@ -233,6 +233,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["news_admin_list"];
+        put?: never;
+        post: operations["news_admin_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/news/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["news_admin_update"];
+        post?: never;
+        delete: operations["news_admin_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/news/{id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["news_admin_publish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/news/{id}/unpublish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["news_admin_unpublish"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/orgs": {
         parameters: {
             query?: never;
@@ -1850,6 +1914,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["news_list_mine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/news/{id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["news_mark_seen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/notifications": {
         parameters: {
             query?: never;
@@ -2414,6 +2510,22 @@ export interface paths {
         get: operations["get_visibility"];
         put?: never;
         post: operations["set_visibility"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/news": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["news_list_public"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -6118,6 +6230,20 @@ export interface components {
         MutesResponse: {
             mutes: components["schemas"]["ListedHandle"][];
         };
+        MyNewsItem: {
+            body: string;
+            /** Format: uuid */
+            id: string;
+            link_url?: string | null;
+            /** Format: date-time */
+            published_at: string;
+            title: string;
+            unread: boolean;
+        };
+        MyNewsResponse: {
+            items: components["schemas"]["MyNewsItem"][];
+            unread_count: number;
+        };
         /**
          * @description How many catalogue rows carry a given contract name.
          *
@@ -6131,6 +6257,35 @@ export interface components {
             match_count: number;
             /** @description The normalized name that was looked up. */
             name: string;
+        };
+        NewsListResponse: {
+            posts: components["schemas"]["NewsPost"][];
+        };
+        NewsPost: {
+            body: string;
+            /** Format: date-time */
+            created_at: string;
+            created_by: string;
+            /** Format: uuid */
+            id: string;
+            link_url?: string | null;
+            /**
+             * Format: date-time
+             * @description `None` = draft.
+             */
+            published_at?: string | null;
+            title: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        NewsWriteBody: {
+            /** @description Plain text; rendered with whitespace preserved, never as HTML. */
+            body: string;
+            /** @description Optional `https://` link for "read more". */
+            link_url?: string | null;
+            /** @description Create only: publish immediately rather than saving a draft. */
+            publish?: boolean;
+            title: string;
         };
         Notification: {
             actor_handle?: string | null;
@@ -9342,6 +9497,219 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    news_admin_list: {
+        parameters: {
+            query?: {
+                /** @description 1 to 100, default 20. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All posts including drafts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsListResponse"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    news_admin_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewsWriteBody"];
+            };
+        };
+        responses: {
+            /** @description Created */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsPost"];
+                };
+            };
+            /** @description Invalid title, body or link */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not an admin */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    news_admin_update: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description News post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewsWriteBody"];
+            };
+        };
+        responses: {
+            /** @description Updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsPost"];
+                };
+            };
+            /** @description Invalid title, body or link */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    news_admin_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description News post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    news_admin_publish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description News post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Published */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsPost"];
+                };
+            };
+            /** @description No such post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    news_admin_unpublish: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description News post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Back to draft */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsPost"];
+                };
+            };
+            /** @description No such post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
@@ -14486,6 +14854,50 @@ export interface operations {
             };
         };
     };
+    news_list_mine: {
+        parameters: {
+            query?: {
+                /** @description 1 to 100, default 20. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Published news with this player's unread flags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyNewsResponse"];
+                };
+            };
+        };
+    };
+    news_mark_seen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description News post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked seen */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     social_list_notifications: {
         parameters: {
             query?: {
@@ -16009,6 +16421,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    news_list_public: {
+        parameters: {
+            query?: {
+                /** @description 1 to 100, default 20. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Published news, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NewsListResponse"];
                 };
             };
         };
