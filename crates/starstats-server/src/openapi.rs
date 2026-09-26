@@ -39,6 +39,8 @@ use crate::hangar_store;
 use crate::health;
 use crate::ingest;
 use crate::magic_link_routes;
+use crate::news;
+use crate::news_routes;
 use crate::notifications;
 use crate::org_routes;
 use crate::parser_def_routes;
@@ -323,6 +325,16 @@ impl Modify for SecurityAddon {
         social_routes::update_settings,
         social_routes::list_notifications,
         social_routes::mark_notifications_read,
+        // News from the admin console
+        news_routes::list_public,
+        news_routes::list_mine,
+        news_routes::mark_seen,
+        news_routes::admin_list,
+        news_routes::admin_create,
+        news_routes::admin_update,
+        news_routes::admin_publish,
+        news_routes::admin_unpublish,
+        news_routes::admin_delete,
         roadmap::public_routes::list_roadmap,
         roadmap::public_routes::get_roadmap_item,
         roadmap::public_routes::list_changelog,
@@ -751,6 +763,11 @@ impl Modify for SecurityAddon {
         social_routes::NotificationsResponse,
         social_routes::MarkNotificationsReadBody,
         social_routes::MarkNotificationsReadResponse,
+        news::NewsPost,
+        news_routes::NewsWriteBody,
+        news_routes::NewsListResponse,
+        news_routes::MyNewsItem,
+        news_routes::MyNewsResponse,
         // Reference resolve (batch class-name → rich entry)
         reference_resolve::ResolveRequest,
         reference_resolve::ResolvedEntry,
@@ -814,6 +831,7 @@ impl Modify for SecurityAddon {
         (name = "roadmap", description = "Public roadmap pipeline (items, channel statuses, changelog)"),
         (name = "appearance", description = "Sitewide appearance defaults (theme-switch wave speed)"),
         (name = "social", description = "Friends, blocks, mutes and the notifications inbox"),
+        (name = "news", description = "Staff news posts: admin authoring and the reader feeds"),
     )
 )]
 pub struct ApiDoc;
