@@ -57,6 +57,12 @@
 //   --add-channels <csv>      Channel label slugs (without prefix) to
 //                             add post-promotion. Default: empty —
 //                             channel targeting is per-feature intent.
+//   --public <yes|no>         Set the Public field on THIS item only,
+//                             after conversion and labelling. Without it
+//                             the item is left at the board default and
+//                             never reaches /roadmap or What's New until
+//                             someone flips it. Unlike --set-public-yes,
+//                             no other item is touched.
 //   Note: --promote-draft is a destructive transition (creates a real
 //         Issue, attaches labels). Always pair with --apply; without
 //         --apply the script previews the conversion without writing.
@@ -71,6 +77,7 @@
 //   2 — config error (missing flag, bad input, gh not available).
 
 import { spawnSync } from 'node:child_process';
+import { parsePublicChoice, publicOptionId } from './lib/roadmap-public.mjs';
 
 // ---------- arg parsing ----------------------------------------------------
 
@@ -84,7 +91,7 @@ function usage() {
     [
       'Usage:',
       '  Audit mode:    node scripts/normalize-roadmap-project.mjs --owner <login> --project <number> [--apply] [--set-public-yes] [--create-labels] [--filter <substr>]',
-      '  Promote mode:  node scripts/normalize-roadmap-project.mjs --owner <login> --project <number> --promote-draft <id-or-substr> [--repo <owner/name>] [--add-surfaces <csv>] [--add-channels <csv>] [--create-labels] [--apply]',
+      '  Promote mode:  node scripts/normalize-roadmap-project.mjs --owner <login> --project <number> --promote-draft <id-or-substr> [--repo <owner/name>] [--add-surfaces <csv>] [--add-channels <csv>] [--public <yes|no>] [--create-labels] [--apply]',
       '',
       'Audit:   surveys all items + applies surface/* label fixes to real Issues.',
       'Promote: converts ONE DraftIssue → real Issue and attaches surface + channel labels.',
@@ -106,6 +113,7 @@ const opts = {
   repo: 'TheCodeSaiyan/StarStats-Platform',
   addSurfaces: ['web-roadmap', 'tray-whats-new'],
   addChannels: [],
+  publicChoice: null,
 };
 
 function parseCsv(v) {
@@ -147,6 +155,12 @@ for (let i = 0; i < args.length; i++) {
     const v = args[++i];
     if (!v) fatal(2, '--add-surfaces requires a comma-separated list (or "" for none)');
     opts.addSurfaces = parseCsv(v);
+  } else if (a === '--public') {
+    try {
+      opts.publicChoice = parsePublicChoice(args[++i]);
+    } catch (e) {
+      fatal(2, e.message);
+    }
   } else if (a === '--add-channels') {
     const v = args[++i];
     if (v === undefined) fatal(2, '--add-channels requires a comma-separated list (or "" for none)');
@@ -531,7 +545,7 @@ function promoteFlow() {
   const allLabels = [...surfaces, ...channels];
 
   console.log(
-    `[normalize-roadmap] Project: ${project.title}\n  url:    ${project.url}\n  mode:   ${opts.apply ? 'APPLY' : 'dry-run'}\n  action: promote draft → real Issue in ${opts.repo}\n  draft:  ${draft.id}\n  title:  ${draft.content.title}\n  labels: ${allLabels.length === 0 ? '(none)' : allLabels.join(', ')}`,
+    `[normalize-roadmap] Project: ${project.title}\n  url:    ${project.url}\n  mode:   ${opts.apply ? 'APPLY' : 'dry-run'}\n  action: promote draft → real Issue in ${opts.repo}\n  draft:  ${draft.id}\n  title:  ${draft.content.title}\n  labels: ${allLabels.length === 0 ? '(none)' : allLabels.join(', ')}\n  public: ${opts.publicChoice ?? '(unchanged)'}`,
   );
 
   if (!opts.apply) {
@@ -552,7 +566,26 @@ function promoteFlow() {
     fatal(1, `Conversion failed: ${e.message}`);
   }
 
+  // Visibility goes last, so the reconciler never publishes an item
+  // whose labels have not landed yet.
+  const setPublic = () => {
+    if (!opts.publicChoice) return;
+    try {
+      graphql(SET_FIELD_M, {
+        projectId: project.id,
+        itemId: draft.id,
+        fieldId: publicField.id,
+        optionId: publicOptionId(publicField, opts.publicChoice),
+      });
+      console.log(`  ok      Public=${opts.publicChoice} on this item only`);
+    } catch (e) {
+      console.log(`  FAIL    set Public: ${e.message}`);
+      process.exit(1);
+    }
+  };
+
   if (allLabels.length === 0) {
+    setPublic();
     console.log(`[normalize-roadmap] done. No labels requested.`);
     process.exit(0);
   }
@@ -591,6 +624,7 @@ function promoteFlow() {
       `  warn    labels not present in ${opts.repo}, skipped: ${skipped.join(', ')} (re-run with --create-labels)`,
     );
   }
+  setPublic();
 
   console.log(`\n[normalize-roadmap] promotion complete. Webhook should fire on the new Issue + label adds; reconciler backstops within 5 min.`);
   process.exit(0);
