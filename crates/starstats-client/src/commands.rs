@@ -3485,6 +3485,22 @@ pub async fn get_whats_new() -> Result<crate::whats_new::WhatsNewResponse, Strin
 /// got off the panel response; we parse them back into UUIDs here so
 /// a malformed string fails loudly at the IPC boundary rather than
 /// silently no-op'ing the read-state row.
+/// Staff news for the What's New pane, with unread flags.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_news() -> Result<crate::whats_new::NewsResponse, String> {
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let client = crate::whats_new::WhatsNewClient::from_config(&cfg).map_err(|e| e.to_string())?;
+    client.fetch_news().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn mark_news_seen(news_id: String) -> Result<(), String> {
+    let id = uuid::Uuid::parse_str(&news_id).map_err(|e| format!("bad news_id: {e}"))?;
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let client = crate::whats_new::WhatsNewClient::from_config(&cfg).map_err(|e| e.to_string())?;
+    client.mark_news_seen(id).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn mark_whats_new_seen(item_id: String, entry_id: String) -> Result<(), String> {
     let item_id = uuid::Uuid::parse_str(&item_id).map_err(|e| format!("bad item_id: {e}"))?;

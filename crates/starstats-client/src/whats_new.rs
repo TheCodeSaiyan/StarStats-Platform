@@ -53,6 +53,26 @@ pub struct WhatsNewResponse {
     pub seen_via_auth: bool,
 }
 
+/// Mirror of `news_routes::MyNewsItem`: a staff news post with this
+/// player's unread flag.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NewsItem {
+    pub id: Uuid,
+    pub title: String,
+    /// Plain text. The pane renders it as text, never as HTML.
+    pub body: String,
+    pub link_url: Option<String>,
+    pub published_at: DateTime<Utc>,
+    pub unread: bool,
+}
+
+/// Mirror of `news_routes::MyNewsResponse`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct NewsResponse {
+    pub items: Vec<NewsItem>,
+    pub unread_count: usize,
+}
+
 /// Mirror of the server's `MarkSeenRequest` body.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct MarkSeenBody {
@@ -122,6 +142,52 @@ impl WhatsNewClient {
             .await
             .context("decode whats-new response")?;
         Ok(body)
+    }
+
+    /// GET /v1/me/news — staff news with this player's unread flags.
+    /// Requires a bearer: news read state is per player.
+    pub async fn fetch_news(&self) -> Result<NewsResponse, WhatsNewClientError> {
+        let bearer = self
+            .bearer
+            .as_deref()
+            .ok_or(WhatsNewClientError::NotPaired)?;
+        let url = format!("{}/v1/me/news?limit=10", self.api_url);
+        let resp = self
+            .http
+            .get(&url)
+            .bearer_auth(bearer)
+            .send()
+            .await
+            .context("send GET news")?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(WhatsNewClientError::Status(status));
+        }
+        Ok(resp
+            .json::<NewsResponse>()
+            .await
+            .context("decode news response")?)
+    }
+
+    /// POST /v1/me/news/{id}/seen
+    pub async fn mark_news_seen(&self, id: Uuid) -> Result<(), WhatsNewClientError> {
+        let bearer = self
+            .bearer
+            .as_deref()
+            .ok_or(WhatsNewClientError::NotPaired)?;
+        let url = format!("{}/v1/me/news/{id}/seen", self.api_url);
+        let resp = self
+            .http
+            .post(&url)
+            .bearer_auth(bearer)
+            .send()
+            .await
+            .context("send POST news seen")?;
+        let status = resp.status();
+        if !status.is_success() {
+            return Err(WhatsNewClientError::Status(status));
+        }
+        Ok(())
     }
 
     /// POST /v1/me/roadmap/whats-new/seen — requires a bearer.
