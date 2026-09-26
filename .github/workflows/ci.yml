@@ -565,6 +565,46 @@ jobs:
         node-version: 24
     - run: node --test scripts/*.test.mjs
 
+  # Commit subjects ARE the release notes (scripts/release-notes.mjs builds
+  # them with no rewrite step), so their rules are enforced, not advised.
+  # Same check as the local commit-msg hook; this one cannot be skipped.
+  #
+  # Deliberately NOT gated on `should-run` or `changed`: automation is
+  # exempted inside the rules file itself (by author and by prefix), and a
+  # skipped job reports the same green as a passing one. Push events check
+  # `before..sha` so a direct push to next or main cannot slip past; a new
+  # branch (before = zeros), schedule and workflow_dispatch have no range
+  # and pass without checking. If this job fails, the PR cannot merge once
+  # the ruleset requires it; nothing is built or deployed either way.
+  commit-rules:
+    name: Commit rules
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      with:
+        node-version: 24
+    - name: Check commit subjects
+      env:
+        EVENT: ${{ github.event_name }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_SHA: ${{ github.sha }}
+      run: |
+        case "$EVENT" in
+          pull_request) range="$PR_BASE..$PR_HEAD" ;;
+          push)
+            if [ -z "$PUSH_BEFORE" ] || [ "$PUSH_BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              echo "New branch: no range to check."; exit 0
+            fi
+            range="$PUSH_BEFORE..$PUSH_SHA" ;;
+          *) echo "No commit range for $EVENT."; exit 0 ;;
+        esac
+        node scripts/check-commits.mjs --range "$range"
+
   tauri-client:
     name: Tauri client ${{ matrix.os }}
     needs: [should-run, changed]
