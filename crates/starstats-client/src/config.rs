@@ -142,6 +142,32 @@ pub struct Config {
     /// portable preference). See `crate::org_connector`.
     #[serde(default)]
     pub org_connector: OrgConnectorConfig,
+    /// Friend-notification toasts. Per install, like the org connector:
+    /// whether this PC may interrupt is a property of the machine, not a
+    /// preference to carry to every other device.
+    #[serde(default)]
+    pub social: SocialConfig,
+}
+
+/// How the tray surfaces friend notifications (`crate::social`).
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
+pub struct SocialConfig {
+    /// Show an OS toast for a new friend request or acceptance.
+    pub toasts: bool,
+    /// Hold toasts while Star Citizen is running and show them once it
+    /// closes. On by default: a toast over a fullscreen game is either
+    /// invisible or, worse, steals focus mid-fight.
+    pub quiet_in_game: bool,
+}
+
+impl Default for SocialConfig {
+    fn default() -> Self {
+        Self {
+            toasts: true,
+            quiet_in_game: true,
+        }
+    }
 }
 
 fn default_true() -> bool {
@@ -171,6 +197,7 @@ impl Default for Config {
             parser_enable_v2_metadata: true,
             autostart_enabled: None,
             org_connector: OrgConnectorConfig::default(),
+            social: SocialConfig::default(),
         }
     }
 }

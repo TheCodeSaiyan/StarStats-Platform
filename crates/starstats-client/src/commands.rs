@@ -4597,3 +4597,133 @@ vehicle with detached interior. [Team_ActorFeatures][Actor]";
         );
     }
 }
+
+// -- Social (friends, blocks, mutes, notifications) -------------------
+//
+// Thin relays over `crate::social::SocialClient`, which runs the HTTP
+// Rust-side because the WebView CSP blocks cross-origin fetch. Errors
+// stringify to the server's `error` code (`user_not_found`, ...) so the
+// pane can map them to copy.
+
+fn social_client() -> Result<crate::social::SocialClient, String> {
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    crate::social::SocialClient::from_config(&cfg).map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_get_friends() -> Result<crate::social::FriendsResponse, String> {
+    social_client()?.friends().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_send_request(
+    handle: String,
+) -> Result<crate::social::SendFriendRequestResponse, String> {
+    social_client()?
+        .send_request(&handle)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_respond(request_id: String, action: String) -> Result<(), String> {
+    let id = uuid::Uuid::parse_str(&request_id).map_err(|e| format!("bad request_id: {e}"))?;
+    social_client()?
+        .respond(id, &action)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_remove_friend(handle: String) -> Result<(), String> {
+    social_client()?
+        .remove_friend(&handle)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_get_blocks() -> Result<crate::social::BlocksResponse, String> {
+    social_client()?.blocks().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_set_blocked(handle: String, blocked: bool) -> Result<(), String> {
+    social_client()?
+        .set_blocked(&handle, blocked)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_get_mutes() -> Result<crate::social::MutesResponse, String> {
+    social_client()?.mutes().await.map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_set_muted(handle: String, muted: bool) -> Result<(), String> {
+    social_client()?
+        .set_muted(&handle, muted)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_update_settings(
+    friend_request_policy: String,
+) -> Result<crate::social::SocialSettings, String> {
+    social_client()?
+        .update_settings(&friend_request_policy)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_get_notifications(
+    limit: Option<u32>,
+) -> Result<crate::social::NotificationsResponse, String> {
+    social_client()?
+        .notifications(None, limit.unwrap_or(50).clamp(1, 200))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_mark_read(
+    app: tauri::AppHandle,
+    ids: Vec<String>,
+    all: bool,
+) -> Result<crate::social::MarkReadResponse, String> {
+    let ids = ids
+        .iter()
+        .map(|s| uuid::Uuid::parse_str(s).map_err(|e| format!("bad id: {e}")))
+        .collect::<Result<Vec<_>, _>>()?;
+    let resp = social_client()?
+        .mark_read(&ids, all)
+        .await
+        .map_err(|e| e.to_string())?;
+    // Keep the tab badge in step without waiting for the next poll.
+    use tauri::Emitter;
+    let _ = app.emit(
+        "social-notifications",
+        crate::social::SocialNotificationsEvent {
+            unread_count: resp.unread_count,
+        },
+    );
+    Ok(resp)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn social_get_prefs() -> Result<crate::config::SocialConfig, String> {
+    Ok(config::load().map_err(|e| e.to_string())?.social)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn social_set_prefs(toasts: bool, quiet_in_game: bool) -> Result<(), String> {
+    let mut cfg = config::load().map_err(|e| e.to_string())?;
+    cfg.social = crate::config::SocialConfig {
+        toasts,
+        quiet_in_game,
+    };
+    config::save(&cfg).map_err(|e| e.to_string())
+}
