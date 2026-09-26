@@ -44,6 +44,7 @@ mod probes;
 #[allow(dead_code)]
 mod process_guard;
 mod secret;
+mod social;
 mod state;
 mod storage;
 mod sync;
@@ -531,6 +532,11 @@ fn main() {
                 }
             }
 
+            // Friend notifications: poll the inbox, toast what is new,
+            // and keep the friends list `detect_pii` redacts with. Idles
+            // cheaply while unpaired; config is reloaded every tick.
+            tauri::async_runtime::spawn(crate::social::run_poller(app.handle().clone()));
+
             // 6. One-shot preferences pull on app launch. Reconciles
             //    any drift from another device since last shutdown.
             //    Always reloads config from disk so we have the fully
@@ -681,6 +687,19 @@ fn main() {
             commands::client_anon_id,
             commands::get_reference_category,
             commands::get_whats_new,
+            commands::social_get_friends,
+            commands::social_send_request,
+            commands::social_respond,
+            commands::social_remove_friend,
+            commands::social_get_blocks,
+            commands::social_set_blocked,
+            commands::social_get_mutes,
+            commands::social_set_muted,
+            commands::social_update_settings,
+            commands::social_get_notifications,
+            commands::social_mark_read,
+            commands::social_get_prefs,
+            commands::social_set_prefs,
             commands::mark_whats_new_seen,
             commands::get_autostart_enabled,
             commands::set_autostart_enabled,

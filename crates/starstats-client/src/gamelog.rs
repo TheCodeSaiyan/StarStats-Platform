@@ -1069,10 +1069,12 @@ pub(crate) fn ingest_one_line(
 /// this function built the context with `..default()` (empty handle) and
 /// claimed in this comment that "PII still gets redacted" — it did not.
 ///
-/// `known_friends`/`game_build` remain absent because the client has no
-/// friends list or per-line build to supply; the pipeline degrades
-/// honestly (those tokens simply aren't offered) rather than pretending
-/// to redact what it cannot identify. `channel` is threaded from the
+/// `known_friends` is the friends list as of the social poller's last
+/// successful fetch (`crate::social::known_friends`) — empty until then
+/// and while unpaired, which degrades to own-handle-only redaction.
+/// `game_build` remains absent because there is no per-line build to
+/// supply; the pipeline degrades honestly (those tokens simply aren't
+/// offered) rather than pretending to redact what it cannot identify. `channel` is threaded from the
 /// tail loop's `log_source_enum` so the review queue records the real
 /// build the line came from rather than flattening to `LogSource::Other`.
 fn capture_v2_unknown(
@@ -1085,6 +1087,7 @@ fn capture_v2_unknown(
     let ctx = CaptureContextOwned {
         channel,
         own_handle: own_handle.to_string(),
+        known_friends: crate::social::known_friends(),
         ..CaptureContextOwned::default()
     };
     let outcome = classify_or_capture(parsed, &[], &ctx, raw_line, parsed.timestamp);

@@ -6,6 +6,7 @@ import { SettingsPane } from './components/SettingsPane';
 import { LogsPane } from './components/LogsPane';
 import { KbPane } from './components/KbPane';
 import { WhatsNewPane } from './panes/WhatsNewPane';
+import { SocialPane } from './panes/SocialPane';
 import { TrayHeader, type TrayView } from './components/TrayHeader';
 import { SubmissionsPane } from './submissions/SubmissionsPane';
 import { useStatusPolling } from './hooks/useStatusPolling';
@@ -167,6 +168,35 @@ function AppInner() {
     return m;
   }, [bundles]);
 
+  // Unread friend notifications for the Friends tab badge. The Rust
+  // poller (`social::run_poller`) emits `social-notifications` after every
+  // poll and after mark-read, so this listens rather than polling. One
+  // fetch on mount so the badge is right before the first poll lands;
+  // unpaired, it rejects and the badge stays hidden.
+  const [socialUnread, setSocialUnread] = useState(0);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    api
+      .socialGetNotifications(1)
+      .then((r) => {
+        if (!cancelled) setSocialUnread(r.unread_count);
+      })
+      .catch(() => {
+        // Informational badge — silent, like the Review count.
+      });
+    listen<{ unread_count: number }>('social-notifications', (e) => {
+      setSocialUnread(e.payload.unread_count);
+    }).then((unl) => {
+      if (cancelled) unl();
+      else unlisten = unl;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
   // Remote-sync config downloads: the bulk-lane piggyback in
   // `crates/starstats-client/src/sync.rs` emits `config-changed` after
   // persisting a server-newer snapshot. Listening at the App level
@@ -218,6 +248,7 @@ function AppInner() {
         isTailing={isTailing}
         version={appVersion}
         reviewBadge={unknownCount}
+        socialBadge={socialUnread}
       />
       <main className="app__main">
         {error && <div className="error">Error: {error}</div>}
@@ -258,6 +289,7 @@ function AppInner() {
           {view === 'whats-new' && (
             <WhatsNewPane webOrigin={config?.web_origin ?? null} />
           )}
+          {view === 'social' && <SocialPane />}
           {view === 'review' && (
             <SubmissionsPane
               onCountChange={setUnknownCount}

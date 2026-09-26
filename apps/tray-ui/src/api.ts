@@ -746,6 +746,64 @@ export interface WhatsNewResponse {
   seen_via_auth: boolean;
 }
 
+/**
+ * Social (friends, blocks, mutes, notifications). Mirrors the Rust
+ * `crate::social` DTOs, which mirror the server's. Commands reject with
+ * the server's `error` code as the message (`user_not_found`, ...), or
+ * the not-paired message when the tray has no token.
+ */
+export interface Friend {
+  handle: string;
+  since: string;
+  /** Only a verified handle may be copied for an in-game invite. */
+  rsi_verified: boolean;
+}
+
+export interface FriendRequest {
+  id: string;
+  requester_handle: string;
+  recipient_handle: string;
+  status: string;
+  created_at: string;
+  responded_at: string | null;
+}
+
+export interface FriendsResponse {
+  friends: Friend[];
+  incoming: FriendRequest[];
+  outgoing: FriendRequest[];
+  friend_request_policy: 'everyone' | 'nobody';
+}
+
+export interface SendFriendRequestResponse {
+  outcome: 'requested' | 'became_friends';
+  request: FriendRequest | null;
+}
+
+export interface ListedHandle {
+  handle: string;
+  since: string;
+}
+
+export interface SocialNotification {
+  id: string;
+  kind: string;
+  actor_handle: string | null;
+  payload: { request_id?: string; rsi_verified?: boolean } & Record<string, unknown>;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface NotificationsResponse {
+  items: SocialNotification[];
+  unread_count: number;
+}
+
+export interface SocialPrefs {
+  toasts: boolean;
+  quiet_in_game: boolean;
+}
+
 export const api = {
   getStatus: () => invoke<StatusResponse>('get_status'),
   getConfig: () => invoke<Config>('get_config'),
@@ -890,6 +948,37 @@ export const api = {
    * cross-origin HTTP from the WebView) — mirrors `getReferenceCategory`.
    */
   getWhatsNew: () => invoke<WhatsNewResponse>('get_whats_new'),
+  /**
+   * Social relays. Keys are byte-exact snake_case to match the Rust
+   * params under `rename_all = "snake_case"`.
+   */
+  socialGetFriends: () => invoke<FriendsResponse>('social_get_friends'),
+  socialSendRequest: (handle: string) =>
+    invoke<SendFriendRequestResponse>('social_send_request', { handle }),
+  socialRespond: (requestId: string, action: 'accept' | 'decline' | 'cancel') =>
+    invoke<void>('social_respond', { request_id: requestId, action }),
+  socialRemoveFriend: (handle: string) =>
+    invoke<void>('social_remove_friend', { handle }),
+  socialGetBlocks: () => invoke<{ blocks: ListedHandle[] }>('social_get_blocks'),
+  socialSetBlocked: (handle: string, blocked: boolean) =>
+    invoke<void>('social_set_blocked', { handle, blocked }),
+  socialGetMutes: () => invoke<{ mutes: ListedHandle[] }>('social_get_mutes'),
+  socialSetMuted: (handle: string, muted: boolean) =>
+    invoke<void>('social_set_muted', { handle, muted }),
+  socialUpdateSettings: (policy: 'everyone' | 'nobody') =>
+    invoke<{ friend_request_policy: string }>('social_update_settings', {
+      friend_request_policy: policy,
+    }),
+  socialGetNotifications: (limit?: number) =>
+    invoke<NotificationsResponse>('social_get_notifications', { limit: limit ?? null }),
+  socialMarkRead: (ids: string[], all: boolean) =>
+    invoke<{ updated: number; unread_count: number }>('social_mark_read', { ids, all }),
+  socialGetPrefs: () => invoke<SocialPrefs>('social_get_prefs'),
+  socialSetPrefs: (prefs: SocialPrefs) =>
+    invoke<void>('social_set_prefs', {
+      toasts: prefs.toasts,
+      quiet_in_game: prefs.quiet_in_game,
+    }),
   /**
    * Mark a roadmap item's latest changelog entry seen for the paired
    * account. Keys are byte-exact snake_case to match the Rust params

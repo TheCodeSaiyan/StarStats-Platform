@@ -11,6 +11,7 @@ export type TrayView =
   | 'logs'
   | 'kb'
   | 'whats-new'
+  | 'social'
   | 'review'
   | 'settings';
 
@@ -28,6 +29,8 @@ interface Props {
   /** Number of unknown shapes pending review. Shown as a small
    *  badge on the Review tab. 0 hides the badge. */
   reviewBadge?: number;
+  /** Unread friend notifications. Shown on the Friends tab. 0 hides it. */
+  socialBadge?: number;
 }
 
 const TABS: ReadonlyArray<TrayView> = [
@@ -35,6 +38,7 @@ const TABS: ReadonlyArray<TrayView> = [
   'logs',
   'kb',
   'whats-new',
+  'social',
   'review',
   'settings',
 ];
@@ -46,6 +50,7 @@ const TAB_LABELS: Record<TrayView, string> = {
   logs: 'Manifest',
   kb: 'Catalogue',
   'whats-new': "What's New",
+  social: 'Friends',
   review: 'Review',
   settings: 'Calibrate',
 };
@@ -59,11 +64,19 @@ const TAB_TITLES: Record<TrayView, string> = {
   logs: 'Logs',
   kb: 'Knowledge base',
   'whats-new': "What's New",
+  social: 'Friends and notifications',
   review: 'Review',
   settings: 'Settings',
 };
 
-export function TrayHeader({ view, onView, isTailing, version, reviewBadge = 0 }: Props) {
+export function TrayHeader({
+  view,
+  onView,
+  isTailing,
+  version,
+  reviewBadge = 0,
+  socialBadge = 0,
+}: Props) {
   return (
     <header
       // Tone + spacing aligned to the web `.ss-topbar` (bg + --s4 gap,
@@ -112,7 +125,9 @@ export function TrayHeader({ view, onView, isTailing, version, reviewBadge = 0 }
       <nav style={{ display: 'flex', gap: 4, justifyContent: 'center' }} aria-label="Pane">
         {TABS.map((tab) => {
           const active = view === tab;
-          const showBadge = tab === 'review' && reviewBadge > 0;
+          const badge =
+            tab === 'review' ? reviewBadge : tab === 'social' ? socialBadge : 0;
+          const showBadge = badge > 0;
           return (
             <button
               key={tab}
@@ -123,9 +138,11 @@ export function TrayHeader({ view, onView, isTailing, version, reviewBadge = 0 }
               aria-current={active ? 'page' : undefined}
               title={TAB_TITLES[tab]}
               aria-label={
-                showBadge
-                  ? `Review, ${reviewBadge} unknown ${reviewBadge === 1 ? 'line' : 'lines'}`
-                  : undefined
+                !showBadge
+                  ? undefined
+                  : tab === 'review'
+                    ? `Review, ${badge} unknown ${badge === 1 ? 'line' : 'lines'}`
+                    : `Friends, ${badge} unread ${badge === 1 ? 'notification' : 'notifications'}`
               }
               style={{
                 background: active ? 'var(--accent-soft)' : 'transparent',
@@ -147,7 +164,7 @@ export function TrayHeader({ view, onView, isTailing, version, reviewBadge = 0 }
               {TAB_LABELS[tab]}
               {showBadge && (
                 <span
-                  data-testid="review-badge"
+                  data-testid={`${tab}-badge`}
                   style={{
                     background: 'var(--accent)',
                     color: 'var(--bg)',
@@ -158,7 +175,7 @@ export function TrayHeader({ view, onView, isTailing, version, reviewBadge = 0 }
                     fontWeight: 700,
                   }}
                 >
-                  {reviewBadge}
+                  {badge}
                 </span>
               )}
             </button>
