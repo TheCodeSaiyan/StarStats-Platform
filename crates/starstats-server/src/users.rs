@@ -1054,6 +1054,10 @@ impl UserStore for PostgresUserStore {
             crate::social::delete_social_rows_for(&mut tx, &h).await?;
         }
         // Read state is keyed by user id, so it goes whatever the handle.
+        sqlx::query("DELETE FROM release_reads WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM news_reads WHERE user_id = $1")
             .bind(user_id)
             .execute(&mut *tx)
@@ -1109,6 +1113,10 @@ impl UserStore for PostgresUserStore {
             }
             crate::social::delete_social_rows_for(&mut tx, &h).await?;
         }
+        sqlx::query("DELETE FROM release_reads WHERE user_id = $1")
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await?;
         sqlx::query("DELETE FROM news_reads WHERE user_id = $1")
             .bind(user_id)
             .execute(&mut *tx)

@@ -1533,6 +1533,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/internal/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["releases_ingest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/blocks": {
         parameters: {
             query?: never;
@@ -2052,6 +2068,38 @@ export interface paths {
         get: operations["rsi_profile_views_me"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["releases_list_mine"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/releases/{id}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["releases_mark_seen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2916,6 +2964,22 @@ export interface paths {
          *     Returns 502 on upstream fetch/read errors.
          */
         get: operations["reference_proxy_media"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["releases_list_public"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6244,6 +6308,13 @@ export interface components {
             items: components["schemas"]["MyNewsItem"][];
             unread_count: number;
         };
+        MyRelease: components["schemas"]["Release"] & {
+            unread: boolean;
+        };
+        MyReleasesResponse: {
+            releases: components["schemas"]["MyRelease"][];
+            unread_count: number;
+        };
         /**
          * @description How many catalogue rows carry a given contract name.
          *
@@ -7142,6 +7213,46 @@ export interface components {
              *     [`REJECT_REASON_MAX_LEN`].
              */
             reason: string;
+        };
+        Release: {
+            /** @description `alpha`, `beta`, `rc` or `live`. */
+            channel: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description Groups exactly as the generator emits them:
+             *     `[{kind, lines: [{text, surfaces, prs, roadmap}]}]`.
+             */
+            notes: Record<string, never>;
+            /** Format: date */
+            released_on: string;
+            /** @description "5 new, 1 improved, 1 fixed". Empty when nothing player-facing. */
+            summary: string;
+            tag: string;
+            /** @description `tray` or `platform`. */
+            track: string;
+            version: string;
+        };
+        /** @description What scripts/publish-release-notes.mjs sends. */
+        ReleaseIngestBody: {
+            channel: string;
+            /** @description `YYYY-MM-DD`, the tagged commit's date. */
+            date: string;
+            groups: Record<string, never>[];
+            /**
+             * Format: int32
+             * @description Wire-format version; only `1` is accepted.
+             */
+            schema_version: number;
+            summary?: string;
+            tag: string;
+            track: string;
+            version: string;
+        };
+        ReleaseListResponse: {
+            releases: components["schemas"]["Release"][];
         };
         /**
          * @description Doc-only mirror of `starstats_core::RemoteInferenceRule`. Re-stating
@@ -13771,6 +13882,46 @@ export interface operations {
             };
         };
     };
+    releases_ingest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReleaseIngestBody"];
+            };
+        };
+        responses: {
+            /** @description Stored (or replaced by tag) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Release"];
+                };
+            };
+            /** @description Invalid release */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Missing or bad signature */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     social_list_blocks: {
         parameters: {
             query?: never;
@@ -15232,6 +15383,66 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
+            };
+        };
+    };
+    releases_list_mine: {
+        parameters: {
+            query?: {
+                /** @description `tray` or `platform`; both when absent. */
+                track?: string | null;
+                /**
+                 * @description Comma-separated channels, e.g. `live` or `alpha,beta,rc,live`.
+                 *     All channels when absent.
+                 */
+                channels?: string | null;
+                /** @description 1 to 50, default 10. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Releases with this player's unread flags */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyReleasesResponse"];
+                };
+            };
+            /** @description Unknown track or channel */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    releases_mark_seen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Release id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Marked seen */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -17510,6 +17721,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    releases_list_public: {
+        parameters: {
+            query?: {
+                /** @description `tray` or `platform`; both when absent. */
+                track?: string | null;
+                /**
+                 * @description Comma-separated channels, e.g. `live` or `alpha,beta,rc,live`.
+                 *     All channels when absent.
+                 */
+                channels?: string | null;
+                /** @description 1 to 50, default 10. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Releases, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseListResponse"];
+                };
+            };
+            /** @description Unknown track or channel */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
