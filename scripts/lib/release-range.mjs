@@ -48,3 +48,12 @@ export function previousTag(allTags, tag) {
     .sort(compareTags);
   return candidates.length ? candidates[candidates.length - 1].tag : null;
 }
+
+/** The newest LIVE tag on a track, or null when it has none yet. */
+export function latestLiveTag(allTags, track) {
+  const live = allTags
+    .map(parseTag)
+    .filter((t) => t && t.track === track && t.channel === 'live')
+    .sort(compareTags);
+  return live.length ? live[live.length - 1].tag : null;
+}

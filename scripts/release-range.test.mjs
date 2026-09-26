@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compareTags, parseTag, previousTag } from './lib/release-range.mjs';
+import { compareTags, latestLiveTag, parseTag, previousTag } from './lib/release-range.mjs';
 
 const TAGS = [
   'v0.1.60',
@@ -47,4 +47,10 @@ test('a pre-release counts from the previous tag of any kind', () => {
 test('tracks never mix, and the first release has no predecessor', () => {
   assert.equal(previousTag(['tray-v0.1.30', 'v0.1.1'], 'v0.1.1'), null);
   assert.throws(() => previousTag(TAGS, 'nope'), /not a release tag/);
+});
+
+test('latestLiveTag ignores pre-releases and the other track', () => {
+  assert.equal(latestLiveTag(TAGS, 'platform'), 'v0.1.61');
+  assert.equal(latestLiveTag(TAGS, 'tray'), 'tray-v0.1.30');
+  assert.equal(latestLiveTag(['v0.1.1-alpha.1'], 'platform'), null);
 });
