@@ -91,49 +91,6 @@ export default async function WhatsNewPage(props: {
 
   const sections: SurfaceSection[] = [
     {
-      id: 'releases',
-      title: 'Releases',
-      ctx: releases ? `${releases.unread_count} unread` : undefined,
-      group: 'releases',
-      node: !releases ? (
-        unavailable('releases')
-      ) : releases.releases.length === 0 ? (
-        <p className="hp-prose">No releases yet.</p>
-      ) : (
-        <Plane tilt="flat" style={{ marginTop: 18 }}>
-          {releases.releases.map((r) => (
-            <article
-              key={r.id}
-              className="hp-grant"
-              data-testid="whatsnew-release"
-              data-unread={r.unread ? 'true' : undefined}
-            >
-              <div className="hp-grant__who">
-                <span>
-                  {r.track === 'tray' ? 'Tray' : 'Platform'} {r.version}
-                </span>
-                <span className="hp-grant__note">
-                  {r.summary || 'No player-facing changes'} · {r.released_on}
-                </span>
-                <div style={{ marginTop: 8 }}>
-                  <ReleaseNotes groups={(Array.isArray(r.notes) ? r.notes : []) as NoteGroup[]} />
-                </div>
-              </div>
-              {r.unread ? (
-                <>
-                  <BeamChip tone="warn">new</BeamChip>
-                  <form action={markReleaseReadAction}>
-                    <input type="hidden" name="id" value={r.id} />
-                    <ConfirmSubmitButton className="hp-btn hp-btn--ghost">Mark read</ConfirmSubmitButton>
-                  </form>
-                </>
-              ) : null}
-            </article>
-          ))}
-        </Plane>
-      ),
-    },
-    {
       id: 'news',
       title: 'News',
       ctx: news ? `${news.unread_count} unread` : undefined,
@@ -231,6 +188,49 @@ export default async function WhatsNewPage(props: {
         </>
       ),
     },
+    {
+      id: 'releases',
+      title: 'Releases',
+      ctx: releases ? `${releases.unread_count} unread` : undefined,
+      group: 'releases',
+      node: !releases ? (
+        unavailable('releases')
+      ) : releases.releases.length === 0 ? (
+        <p className="hp-prose">No releases yet.</p>
+      ) : (
+        <Plane tilt="flat" style={{ marginTop: 18 }}>
+          {releases.releases.map((r) => (
+            <article
+              key={r.id}
+              className="hp-grant"
+              data-testid="whatsnew-release"
+              data-unread={r.unread ? 'true' : undefined}
+            >
+              <div className="hp-grant__who">
+                <span>
+                  {r.track === 'tray' ? 'Tray' : 'Platform'} {r.version}
+                </span>
+                <span className="hp-grant__note">
+                  {r.summary || 'No player-facing changes'} · {r.released_on}
+                </span>
+                <div style={{ marginTop: 8 }}>
+                  <ReleaseNotes groups={(Array.isArray(r.notes) ? r.notes : []) as NoteGroup[]} />
+                </div>
+              </div>
+              {r.unread ? (
+                <>
+                  <BeamChip tone="warn">new</BeamChip>
+                  <form action={markReleaseReadAction}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <ConfirmSubmitButton className="hp-btn hp-btn--ghost">Mark read</ConfirmSubmitButton>
+                  </form>
+                </>
+              ) : null}
+            </article>
+          ))}
+        </Plane>
+      ),
+    },
   ];
 
   const notice =
@@ -246,9 +246,9 @@ export default async function WhatsNewPage(props: {
       calibration={calibration}
       nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'whats-new')}
       groups={[
-        { key: 'releases', label: 'Releases' },
         { key: 'news', label: 'News' },
         { key: 'shipped', label: 'New features' },
+        { key: 'releases', label: 'Releases' },
       ]}
       measure="reading"
       crumb={[{ label: 'Projection', href: '/me' }, { label: "What's new" }]}
