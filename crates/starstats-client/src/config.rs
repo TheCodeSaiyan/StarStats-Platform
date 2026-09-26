@@ -159,6 +159,9 @@ pub struct SocialConfig {
     /// closes. On by default: a toast over a fullscreen game is either
     /// invisible or, worse, steals focus mid-fight.
     pub quiet_in_game: bool,
+    /// Toast new What's New entries and available updates. Shares
+    /// `quiet_in_game` with the friend toasts.
+    pub release_toasts: bool,
 }
 
 impl Default for SocialConfig {
@@ -166,6 +169,7 @@ impl Default for SocialConfig {
         Self {
             toasts: true,
             quiet_in_game: true,
+            release_toasts: true,
         }
     }
 }

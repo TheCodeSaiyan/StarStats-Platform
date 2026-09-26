@@ -58,7 +58,7 @@ function stub(overrides: Record<string, () => Promise<unknown>> = {}) {
       case 'social_get_mutes':
         return Promise.resolve({ mutes: [] } as never);
       case 'social_get_prefs':
-        return Promise.resolve({ toasts: true, quiet_in_game: true } as never);
+        return Promise.resolve({ toasts: true, quiet_in_game: true, release_toasts: true } as never);
       case 'social_respond':
         return Promise.resolve(undefined as never);
       default:
