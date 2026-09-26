@@ -21,6 +21,7 @@ import { open as openShell } from '@tauri-apps/plugin-shell';
 import { api, type WhatsNewItem } from '../api';
 import { GhostButton, TrayCard } from '../components/tray/primitives';
 import { NewsCard } from './NewsCard';
+import { ReleasesCard } from './ReleasesCard';
 
 // `WhatsNewItem` / `WhatsNewResponse` are defined once on the api
 // surface (`../api`). Re-exported here so existing importers (the
@@ -163,6 +164,7 @@ export function WhatsNewPane({ webOrigin }: Props) {
 
   return (
     <>
+    <ReleasesCard />
     <NewsCard />
     <TrayCard
       title="What's new"

@@ -691,6 +691,8 @@ fn main() {
             commands::get_reference_category,
             commands::get_whats_new,
             commands::get_news,
+            commands::get_releases,
+            commands::mark_release_seen,
             commands::mark_news_seen,
             commands::list_review_groups,
             commands::review_group_example,
