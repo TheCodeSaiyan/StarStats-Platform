@@ -187,7 +187,7 @@ export function PaneSurface({
   measure = 'wide',
 }: PaneSurfaceProps) {
   const router = useRouter();
-  const { inboundShares } = useShellData();
+  const { inboundShares, unreadNotifications } = useShellData();
 
   /**
    * The inbound-share badge, put on the Sharing entry centrally.
@@ -197,15 +197,32 @@ export function PaneSurface({
    * and not others — which is the failure mode that makes a notification worse
    * than useless.
    */
-  const accountItems = React.useMemo(
-    () =>
-      account?.map((a) =>
-        a.id === 'sharing' && inboundShares > 0
-          ? { ...a, badge: inboundShares }
-          : a,
-      ),
-    [account, inboundShares],
-  );
+  //
+  // Unread notifications ride on a Friends entry. Most shells do not list
+  // Friends, so it is added here only while there is something unread:
+  // the entry exists to be the way to the notification, and a permanent
+  // extra item in every account menu would be clutter the rest of the time.
+  const accountItems = React.useMemo(() => {
+    if (!account) return account;
+    const items = account.map((a) => {
+      if (a.id === 'sharing' && inboundShares > 0) {
+        return { ...a, badge: inboundShares };
+      }
+      if (a.id === 'friends' && unreadNotifications > 0) {
+        return { ...a, badge: unreadNotifications };
+      }
+      return a;
+    });
+    if (unreadNotifications > 0 && !items.some((a) => a.id === 'friends')) {
+      items.push({
+        id: 'friends',
+        label: 'Friends',
+        href: '/friends',
+        badge: unreadNotifications,
+      });
+    }
+    return items;
+  }, [account, inboundShares, unreadNotifications]);
   const [group, setGroup] = React.useState(0);
   const [recalKey, setRecalKey] = React.useState(0);
   // Local beam state, NOT the server prop. The persist action deliberately
