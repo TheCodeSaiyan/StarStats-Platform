@@ -8,9 +8,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SCRIPT = fileURLToPath(new URL('./publish-release-notes.mjs', import.meta.url));
@@ -35,9 +38,30 @@ function serve(status) {
   );
 }
 
+// A throwaway repository with two live platform tags, so the notes are
+// built from a range that exists wherever the tests run. CI's checkout of
+// a pull request carries none of this repository's release tags.
+let fixtureRepo;
+function repo() {
+  if (fixtureRepo) return fixtureRepo;
+  fixtureRepo = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-notes-'));
+  const git = (...argv) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...argv], {
+      cwd: fixtureRepo,
+      stdio: 'pipe',
+    });
+  git('init', '-q');
+  git('commit', '-q', '--allow-empty', '-m', 'chore: start');
+  git('tag', 'v0.1.60');
+  git('commit', '-q', '--allow-empty', '-m', 'fix(web): count the orders, not the page');
+  git('tag', 'v0.1.61');
+  return fixtureRepo;
+}
+
 function run(env, tag = 'v0.1.61') {
   return new Promise((resolve) => {
     const p = spawn(process.execPath, [SCRIPT, '--tag', tag, '--offline'], {
+      cwd: repo(),
       env: { ...process.env, ...env },
     });
     let out = '';
@@ -64,6 +88,11 @@ test('sends a signed release the server-side check accepts', async () => {
     assert.equal(seen[0].body.channel, 'live');
     assert.match(seen[0].body.date, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(Array.isArray(seen[0].body.groups));
+    assert.deepEqual(
+      seen[0].body.groups.map((g) => g.kind),
+      ['Fixed'],
+      JSON.stringify(seen[0].body.groups),
+    );
   } finally {
     server.close();
   }
