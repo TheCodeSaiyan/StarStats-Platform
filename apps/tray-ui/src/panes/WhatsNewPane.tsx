@@ -20,6 +20,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { open as openShell } from '@tauri-apps/plugin-shell';
 import { api, type WhatsNewItem } from '../api';
 import { GhostButton, TrayCard } from '../components/tray/primitives';
+import { NewsCard } from './NewsCard';
 
 // `WhatsNewItem` / `WhatsNewResponse` are defined once on the api
 // surface (`../api`). Re-exported here so existing importers (the
@@ -161,6 +162,8 @@ export function WhatsNewPane({ webOrigin }: Props) {
   }
 
   return (
+    <>
+    <NewsCard />
     <TrayCard
       title="What's new"
       kicker={seenViaAuth ? 'Roadmap · unread' : 'Roadmap · recent'}
@@ -253,5 +256,6 @@ export function WhatsNewPane({ webOrigin }: Props) {
         </GhostButton>
       </div>
     </TrayCard>
+    </>
   );
 }

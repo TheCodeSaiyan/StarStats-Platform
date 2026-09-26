@@ -770,6 +770,22 @@ export interface WhatsNewItem {
   unread: boolean;
 }
 
+/** Staff news post with this player's unread flag (`get_news`). */
+export interface NewsItem {
+  id: string;
+  title: string;
+  /** Plain text. Render as text, never as HTML. */
+  body: string;
+  link_url: string | null;
+  published_at: string;
+  unread: boolean;
+}
+
+export interface NewsResponse {
+  items: NewsItem[];
+  unread_count: number;
+}
+
 export interface WhatsNewResponse {
   items: WhatsNewItem[];
   seen_via_auth: boolean;
@@ -988,6 +1004,8 @@ export const api = {
    * cross-origin HTTP from the WebView) — mirrors `getReferenceCategory`.
    */
   getWhatsNew: () => invoke<WhatsNewResponse>('get_whats_new'),
+  getNews: () => invoke<NewsResponse>('get_news'),
+  markNewsSeen: (newsId: string) => invoke<void>('mark_news_seen', { news_id: newsId }),
   /**
    * Social relays. Keys are byte-exact snake_case to match the Rust
    * params under `rename_all = "snake_case"`.

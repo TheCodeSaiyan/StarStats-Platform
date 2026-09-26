@@ -690,6 +690,8 @@ fn main() {
             commands::client_anon_id,
             commands::get_reference_category,
             commands::get_whats_new,
+            commands::get_news,
+            commands::mark_news_seen,
             commands::list_review_groups,
             commands::review_group_example,
             commands::ignore_review_groups,

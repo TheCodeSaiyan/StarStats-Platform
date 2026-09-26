@@ -58,7 +58,12 @@ fn save(state: &ToastedState) {
 /// One unread entry as the planner sees it.
 #[derive(Debug, Clone)]
 pub struct Unread {
+    /// Namespaced so a news id and a changelog id can never collide in
+    /// the toasted-ids file: `news:<uuid>` for news.
     pub entry_id: String,
+    /// Toast title: "New in StarStats" for a release, "StarStats news"
+    /// for a staff post.
+    pub heading: String,
     pub title: String,
 }
 
@@ -93,7 +98,7 @@ pub fn plan(
     }
     let each = fresh
         .iter()
-        .map(|u| ("New in StarStats".to_string(), u.title.clone()))
+        .map(|u| (u.heading.clone(), u.title.clone()))
         .collect();
     (ToastPlan::Each(each), ids)
 }
@@ -112,27 +117,28 @@ pub async fn check(app: &tauri::AppHandle, cfg: &crate::config::Config, quiet: b
         Ok(c) => c,
         Err(_) => return,
     };
-    let resp = match client.fetch_whats_new().await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::debug!(error = %e, "whats-new toast check failed");
-            return;
+    let mut unread: Vec<Unread> = Vec::new();
+    match client.fetch_whats_new().await {
+        // Only an authenticated read knows what THIS player has seen; the
+        // anonymous feed is "recent changes" and every item would look new.
+        Ok(resp) if resp.seen_via_auth => {
+            unread.extend(resp.items.iter().filter(|i| i.unread).map(|i| Unread {
+                entry_id: i.latest_changelog_entry_id.to_string(),
+                heading: "New in StarStats".to_string(),
+                title: i.title.clone(),
+            }));
         }
-    };
-    // Only an authenticated read knows what THIS player has seen; the
-    // anonymous feed is "recent changes" and every item would look new.
-    if !resp.seen_via_auth {
-        return;
+        Ok(_) => {}
+        Err(e) => tracing::debug!(error = %e, "whats-new toast check failed"),
     }
-    let unread: Vec<Unread> = resp
-        .items
-        .iter()
-        .filter(|i| i.unread)
-        .map(|i| Unread {
-            entry_id: i.latest_changelog_entry_id.to_string(),
-            title: i.title.clone(),
-        })
-        .collect();
+    match client.fetch_news().await {
+        Ok(news) => unread.extend(news.items.iter().filter(|n| n.unread).map(|n| Unread {
+            entry_id: format!("news:{}", n.id),
+            heading: "StarStats news".to_string(),
+            title: n.title.clone(),
+        })),
+        Err(e) => tracing::debug!(error = %e, "news toast check failed"),
+    }
     let _ = app.emit(
         "whats-new-unread",
         WhatsNewUnreadEvent {
@@ -197,8 +203,27 @@ mod tests {
     fn u(id: &str) -> Unread {
         Unread {
             entry_id: id.to_string(),
+            heading: "New in StarStats".to_string(),
             title: format!("Feature {id}"),
         }
+    }
+
+    #[test]
+    fn news_toasts_carry_their_own_heading() {
+        let known = HashSet::new();
+        let news = Unread {
+            entry_id: "news:1".into(),
+            heading: "StarStats news".into(),
+            title: "Maintenance tonight".into(),
+        };
+        let (plan, _) = plan(&[news], Some(&known), false);
+        assert_eq!(
+            plan,
+            ToastPlan::Each(vec![(
+                "StarStats news".into(),
+                "Maintenance tonight".into()
+            )])
+        );
     }
 
     #[test]
