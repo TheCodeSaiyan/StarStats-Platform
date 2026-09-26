@@ -10,6 +10,7 @@ import {
 import {
   getAppearanceConfig,
   getMyNews,
+  getMyReleases,
   getNotifications,
   getWhatsNew,
   getPreferences,
@@ -206,13 +207,14 @@ export default async function RootLayout({
   let unreadNotifications = 0;
   let unreadWhatsNew = 0;
   if (session) {
-    const [sharedRes, notesRes, newsRes, whatsNewRes] = await Promise.allSettled([
+    const [sharedRes, notesRes, newsRes, whatsNewRes, releasesRes] = await Promise.allSettled([
       listSharedWithMe(session.token),
       // limit=1: only the count is wanted, and it covers the whole inbox
       // regardless of page size.
       getNotifications(session.token, { limit: 1 }),
       getMyNews(session.token, 20),
       getWhatsNew(session.token),
+      getMyReleases(session.token, 5),
     ]);
     if (sharedRes.status === 'fulfilled') {
       // EXPIRY, not revocation: an expired share stays in the inbound list
@@ -244,6 +246,11 @@ export default async function RootLayout({
       unreadWhatsNew += whatsNewRes.value.items.filter((i) => i.unread).length;
     } else if (whatsNewRes.status === 'rejected') {
       logger.warn({ err: whatsNewRes.reason, call: 'shell.whatsNew' }, 'whats-new count fetch failed');
+    }
+    if (releasesRes.status === 'fulfilled') {
+      unreadWhatsNew += releasesRes.value.unread_count;
+    } else {
+      logger.warn({ err: releasesRes.reason, call: 'shell.releases' }, 'unread releases count fetch failed');
     }
   }
 

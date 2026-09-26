@@ -1,7 +1,7 @@
 'use server';
 
 import { redirect } from 'next/navigation';
-import { ApiCallError, markNewsSeen, markWhatsNewSeen } from '@/lib/api';
+import { ApiCallError, markNewsSeen, markReleaseSeen, markWhatsNewSeen } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
 
@@ -29,6 +29,16 @@ export async function markNewsReadAction(formData: FormData) {
   redirect('/whats-new');
 }
 
+export async function markReleaseReadAction(formData: FormData) {
+  const t = await token();
+  try {
+    await markReleaseSeen(t, String(formData.get('id') ?? ''));
+  } catch (e) {
+    fail(e, 'whatsnew.release_seen');
+  }
+  redirect('/whats-new');
+}
+
 export async function markItemReadAction(formData: FormData) {
   const t = await token();
   try {
@@ -49,9 +59,11 @@ export async function markAllReadAction(formData: FormData) {
   const t = await token();
   const news = formData.getAll('news_id').map(String);
   const items = formData.getAll('item').map(String);
+  const releases = formData.getAll('release_id').map(String);
   try {
     await Promise.all([
       ...news.map((id) => markNewsSeen(t, id)),
+      ...releases.map((id) => markReleaseSeen(t, id)),
       ...items.map((pair) => {
         const [itemId, entryId] = pair.split(':');
         return markWhatsNewSeen(t, itemId, entryId);

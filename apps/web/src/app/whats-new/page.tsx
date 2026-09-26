@@ -19,8 +19,10 @@ import type { Calibration } from 'holo';
 import {
   ApiCallError,
   getMyNews,
+  getMyReleases,
   getWhatsNew,
   type MyNewsResponse,
+  type MyReleasesResponse,
   type WhatsNewResponse,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
@@ -31,7 +33,14 @@ import { setCalibrationAction } from '@/app/me/_projection/actions';
 import { formatRelativePast } from '@/app/sharing/_projection/format';
 import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 import { PaneSurface, type SurfaceSection } from '@/components/projection/PaneSurface';
-import { markAllReadAction, markItemReadAction, markNewsReadAction } from './actions';
+import {
+  markAllReadAction,
+  markItemReadAction,
+  markNewsReadAction,
+  markReleaseReadAction,
+} from './actions';
+import { ReleaseNotes } from '@/components/releases/ReleaseNotes';
+import type { NoteGroup } from '@/lib/releases';
 
 export const metadata = { title: "What's new" };
 
@@ -49,13 +58,15 @@ export default async function WhatsNewPage(props: {
     logger.warn({ err: e, call: 'whatsnew.theme' }, 'load theme failed');
   }
 
-  const [newsRes, itemsRes] = await Promise.allSettled([
+  const [newsRes, itemsRes, releasesRes] = await Promise.allSettled([
     getMyNews(session.token, 20),
     getWhatsNew(session.token),
+    getMyReleases(session.token, 5),
   ]);
   for (const [r, call] of [
     [newsRes, 'whatsnew.news'],
     [itemsRes, 'whatsnew.items'],
+    [releasesRes, 'whatsnew.releases'],
   ] as const) {
     if (r.status === 'rejected') {
       const status = r.reason instanceof ApiCallError ? r.reason.status : undefined;
@@ -66,15 +77,62 @@ export default async function WhatsNewPage(props: {
   const news: MyNewsResponse | null = newsRes.status === 'fulfilled' ? newsRes.value : null;
   const items: WhatsNewResponse | null = itemsRes.status === 'fulfilled' ? itemsRes.value : null;
 
+  const releases: MyReleasesResponse | null =
+    releasesRes.status === 'fulfilled' ? releasesRes.value : null;
+
   const unreadNews = news?.items.filter((n) => n.unread) ?? [];
+  const unreadReleases = releases?.releases.filter((r) => r.unread) ?? [];
   const unreadItems = items?.seen_via_auth ? items.items.filter((i) => i.unread) : [];
-  const anyUnread = unreadNews.length + unreadItems.length > 0;
+  const anyUnread = unreadNews.length + unreadItems.length + unreadReleases.length > 0;
 
   const unavailable = (what: string) => (
     <BeamAlert tone="bad">Couldn&apos;t load {what}. Refresh to retry.</BeamAlert>
   );
 
   const sections: SurfaceSection[] = [
+    {
+      id: 'releases',
+      title: 'Releases',
+      ctx: releases ? `${releases.unread_count} unread` : undefined,
+      group: 'releases',
+      node: !releases ? (
+        unavailable('releases')
+      ) : releases.releases.length === 0 ? (
+        <p className="hp-prose">No releases yet.</p>
+      ) : (
+        <Plane tilt="flat" style={{ marginTop: 18 }}>
+          {releases.releases.map((r) => (
+            <article
+              key={r.id}
+              className="hp-grant"
+              data-testid="whatsnew-release"
+              data-unread={r.unread ? 'true' : undefined}
+            >
+              <div className="hp-grant__who">
+                <span>
+                  {r.track === 'tray' ? 'Tray' : 'Platform'} {r.version}
+                </span>
+                <span className="hp-grant__note">
+                  {r.summary || 'No player-facing changes'} · {r.released_on}
+                </span>
+                <div style={{ marginTop: 8 }}>
+                  <ReleaseNotes groups={(Array.isArray(r.notes) ? r.notes : []) as NoteGroup[]} />
+                </div>
+              </div>
+              {r.unread ? (
+                <>
+                  <BeamChip tone="warn">new</BeamChip>
+                  <form action={markReleaseReadAction}>
+                    <input type="hidden" name="id" value={r.id} />
+                    <ConfirmSubmitButton className="hp-btn hp-btn--ghost">Mark read</ConfirmSubmitButton>
+                  </form>
+                </>
+              ) : null}
+            </article>
+          ))}
+        </Plane>
+      ),
+    },
     {
       id: 'news',
       title: 'News',
@@ -188,6 +246,7 @@ export default async function WhatsNewPage(props: {
       calibration={calibration}
       nav={navSections({ signedIn: true, staffRoles: session.staffRoles }, 'whats-new')}
       groups={[
+        { key: 'releases', label: 'Releases' },
         { key: 'news', label: 'News' },
         { key: 'shipped', label: 'New features' },
       ]}
@@ -205,6 +264,9 @@ export default async function WhatsNewPage(props: {
           <form action={markAllReadAction}>
             {unreadNews.map((n) => (
               <input key={n.id} type="hidden" name="news_id" value={n.id} />
+            ))}
+            {unreadReleases.map((r) => (
+              <input key={r.id} type="hidden" name="release_id" value={r.id} />
             ))}
             {unreadItems.map((i) => (
               <input

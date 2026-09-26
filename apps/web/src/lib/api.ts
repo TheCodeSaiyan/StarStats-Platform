@@ -359,6 +359,22 @@ export async function markNewsSeen(bearer: string, id: string): Promise<void> {
   await request<void>('POST', `/v1/me/news/${encodeURIComponent(id)}/seen`, undefined, bearer);
 }
 
+export type MyReleasesResponse = apiSchema['schemas']['MyReleasesResponse'];
+
+/** Live releases on both tracks with this player's unread flags. */
+export async function getMyReleases(bearer: string, limit = 10): Promise<MyReleasesResponse> {
+  return request<MyReleasesResponse>(
+    'GET',
+    `/v1/me/releases?channels=live&limit=${limit}`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function markReleaseSeen(bearer: string, id: string): Promise<void> {
+  await request<void>('POST', `/v1/me/releases/${encodeURIComponent(id)}/seen`, undefined, bearer);
+}
+
 export async function getWhatsNew(bearer: string): Promise<WhatsNewResponse> {
   return request<WhatsNewResponse>('GET', '/v1/me/roadmap/whats-new', undefined, bearer);
 }

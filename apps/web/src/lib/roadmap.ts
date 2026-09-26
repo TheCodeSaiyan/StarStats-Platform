@@ -48,6 +48,13 @@ export async function getRoadmapItem(
   return (await resp.json()) as RoadmapItemPublic;
 }
 
+/** Live releases on both tracks, newest first. Public: no bearer. */
+export async function listReleases(
+  limit = 30,
+): Promise<apiSchema['schemas']['ReleaseListResponse']> {
+  return getPublic(`/v1/releases?channels=live&limit=${limit}`);
+}
+
 /** Published staff news, newest first. Public: no bearer. */
 export async function listNews(limit = 10): Promise<NewsListResponse> {
   return getPublic<NewsListResponse>(`/v1/news?limit=${limit}`);
