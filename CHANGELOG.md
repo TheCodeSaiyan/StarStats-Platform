@@ -16,6 +16,13 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.62] - 2026-09-26
+
+### New
+- Add friends, friend requests and an unread notifications badge.
+- Show news from the StarStats team on the changelog.
+- Add a What's New page with unread markers shared with the tray.
+
 ## [Tray 0.1.31] - 2026-09-26
 
 ### New
