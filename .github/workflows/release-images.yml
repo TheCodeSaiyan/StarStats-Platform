@@ -716,3 +716,16 @@ jobs:
         ROADMAP_CI_EVENT_HMAC_KEY: ${{ secrets.ROADMAP_CI_EVENT_HMAC_KEY }}
         ROADMAP_EVENTS_URL: ${{ secrets.ROADMAP_EVENTS_URL }}
       run: node scripts/roadmap-emit-event.mjs
+
+    # Send this release's player-facing notes to the server, where the
+    # tray's What's New and the web's /whats-new and /changelog read them.
+    # Same signing key and origin as the event above, so no new secret.
+    # The script exits 0 on every failure, missing secrets included: if
+    # this step fails the release has still shipped, and only its notes
+    # are missing from What's New until a re-run.
+    - name: Send release notes
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        ROADMAP_CI_EVENT_HMAC_KEY: ${{ secrets.ROADMAP_CI_EVENT_HMAC_KEY }}
+        ROADMAP_EVENTS_URL: ${{ secrets.ROADMAP_EVENTS_URL }}
+      run: node scripts/publish-release-notes.mjs --tag "${{ github.ref_name }}"
