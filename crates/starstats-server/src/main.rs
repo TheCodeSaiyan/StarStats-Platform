@@ -90,6 +90,7 @@ mod locations;
 mod magic_link;
 mod magic_link_routes;
 mod mail;
+mod notifications;
 mod openapi;
 mod orders;
 mod org_routes;
@@ -138,6 +139,8 @@ mod ship_matrix_enrichment;
 mod ship_matrix_media_routes;
 mod smtp_admin_routes;
 mod smtp_config_store;
+mod social;
+mod social_routes;
 mod spicedb;
 mod staff_roles;
 mod stat_reconcile;
@@ -603,6 +606,13 @@ async fn main() -> anyhow::Result<()> {
     let share_metadata_dyn: Arc<dyn crate::share_metadata::ShareMetadataStore> =
         share_metadata.clone();
     let share_reports_dyn: Arc<dyn crate::share_reports::ShareReportStore> = share_reports.clone();
+    // Social phase 1: friends/blocks/mutes and the notifications inbox.
+    let social_dyn: Arc<dyn crate::social::SocialStore> =
+        Arc::new(crate::social::PostgresSocialStore::new(pool.clone()));
+    let notifications_dyn: Arc<dyn crate::notifications::NotificationStore> = Arc::new(
+        crate::notifications::PostgresNotificationStore::new(pool.clone()),
+    );
+    let notifications_for_purge = notifications_dyn.clone();
     // Threaded through the request layer so sharing/discover handlers
     // can look up supporter chip info by handle. Same dyn-cast pattern
     // as share_metadata_dyn etc.
@@ -912,6 +922,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(auth_router)
         .merge(device_router)
         .merge(sharing_router)
+        .merge(social_routes::routes())
         .merge(rsi_router)
         .merge(profile_router)
         .merge(rsi_orgs_router)
@@ -975,6 +986,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(admin_user_insights_dyn))
         .layer(Extension(account_restrictions_dyn))
         .layer(Extension(share_reports_dyn))
+        .layer(Extension(social_dyn))
+        .layer(Extension(notifications_dyn))
         .layer(Extension(admin_parser_submissions_store))
         .layer(Extension(submissions_store_dyn))
         .layer(Extension(parser_rules_store))
@@ -1243,6 +1256,10 @@ async fn main() -> anyhow::Result<()> {
     // Nightly defense-in-depth: recompute stat_event_counts from events, correct
     // any drift, and emit a drift metric so a silently-stuck rollup is visible.
     stat_reconcile::spawn_reconcile_loop(pool.clone());
+
+    // Notifications are prompts, not records: drop them after
+    // `notifications::RETENTION_DAYS`.
+    notifications::spawn_purge_loop(notifications_for_purge);
 
     // Daily parser-health pass: detect an event type that has stopped being
     // produced while users stayed active. Motivated by `vehicle_stowed`

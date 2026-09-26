@@ -39,6 +39,7 @@ use crate::hangar_store;
 use crate::health;
 use crate::ingest;
 use crate::magic_link_routes;
+use crate::notifications;
 use crate::org_routes;
 use crate::parser_def_routes;
 use crate::parser_rules;
@@ -67,6 +68,8 @@ use crate::share_scopes_routes;
 use crate::sharing_routes;
 use crate::ship_matrix_admin_routes;
 use crate::smtp_admin_routes;
+use crate::social;
+use crate::social_routes;
 use crate::submission_routes;
 use crate::supporter_routes;
 use crate::totp_routes;
@@ -304,6 +307,22 @@ impl Modify for SecurityAddon {
         appearance_routes::public_get,
         appearance_routes::admin_get,
         appearance_routes::admin_put,
+        // Social phase 1: friends, blocks, mutes, notifications
+        social_routes::list_friends,
+        social_routes::send_request,
+        social_routes::accept_request,
+        social_routes::decline_request,
+        social_routes::cancel_request,
+        social_routes::remove_friend,
+        social_routes::list_blocks,
+        social_routes::block_user,
+        social_routes::unblock_user,
+        social_routes::list_mutes,
+        social_routes::mute_user,
+        social_routes::unmute_user,
+        social_routes::update_settings,
+        social_routes::list_notifications,
+        social_routes::mark_notifications_read,
         roadmap::public_routes::list_roadmap,
         roadmap::public_routes::get_roadmap_item,
         roadmap::public_routes::list_changelog,
@@ -713,6 +732,25 @@ impl Modify for SecurityAddon {
         waitlist_routes::WaitlistConfigApi,
         // Sitewide appearance defaults
         appearance_routes::AppearanceConfigApi,
+        // Social phase 1
+        social::Friend,
+        social::FriendRequest,
+        social::FriendRequestStatus,
+        social::FriendRequestPolicy,
+        social::ListedHandle,
+        notifications::Notification,
+        notifications::NotificationKind,
+        social_routes::FriendsResponse,
+        social_routes::SendFriendRequestBody,
+        social_routes::SendFriendRequestOutcome,
+        social_routes::SendFriendRequestResponse,
+        social_routes::FriendRequestResponse,
+        social_routes::BlocksResponse,
+        social_routes::MutesResponse,
+        social_routes::SocialSettings,
+        social_routes::NotificationsResponse,
+        social_routes::MarkNotificationsReadBody,
+        social_routes::MarkNotificationsReadResponse,
         // Reference resolve (batch class-name → rich entry)
         reference_resolve::ResolveRequest,
         reference_resolve::ResolvedEntry,
@@ -775,6 +813,7 @@ impl Modify for SecurityAddon {
         (name = "admin", description = "Site-wide staff endpoints (moderator/admin role required)"),
         (name = "roadmap", description = "Public roadmap pipeline (items, channel statuses, changelog)"),
         (name = "appearance", description = "Sitewide appearance defaults (theme-switch wave speed)"),
+        (name = "social", description = "Friends, blocks, mutes and the notifications inbox"),
     )
 )]
 pub struct ApiDoc;

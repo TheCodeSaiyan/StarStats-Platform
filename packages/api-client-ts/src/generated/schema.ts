@@ -1469,6 +1469,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["social_list_blocks"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/blocks/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Block a user. Removes any friendship, cancels pending requests in
+         *     both directions, clears their notifications from your inbox and
+         *     revokes a direct stats share you had given them. Their future
+         *     requests are hidden from you and they are not told.
+         */
+        put: operations["social_block_user"];
+        post?: never;
+        delete: operations["social_unblock_user"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/commerce/recent": {
         parameters: {
             query?: never;
@@ -1559,6 +1597,106 @@ export interface paths {
         put?: never;
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["social_list_friends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["social_send_friend_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/requests/{id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["social_accept_friend_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/requests/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["social_cancel_friend_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/requests/{id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declining is silent: the sender is not told, and simply sees the
+         *     request disappear from their pending list.
+         */
+        post: operations["social_decline_friend_request"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/friends/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: operations["social_remove_friend"];
         options?: never;
         head?: never;
         patch?: never;
@@ -1670,6 +1808,74 @@ export interface paths {
         get: operations["metrics_sessions"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/mutes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["social_list_mutes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/mutes/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Mute a user: their friend requests and other activity stop
+         *     producing notifications for you. Nothing else changes.
+         */
+        put: operations["social_mute_user"];
+        post?: never;
+        delete: operations["social_unmute_user"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["social_list_notifications"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["social_mark_notifications_read"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1903,6 +2109,22 @@ export interface paths {
         };
         get: operations["list_shares"];
         put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/social/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put: operations["social_update_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3745,6 +3967,9 @@ export interface components {
             image_url?: string | null;
             name: string;
         };
+        BlocksResponse: {
+            blocks: components["schemas"]["ListedHandle"][];
+        };
         BreakdownEntry: {
             city?: string | null;
             /** Format: int64 */
@@ -5189,6 +5414,51 @@ export interface components {
             trip_count: number;
             vehicle_class: string;
         };
+        Friend: {
+            handle: string;
+            /**
+             * @description Whether this handle is proven to be the player's RSI handle.
+             *     Clients offer "copy handle" / "add in game" only when true:
+             *     copying an unproven handle would send an in-game invite to
+             *     whoever really owns that name.
+             */
+            rsi_verified: boolean;
+            /** Format: date-time */
+            since: string;
+        };
+        FriendRequest: {
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            recipient_handle: string;
+            requester_handle: string;
+            /** Format: date-time */
+            responded_at?: string | null;
+            status: components["schemas"]["FriendRequestStatus"];
+        };
+        /**
+         * @description Who may send this user a friend request. `NULL` in the column reads
+         *     as `Everyone`, so existing users need no backfill.
+         * @enum {string}
+         */
+        FriendRequestPolicy: "everyone" | "nobody";
+        FriendRequestResponse: {
+            request: components["schemas"]["FriendRequest"];
+        };
+        /** @enum {string} */
+        FriendRequestStatus: "pending" | "accepted" | "declined" | "cancelled";
+        FriendsResponse: {
+            friend_request_policy: components["schemas"]["FriendRequestPolicy"];
+            friends: components["schemas"]["Friend"][];
+            /**
+             * @description Pending requests addressed to the caller. Requests from users
+             *     the caller has blocked are left out.
+             */
+            incoming: components["schemas"]["FriendRequest"][];
+            /** @description Pending requests the caller has sent. */
+            outgoing: components["schemas"]["FriendRequest"][];
+        };
         GameCrashSchema: {
             channel: string;
             crash_dir_name: string;
@@ -5606,6 +5876,12 @@ export interface components {
             org_shares?: components["schemas"]["OrgShareEntry"][];
             shares: components["schemas"]["ShareEntry"][];
         };
+        /** @description One entry on a block or mute list. */
+        ListedHandle: {
+            handle: string;
+            /** Format: date-time */
+            since: string;
+        };
         /**
          * @description Response for `GET /v1/me/stats/lives` — character-life FSM summary
          *     (character-life-fsm Phase 1): the caller's FULL event history
@@ -5776,6 +6052,18 @@ export interface components {
             /** Format: int32 */
             version: number;
         };
+        MarkNotificationsReadBody: {
+            /** @description Mark every unread notification read. */
+            all?: boolean;
+            /** @description Notifications to mark read. Ignored when `all` is true. */
+            ids?: string[];
+        };
+        MarkNotificationsReadResponse: {
+            /** Format: int64 */
+            unread_count: number;
+            /** Format: int64 */
+            updated: number;
+        };
         MarkSeenRequest: {
             /** Format: uuid */
             changelog_entry_id: string;
@@ -5827,6 +6115,9 @@ export interface components {
             mission_name?: string | null;
             timestamp: string;
         };
+        MutesResponse: {
+            mutes: components["schemas"]["ListedHandle"][];
+        };
         /**
          * @description How many catalogue rows carry a given contract name.
          *
@@ -5840,6 +6131,27 @@ export interface components {
             match_count: number;
             /** @description The normalized name that was looked up. */
             name: string;
+        };
+        Notification: {
+            actor_handle?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["NotificationKind"];
+            payload: Record<string, never>;
+            /** Format: date-time */
+            read_at?: string | null;
+        };
+        /** @enum {string} */
+        NotificationKind: "friend_request" | "friend_accepted";
+        NotificationsResponse: {
+            items: components["schemas"]["Notification"][];
+            /**
+             * Format: int64
+             * @description Unread across the whole inbox, not just this page.
+             */
+            unread_count: number;
         };
         /**
          * @description Lifetime twin for a windowed [`ObjectivesResponse`].
@@ -7210,6 +7522,15 @@ export interface components {
             success: boolean;
             timestamp: string;
         };
+        SendFriendRequestBody: {
+            handle: string;
+        };
+        /** @enum {string} */
+        SendFriendRequestOutcome: "requested" | "became_friends";
+        SendFriendRequestResponse: {
+            outcome: components["schemas"]["SendFriendRequestOutcome"];
+            request?: null | components["schemas"]["FriendRequest"];
+        };
         /** @enum {string} */
         ServerPhaseSchema: "start" | "end";
         SessionDto: {
@@ -7582,6 +7903,9 @@ export interface components {
             secure: boolean;
             username: string;
             web_origin: string;
+        };
+        SocialSettings: {
+            friend_request_policy: components["schemas"]["FriendRequestPolicy"];
         };
         /**
          * @description Lifetime twin for a windowed [`SpendResponse`].
@@ -13079,6 +13403,104 @@ export interface operations {
             };
         };
     };
+    social_list_blocks: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users you have blocked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BlocksResponse"];
+                };
+            };
+        };
+    };
+    social_block_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Handle to block */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Blocked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid handle, or your own handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_unblock_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Handle to unblock */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unblocked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description That user is not blocked */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     commerce_recent: {
         parameters: {
             query?: {
@@ -13362,6 +13784,266 @@ export interface operations {
             };
             /** @description Unauthenticated */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_list_friends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Friends and pending requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendsResponse"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_send_friend_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SendFriendRequestBody"];
+            };
+        };
+        responses: {
+            /** @description Request sent, or already reciprocated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SendFriendRequestResponse"];
+                };
+            };
+            /** @description Invalid handle, or your own handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description That user is not accepting requests */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Already friends, request pending, or you have blocked them */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many requests sent recently */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_accept_friend_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Friend request id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted; the two are now friends */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequestResponse"];
+                };
+            };
+            /** @description No such request addressed to you */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Request is no longer pending */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_cancel_friend_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Friend request id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Cancelled */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequestResponse"];
+                };
+            };
+            /** @description No such request sent by you */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Request is no longer pending */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_decline_friend_request: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Friend request id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Declined */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendRequestResponse"];
+                };
+            };
+            /** @description No such request addressed to you */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Request is no longer pending */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_remove_friend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Friend's handle */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description No longer friends */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not friends with that user */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -13703,6 +14385,171 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    social_list_mutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Users you have muted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutesResponse"];
+                };
+            };
+        };
+    };
+    social_mute_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Handle to mute */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Muted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid handle, or your own handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_unmute_user: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Handle to unmute */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Unmuted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Invalid handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description That user is not muted */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_list_notifications: {
+        parameters: {
+            query?: {
+                /** @description Only notifications created strictly after this instant. */
+                since?: string | null;
+                /** @description Page size, 1 to 200. Default 50. */
+                limit?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest first, plus the inbox unread count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationsResponse"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_mark_notifications_read: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MarkNotificationsReadBody"];
+            };
+        };
+        responses: {
+            /** @description Rows updated and the new unread count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MarkNotificationsReadResponse"];
+                };
+            };
+            /** @description Neither ids nor all given */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
@@ -14383,6 +15230,37 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
+            };
+        };
+    };
+    social_update_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SocialSettings"];
+            };
+        };
+        responses: {
+            /** @description Settings as stored */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SocialSettings"];
+                };
+            };
+            /** @description Unknown policy value */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

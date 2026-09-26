@@ -1051,6 +1051,7 @@ impl UserStore for PostgresUserStore {
                 .bind(&h)
                 .execute(&mut *tx)
                 .await?;
+            crate::social::delete_social_rows_for(&mut tx, &h).await?;
         }
 
         sqlx::query("DELETE FROM users WHERE id = $1")
@@ -1101,6 +1102,7 @@ impl UserStore for PostgresUserStore {
                 .execute(&mut *tx)
                 .await?;
             }
+            crate::social::delete_social_rows_for(&mut tx, &h).await?;
         }
 
         sqlx::query("DELETE FROM users WHERE id = $1")
