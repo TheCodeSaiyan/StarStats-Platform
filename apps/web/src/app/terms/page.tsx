@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     'The terms you agree to when you use StarStats: what the service is, what it promises, what it does not, and the law it runs under.',
 };
 
-const LAST_UPDATED = '16 July 2026';
+const LAST_UPDATED = '27 September 2026';
 const CONTACT_EMAIL = 'dojo@thecodesaiyan.io';
 
 /* Mirrors the wrappers in privacy/page.tsx so the two legal pages read as
@@ -189,6 +189,31 @@ export default function TermsPage() {
             SECURITY.md
           </a>{' '}
           explains how to do it.
+        </p>
+        <h3 className="hp-subheading">Things you post</h3>
+        <p style={{ marginTop: 0 }}>
+          Some of what you write is seen by other players: Looking for Group
+          posts are on a board every signed-in player can read. What you post
+          must not:
+        </p>
+        <ul style={listStyle}>
+          <li>Be illegal, or link to anything illegal</li>
+          <li>
+            Harass, threaten or demean anyone, or attack people for who they
+            are
+          </li>
+          <li>
+            Advertise, spam, or offer real-money trading of in-game items or
+            accounts
+          </li>
+          <li>Share someone else&rsquo;s personal information</li>
+        </ul>
+        <p style={{ marginBottom: 0 }}>
+          Any player can report a post with the report button on it, and a
+          moderator reviews every report. A moderator can take a post down
+          and, under section 8, suspend the account that made it. Posts also
+          expire on their own within a few hours. If you think a post of
+          yours was taken down by mistake, email me.
         </p>
       </PolicySection>
 
