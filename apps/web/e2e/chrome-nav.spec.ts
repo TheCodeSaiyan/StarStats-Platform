@@ -134,6 +134,25 @@ test.describe('chrome nav', () => {
     ).toBeGreaterThan(0);
   });
 
+  test('the Crew badge shows without costing the row its links', async ({ page, request }) => {
+    // The badge hangs off the link's corner, out of flow. One that took width
+    // would push the heaviest surface over its budget and collapse every link
+    // into the menu the moment someone asked to join a group.
+    await setScenario(
+      request,
+      scenarioFor('chrome-nav-crew', {
+        'GET /v1/me/lfg/summary': { status: 200, body: { hosting: true, pending_requests: 3 } },
+      }),
+    );
+    await loginAs(page, { handle: 'TestPilot' });
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    await page.goto('/me', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await settled(page);
+    const c = (await chrome(page))!;
+    expect(c.nav, 'a badge must not collapse the row').toBe('inline');
+    await expect(page.locator('.hp-lk a[href="/lfg"] .hp-badge--nav').first()).toHaveText('3');
+  });
+
   test('a signed-out visitor is offered no destination they cannot open', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 30_000 });

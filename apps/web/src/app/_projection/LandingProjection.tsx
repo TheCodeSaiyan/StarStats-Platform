@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useNavWithBadges } from '@/components/projection/ShellData';
 import { useRouter } from 'next/navigation';
 import { chromeLink } from '@/components/projection/chromeLink';
 import { signOut } from '@/lib/sign-out';
@@ -85,6 +86,8 @@ export function LandingProjection({
   /** The reading half, docked below the volume. */
   children: React.ReactNode;
 }) {
+  // Counts on nav links (players waiting on your group, on Crew).
+  const navWithBadges = useNavWithBadges(nav);
   const router = useRouter();
   const [cal, setCal] = React.useState<Calibration>(calibration);
   // Keep in step if the server sends a different value on a later navigation.
@@ -134,7 +137,7 @@ export function LandingProjection({
             clock="Unofficial"
             calibration={cal}
             onCalibrate={calibrate}
-            sections={nav}
+            sections={navWithBadges}
             handle={handle}
             account={handle ? account : undefined}
             onSignIn={

@@ -88,6 +88,13 @@ export interface NavItem {
    * browser gets a real URL, middle-click and prefetch.
    */
   href?: string;
+  /**
+   * Count shown on the link, e.g. players waiting on your group. In the
+   * inline row it hangs off the link's corner and takes no width, because the
+   * row's fit is all-or-nothing: a badge that widened a link would collapse
+   * every link into the menu the moment it appeared.
+   */
+  badge?: number;
 }
 
 export interface NavSection {
@@ -361,14 +368,24 @@ export function ChromeBar({
     secs.map((sec) => (
       <span className="grp" key={sec.title}>
         {withTitles ? <span className="ttl">{sec.title}</span> : null}
-        {sec.items.map((it) =>
-          it.href ? (
+        {sec.items.map((it) => {
+          const label = it.badge ? (
+            <>
+              {it.label}
+              <i className="hp-badge hp-badge--nav" aria-label={`${it.badge} waiting`}>
+                {it.badge}
+              </i>
+            </>
+          ) : (
+            it.label
+          );
+          return it.href ? (
             link({
               key: it.id,
               href: it.href,
               'aria-current': it.active ? 'page' : undefined,
               onClick: close,
-              children: it.label,
+              children: label,
             })
           ) : (
             <a
@@ -377,10 +394,10 @@ export function ChromeBar({
               aria-current={it.active ? 'page' : undefined}
               onClick={go(it.id)}
             >
-              {it.label}
+              {label}
             </a>
-          ),
-        )}
+          );
+        })}
       </span>
     ));
 

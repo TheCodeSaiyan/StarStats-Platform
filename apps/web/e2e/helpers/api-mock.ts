@@ -1095,6 +1095,8 @@ export function scenarioFor(
     'GET /v1/me/news': { status: 200, body: { items: [], unread_count: 0 } },
     'GET /v1/me/releases': { status: 200, body: { releases: [], unread_count: 0 } },
     'GET /v1/me/friends/presence': { status: 200, body: { friends: [] } },
+    // Layout-level: every signed-in page asks for the Crew badge count.
+    'GET /v1/me/lfg/summary': { status: 200, body: { hosting: false, pending_requests: 0 } },
     'GET /v1/me/presence/settings': { status: 200, body: { level: 'off' } },
     'GET /v1/releases': { status: 200, body: { releases: [] } },
     'GET /v1/me/roadmap/whats-new': { status: 200, body: { items: [], seen_via_auth: true } },

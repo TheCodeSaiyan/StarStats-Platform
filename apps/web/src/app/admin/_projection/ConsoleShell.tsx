@@ -13,7 +13,7 @@ import {
   type NavSection,
 } from 'holo';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
-import { useShellData } from '@/components/projection/ShellData';
+import { useNavWithBadges, useShellData } from '@/components/projection/ShellData';
 import { AdminNav } from '../_components/AdminNav';
 import { signOut } from '@/lib/sign-out';
 
@@ -61,6 +61,8 @@ export function ConsoleShell({
   onCalibrate: (id: string) => void | Promise<void>;
   children: React.ReactNode;
 }) {
+  // Counts on nav links (players waiting on your group, on Crew).
+  const navWithBadges = useNavWithBadges(nav);
   const router = useRouter();
   const { inboundShares } = useShellData();
   const [cal, setCal] = React.useState<Calibration>(calibration);
@@ -96,7 +98,7 @@ export function ConsoleShell({
             handle={handle}
             calibration={cal}
             onCalibrate={calibrate}
-            sections={nav}
+            sections={navWithBadges}
             live
             account={[
               { id: 'me', label: 'Projection', href: '/me' },

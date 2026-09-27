@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { useNavWithBadges } from '@/components/projection/ShellData';
 import { useRouter } from 'next/navigation';
 import type { Route } from 'next';
 import {
@@ -125,6 +126,8 @@ export function PublicProjection({
   body,
   onCalibrate,
 }: PublicProjectionProps) {
+  // Counts on nav links (players waiting on your group, on Crew).
+  const navWithBadges = useNavWithBadges(nav);
   const router = useRouter();
   const [cal, setCal] = React.useState<Calibration>(calibration);
   const [recalKey, setRecalKey] = React.useState(0);
@@ -150,7 +153,7 @@ export function PublicProjection({
             handle={handle ?? undefined}
             calibration={cal}
             onCalibrate={calibrate}
-            sections={nav}
+            sections={navWithBadges}
             // `live` claims an uplink is streaming to THIS screen. Reading
             // someone else's profile is not that, whoever you are.
             live={false}

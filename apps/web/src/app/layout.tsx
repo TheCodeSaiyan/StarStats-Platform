@@ -10,6 +10,7 @@ import {
 import {
   getAppearanceConfig,
   getMyNews,
+  getMyLfgSummary,
   getMyReleases,
   getNotifications,
   getWhatsNew,
@@ -206,8 +207,9 @@ export default async function RootLayout({
   let inboundShareCount = 0;
   let unreadNotifications = 0;
   let unreadWhatsNew = 0;
+  let crewPending = 0;
   if (session) {
-    const [sharedRes, notesRes, newsRes, whatsNewRes, releasesRes] = await Promise.allSettled([
+    const [sharedRes, notesRes, newsRes, whatsNewRes, releasesRes, crewRes] = await Promise.allSettled([
       listSharedWithMe(session.token),
       // limit=1: only the count is wanted, and it covers the whole inbox
       // regardless of page size.
@@ -215,6 +217,7 @@ export default async function RootLayout({
       getMyNews(session.token, 20),
       getWhatsNew(session.token),
       getMyReleases(session.token, 5),
+      getMyLfgSummary(session.token),
     ]);
     if (sharedRes.status === 'fulfilled') {
       // EXPIRY, not revocation: an expired share stays in the inbound list
@@ -252,6 +255,12 @@ export default async function RootLayout({
     } else {
       logger.warn({ err: releasesRes.reason, call: 'shell.releases' }, 'unread releases count fetch failed');
     }
+    // Players waiting on the reader's group, for the badge on Crew.
+    if (crewRes.status === 'fulfilled') {
+      crewPending = crewRes.value.pending_requests;
+    } else {
+      logger.warn({ err: crewRes.reason, call: 'shell.lfgSummary' }, 'crew badge count fetch failed');
+    }
   }
 
   return (
@@ -280,6 +289,7 @@ export default async function RootLayout({
           inboundShares={inboundShareCount}
           unreadNotifications={unreadNotifications}
           unreadWhatsNew={unreadWhatsNew}
+          crewPending={crewPending}
         >
         {hasSession ? (
           <div className="ss-app" style={{ position: 'relative', zIndex: 1, minHeight: '100vh' }}>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { chromeLink } from '@/components/projection/chromeLink';
 import type { Route } from 'next';
 import { SiteLegalPlate } from './SiteLegalPlate';
-import { useShellData } from './ShellData';
+import { useNavWithBadges, useShellData } from './ShellData';
 import { signOut } from '@/lib/sign-out';
 
 const subscribeHash = (onChange: () => void) => {
@@ -186,6 +186,8 @@ export function PaneSurface({
   legal = true,
   measure = 'wide',
 }: PaneSurfaceProps) {
+  // Counts on nav links (players waiting on your group, on Crew).
+  const navWithBadges = useNavWithBadges(nav);
   const router = useRouter();
   const { inboundShares, unreadNotifications, unreadWhatsNew } = useShellData();
 
@@ -360,7 +362,7 @@ export function PaneSurface({
             handle={handle}
             calibration={cal}
             onCalibrate={calibrate}
-            sections={nav}
+            sections={navWithBadges}
             trailing={chromeTrailing}
             account={handle ? accountItems : undefined}
             onSignIn={

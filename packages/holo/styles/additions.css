@@ -2330,6 +2330,20 @@
   line-height: 1;
 }
 
+/* A badge on a nav link. In the inline row it hangs off the link's corner,
+   out of flow: the row's fit is measured all-or-nothing, and a badge that took
+   width would collapse every link into the menu the moment it appeared. In the
+   disclosure menu it sits beside the label, like the account badges. */
+.hp-top .hp-lk a:has(> .hp-badge--nav) {
+  position: relative;
+}
+.hp-top[data-nav='inline'] .hp-lk .hp-badge--nav {
+  position: absolute;
+  top: -10px;
+  right: -14px;
+  margin: 0;
+}
+
 /* `SubStats` additions: a derivation line under the figure, and the `bad` tone.
    Both were added while redrawing the knowledge base — see the component. */
 .hp-subs i {

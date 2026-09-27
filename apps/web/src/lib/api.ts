@@ -809,6 +809,13 @@ export type LfgMember = apiSchema['schemas']['LfgMember'];
 export type LfgReport = apiSchema['schemas']['LfgReport'];
 export type CreateLfgPost = apiSchema['schemas']['CreateLfgPost'];
 
+export type LfgSummary = apiSchema['schemas']['LfgSummary'];
+
+/** Players waiting on your open post, for the Crew badge. */
+export async function getMyLfgSummary(bearer: string): Promise<LfgSummary> {
+  return request<LfgSummary>('GET', '/v1/me/lfg/summary', undefined, bearer);
+}
+
 export async function getLfgOptions(): Promise<LfgOptions> {
   return request<LfgOptions>('GET', '/v1/lfg/options', undefined, undefined);
 }
