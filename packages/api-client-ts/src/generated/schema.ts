@@ -1987,6 +1987,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/lfg/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Crew badge: how many players are waiting on your open post. Cheap
+         *     enough for every page load (one post, its member rows).
+         */
+        get: operations["lfg_my_summary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/location/breakdown": {
         parameters: {
             query?: never;
@@ -6481,6 +6501,16 @@ export interface components {
         LfgReportReason: "abuse" | "spam" | "illegal_content" | "other";
         /** @enum {string} */
         LfgReportStatus: "open" | "dismissed" | "post_removed" | "user_suspended";
+        /** @description What the Crew badge shows: players waiting on the caller's open post. */
+        LfgSummary: {
+            /** @description Whether the caller has an open post. */
+            hosting: boolean;
+            /**
+             * Format: int64
+             * @description Players who asked to join it and have not been answered.
+             */
+            pending_requests: number;
+        };
         /**
          * @description Whether the group uses voice chat.
          * @enum {string}
@@ -15723,6 +15753,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    lfg_my_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your Looking for Group summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgSummary"];
+                };
             };
         };
     };
