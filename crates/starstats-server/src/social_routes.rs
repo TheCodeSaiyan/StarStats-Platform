@@ -858,6 +858,7 @@ pub async fn block_user(
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
     Extension(salutes): Extension<Arc<dyn SaluteStore>>,
+    Extension(commends): Extension<Arc<dyn crate::commends::CommendStore>>,
     Path(handle): Path<String>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -887,6 +888,10 @@ pub async fn block_user(
     // Their salute on my profile goes, and mine on theirs.
     if let Err(e) = salutes.delete_between(mine, theirs).await {
         tracing::warn!(error = %e, "block: salute delete failed");
+    }
+    // So do commends either way, and each from the other's crew history.
+    if let Err(e) = commends.delete_between(mine, theirs).await {
+        tracing::warn!(error = %e, "block: commend delete failed");
     }
     if let Err(e) = social.cancel_pending_between(mine, theirs).await {
         tracing::warn!(error = %e, "block: cancel_pending_between failed");
@@ -1216,6 +1221,7 @@ mod tests {
         devices: Arc<MemoryDeviceStore>,
         rsi_orgs: Arc<MemoryRsiOrgStore>,
         salutes: Arc<MemorySaluteStore>,
+        commends: Arc<crate::commends::test_support::MemoryCommendStore>,
     }
 
     fn fixture() -> Fixture {
@@ -1239,9 +1245,12 @@ mod tests {
         let rsi_orgs_dyn: Arc<dyn RsiOrgStore> = rsi_orgs.clone();
         let salutes = Arc::new(MemorySaluteStore::new());
         let salutes_dyn: Arc<dyn SaluteStore> = salutes.clone();
+        let commends = Arc::new(crate::commends::test_support::MemoryCommendStore::new());
+        let commends_dyn: Arc<dyn crate::commends::CommendStore> = commends.clone();
         let app = routes()
             .merge(crate::salute_routes::routes())
             .layer(Extension(salutes_dyn))
+            .layer(Extension(commends_dyn))
             .layer(Extension(
                 Arc::new(crate::salutes::SaluteRateLimiter::new()),
             ))
@@ -1267,6 +1276,7 @@ mod tests {
             devices,
             rsi_orgs,
             salutes,
+            commends,
         }
     }
 
@@ -1526,6 +1536,39 @@ mod tests {
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(v["error"], "spicedb_unavailable");
         assert_eq!(f.salutes.count("carol").await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_block_removes_commends_and_crew_history_both_ways() {
+        use crate::commends::{CommendKind, CommendStore};
+        let f = fixture();
+        let alice = f.user("alice", true).await;
+        f.user("bob", true).await;
+        let post = uuid::Uuid::new_v4();
+        let now = chrono::Utc::now();
+        f.commends
+            .record_crew(post, "mining", "alice", "bob", now)
+            .await
+            .unwrap();
+        f.commends
+            .set(post, "bob", "alice", CommendKind::Reliable, now)
+            .await
+            .unwrap();
+
+        let (s, _) = f.call("PUT", "/v1/me/blocks/bob", &alice, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert!(!f
+            .commends
+            .flew_together(post, "alice", "bob")
+            .await
+            .unwrap());
+        assert!(f
+            .commends
+            .totals("alice")
+            .await
+            .unwrap()
+            .iter()
+            .all(|t| t.count == 0));
     }
 
     #[tokio::test]

@@ -25,6 +25,7 @@ use crate::admin_user_routes;
 use crate::api_error;
 use crate::appearance_routes;
 use crate::auth_routes;
+use crate::commend_routes;
 use crate::contract_entities;
 use crate::contract_routes;
 use crate::contracts;
@@ -353,6 +354,11 @@ impl Modify for SecurityAddon {
         lfg_routes::report,
         lfg_routes::admin_list_reports,
         lfg_routes::admin_resolve,
+        commend_routes::my_crew,
+        commend_routes::give,
+        commend_routes::withdraw,
+        commend_routes::profile_commends,
+        commend_routes::my_commends,
         social_routes::mark_notifications_read,
         // News from the admin console
         news_routes::list_public,
@@ -825,6 +831,15 @@ impl Modify for SecurityAddon {
         crate::lfg::MemberStatus,
         crate::lfg::LfgReportReason,
         crate::lfg::LfgReportStatus,
+        commend_routes::CommendTotals,
+        commend_routes::GiveCommend,
+        commend_routes::WindowMate,
+        commend_routes::CommendWindow,
+        commend_routes::CrewOverview,
+        crate::commends::CommendKind,
+        crate::commends::CommendTotal,
+        crate::commends::CrewMate,
+        crate::commends::GivenCommend,
         social_routes::NotificationsResponse,
         social_routes::MarkNotificationsReadBody,
         social_routes::MarkNotificationsReadResponse,

@@ -1505,6 +1505,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/crew/{post_id}/commends/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Commend a crewmate, or change the word. Only a new commend notifies
+         *     them, and the notification does not say who gave it.
+         */
+        put: operations["crew_commend"];
+        post?: never;
+        /** Withdraw a commend while the window is open. Idempotent. */
+        delete: operations["crew_withdraw_commend"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/discover/profiles": {
         parameters: {
             query?: never;
@@ -1743,6 +1764,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/commends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own commend totals. */
+        get: operations["social_my_commends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/commerce/recent": {
         parameters: {
             query?: never;
@@ -1761,6 +1799,23 @@ export interface paths {
          *     queries.
          */
         get: operations["commerce_recent"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/crew": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your crew history and the commend windows open to you. */
+        get: operations["crew_mine"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3470,6 +3525,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/u/{handle}/commends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A profile's public commend totals. Answers 404 wherever the profile's
+         *     salutes would, so it cannot be used to probe a private profile.
+         */
+        get: operations["social_profile_commends"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/u/{handle}/commerce/recent": {
         parameters: {
             query?: never;
@@ -4666,6 +4741,33 @@ export interface components {
              */
             top_weapons: components["schemas"]["StatsBucket"][];
         };
+        /**
+         * @description The closed vocabulary. Stored as TEXT, so adding a kind needs no
+         *     migration. There is deliberately no free text and nothing negative.
+         * @enum {string}
+         */
+        CommendKind: "great_pilot" | "good_comms" | "reliable" | "good_teacher";
+        /** @description One kind's public total. */
+        CommendTotal: {
+            /** Format: int64 */
+            count: number;
+            kind: components["schemas"]["CommendKind"];
+        };
+        CommendTotals: {
+            /** @description Every kind, zeros included. Who gave them is never shown. */
+            totals: components["schemas"]["CommendTotal"][];
+        };
+        /** @description A post whose crew can still commend each other. */
+        CommendWindow: {
+            activity: string;
+            /** Format: date-time */
+            closes_at: string;
+            crew: components["schemas"]["WindowMate"][];
+            /** Format: date-time */
+            ended_at: string;
+            /** Format: uuid */
+            post_id: string;
+        };
         /** @description Wire-format wrapper for the commerce endpoint. */
         CommerceRecentResponse: {
             /** @description True counts for the window, independent of `limit`. */
@@ -5063,6 +5165,21 @@ export interface components {
         };
         CreateSubmissionResponse: {
             submission: components["schemas"]["SubmissionDto"];
+        };
+        /** @description Someone you flew with. */
+        CrewMate: {
+            activity: string;
+            /** Format: date-time */
+            flew_at: string;
+            handle: string;
+            /** Format: uuid */
+            post_id: string;
+        };
+        CrewOverview: {
+            /** @description Everyone you flew with in the last 90 days, newest first. Private. */
+            history: components["schemas"]["CrewMate"][];
+            /** @description Open commend windows, soonest to close first. */
+            windows: components["schemas"]["CommendWindow"][];
         };
         CurrentLocationResponse: {
             location: components["schemas"]["ResolvedLocation"];
@@ -6137,6 +6254,16 @@ export interface components {
              */
             your_role?: string | null;
         };
+        GiveCommend: {
+            kind: components["schemas"]["CommendKind"];
+        };
+        /** @description A commend the caller gave. */
+        GivenCommend: {
+            kind: components["schemas"]["CommendKind"];
+            /** Format: uuid */
+            post_id: string;
+            recipient: string;
+        };
         GrantRoleRequest: {
             /**
              * @description Optional free-text note for the audit trail (e.g.
@@ -6904,7 +7031,7 @@ export interface components {
             read_at?: string | null;
         };
         /** @enum {string} */
-        NotificationKind: "friend_request" | "friend_accepted" | "salute" | "lfg_join_request" | "lfg_join_accepted";
+        NotificationKind: "friend_request" | "friend_accepted" | "salute" | "lfg_join_request" | "lfg_join_accepted" | "commend";
         NotificationsResponse: {
             items: components["schemas"]["Notification"][];
             /**
@@ -9588,6 +9715,11 @@ export interface components {
         };
         /** @enum {string} */
         WidgetSize: "compact" | "expanded";
+        /** @description A crewmate in an open commend window. */
+        WindowMate: {
+            handle: string;
+            my_commend?: null | components["schemas"]["CommendKind"];
+        };
         WithdrawResponse: {
             submission: components["schemas"]["SubmissionDto"];
         };
@@ -14388,6 +14520,130 @@ export interface operations {
             };
         };
     };
+    crew_commend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The post you flew on */
+                post_id: string;
+                /** @description The crewmate to commend */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GiveCommend"];
+            };
+        };
+        responses: {
+            /** @description Commended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GivenCommend"];
+                };
+            };
+            /** @description Yourself, or an invalid handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description RSI handle not verified, or sharing restricted */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not someone you flew with on this post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The post has not ended, or the window has closed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many commends */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    crew_withdraw_commend: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The post you flew on */
+                post_id: string;
+                /** @description The crewmate */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Withdrawn */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not someone you flew with on this post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The window has closed */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many commends */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     list_discover_profiles: {
         parameters: {
             query?: {
@@ -15057,6 +15313,26 @@ export interface operations {
             };
         };
     };
+    social_my_commends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your commend totals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommendTotals"];
+                };
+            };
+        };
+    };
     commerce_recent: {
         parameters: {
             query?: {
@@ -15105,6 +15381,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    crew_mine: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your crew */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrewOverview"];
+                };
             };
         };
     };
@@ -19642,6 +19938,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    social_profile_commends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Profile */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Commend totals */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommendTotals"];
+                };
+            };
+            /** @description No such profile, or not one you can see */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description SpiceDB unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
