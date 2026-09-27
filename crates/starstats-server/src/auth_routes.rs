@@ -342,6 +342,10 @@ pub async fn signup<U: UserStore>(
     // and ignored — we don't block signup on a SpiceDB blip, and a
     // missing relation is fixed by any subsequent call that re-issues
     // the TOUCH (e.g. the user re-saving public_view from /settings).
+    // A new account starts with no relationships. SpiceDB ids are handles,
+    // so anything left under this handle belongs to a deleted account that
+    // held it before: clear it before the owner tuple goes in.
+    crate::spicedb::forget_handle(spicedb.as_ref(), &user.claimed_handle, "signup").await;
     if let Some(client) = spicedb.as_ref() {
         if let Err(e) = client.write_owner(&user.claimed_handle).await {
             tracing::warn!(
@@ -627,6 +631,7 @@ pub async fn resend_verification<U: UserStore>(
 pub async fn delete_account<U: UserStore>(
     State(users): State<Arc<U>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    spicedb: Option<Extension<Arc<Option<crate::spicedb::SpicedbClient>>>>,
     auth: AuthenticatedUser,
     Json(req): Json<DeleteAccountRequest>,
 ) -> impl IntoResponse {
@@ -671,6 +676,13 @@ pub async fn delete_account<U: UserStore>(
     if let Err(e) = users.delete_user(user.id).await {
         tracing::error!(error = %e, user_id = %user.id, "delete user failed");
         return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
+    }
+    // After Postgres: the account is gone whatever SpiceDB says. Its shares,
+    // public flag, friends and org roles go with it, so they cannot pass to
+    // whoever claims the handle next.
+    if let Some(Extension(spicedb)) = spicedb {
+        crate::spicedb::forget_handle(spicedb.as_ref(), &user.claimed_handle, "account_deleted")
+            .await;
     }
 
     (

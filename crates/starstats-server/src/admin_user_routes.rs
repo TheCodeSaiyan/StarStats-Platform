@@ -673,11 +673,13 @@ pub struct AdminDeleteUserResponse {
     ),
     security(("BearerAuth" = []))
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn delete_user_admin<U: UserStore>(
     RequireAdmin(actor): RequireAdmin,
     State(users): State<Arc<U>>,
     Extension(staff): Extension<Arc<dyn StaffRoleStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    spicedb: Option<Extension<Arc<Option<crate::spicedb::SpicedbClient>>>>,
     Path(id_str): Path<String>,
     Json(body): Json<AdminDeleteUserRequest>,
 ) -> Response {
@@ -748,6 +750,12 @@ pub async fn delete_user_admin<U: UserStore>(
     if let Err(e) = outcome {
         tracing::error!(error = %e, %target_id, mode = ?body.mode, "admin delete failed");
         return err_response(StatusCode::INTERNAL_SERVER_ERROR, "internal");
+    }
+    // As for self-serve deletion: nothing under the handle may outlive the
+    // account, or it passes to whoever claims the handle next.
+    if let Some(Extension(spicedb)) = spicedb {
+        crate::spicedb::forget_handle(spicedb.as_ref(), &target.claimed_handle, "admin_deleted")
+            .await;
     }
 
     (
