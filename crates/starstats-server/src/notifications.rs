@@ -35,6 +35,10 @@ pub enum NotificationKind {
     FriendAccepted,
     /// Someone saluted your profile (o7).
     Salute,
+    /// Someone asked to join your Looking for Group post.
+    LfgJoinRequest,
+    /// The host accepted you into their group.
+    LfgJoinAccepted,
 }
 
 impl NotificationKind {
@@ -43,6 +47,8 @@ impl NotificationKind {
             Self::FriendRequest => "friend_request",
             Self::FriendAccepted => "friend_accepted",
             Self::Salute => "salute",
+            Self::LfgJoinRequest => "lfg_join_request",
+            Self::LfgJoinAccepted => "lfg_join_accepted",
         }
     }
 
@@ -51,6 +57,8 @@ impl NotificationKind {
             "friend_request" => Self::FriendRequest,
             "friend_accepted" => Self::FriendAccepted,
             "salute" => Self::Salute,
+            "lfg_join_request" => Self::LfgJoinRequest,
+            "lfg_join_accepted" => Self::LfgJoinAccepted,
             _ => return None,
         })
     }
@@ -445,6 +453,8 @@ mod tests {
             NotificationKind::FriendRequest,
             NotificationKind::FriendAccepted,
             NotificationKind::Salute,
+            NotificationKind::LfgJoinRequest,
+            NotificationKind::LfgJoinAccepted,
         ] {
             assert_eq!(NotificationKind::parse(k.as_str()), Some(k));
         }

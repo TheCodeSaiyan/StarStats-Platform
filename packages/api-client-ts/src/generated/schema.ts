@@ -233,6 +233,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/lfg/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["admin_lfg_reports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/lfg/reports/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a report. `post_removed` takes the post down; `user_suspended`
+         *     takes it down and suspends the host, as the share report queue does.
+         */
+        post: operations["admin_lfg_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/news": {
         parameters: {
             query?: never;
@@ -1543,6 +1579,126 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["releases_ingest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/lfg": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Open posts, newest first. Posts from anyone you blocked, or who blocked
+         *     you, are left out.
+         */
+        get: operations["lfg_list"];
+        put?: never;
+        /**
+         * Post a call for crew. One open post per host; a verified RSI handle is
+         *     needed, because the board is global and a handle is what players copy
+         *     into the game.
+         */
+        post: operations["lfg_create"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/lfg/options": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What a post form offers: every vocabulary and limit, so the web and the
+         *     tray never hard-code them.
+         */
+        get: operations["lfg_options"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/lfg/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["lfg_get"];
+        put?: never;
+        post?: never;
+        /** The host closes their post. */
+        delete: operations["lfg_close"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/lfg/{id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask to join. The host is notified. */
+        post: operations["lfg_join"];
+        /** Withdraw a request, or leave a group you are in. */
+        delete: operations["lfg_leave"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/lfg/{id}/members/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * The host accepts, declines or removes someone. Accepting notifies them,
+         *     so they can copy the host's handle into the in-game invite.
+         */
+        put: operations["lfg_respond"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/lfg/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a post to the moderators. The post is kept as it was when
+         *     reported, even if it later expires.
+         */
+        post: operations["lfg_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4856,6 +5012,22 @@ export interface components {
              */
             withdrawn: number;
         };
+        CreateLfgPost: {
+            activity: components["schemas"]["LfgActivity"];
+            /** Format: int32 */
+            crew_slots: number;
+            /**
+             * Format: int64
+             * @description Minutes until the post expires: 15 to 360, 120 if omitted.
+             */
+            expires_in_minutes?: number | null;
+            location?: string | null;
+            note?: string | null;
+            region: components["schemas"]["LfgRegion"];
+            ship?: string | null;
+            system?: string | null;
+            voice: components["schemas"]["LfgVoice"];
+        };
         CreateOrgRequest: {
             name: string;
         };
@@ -6207,6 +6379,114 @@ export interface components {
             timestamp: string;
         };
         /**
+         * @description What the group is for.
+         * @enum {string}
+         */
+        LfgActivity: "bounty_hunting" | "mercenary" | "fps" | "mining" | "salvage" | "hauling" | "exploration" | "racing" | "medical" | "piracy" | "social" | "other";
+        LfgListResponse: {
+            posts: components["schemas"]["LfgPostView"][];
+        };
+        LfgMember: {
+            /** Format: date-time */
+            created_at: string;
+            handle: string;
+            /** Format: date-time */
+            responded_at?: string | null;
+            status: components["schemas"]["MemberStatus"];
+        };
+        LfgOptions: {
+            activities: components["schemas"]["LfgActivity"][];
+            /** Format: int32 */
+            crew_max: number;
+            /** Format: int32 */
+            crew_min: number;
+            /** Format: int64 */
+            expiry_default_minutes: number;
+            /** Format: int64 */
+            expiry_max_minutes: number;
+            /** Format: int64 */
+            expiry_min_minutes: number;
+            regions: components["schemas"]["LfgRegion"][];
+            systems: string[];
+            voices: components["schemas"]["LfgVoice"][];
+        };
+        LfgPost: {
+            activity: components["schemas"]["LfgActivity"];
+            /** Format: date-time */
+            closed_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /**
+             * Format: int64
+             * @description Accepted crew, not counting the host.
+             */
+            crew_count: number;
+            /** Format: int32 */
+            crew_slots: number;
+            /** Format: date-time */
+            expires_at: string;
+            host_handle: string;
+            /** Format: uuid */
+            id: string;
+            location?: string | null;
+            note?: string | null;
+            region: components["schemas"]["LfgRegion"];
+            /** Format: date-time */
+            removed_at?: string | null;
+            ship?: string | null;
+            system?: string | null;
+            voice: components["schemas"]["LfgVoice"];
+        };
+        LfgPostDetail: components["schemas"]["LfgPostView"] & {
+            /**
+             * @description The host sees everyone who asked; accepted crew see the crew; others
+             *     see nobody.
+             */
+            members: components["schemas"]["LfgMember"][];
+        };
+        /** @description A post as a player sees it on the board. */
+        LfgPostView: components["schemas"]["LfgPost"] & {
+            /** @description Whether the host's RSI handle is verified. */
+            host_verified: boolean;
+            is_host: boolean;
+            my_status?: null | components["schemas"]["MemberStatus"];
+        };
+        /**
+         * @description Where the host plays from, roughly, for timezone and latency.
+         * @enum {string}
+         */
+        LfgRegion: "any" | "eu" | "na" | "sa" | "oce" | "asia";
+        LfgReport: {
+            /** Format: date-time */
+            created_at: string;
+            details?: string | null;
+            host_handle: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            post_id: string;
+            post_snapshot: unknown;
+            reason: components["schemas"]["LfgReportReason"];
+            reporter_handle: string;
+            resolution_note?: string | null;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            resolved_by?: string | null;
+            status: components["schemas"]["LfgReportStatus"];
+        };
+        LfgReportList: {
+            reports: components["schemas"]["LfgReport"][];
+        };
+        /** @enum {string} */
+        LfgReportReason: "abuse" | "spam" | "illegal_content" | "other";
+        /** @enum {string} */
+        LfgReportStatus: "open" | "dismissed" | "post_removed" | "user_suspended";
+        /**
+         * @description Whether the group uses voice chat.
+         * @enum {string}
+         */
+        LfgVoice: "none" | "optional" | "required";
+        /**
          * @description One `starstats_core::character_life::Life` span, DTO-shaped for the
          *     wire. `ended_by` is the snake_case name of the
          *     `starstats_core::character_life::LifeEnd` variant.
@@ -6480,6 +6760,11 @@ export interface components {
             totp_enabled: boolean;
             user_id: string;
         };
+        /**
+         * @description A player's standing on one post.
+         * @enum {string}
+         */
+        MemberStatus: "requested" | "accepted" | "declined" | "left" | "removed";
         MissionEndSchema: {
             mission_id?: string | null;
             outcome?: string | null;
@@ -6578,7 +6863,7 @@ export interface components {
             read_at?: string | null;
         };
         /** @enum {string} */
-        NotificationKind: "friend_request" | "friend_accepted" | "salute";
+        NotificationKind: "friend_request" | "friend_accepted" | "salute" | "lfg_join_request" | "lfg_join_accepted";
         NotificationsResponse: {
             items: components["schemas"]["Notification"][];
             /**
@@ -7524,6 +7809,10 @@ export interface components {
         RemoveMemberResponse: {
             removed: boolean;
         };
+        ReportLfgPost: {
+            details?: string | null;
+            reason: components["schemas"]["LfgReportReason"];
+        };
         /**
          * @description Request body for `POST /v1/share/report`. Reporter is the auth'd
          *     user (NOT a body field) — taking it off the token prevents
@@ -7573,6 +7862,11 @@ export interface components {
         };
         ResendVerificationResponse: {
             sent: boolean;
+        };
+        ResolveLfgReport: {
+            note?: string | null;
+            /** @description `dismissed`, `post_removed` or `user_suspended`. */
+            outcome: string;
         };
         /** @description Response for `GET /api/contracts/resolve`. */
         ResolveNamesResponse: {
@@ -7718,6 +8012,10 @@ export interface components {
             system?: string | null;
             /** @description Location tier — always present. */
             tier: components["schemas"]["LocationTierSchema"];
+        };
+        RespondBody: {
+            /** @description `accept`, `decline` or `remove`. Remove also stops them asking again. */
+            action: string;
         };
         RestrictionRequest: {
             /**
@@ -9859,6 +10157,91 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    admin_lfg_reports: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reports, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgReportList"];
+                };
+            };
+            /** @description Not a moderator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    admin_lfg_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Report id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveLfgReport"];
+            };
+        };
+        responses: {
+            /** @description Resolved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgReport"];
+                };
+            };
+            /** @description Unknown outcome, or note too long */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such report */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Already resolved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
@@ -14170,6 +14553,368 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    lfg_list: {
+        parameters: {
+            query?: {
+                activity?: string | null;
+                system?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open posts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgListResponse"];
+                };
+            };
+        };
+    };
+    lfg_create: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateLfgPost"];
+            };
+        };
+        responses: {
+            /** @description Posted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgPostView"];
+                };
+            };
+            /** @description A field is invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description RSI handle not verified, or sharing restricted */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description You already have an open post */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many posts today */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    lfg_options: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Choices for a post */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgOptions"];
+                };
+            };
+        };
+    };
+    lfg_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The post */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgPostDetail"];
+                };
+            };
+            /** @description No such post, or not one you can see */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    lfg_close: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Closed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not your post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    lfg_join: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Asked */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgMember"];
+                };
+            };
+            /** @description Your own post */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not verified, restricted, or removed from this group */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such open post, or not one you can see */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Already asked, or the group is full */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    lfg_leave: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Left */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not in this group */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    lfg_respond: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Post id */
+                id: string;
+                /** @description The player to respond to */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RespondBody"];
+            };
+        };
+        responses: {
+            /** @description Their new standing */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LfgMember"];
+                };
+            };
+            /** @description Unknown action */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not your post, or they did not ask */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description The group is full, or the post has ended */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    lfg_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Post id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportLfgPost"];
+            };
+        };
+        responses: {
+            /** @description Reported */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Details too long, or your own post */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such post */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many reports today */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
