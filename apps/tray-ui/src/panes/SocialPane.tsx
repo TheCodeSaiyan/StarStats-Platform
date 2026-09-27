@@ -20,6 +20,7 @@ import { listen } from '@tauri-apps/api/event';
 import { open as openShell } from '@tauri-apps/plugin-shell';
 import {
   api,
+  type FriendRequestPolicy,
   type FriendsResponse,
   type ListedHandle,
   type NotificationsResponse,
@@ -382,11 +383,12 @@ export function SocialPane() {
             <select
               value={friends.friend_request_policy}
               onChange={(e) => {
-                const v = e.target.value as 'everyone' | 'nobody';
+                const v = e.target.value as FriendRequestPolicy;
                 void act(() => api.socialUpdateSettings(v), 'Saved.');
               }}
             >
               <option value="everyone">anyone</option>
+              <option value="org_mates">people in one of my orgs</option>
               <option value="nobody">nobody</option>
             </select>
           </label>

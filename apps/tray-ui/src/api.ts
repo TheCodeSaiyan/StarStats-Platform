@@ -832,11 +832,14 @@ export interface FriendRequest {
   responded_at: string | null;
 }
 
+/** Who may send this user a friend request. */
+export type FriendRequestPolicy = 'everyone' | 'org_mates' | 'nobody';
+
 export interface FriendsResponse {
   friends: Friend[];
   incoming: FriendRequest[];
   outgoing: FriendRequest[];
-  friend_request_policy: 'everyone' | 'nobody';
+  friend_request_policy: FriendRequestPolicy;
 }
 
 export interface SendFriendRequestResponse {
@@ -1045,7 +1048,7 @@ export const api = {
   socialGetMutes: () => invoke<{ mutes: ListedHandle[] }>('social_get_mutes'),
   socialSetMuted: (handle: string, muted: boolean) =>
     invoke<void>('social_set_muted', { handle, muted }),
-  socialUpdateSettings: (policy: 'everyone' | 'nobody') =>
+  socialUpdateSettings: (policy: FriendRequestPolicy) =>
     invoke<{ friend_request_policy: string }>('social_update_settings', {
       friend_request_policy: policy,
     }),
