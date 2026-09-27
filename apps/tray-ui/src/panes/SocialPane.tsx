@@ -462,7 +462,9 @@ function NotificationRow({
       ? `@${who} sent you a friend request`
       : n.kind === 'friend_accepted'
         ? `@${who} accepted your friend request`
-        : `@${who}`;
+        : n.kind === 'salute'
+          ? `@${who} saluted your profile. o7`
+          : `New activity from @${who}`;
   return (
     <div style={rowStyle} data-unread={n.read_at ? undefined : 'true'}>
       <span style={{ color: n.read_at ? 'var(--fg-muted)' : 'var(--fg)' }}>

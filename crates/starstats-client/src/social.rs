@@ -387,6 +387,7 @@ pub fn toast_text(n: &Notification) -> Option<(String, String)> {
             "Friend request accepted".to_string(),
             format!("@{who} accepted your friend request."),
         )),
+        "salute" => Some(("o7".to_string(), format!("@{who} saluted your profile."))),
         _ => None,
     }
 }
@@ -579,6 +580,19 @@ mod tests {
             .map(|i| note("friend_request", w + ChronoDuration::seconds(i), false))
             .collect();
         assert_eq!(plan_toasts(&items, w, false), ToastPlan::Summary(5));
+    }
+
+    #[test]
+    fn a_salute_toasts_with_who_saluted() {
+        let w = Utc::now();
+        let n = note("salute", w + ChronoDuration::seconds(1), false);
+        assert_eq!(
+            plan_toasts(&[n], w, false),
+            ToastPlan::Each(vec![(
+                "o7".to_string(),
+                "@Wingman saluted your profile.".to_string()
+            )])
+        );
     }
 
     #[test]
