@@ -38,6 +38,7 @@ pub fn routes() -> Router {
     Router::new()
         .route("/v1/lfg", get(list_posts).post(create_post))
         .route("/v1/lfg/options", get(options))
+        .route("/v1/me/lfg/summary", get(my_summary))
         .route("/v1/lfg/{id}", get(get_post).delete(close_post))
         .route("/v1/lfg/{id}/join", post(join).delete(leave))
         .route("/v1/lfg/{id}/members/{handle}", put(respond))
@@ -104,6 +105,15 @@ pub struct LfgOptions {
     pub expiry_default_minutes: i64,
     pub expiry_min_minutes: i64,
     pub expiry_max_minutes: i64,
+}
+
+/// What the Crew badge shows: players waiting on the caller's open post.
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct LfgSummary {
+    /// Whether the caller has an open post.
+    pub hosting: bool,
+    /// Players who asked to join it and have not been answered.
+    pub pending_requests: i64,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -297,6 +307,52 @@ pub async fn options() -> Response {
         expiry_max_minutes: EXPIRY_MAX_MINUTES,
     })
     .into_response()
+}
+
+/// The Crew badge: how many players are waiting on your open post. Cheap
+/// enough for every page load (one post, its member rows).
+#[utoipa::path(
+    get,
+    path = "/v1/me/lfg/summary",
+    tag = "lfg",
+    operation_id = "lfg_my_summary",
+    responses((status = 200, description = "Your Looking for Group summary", body = LfgSummary)),
+    security(("bearer" = [])),
+)]
+pub async fn my_summary(
+    auth: AuthenticatedUser,
+    Extension(users): Extension<Arc<dyn UserStore>>,
+    Extension(store): Extension<Arc<dyn LfgStore>>,
+) -> Response {
+    let me = match caller(&auth, users.as_ref()).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let post = match store
+        .open_post_for_host(&me.claimed_handle, Utc::now())
+        .await
+    {
+        Ok(p) => p,
+        Err(e) => return store_err(e, "open_post_for_host"),
+    };
+    let Some(post) = post else {
+        return Json(LfgSummary {
+            hosting: false,
+            pending_requests: 0,
+        })
+        .into_response();
+    };
+    match store.members(post.id).await {
+        Ok(members) => Json(LfgSummary {
+            hosting: true,
+            pending_requests: members
+                .iter()
+                .filter(|m| m.status == MemberStatus::Requested)
+                .count() as i64,
+        })
+        .into_response(),
+        Err(e) => store_err(e, "members"),
+    }
 }
 
 /// Open posts, newest first. Posts from anyone you blocked, or who blocked
@@ -1156,6 +1212,42 @@ mod tests {
             .await;
         assert_eq!(s, StatusCode::CONFLICT);
         assert_eq!(v["error"], "group_full");
+    }
+
+    #[tokio::test]
+    async fn the_summary_counts_players_waiting_on_my_post() {
+        let f = fixture();
+        let host = f.user("Host", true).await;
+        let bob = f.user("Bob", true).await;
+        let carol = f.user("Carol", true).await;
+        let (_, v) = f.call("GET", "/v1/me/lfg/summary", &host, None).await;
+        assert_eq!(
+            v,
+            serde_json::json!({ "hosting": false, "pending_requests": 0 })
+        );
+
+        let id = f.post(&host, 3).await;
+        f.call("POST", &format!("/v1/lfg/{id}/join"), &bob, None)
+            .await;
+        f.call("POST", &format!("/v1/lfg/{id}/join"), &carol, None)
+            .await;
+        let (_, v) = f.call("GET", "/v1/me/lfg/summary", &host, None).await;
+        assert_eq!(v["pending_requests"], 2);
+
+        // Answering one takes it off the badge.
+        f.call(
+            "PUT",
+            &format!("/v1/lfg/{id}/members/bob"),
+            &host,
+            Some(serde_json::json!({ "action": "accept" })),
+        )
+        .await;
+        let (_, v) = f.call("GET", "/v1/me/lfg/summary", &host, None).await;
+        assert_eq!(v["pending_requests"], 1);
+
+        // A joiner is not hosting anything.
+        let (_, v) = f.call("GET", "/v1/me/lfg/summary", &bob, None).await;
+        assert_eq!(v["hosting"], false);
     }
 
     #[tokio::test]
