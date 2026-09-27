@@ -37,7 +37,9 @@ import {
   listSharedWithMe,
   removeShare,
   setVisibility,
+  shareWithFriends,
   shareWithOrg,
+  unshareWithFriends,
   unshareWithOrg,
   type ListOrgsResponse,
   type ListSharedWithMeResponse,
@@ -131,6 +133,11 @@ const STATUS_MESSAGES: Record<
     tone: 'ok',
   },
   org_share_added: { text: 'Org share granted.', tone: 'ok' },
+  friends_share_on: { text: 'Your friends can now see your stats.', tone: 'ok' },
+  friends_share_off: {
+    text: 'No longer sharing with friends as a group.',
+    tone: 'ok',
+  },
   org_share_revoked: { text: 'Org share revoked.', tone: 'ok' },
   // Audit v2.1 §A3 — bulk-op outcomes.
   bulk_revoked: {
@@ -166,6 +173,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   org_not_found: 'No org exists with that slug.',
   invalid_recipient_handle: 'Handle looks invalid — letters, digits, dashes only.',
   invalid_org_slug: 'Org slug looks invalid.',
+  shares_paused:
+    'New shares are paused on your account for now. Existing shares are unchanged.',
   cannot_share_with_self: "You can't share your stats with yourself.",
   expires_at_in_past: 'Expiry must be in the future.',
   note_too_long: 'Note is too long (max 280 characters).',
@@ -580,6 +589,31 @@ export default async function SharingPage(props: {
     redirect('/sharing?status=org_share_added');
   }
 
+  async function friendsShareAction(formData: FormData) {
+    'use server';
+    const s = await getSession();
+    if (!s) redirect('/auth/login?next=/sharing');
+    const on = formData.get('with_friends') === 'on';
+    let result: boolean;
+    try {
+      result = (on ? await shareWithFriends(s.token) : await unshareWithFriends(s.token))
+        .with_friends;
+    } catch (e) {
+      if (e instanceof ApiCallError) {
+        if (e.status === 401) redirect('/auth/login?next=/sharing');
+        if (e.status === 403)
+          redirect(
+            `/sharing?error=${e.body.error === 'shares_paused' ? 'shares_paused' : 'rsi_handle_not_verified'}`,
+          );
+        if (isSpicedbOutage(e)) redirect('/sharing?error=spicedb_unavailable');
+      }
+      logger.error({ err: e }, 'friends share toggle failed');
+      redirect('/sharing?error=unexpected');
+    }
+    // From the response, not the form: the chip must say what is true.
+    redirect(`/sharing?status=${result ? 'friends_share_on' : 'friends_share_off'}`);
+  }
+
   async function revokeOrgShareAction(formData: FormData) {
     'use server';
     const s = await getSession();
@@ -654,6 +688,8 @@ export default async function SharingPage(props: {
    * grants and the inbound list are all already on this page.
    */
   const orgShareCount = (shares?.org_shares ?? []).length;
+  // `null` when the server could not read it: say so rather than "off".
+  const withFriends = shares ? (shares.with_friends ?? null) : null;
   const inboundCount = (inbound?.shared_with_me ?? []).length;
 
   const sections: SharingSection[] = [
@@ -1028,6 +1064,48 @@ export default async function SharingPage(props: {
             prefilledExpires={prefilledExpires}
             prefilledScope={editingScope}
           />
+        </>
+      ),
+    },
+
+    {
+      id: 'friends',
+      title: 'Shared with friends',
+      ctx:
+        withFriends === true
+          ? 'Every friend can see your stats'
+          : withFriends === false
+            ? 'Off'
+            : undefined,
+      group: 'outbound',
+      node: (
+        <>
+          <p className="hp-prose">
+            One switch for your whole friends list. Anyone you become friends
+            with later can see your stats too, and unfriending or blocking
+            someone takes their access away. A direct share you gave one friend
+            is separate and stays either way; if it is narrower, it still
+            limits what that friend sees.
+          </p>
+          {withFriends === null ? (
+            <p className="hp-prose">
+              We couldn&apos;t check this just now. Reload to try again.
+            </p>
+          ) : (
+            <form action={friendsShareAction} className="hp-formrow">
+              <input
+                type="hidden"
+                name="with_friends"
+                value={withFriends ? 'off' : 'on'}
+              />
+              <BeamButton
+                type="submit"
+                variant={withFriends ? 'danger' : 'primary'}
+              >
+                {withFriends ? 'Stop sharing with friends' : 'Share with all my friends'}
+              </BeamButton>
+            </form>
+          )}
         </>
       ),
     },

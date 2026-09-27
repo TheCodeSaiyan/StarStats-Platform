@@ -3042,6 +3042,33 @@ export async function shareWithOrg(
   );
 }
 
+export type ShareWithFriendsResponse =
+  apiSchema['schemas']['ShareWithFriendsResponse'];
+
+/** Share with every friend, present and future. Idempotent. */
+export async function shareWithFriends(
+  bearer: string,
+): Promise<ShareWithFriendsResponse> {
+  return request<ShareWithFriendsResponse>(
+    'PUT',
+    '/v1/me/share-with-friends',
+    undefined,
+    bearer,
+  );
+}
+
+/** Stop sharing with friends as a group. Direct shares stay. Idempotent. */
+export async function unshareWithFriends(
+  bearer: string,
+): Promise<ShareWithFriendsResponse> {
+  return request<ShareWithFriendsResponse>(
+    'DELETE',
+    '/v1/me/share-with-friends',
+    undefined,
+    bearer,
+  );
+}
+
 export async function unshareWithOrg(
   bearer: string,
   slug: string,
