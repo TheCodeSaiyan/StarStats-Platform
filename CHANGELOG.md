@@ -22,6 +22,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 - Share your stats with all your friends in one step.
 - Take friend requests only from people in your orgs.
 
+## [Tray 0.1.34] - 2026-09-27
+
+### New
+- Show salutes in notifications and as a desktop alert.
+
 ## [Tray 0.1.33] - 2026-09-27
 
 ### New
