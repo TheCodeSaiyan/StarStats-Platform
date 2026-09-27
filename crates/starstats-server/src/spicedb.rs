@@ -836,6 +836,82 @@ impl SpicedbClient {
         Ok(out)
     }
 
+    /// Delete every relationship that names `handle`, as the resource or as
+    /// the subject: its stats record (owner, every share, the public flag,
+    /// the friends share), its friend tuples, org roles, shares other people
+    /// gave it, and OAuth ownership.
+    ///
+    /// For account deletion, and for sign-up before the owner tuple is
+    /// written. SpiceDB ids are handles, so a deleted account's tuples would
+    /// otherwise pass to whoever claims the handle next: their stats public,
+    /// shared with the old account's friends and orgs, and able to read what
+    /// people shared with the old account.
+    ///
+    /// Every filter is attempted even if one fails, and the first error is
+    /// returned, so one bad RPC does not leave the rest in place.
+    pub async fn delete_everything_for_handle(&self, handle: &str) -> Result<()> {
+        let subject = |t: &str| {
+            Some(SubjectFilter {
+                subject_type: t.to_string(),
+                optional_subject_id: handle.to_string(),
+                optional_relation: None,
+            })
+        };
+        let mut filters = vec![
+            // The handle's own resources.
+            RelationshipFilter {
+                resource_type: "stats_record".to_string(),
+                optional_resource_id: handle.to_string(),
+                optional_resource_id_prefix: String::new(),
+                optional_relation: String::new(),
+                optional_subject_filter: None,
+            },
+            RelationshipFilter {
+                resource_type: "user".to_string(),
+                optional_resource_id: handle.to_string(),
+                optional_resource_id_prefix: String::new(),
+                optional_relation: String::new(),
+                optional_subject_filter: None,
+            },
+        ];
+        // The handle as the subject, on every definition that can name a user.
+        for resource_type in [
+            "stats_record",
+            "organization",
+            "user",
+            "oauth_app",
+            "oauth_token",
+        ] {
+            filters.push(RelationshipFilter {
+                resource_type: resource_type.to_string(),
+                optional_resource_id: String::new(),
+                optional_resource_id_prefix: String::new(),
+                optional_relation: String::new(),
+                optional_subject_filter: subject("user"),
+            });
+        }
+        let mut first_err: Option<anyhow::Error> = None;
+        for filter in filters {
+            let what = filter.resource_type.clone();
+            let req = DeleteRelationshipsRequest {
+                relationship_filter: Some(filter),
+                optional_preconditions: Vec::new(),
+                optional_limit: 0,
+                optional_allow_partial_deletions: false,
+            };
+            let mut inner = self.inner.clone();
+            if let Err(e) = inner.delete_relationships(req).await {
+                let e = anyhow!("SpiceDB DeleteRelationships ({what}) failed: {e}");
+                tracing::warn!(error = %e, "handle cleanup: one filter failed");
+                first_err.get_or_insert(e);
+            }
+        }
+        match first_err {
+            Some(e) => Err(e),
+            None => Ok(()),
+        }
+    }
+
     /// Fully consistent [`Self::check_permission`], for a decision
     /// that must see a write this request has just made (a revoke
     /// followed by a re-check). Costs a trip past the cache.
@@ -1023,6 +1099,19 @@ impl SpicedbClient {
             }
         }
         Ok(out)
+    }
+}
+
+/// Best-effort [`SpicedbClient::delete_everything_for_handle`] for the
+/// account paths. Never fails the caller: a deletion must not depend on
+/// SpiceDB being up, and sign-up clears the handle again before it writes
+/// the owner tuple, so a cleanup missed here cannot reach a new owner.
+pub async fn forget_handle(spicedb: &Option<SpicedbClient>, handle: &str, reason: &'static str) {
+    let Some(client) = spicedb.as_ref() else {
+        return;
+    };
+    if let Err(e) = client.delete_everything_for_handle(handle).await {
+        tracing::error!(error = %e, reason, "SpiceDB cleanup for a handle failed");
     }
 }
 
@@ -1417,6 +1506,58 @@ mod tests {
         c.delete_friendship("Bob", "Alice").await.unwrap();
         assert!(c.list_friend_tuples().await.unwrap().is_empty());
         c.delete_friendship("Bob", "Alice").await.unwrap(); // idempotent
+    }
+
+    #[tokio::test]
+    async fn live_spicedb_forgetting_a_handle_leaves_nothing_for_its_next_owner() {
+        let Some(c) = live_spicedb().await else {
+            return;
+        };
+        // Everything Gone ever held, in each direction.
+        c.write_owner("Gone").await.unwrap();
+        c.write_public_view("Gone").await.unwrap();
+        c.write_share_with_friends("Gone").await.unwrap();
+        c.write_share_with_user("Gone", "Bob").await.unwrap();
+        c.write_share_with_user("Carol", "Gone").await.unwrap();
+        c.write_friendship("Gone", "Bob").await.unwrap();
+        c.write_org_role("miners", "Gone", "owner").await.unwrap();
+        // Untouched by it.
+        c.write_owner("Bob").await.unwrap();
+        c.write_owner("Carol").await.unwrap();
+        c.write_share_with_user("Carol", "Bob").await.unwrap();
+        c.write_org_role("miners", "Bob", "member").await.unwrap();
+
+        c.delete_everything_for_handle("Gone").await.unwrap();
+
+        // The next person to claim the handle inherits nothing.
+        assert!(!c.has_public_view("Gone").await.unwrap());
+        assert!(!c.has_share_with_friends("Gone").await.unwrap());
+        assert!(
+            !can_view(&c, "Carol", "Gone").await,
+            "Carol's share is gone"
+        );
+        assert!(
+            c.list_orgs_for_user("Gone").await.unwrap().is_empty(),
+            "no org role"
+        );
+        assert!(
+            c.list_friend_tuples().await.unwrap().is_empty(),
+            "both halves of the friendship are gone"
+        );
+        c.write_owner("Gone").await.unwrap();
+        assert!(
+            !can_view(&c, "Gone", "Bob").await,
+            "the old share to Bob is gone"
+        );
+
+        // Nobody else lost anything.
+        assert!(can_view(&c, "Carol", "Bob").await);
+        assert_eq!(
+            c.list_orgs_for_user("Bob").await.unwrap(),
+            vec!["miners".to_string()]
+        );
+
+        c.delete_everything_for_handle("Nobody").await.unwrap(); // nothing to delete
     }
 
     #[tokio::test]
