@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     'How StarStats handles your data: what we collect, why, how long we keep it, and the rights you have over it.',
 };
 
-const LAST_UPDATED = '5 May 2026';
+const LAST_UPDATED = '27 September 2026';
 const CONTROLLER_EMAIL = 'dojo@thecodesaiyan.io';
 
 /* Reusable wrappers to keep each numbered policy section visually
@@ -222,7 +222,47 @@ export default function PrivacyPage() {
           </li>
         </ul>
 
-        <h3 className="hp-subheading">2.4 When something goes wrong</h3>
+        <h3 className="hp-subheading">2.4 Friends, salutes and presence</h3>
+        <ul style={listStyle}>
+          <li>
+            <strong>Friends</strong>: the friend requests you send and
+            receive, the friendships that result, and the people you
+            block or mute. Being friends shares nothing on its own;
+            sharing your stats with your friends is a separate choice on
+            the Sharing page. Lawful basis: providing the service you
+            asked for (contract).
+          </li>
+          <li>
+            <strong>Notifications</strong>: a friend request, an
+            accepted request or a salute creates a notification naming
+            the other player. Lawful basis: contract.
+          </li>
+          <li>
+            <strong>Salutes (o7)</strong>: who saluted whose profile.
+            The number of salutes on a profile is public; who gave them
+            is not, except that you can see which of your own friends
+            saluted you. Salutes from an account whose sharing has been
+            restricted are not counted while the restriction lasts.
+            Lawful basis: contract.
+          </li>
+          <li>
+            <strong>Presence</strong> is off unless you turn it on, and
+            it needs two switches: one in the desktop tray and one in
+            your account settings. When both are on, your friends (and
+            nobody else) can see whether you are online, in game or in
+            quantum travel, and, only if you chose it, the star system
+            you are in. Nothing more precise than the star system is
+            shared. The tray works this out from the game log it already
+            reads. Presence is held only in the server&apos;s memory and
+            is forgotten within three minutes of the tray going quiet,
+            when you turn it off, or when you disconnect; no history of
+            it is kept. The only thing stored is your choice of setting.
+            Lawful basis: your consent, which you withdraw by turning
+            either switch off.
+          </li>
+        </ul>
+
+        <h3 className="hp-subheading">2.5 When something goes wrong</h3>
         <ul style={listStyle}>
           <li>
             <strong>Error reports</strong> are sent to an
@@ -386,6 +426,20 @@ export default function PrivacyPage() {
             remain but your handle is replaced with a
             non-resolvable tombstone, so they are no longer linked
             to you.
+          </li>
+          <li>
+            <strong>Friends, blocks, mutes and salutes</strong>: until
+            either person removes them or deletes their account; account
+            deletion removes every one that names you.
+          </li>
+          <li>
+            <strong>Notifications</strong>: 90 days, or sooner if you
+            delete your account.
+          </li>
+          <li>
+            <strong>Presence</strong>: not stored. It is kept in memory
+            for at most three minutes after the last report; only your
+            presence setting is stored, until you delete your account.
           </li>
           <li>
             <strong>Administrator deletion in response to misuse</strong>:
