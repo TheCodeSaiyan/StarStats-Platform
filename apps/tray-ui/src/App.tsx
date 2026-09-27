@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { api, type Config, type SettingsField } from './api';
+import { uncommended } from './lib/commends';
 import { StatusPane } from './components/StatusPane';
 import { SettingsPane } from './components/SettingsPane';
 import { LogsPane } from './components/LogsPane';
@@ -169,22 +170,21 @@ function AppInner() {
     return m;
   }, [bundles]);
 
-  // Players waiting on your open group, for the Crew tab badge. A join
-  // request arrives as a notification, so refresh on each one; the minute
-  // tick catches your own answers from the web and posts expiring.
+  // The Crew tab badge: players waiting on your open group, plus crewmates
+  // you can still commend. A join request arrives as a notification, so
+  // refresh on each one; the minute tick catches your own answers from the
+  // web, posts expiring, and commend windows opening and closing.
   const [crewPending, setCrewPending] = useState(0);
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     let cancelled = false;
     const load = () =>
-      api
-        .lfgSummary()
-        .then((s) => {
-          if (!cancelled) setCrewPending(s.pending_requests);
-        })
-        .catch(() => {
-          // Informational badge; unpaired or offline just hides it.
-        });
+      Promise.allSettled([api.lfgSummary(), api.crewMine()]).then(([s, c]) => {
+        // Informational badge; unpaired or offline just counts nothing.
+        const waiting = s.status === 'fulfilled' ? s.value.pending_requests : 0;
+        const toCommend = c.status === 'fulfilled' ? uncommended(c.value) : 0;
+        if (!cancelled) setCrewPending(waiting + toCommend);
+      });
     void load();
     const tick = window.setInterval(() => void load(), 60_000);
     listen('social-notifications', () => void load()).then((unl) => {

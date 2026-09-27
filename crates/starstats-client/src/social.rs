@@ -465,6 +465,25 @@ pub fn toast_text(n: &Notification) -> Option<(String, String)> {
             "You're in".to_string(),
             format!("@{who} accepted you into their group. Add them in game by handle."),
         )),
+        // Anonymous by design: the word, never who gave it.
+        "commend" => {
+            let word = match n.payload.get("kind").and_then(|k| k.as_str()) {
+                Some("great_pilot") => "Great pilot",
+                Some("good_comms") => "Good comms",
+                Some("reliable") => "Reliable",
+                Some("good_teacher") => "Good teacher",
+                _ => {
+                    return Some((
+                        "Commended".to_string(),
+                        "A crewmate commended you.".to_string(),
+                    ))
+                }
+            };
+            Some((
+                "Commended".to_string(),
+                format!("A crewmate commended you: {word}."),
+            ))
+        }
         _ => None,
     }
 }
@@ -660,6 +679,19 @@ mod tests {
             .map(|i| note("friend_request", w + ChronoDuration::seconds(i), false))
             .collect();
         assert_eq!(plan_toasts(&items, w, false), ToastPlan::Summary(5));
+    }
+
+    #[test]
+    fn a_commend_toasts_the_word_and_never_the_giver() {
+        let w = Utc::now();
+        let mut n = note("commend", w, false);
+        n.payload = serde_json::json!({ "kind": "good_comms", "post_id": "p" });
+        let (title, body) = toast_text(&n).expect("a known kind");
+        assert_eq!(title, "Commended");
+        assert_eq!(body, "A crewmate commended you: Good comms.");
+        assert!(!body.contains("Wingman"), "the giver stays anonymous");
+        n.payload = serde_json::json!({});
+        assert_eq!(toast_text(&n).unwrap().1, "A crewmate commended you.");
     }
 
     #[test]

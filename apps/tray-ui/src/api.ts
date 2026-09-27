@@ -910,6 +910,30 @@ export interface LfgPostDetail extends LfgPost {
   members: LfgMember[];
 }
 
+export type CommendKind = 'great_pilot' | 'good_comms' | 'reliable' | 'good_teacher';
+
+/** Someone you flew with, from `/v1/me/crew`. Private to you. */
+export interface CrewMate {
+  post_id: string;
+  handle: string;
+  activity: string;
+  flew_at: string;
+}
+
+/** A post whose crew can still commend each other. */
+export interface CommendWindow {
+  post_id: string;
+  activity: string;
+  ended_at: string;
+  closes_at: string;
+  crew: { handle: string; my_commend: CommendKind | null }[];
+}
+
+export interface CrewOverview {
+  windows: CommendWindow[];
+  history: CrewMate[];
+}
+
 export interface LfgOptions {
   activities: string[];
   systems: string[];
@@ -1158,6 +1182,11 @@ export const api = {
   lfgRespond: (id: string, handle: string, action: 'accept' | 'decline' | 'remove') =>
     invoke<LfgMember>('lfg_respond', { id, handle, action }),
   lfgWhereAmI: () => invoke<WhereAmI>('lfg_where_am_i'),
+  crewMine: () => invoke<CrewOverview>('crew_mine'),
+  crewCommend: (postId: string, handle: string, kind: CommendKind) =>
+    invoke<unknown>('crew_commend', { post_id: postId, handle, kind }),
+  crewWithdrawCommend: (postId: string, handle: string) =>
+    invoke<null>('crew_withdraw_commend', { post_id: postId, handle }),
   socialGetPresenceLevel: () => invoke<PresenceLevel>('social_get_presence_level'),
   socialSetPresenceLevel: (level: PresenceLevel) =>
     invoke<PresenceLevel>('social_set_presence_level', { level }),
