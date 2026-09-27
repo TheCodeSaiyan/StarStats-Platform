@@ -95,7 +95,7 @@ url.workspace = true
 # never has to be buffered whole. Only the deflate codec is enabled —
 # the default feature set drags in aes/bzip2/lzma/zstd the export never
 # uses. Already resolved in Cargo.lock via tauri-plugin-updater.
-zip = { version = "4", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 # `ReceiverStream` turns the export producer's mpsc channel into the
 # `Stream` axum's `Body::from_stream` wants. Also already in Cargo.lock.
 tokio-stream = "0.1"
