@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Tray 0.1.33] - 2026-09-27
+
+### New
+- Take friend requests only from people in your orgs.
+
 ## [Platform 0.1.63] - 2026-09-26
 
 ### New
