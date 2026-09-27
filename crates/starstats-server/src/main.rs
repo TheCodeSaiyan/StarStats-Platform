@@ -106,6 +106,8 @@ mod parser_rules;
 mod parser_submissions;
 mod preferences_routes;
 mod preferences_store;
+mod presence;
+mod presence_routes;
 pub mod profile_layout;
 mod profile_layout_routes;
 mod profile_store;
@@ -616,12 +618,25 @@ async fn main() -> anyhow::Result<()> {
     // Social phase 1: friends/blocks/mutes and the notifications inbox.
     let social_dyn: Arc<dyn crate::social::SocialStore> =
         Arc::new(crate::social::PostgresSocialStore::new(pool.clone()));
-    let notifications_dyn: Arc<dyn crate::notifications::NotificationStore> = Arc::new(
-        crate::notifications::PostgresNotificationStore::new(pool.clone()),
+    // Social phase 3: in-memory presence and the realtime gateway's push
+    // channels. Every new notification also nudges the recipient's open
+    // tray connections, so the store is wrapped once here.
+    let presence_hub = Arc::new(crate::presence::PresenceHub::new());
+    let notifications_dyn: Arc<dyn crate::notifications::NotificationStore> =
+        Arc::new(crate::presence_routes::PushingNotificationStore::new(
+            Arc::new(crate::notifications::PostgresNotificationStore::new(
+                pool.clone(),
+            )),
+            presence_hub.clone(),
+        ));
+    let presence_settings_dyn: Arc<dyn crate::presence::PresenceSettingsStore> = Arc::new(
+        crate::presence::PostgresPresenceSettingsStore::new(pool.clone()),
     );
     let notifications_for_purge = notifications_dyn.clone();
     // Friend tuples in SpiceDB follow Postgres friendships (phase 1b).
     let social_for_friend_sync = social_dyn.clone();
+    let social_for_presence_sweep = social_dyn.clone();
+    let presence_hub_for_sweep = presence_hub.clone();
     let spicedb_for_friend_sync = spicedb.clone();
     let rsi_orgs_dyn: Arc<dyn crate::rsi_org_store::RsiOrgStore> = rsi_orgs.clone();
     // Social phase 2: o7 salutes (migration 0073).
@@ -946,6 +961,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(sharing_router)
         .merge(social_routes::routes())
         .merge(salute_routes::routes())
+        .merge(presence_routes::routes())
         .merge(news_routes::routes())
         .merge(release_routes::routes())
         .merge(rsi_router)
@@ -1016,6 +1032,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(rsi_orgs_dyn))
         .layer(Extension(salutes_dyn))
         .layer(Extension(salute_limiter))
+        .layer(Extension(presence_hub))
+        .layer(Extension(presence_settings_dyn))
         .layer(Extension(notifications_dyn))
         .layer(Extension(news_dyn))
         .layer(Extension(releases_dyn))
@@ -1302,6 +1320,9 @@ async fn main() -> anyhow::Result<()> {
     // the first pass backfills friendships made before sharing with
     // friends existed, later passes repair writes the routes missed.
     friend_sync::spawn_reconcile_loop(social_for_friend_sync, spicedb_for_friend_sync);
+
+    // Let go of presence nobody has refreshed, and tell their friends.
+    presence_routes::spawn_sweep_loop(presence_hub_for_sweep, social_for_presence_sweep);
 
     // Daily parser-health pass: detect an event type that has stopped being
     // produced while users stayed active. Motivated by `vehicle_stowed`

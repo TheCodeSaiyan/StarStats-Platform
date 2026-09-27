@@ -187,6 +187,10 @@ mod news;
 mod news_routes;
 #[path = "../notifications.rs"]
 mod notifications;
+#[path = "../presence.rs"]
+mod presence;
+#[path = "../presence_routes.rs"]
+mod presence_routes;
 #[path = "../release_routes.rs"]
 mod release_routes;
 #[path = "../releases.rs"]

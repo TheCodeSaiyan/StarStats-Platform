@@ -47,6 +47,7 @@ use crate::parser_def_routes;
 use crate::parser_rules;
 use crate::parser_submissions;
 use crate::preferences_routes;
+use crate::presence_routes;
 use crate::profile_layout;
 use crate::profile_layout_routes;
 use crate::profile_view_stats;
@@ -333,6 +334,12 @@ impl Modify for SecurityAddon {
         salute_routes::unsalute,
         salute_routes::salute_summary,
         salute_routes::my_salutes,
+        presence_routes::gateway,
+        presence_routes::report,
+        presence_routes::go_offline,
+        presence_routes::friends_presence,
+        presence_routes::get_settings,
+        presence_routes::put_settings,
         social_routes::mark_notifications_read,
         // News from the admin console
         news_routes::list_public,
@@ -778,6 +785,14 @@ impl Modify for SecurityAddon {
         salute_routes::SaluteSummary,
         salute_routes::UnsaluteResponse,
         salute_routes::MySalutes,
+        presence_routes::PresenceSettings,
+        presence_routes::FriendsPresenceResponse,
+        crate::presence::PresenceUpdate,
+        crate::presence::FriendPresence,
+        crate::presence::PresenceState,
+        crate::presence::PresenceLevel,
+        crate::presence::ServerMessage,
+        crate::presence::ClientMessage,
         social_routes::NotificationsResponse,
         social_routes::MarkNotificationsReadBody,
         social_routes::MarkNotificationsReadResponse,
