@@ -4891,6 +4891,12 @@ async fn lfg_call(
         .map_err(|e| e.to_string())
 }
 
+/// Players waiting on your open post, for the Crew tab's badge.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_summary() -> Result<serde_json::Value, String> {
+    lfg_call(reqwest::Method::GET, "/v1/me/lfg/summary", None).await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn lfg_options() -> Result<serde_json::Value, String> {
     lfg_call(reqwest::Method::GET, "/v1/lfg/options", None).await

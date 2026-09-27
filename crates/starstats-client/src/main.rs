@@ -731,6 +731,7 @@ fn main() {
             commands::social_get_prefs,
             commands::social_get_presence,
             commands::lfg_options,
+            commands::lfg_summary,
             commands::lfg_list,
             commands::lfg_get,
             commands::lfg_create,
