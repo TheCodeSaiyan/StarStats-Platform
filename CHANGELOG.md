@@ -43,6 +43,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 - Share your stats with all your friends in one step.
 - Take friend requests only from people in your orgs.
 
+## [Tray 0.1.36] - 2026-09-27
+
+### New
+- Find crew from the tray, filled in from the game.
+
 ## [Tray 0.1.35] - 2026-09-27
 
 ### New
