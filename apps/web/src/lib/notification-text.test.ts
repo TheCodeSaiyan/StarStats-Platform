@@ -18,6 +18,14 @@ describe('notificationText', () => {
     expect(notificationText('future_kind', 'Alice')).toBe('New activity from @Alice');
   });
 
+  it('names the commend but never who gave it', () => {
+    expect(notificationText('commend', null, { kind: 'good_comms', post_id: 'p' })).toBe(
+      'A crewmate commended you: Good comms',
+    );
+    expect(notificationText('commend', 'Alice', { kind: 'reliable' })).not.toContain('Alice');
+    expect(notificationText('commend', null, {})).toBe('A crewmate commended you');
+  });
+
   it('copes without an actor', () => {
     expect(notificationText('salute', null)).toBe('@Someone saluted your profile. o7');
   });

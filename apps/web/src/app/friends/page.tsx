@@ -461,7 +461,7 @@ export default async function FriendsPage(props: {
 
 function NotificationRow({ n }: { n: AppNotification }) {
   const payload = (n.payload ?? {}) as { request_id?: string; rsi_verified?: boolean };
-  const text = notificationText(n.kind, n.actor_handle);
+  const text = notificationText(n.kind, n.actor_handle, n.payload);
   return (
     <div className="hp-grant" data-unread={n.read_at ? undefined : 'true'}>
       <div className="hp-grant__who">

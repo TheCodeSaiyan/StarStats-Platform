@@ -68,6 +68,31 @@ const FIXTURES = {
       ],
     },
   },
+  'GET /v1/me/crew': {
+    status: 200,
+    body: {
+      windows: [
+        {
+          post_id: OTHER_POST,
+          activity: 'salvage',
+          ended_at: '2026-09-27T14:00:00Z',
+          closes_at: '2099-01-01T00:00:00Z',
+          crew: [
+            { handle: 'SSDemoMiner', my_commend: 'good_comms' },
+            { handle: 'SSDemoRecruit', my_commend: null },
+          ],
+        },
+      ],
+      history: [
+        {
+          post_id: OTHER_POST,
+          handle: 'SSDemoMiner',
+          activity: 'salvage',
+          flew_at: '2026-09-27T12:10:00Z',
+        },
+      ],
+    },
+  },
 };
 
 test.beforeEach(async ({ page, request }) => {
@@ -142,4 +167,34 @@ test('posting without a verified handle says why', async ({ page, request }) => 
     .click({ timeout: 30_000 });
   await expect(page).toHaveURL(/error=rsi_handle_not_verified/, { timeout: 30_000 });
   await expect(page.getByText('Verify your RSI handle first')).toBeVisible();
+});
+
+test('the crew you flew with can be commended, one word each', async ({ page, request }) => {
+  await setScenario(
+    request,
+    scenarioFor('lfg_commend', {
+      ...FIXTURES,
+      [`PUT /v1/crew/${OTHER_POST}/commends/SSDemoRecruit`]: {
+        status: 200,
+        body: { post_id: OTHER_POST, recipient: 'SSDemoRecruit', kind: 'reliable' },
+      },
+    }),
+  );
+  await visit(page);
+  await openGroup(page, 'Crew');
+  const mates = page.getByTestId('commend-mate');
+  await expect(mates).toHaveCount(2);
+  // What you already gave is shown, and pressed.
+  const miner = mates.filter({ hasText: '@SSDemoMiner' });
+  await expect(miner).toContainText('You said: Good comms');
+  await expect(miner.getByRole('button', { name: 'Good comms' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(page.getByTestId('crew-history')).toContainText('@SSDemoMiner');
+  const recruit = mates.filter({ hasText: '@SSDemoRecruit' });
+  await expect(recruit).toContainText('Not commended yet');
+  await recruit.getByRole('button', { name: 'Reliable' }).click({ timeout: 30_000 });
+  await expect(page).toHaveURL(/status=commended/, { timeout: 30_000 });
+  await expect(page.getByText('They are told the word, not who gave it')).toBeVisible();
 });

@@ -67,6 +67,7 @@ import { ControlStrip } from '@/components/hud/ControlStrip';
 import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
 import { ProfileCard } from '@/components/ProfileCard';
 import { SupporterChip } from '@/components/SupporterChip';
+import { CommendChips } from './CommendChips';
 import { SaluteControl } from './SaluteControl';
 import { RangeBar } from '@/components/journey/RangeBar';
 import { parseRange } from '@/lib/range';
@@ -669,6 +670,7 @@ export default async function PublicProfilePage(props: PageProps) {
             isOwner={isOwner}
             error={sp.salute_error}
           />
+          <CommendChips handle={handle} token={token} />
         </div>
       }
       body={
