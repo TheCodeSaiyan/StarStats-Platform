@@ -16,6 +16,14 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.67] - 2026-09-27
+
+### New
+- Find a group, or post one, on the Looking for Group board.
+
+### Fixed
+- Add posting rules and moderation to the terms of service.
+
 ## [Platform 0.1.66] - 2026-09-27
 
 ### New
