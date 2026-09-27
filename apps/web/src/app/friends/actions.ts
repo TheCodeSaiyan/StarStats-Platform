@@ -153,7 +153,7 @@ export async function unmuteAction(formData: FormData) {
 export async function policyAction(formData: FormData) {
   const t = await token();
   const wanted = field(formData, 'friend_request_policy');
-  if (wanted !== 'everyone' && wanted !== 'nobody') {
+  if (wanted !== 'everyone' && wanted !== 'org_mates' && wanted !== 'nobody') {
     redirect('/friends?error=unexpected');
   }
   let stored: string;
