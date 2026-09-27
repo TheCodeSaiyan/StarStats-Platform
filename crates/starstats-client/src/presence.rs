@@ -140,6 +140,78 @@ pub fn facts(newest_first: &[GameEvent], catalog: &LocationCatalog) -> Facts {
     }
 }
 
+/// Where the player is and what they are flying, for pre-filling a
+/// Looking for Group post. Worked out from the same stored events as
+/// presence; every field is a suggestion the player can change.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize)]
+pub struct WhereAmI {
+    pub system: Option<String>,
+    /// The friendly name of the newest place the player was, e.g. a
+    /// station or city.
+    pub location: Option<String>,
+    /// The ship of the newest quantum jump, e.g. "RSI Constellation Phoenix".
+    pub ship: Option<String>,
+}
+
+/// A readable ship name from a vehicle class: underscores become spaces
+/// and a trailing numeric instance id is dropped
+/// (`AEGS_Avenger_Titan_1234` → `AEGS Avenger Titan`).
+pub fn ship_name(vehicle_class: &str) -> Option<String> {
+    let mut parts: Vec<&str> = vehicle_class.split('_').filter(|p| !p.is_empty()).collect();
+    if parts.len() > 1
+        && parts
+            .last()
+            .is_some_and(|p| p.chars().all(|c| c.is_ascii_digit()))
+    {
+        parts.pop();
+    }
+    let name = parts.join(" ");
+    (!name.is_empty()).then_some(name)
+}
+
+pub fn where_am_i(newest_first: &[GameEvent], catalog: &LocationCatalog) -> WhereAmI {
+    let mut location: Option<String> = None;
+    let mut ship: Option<String> = None;
+    for ev in newest_first {
+        if location.is_none() {
+            let raw = match ev {
+                // A quantum destination is where the player is going.
+                GameEvent::QuantumTargetSelected(_) => None,
+                other => other.location_raw(),
+            };
+            location = raw.map(|r| classify(r, catalog).display_name);
+        }
+        if ship.is_none() {
+            ship = match ev {
+                GameEvent::QuantumTargetSelected(e) => ship_name(&e.vehicle_class),
+                GameEvent::QuantumRoute(e) => ship_name(&e.vehicle_class),
+                GameEvent::QuantumArrived(e) => ship_name(&e.vehicle_class),
+                _ => None,
+            };
+        }
+        if location.is_some() && ship.is_some() {
+            break;
+        }
+    }
+    WhereAmI {
+        system: facts(newest_first, catalog).system,
+        location,
+        ship,
+    }
+}
+
+/// [`where_am_i`] from the tray's stored events.
+pub fn current_where(storage: &Storage, catalog: &RwLock<Arc<LocationCatalog>>) -> WhereAmI {
+    let events: Vec<GameEvent> = storage
+        .recent_events(LOOKBACK)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|r| serde_json::from_str::<GameEvent>(&r.payload_json).ok())
+        .collect();
+    let cat = catalog.read().clone();
+    where_am_i(&events, &cat)
+}
+
 /// The report for a moment: with the game closed the tray is merely
 /// online, and says nothing about where the player last was.
 pub fn report_for(game_running: bool, facts: Facts) -> PresenceUpdate {
@@ -338,6 +410,32 @@ mod tests {
             vehicle_class: "v".into(),
             vehicle_id: "1".into(),
         })
+    }
+
+    #[test]
+    fn ship_names_are_readable() {
+        assert_eq!(
+            ship_name("AEGS_Avenger_Titan_1234").as_deref(),
+            Some("AEGS Avenger Titan")
+        );
+        assert_eq!(
+            ship_name("RSI_Constellation_Phoenix").as_deref(),
+            Some("RSI Constellation Phoenix")
+        );
+        assert_eq!(
+            ship_name("1234"),
+            Some("1234".to_string()),
+            "a lone number is kept"
+        );
+        assert_eq!(ship_name(""), None);
+    }
+
+    #[test]
+    fn where_am_i_takes_the_newest_ship_and_ignores_destinations() {
+        let cat = catalog();
+        let w = where_am_i(&[route("Stanton"), arrived()], &cat);
+        assert_eq!(w.ship.as_deref(), Some("v"));
+        assert_eq!(w.location, None, "a quantum route is not a place");
     }
 
     #[test]

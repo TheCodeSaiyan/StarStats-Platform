@@ -12,6 +12,7 @@ export type TrayView =
   | 'kb'
   | 'whats-new'
   | 'social'
+  | 'lfg'
   | 'review'
   | 'settings';
 
@@ -41,6 +42,7 @@ const TABS: ReadonlyArray<TrayView> = [
   'kb',
   'whats-new',
   'social',
+  'lfg',
   'review',
   'settings',
 ];
@@ -53,6 +55,7 @@ const TAB_LABELS: Record<TrayView, string> = {
   kb: 'Catalogue',
   'whats-new': "What's New",
   social: 'Friends',
+  lfg: 'Crew',
   review: 'Review',
   settings: 'Calibrate',
 };
@@ -67,6 +70,7 @@ const TAB_TITLES: Record<TrayView, string> = {
   kb: 'Knowledge base',
   'whats-new': "What's New",
   social: 'Friends and notifications',
+  lfg: 'Looking for Group',
   review: 'Review',
   settings: 'Settings',
 };

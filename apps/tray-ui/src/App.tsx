@@ -7,6 +7,7 @@ import { LogsPane } from './components/LogsPane';
 import { KbPane } from './components/KbPane';
 import { WhatsNewPane } from './panes/WhatsNewPane';
 import { SocialPane } from './panes/SocialPane';
+import { LfgPane } from './panes/LfgPane';
 import { TrayHeader, type TrayView } from './components/TrayHeader';
 import { SubmissionsPane } from './submissions/SubmissionsPane';
 import { useStatusPolling } from './hooks/useStatusPolling';
@@ -313,6 +314,7 @@ function AppInner() {
             <WhatsNewPane webOrigin={config?.web_origin ?? null} />
           )}
           {view === 'social' && <SocialPane />}
+          {view === 'lfg' && <LfgPane />}
           {view === 'review' && (
             <SubmissionsPane
               onCountChange={setUnknownCount}
