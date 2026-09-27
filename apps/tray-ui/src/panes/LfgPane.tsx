@@ -166,7 +166,7 @@ export function LfgPane() {
         note: form.note?.trim() || null,
       });
       setForm(emptyForm(options));
-    }, 'Posted. It stays up until it expires or you close it.');
+    }, 'Posted. It stays up until it expires, you close it, or you have been out of the game for 10 minutes.');
   };
 
   const copyCrew = async () => {
@@ -378,7 +378,10 @@ export function LfgPane() {
                 ))}
               </select>
             </Field>
-            <Field label="Stays up for">
+            <Field
+              label="Stays up for"
+              hint="Or until 10 minutes after you leave the game, if you posted while playing."
+            >
               <select
                 style={selectStyle}
                 value={form.expires_in_minutes}
