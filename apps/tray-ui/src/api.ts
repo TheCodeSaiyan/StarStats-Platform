@@ -871,6 +871,23 @@ export interface SocialPrefs {
   quiet_in_game: boolean;
   /** Toast new What's New entries and available updates. */
   release_toasts: boolean;
+  /**
+   * Report presence to friends from this tray. The tray's half of a
+   * two-gate model: the account's presence level must also be on.
+   */
+  share_presence: boolean;
+}
+
+/** How much of your presence friends see; set on the server. */
+export type PresenceLevel = 'off' | 'status' | 'system';
+
+/** A friend's presence as the gateway last pushed it. `state: null` is
+ *  offline, which is also what not sharing looks like. */
+export interface FriendPresence {
+  handle: string;
+  state: string | null;
+  system: string | null;
+  updated_at: string | null;
 }
 
 export const api = {
@@ -1062,7 +1079,12 @@ export const api = {
       toasts: prefs.toasts,
       quiet_in_game: prefs.quiet_in_game,
       release_toasts: prefs.release_toasts,
+      share_presence: prefs.share_presence,
     }),
+  socialGetPresence: () => invoke<FriendPresence[]>('social_get_presence'),
+  socialGetPresenceLevel: () => invoke<PresenceLevel>('social_get_presence_level'),
+  socialSetPresenceLevel: (level: PresenceLevel) =>
+    invoke<PresenceLevel>('social_set_presence_level', { level }),
   /**
    * Mark a roadmap item's latest changelog entry seen for the paired
    * account. Keys are byte-exact snake_case to match the Rust params

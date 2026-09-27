@@ -162,6 +162,11 @@ pub struct SocialConfig {
     /// Toast new What's New entries and available updates. Shares
     /// `quiet_in_game` with the friend toasts.
     pub release_toasts: bool,
+    /// Report presence (online / in game / in quantum, and the star
+    /// system if the server-side setting allows) to friends. This is
+    /// the tray's half of a two-gate model: the server's presence
+    /// setting must also be on. Off by default.
+    pub share_presence: bool,
 }
 
 impl Default for SocialConfig {
@@ -170,6 +175,7 @@ impl Default for SocialConfig {
             toasts: true,
             quiet_in_game: true,
             release_toasts: true,
+            share_presence: false,
         }
     }
 }
