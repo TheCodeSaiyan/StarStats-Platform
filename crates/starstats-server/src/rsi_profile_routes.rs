@@ -430,9 +430,12 @@ pub struct PublicProfileQuery {
         (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
     ),
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn public_profile<U: UserStore, P: ProfileStore>(
     State((users, profiles, view_stats)): State<(Arc<U>, Arc<P>, Arc<dyn ProfileViewStatsStore>)>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
+    viewer: Option<crate::auth::AuthenticatedUser>,
     Path(handle): Path<String>,
     Query(query): Query<PublicProfileQuery>,
     headers: HeaderMap,
@@ -456,6 +459,18 @@ pub async fn public_profile<U: UserStore, P: ProfileStore>(
             return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
         }
     };
+    // Before the view is counted: a blocked viewer did not see it.
+    match crate::social_routes::blocked_by_owner(
+        social.as_ref(),
+        &user.claimed_handle,
+        viewer.as_ref().map(|v| v.preferred_username.as_str()),
+    )
+    .await
+    {
+        Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
+        Ok(false) => {}
+        Err(resp) => return resp,
+    }
 
     let Some(client) = spicedb.as_ref() else {
         return (

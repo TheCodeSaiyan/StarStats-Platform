@@ -133,6 +133,8 @@ mod rsi_org_store;
 mod rsi_profile_routes;
 mod rsi_verify;
 mod rsi_verify_routes;
+mod salute_routes;
+mod salutes;
 mod share_metadata;
 mod share_reports;
 pub mod share_scopes;
@@ -622,6 +624,10 @@ async fn main() -> anyhow::Result<()> {
     let social_for_friend_sync = social_dyn.clone();
     let spicedb_for_friend_sync = spicedb.clone();
     let rsi_orgs_dyn: Arc<dyn crate::rsi_org_store::RsiOrgStore> = rsi_orgs.clone();
+    // Social phase 2: o7 salutes (migration 0073).
+    let salutes_dyn: Arc<dyn crate::salutes::SaluteStore> =
+        Arc::new(crate::salutes::PostgresSaluteStore::new(pool.clone()));
+    let salute_limiter = Arc::new(crate::salutes::SaluteRateLimiter::new());
     // News posts from the admin console (migration 0071).
     let news_dyn: Arc<dyn crate::news::NewsStore> =
         Arc::new(crate::news::PostgresNewsStore::new(pool.clone()));
@@ -939,6 +945,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(device_router)
         .merge(sharing_router)
         .merge(social_routes::routes())
+        .merge(salute_routes::routes())
         .merge(news_routes::routes())
         .merge(release_routes::routes())
         .merge(rsi_router)
@@ -1007,6 +1014,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(social_dyn))
         // The org_mates friend-request policy reads RSI org snapshots.
         .layer(Extension(rsi_orgs_dyn))
+        .layer(Extension(salutes_dyn))
+        .layer(Extension(salute_limiter))
         .layer(Extension(notifications_dyn))
         .layer(Extension(news_dyn))
         .layer(Extension(releases_dyn))

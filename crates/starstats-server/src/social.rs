@@ -234,6 +234,8 @@ pub async fn delete_social_rows_for(
         ("friendships", "handle_b"),
         ("user_blocks", "blocker_handle"),
         ("user_blocks", "blocked_handle"),
+        ("profile_salutes", "saluter_handle"),
+        ("profile_salutes", "target_handle"),
         ("user_mutes", "muter_handle"),
         ("user_mutes", "muted_handle"),
         ("notifications", "recipient_handle"),
