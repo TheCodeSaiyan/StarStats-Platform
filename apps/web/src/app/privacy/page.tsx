@@ -246,6 +246,18 @@ export default function PrivacyPage() {
             Lawful basis: contract.
           </li>
           <li>
+            <strong>Looking for Group</strong>: a post you make (the
+            activity, star system, meeting place, ship, crew size, voice
+            and region, and a short note) is visible to every signed-in
+            player, with your handle, until it expires, you close it or a
+            moderator removes it. Who asked to join, and whom you accepted,
+            is visible to you as host; your crew see each other. If a post
+            is reported, a copy of it as reported is kept for the
+            moderators, with the reason and anything the reporter wrote.
+            Lawful basis: contract, and legitimate interest (keeping the
+            board safe) for reports.
+          </li>
+          <li>
             <strong>Presence</strong> is off unless you turn it on, and
             it needs two switches: one in the desktop tray and one in
             your account settings. When both are on, your friends (and
@@ -435,6 +447,13 @@ export default function PrivacyPage() {
           <li>
             <strong>Notifications</strong>: 90 days, or sooner if you
             delete your account.
+          </li>
+          <li>
+            <strong>Looking for Group posts</strong> and who joined them:
+            deleted 30 days after the post ends, unless a report about it is
+            still open. <strong>Reports</strong> are kept after the post has
+            gone, so a moderator decision can be reviewed. Account deletion
+            removes your posts and your reports.
           </li>
           <li>
             <strong>Presence</strong>: not stored. It is kept in memory
