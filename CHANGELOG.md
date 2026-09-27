@@ -16,6 +16,14 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.63] - 2026-09-26
+
+### New
+- Show release notes on the changelog and in What's New.
+
+### Fixed
+- Open What's New on the news, with releases in the last tab.
+
 ## [Platform 0.1.62] - 2026-09-26
 
 ### New
