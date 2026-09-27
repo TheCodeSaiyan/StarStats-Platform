@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.69] - 2026-09-27
+
+### New
+- Show how many players are waiting on your group on Crew.
+
 ## [Platform 0.1.68] - 2026-09-27
 
 ### New
