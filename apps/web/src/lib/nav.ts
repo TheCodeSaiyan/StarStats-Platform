@@ -120,15 +120,10 @@ export const SITE_NAV: readonly NavDestination[] = [
     access: 'user',
     rowExempt: true,
   },
-  // Menu only too: the inline row is full, and a twelfth entry collapses
-  // the bar at 1440px (chrome-nav.spec.ts).
-  {
-    id: 'lfg',
-    label: 'Looking for Group',
-    href: '/lfg' as Route,
-    access: 'user',
-    rowExempt: true,
-  },
+  // In the row, as "Crew" (the tray tab's name, and short: the row's fit
+  // is measured at 1440px by chrome-nav.spec.ts). Calibrate moved to the
+  // menu to make room for it.
+  { id: 'lfg', label: 'Crew', href: '/lfg' as Route, access: 'user' },
   // Menu only, like Friends: the account-menu badge is the way in.
   {
     id: 'whats-new',
@@ -137,7 +132,15 @@ export const SITE_NAV: readonly NavDestination[] = [
     access: 'user',
     rowExempt: true,
   },
-  { id: 'settings', label: 'Calibrate', href: '/settings' as Route, access: 'user' },
+  // Menu only since Crew took its place in the row: settings are visited
+  // rarely, and the account menu is where people look for them.
+  {
+    id: 'settings',
+    label: 'Calibrate',
+    href: '/settings' as Route,
+    access: 'user',
+    rowExempt: true,
+  },
 
   { id: 'admin', label: 'Console', href: '/admin' as Route, access: 'admin' },
 ];
