@@ -6506,10 +6506,21 @@ export interface components {
             /** @description Whether the caller has an open post. */
             hosting: boolean;
             /**
+             * Format: date-time
+             * @description When the open post was made. The tray leaves alone a post made
+             *     after the game closed, which is a plan for later, not a leftover.
+             */
+            opened_at?: string | null;
+            /**
              * Format: int64
              * @description Players who asked to join it and have not been answered.
              */
             pending_requests: number;
+            /**
+             * Format: uuid
+             * @description The open post, so the tray can close it when the game exits.
+             */
+            post_id?: string | null;
         };
         /**
          * @description Whether the group uses voice chat.
