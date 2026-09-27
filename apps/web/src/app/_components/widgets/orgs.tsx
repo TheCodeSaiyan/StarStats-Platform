@@ -31,7 +31,7 @@ export const orgsWidget = defineWidget<OrgsData>({
   async load(ctx) {
     let snapshot: RsiOrgsSnapshot | null = null;
     try {
-      snapshot = await getPublicRsiOrgs(ctx.ownerHandle);
+      snapshot = await getPublicRsiOrgs(ctx.ownerHandle, ctx.token ?? undefined);
     } catch (err) {
       logger.warn(
         { err, call: 'widget.orgs', handle: ctx.ownerHandle },

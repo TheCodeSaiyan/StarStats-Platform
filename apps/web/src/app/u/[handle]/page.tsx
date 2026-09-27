@@ -67,6 +67,7 @@ import { ControlStrip } from '@/components/hud/ControlStrip';
 import { InstrumentStrip } from '@/components/hud/InstrumentStrip';
 import { ProfileCard } from '@/components/ProfileCard';
 import { SupporterChip } from '@/components/SupporterChip';
+import { SaluteControl } from './SaluteControl';
 import { RangeBar } from '@/components/journey/RangeBar';
 import { parseRange } from '@/lib/range';
 
@@ -74,7 +75,7 @@ export const metadata = { title: "Profile" };
 
 interface PageProps {
   params: Promise<{ handle: string }>;
-  searchParams?: Promise<{ range?: string; arrange?: string }>;
+  searchParams?: Promise<{ range?: string; arrange?: string; salute_error?: string }>;
 }
 
 type View =
@@ -112,7 +113,9 @@ async function resolveProfile(handle: string): Promise<View> {
 
   // 1. Public path — no auth.
   try {
-    const data = await getPublicSummary(handle);
+    // With the viewer's token: a viewer the owner blocked gets a 404 here,
+    // then a 404 on the friend path below, and so sees the denied page.
+    const data = await getPublicSummary(handle, session?.token);
     return { kind: 'public', data };
   } catch (e) {
     if (!(e instanceof ApiCallError) || e.status !== 404) {
@@ -170,7 +173,7 @@ async function fetchShareScopes(
     if (isOwner && token) {
       return { scopes: await getMyShareScopes(token), ok: true };
     }
-    return { scopes: await getPublicShareScopes(handle), ok: true };
+    return { scopes: await getPublicShareScopes(handle, token ?? undefined), ok: true };
   } catch {
     // 404 = profile not public (visitor path); any other error = degrade.
     // Either way default to all-false — safer than over-sharing.
@@ -416,7 +419,7 @@ export default async function PublicProfilePage(props: PageProps) {
   // is still useful.
   let profile: ProfileResponse | null = null;
   try {
-    profile = await getPublicProfile(handle);
+    profile = await getPublicProfile(handle, token ?? undefined);
   } catch (e) {
     if (!(e instanceof ApiCallError) || e.status !== 404) {
       logger.warn({ err: e }, 'public profile snapshot fetch failed');
@@ -660,6 +663,12 @@ export default async function PublicProfilePage(props: PageProps) {
           )}
           {profile ? <span className="hp-chip">RSI verified</span> : null}
           <SupporterChip status={chipStatus} />
+          <SaluteControl
+            handle={handle}
+            token={token}
+            isOwner={isOwner}
+            error={sp.salute_error}
+          />
         </div>
       }
       body={

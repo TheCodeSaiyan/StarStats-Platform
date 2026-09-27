@@ -790,13 +790,58 @@ export async function getMyHangar(
 
 export async function getPublicProfile(
   handle: string,
+  bearer?: string,
 ): Promise<ProfileResponse> {
   return request<ProfileResponse>(
     'GET',
     `/v1/public/u/${encodeURIComponent(handle)}/profile`,
     undefined,
-    undefined,
+    bearer,
   );
+}
+
+// -- o7 salutes -----------------------------------------------------
+
+export type SaluteSummary = apiSchema['schemas']['SaluteSummary'];
+export type MySalutes = apiSchema['schemas']['MySalutes'];
+
+/**
+ * A profile's public salute count. Signed in, it also covers profiles shared
+ * with you and says whether you saluted; a 404 means you cannot see it.
+ */
+export async function getSaluteSummary(
+  handle: string,
+  bearer?: string,
+): Promise<SaluteSummary> {
+  return request<SaluteSummary>(
+    'GET',
+    `/v1/u/${encodeURIComponent(handle)}/salutes`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function saluteProfile(bearer: string, handle: string): Promise<SaluteSummary> {
+  return request<SaluteSummary>(
+    'PUT',
+    `/v1/u/${encodeURIComponent(handle)}/salute`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function unsaluteProfile(bearer: string, handle: string): Promise<void> {
+  await request<unknown>(
+    'DELETE',
+    `/v1/u/${encodeURIComponent(handle)}/salute`,
+    undefined,
+    bearer,
+  );
+}
+
+/** Your own count, and which of your friends saluted you. */
+export async function getMySalutes(bearer: string): Promise<MySalutes> {
+  return request<MySalutes>('GET', '/v1/me/salutes', undefined, bearer);
 }
 
 // -- RSI org snapshots ---------------------------------------------
@@ -840,13 +885,14 @@ export async function getMyRsiOrgs(
 
 export async function getPublicRsiOrgs(
   handle: string,
+  bearer?: string,
 ): Promise<RsiOrgsSnapshot | null> {
   try {
     return await request<RsiOrgsSnapshot>(
       'GET',
       `/v1/public/u/${encodeURIComponent(handle)}/orgs`,
       undefined,
-      undefined,
+      bearer,
     );
   } catch (e) {
     if (e instanceof ApiCallError && (e.status === 404 || e.status === 403)) {
@@ -2628,20 +2674,27 @@ export async function removeShare(
   );
 }
 
+/**
+ * `bearer` is the VIEWER's token, when signed in. The route is public, but a
+ * viewer the owner has blocked gets the same 404 as for a private profile,
+ * and the server can only tell who is asking if the token is sent.
+ */
 export async function getPublicSummary(
   handle: string,
+  bearer?: string,
 ): Promise<PublicSummaryResponse> {
   return request<PublicSummaryResponse>(
     'GET',
     `/v1/public/${encodeURIComponent(handle)}/summary`,
     undefined,
-    undefined,
+    bearer,
   );
 }
 
 export async function getPublicTimeline(
   handle: string,
   days?: number,
+  bearer?: string,
 ): Promise<PublicTimelineResponse> {
   const qs = new URLSearchParams();
   if (days !== undefined) qs.set('days', String(days));
@@ -2650,7 +2703,7 @@ export async function getPublicTimeline(
     'GET',
     `/v1/public/${encodeURIComponent(handle)}/timeline${suffix}`,
     undefined,
-    undefined,
+    bearer,
   );
 }
 
@@ -3276,12 +3329,13 @@ export async function getMyShareScopes(
  *  use try/catch and default to all-false. */
 export async function getPublicShareScopes(
   handle: string,
+  bearer?: string,
 ): Promise<WidgetShareScopesApi> {
   return request<WidgetShareScopesApi>(
     'GET',
     `/v1/public/${encodeURIComponent(handle)}/share-scopes`,
     undefined,
-    undefined,
+    bearer,
   );
 }
 

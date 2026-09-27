@@ -644,3 +644,89 @@ test('the callout field stands down rather than clipping in a short window', asy
     if (height <= 620) expect(seen.drawn, `field drawn at ${width}x${height}`).toBe(false);
   }
 });
+
+test('a visitor sees the salute count and can salute', async ({ page, request }) => {
+  await setScenario(
+    request,
+    scenarioFor('profile_salute_visitor', {
+      'GET /v1/u/TestPilot/salutes': {
+        status: 200,
+        body: { count: 3, saluted_by_me: false },
+      },
+      'PUT /v1/u/TestPilot/salute': {
+        status: 200,
+        body: { count: 4, saluted_by_me: true },
+      },
+    }),
+  );
+  await loginAs(page, { handle: 'SomeoneElse' });
+  await page.goto('/u/TestPilot', { timeout: 60_000 });
+
+  await expect(page.getByTestId('salute-count')).toHaveText('o7 · 3');
+  const button = page.getByRole('button', { name: 'Salute' });
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
+  await button.click({ timeout: 30_000 });
+  // Back on the profile, with no error: the action went through.
+  await expect(page).toHaveURL(/\/u\/TestPilot$/, { timeout: 30_000 });
+  await expect(page.getByTestId('salute-error')).toHaveCount(0);
+});
+
+test('an unverified visitor is told why the salute did not count', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('profile_salute_unverified', {
+      'GET /v1/u/TestPilot/salutes': {
+        status: 200,
+        body: { count: 0, saluted_by_me: false },
+      },
+      'PUT /v1/u/TestPilot/salute': {
+        status: 403,
+        body: { error: 'rsi_handle_not_verified' },
+      },
+    }),
+  );
+  await loginAs(page, { handle: 'SomeoneElse' });
+  await page.goto('/u/TestPilot', { timeout: 60_000 });
+  await page.getByRole('button', { name: 'Salute' }).click({ timeout: 30_000 });
+  await expect(page).toHaveURL(/salute_error=rsi_handle_not_verified/, { timeout: 30_000 });
+  await expect(page.getByTestId('salute-error')).toContainText('Verify your RSI handle to salute');
+});
+
+test('signed out, the count shows and there is nothing to press', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('profile_salute_anon', {
+      'GET /v1/u/TestPilot/salutes': { status: 200, body: { count: 7 } },
+    }),
+  );
+  await page.goto('/u/TestPilot', { timeout: 60_000 });
+  await expect(page.getByTestId('salute-count')).toHaveText('o7 · 7');
+  await expect(page.getByRole('button', { name: /salute/i })).toHaveCount(0);
+});
+
+test('the owner sees which friends saluted, and has nothing to press', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('profile_salute_owner', {
+      'GET /v1/u/TestPilot/salutes': { status: 200, body: { count: 5, saluted_by_me: false } },
+      'GET /v1/me/salutes': { status: 200, body: { count: 5, friends: ['Wingman', 'Navigator'] } },
+    }),
+  );
+  await loginAs(page, { handle: 'TestPilot' });
+  await page.goto('/u/TestPilot', { timeout: 60_000 });
+  await expect(page.getByTestId('salute-count')).toHaveText('o7 · 5');
+  // Friends are named; the other three saluters are not.
+  await expect(page.getByTestId('salute-friends')).toHaveText(
+    'Saluted by @Wingman, @Navigator',
+  );
+  await expect(page.getByRole('button', { name: /salute/i })).toHaveCount(0);
+});
