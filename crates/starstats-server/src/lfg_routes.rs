@@ -28,7 +28,7 @@ use axum::{
     routing::{get, post, put},
     Extension, Json, Router,
 };
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -114,6 +114,11 @@ pub struct LfgSummary {
     pub hosting: bool,
     /// Players who asked to join it and have not been answered.
     pub pending_requests: i64,
+    /// The open post, so the tray can close it when the game exits.
+    pub post_id: Option<Uuid>,
+    /// When the open post was made. The tray leaves alone a post made
+    /// after the game closed, which is a plan for later, not a leftover.
+    pub opened_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -339,6 +344,8 @@ pub async fn my_summary(
         return Json(LfgSummary {
             hosting: false,
             pending_requests: 0,
+            post_id: None,
+            opened_at: None,
         })
         .into_response();
     };
@@ -349,6 +356,8 @@ pub async fn my_summary(
                 .iter()
                 .filter(|m| m.status == MemberStatus::Requested)
                 .count() as i64,
+            post_id: Some(post.id),
+            opened_at: Some(post.created_at),
         })
         .into_response(),
         Err(e) => store_err(e, "members"),
@@ -1223,10 +1232,18 @@ mod tests {
         let (_, v) = f.call("GET", "/v1/me/lfg/summary", &host, None).await;
         assert_eq!(
             v,
-            serde_json::json!({ "hosting": false, "pending_requests": 0 })
+            serde_json::json!({
+                "hosting": false,
+                "pending_requests": 0,
+                "post_id": null,
+                "opened_at": null,
+            })
         );
 
         let id = f.post(&host, 3).await;
+        let (_, v) = f.call("GET", "/v1/me/lfg/summary", &host, None).await;
+        assert_eq!(v["post_id"], id.as_str(), "names the open post");
+        assert!(v["opened_at"].is_string());
         f.call("POST", &format!("/v1/lfg/{id}/join"), &bob, None)
             .await;
         f.call("POST", &format!("/v1/lfg/{id}/join"), &carol, None)
