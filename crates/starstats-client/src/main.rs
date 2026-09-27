@@ -24,6 +24,7 @@ mod discovery;
 mod gamelog;
 mod health;
 mod launcher;
+mod lfg_exit;
 mod location_catalog;
 // Opt-in connector to a self-hosted org platform (the `orgplatform`
 // companion project). Forwards read-only presence telemetry derived
@@ -557,6 +558,10 @@ fn main() {
                 presence_storage,
                 presence_catalog,
             ));
+
+            // 5b. Close a Looking for Group post left open once the game
+            // has been closed for a while. See lfg_exit.rs for the guards.
+            tauri::async_runtime::spawn(crate::lfg_exit::run());
 
             // 6. One-shot preferences pull on app launch. Reconciles
             //    any drift from another device since last shutdown.
