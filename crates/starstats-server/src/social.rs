@@ -73,6 +73,9 @@ impl FriendRequestStatus {
 #[serde(rename_all = "snake_case")]
 pub enum FriendRequestPolicy {
     Everyone,
+    /// Only someone who shares an org with this user: a StarStats org
+    /// (any role) or an RSI org from both users' latest snapshots.
+    OrgMates,
     Nobody,
 }
 
@@ -80,6 +83,7 @@ impl FriendRequestPolicy {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Everyone => "everyone",
+            Self::OrgMates => "org_mates",
             Self::Nobody => "nobody",
         }
     }
@@ -87,6 +91,7 @@ impl FriendRequestPolicy {
     pub fn parse(s: &str) -> Option<Self> {
         Some(match s {
             "everyone" => Self::Everyone,
+            "org_mates" => Self::OrgMates,
             "nobody" => Self::Nobody,
             _ => return None,
         })
@@ -184,6 +189,10 @@ pub trait SocialStore: Send + Sync + 'static {
     async fn remove_friendship(&self, a: &str, b: &str) -> Result<bool, SocialError>;
     async fn are_friends(&self, a: &str, b: &str) -> Result<bool, SocialError>;
     async fn list_friends(&self, handle: &str) -> Result<Vec<Friend>, SocialError>;
+    /// Every friendship, each pair once, spelled as each user's current
+    /// `claimed_handle` (SpiceDB ids are case-sensitive). A pair whose
+    /// account no longer exists is left out. For the SpiceDB reconcile.
+    async fn list_all_friendships(&self) -> Result<Vec<(String, String)>, SocialError>;
 
     /// Idempotent.
     async fn block(&self, blocker: &str, blocked: &str) -> Result<(), SocialError>;
@@ -537,6 +546,20 @@ impl SocialStore for PostgresSocialStore {
             .collect())
     }
 
+    async fn list_all_friendships(&self) -> Result<Vec<(String, String)>, SocialError> {
+        let rows: Vec<(String, String)> = sqlx::query_as(
+            r#"
+            SELECT ua.claimed_handle, ub.claimed_handle
+            FROM friendships f
+            JOIN users ua ON lower(ua.claimed_handle) = lower(f.handle_a)
+            JOIN users ub ON lower(ub.claimed_handle) = lower(f.handle_b)
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
     async fn block(&self, blocker: &str, blocked: &str) -> Result<(), SocialError> {
         sqlx::query(
             r#"
@@ -875,6 +898,14 @@ pub mod test_support {
             Ok(g.friendships.iter().any(|(p, q, _)| eq(p, x) && eq(q, y)))
         }
 
+        async fn list_all_friendships(&self) -> Result<Vec<(String, String)>, SocialError> {
+            let g = self.inner.lock().unwrap();
+            Ok(g.friendships
+                .iter()
+                .map(|(a, b, _)| (a.clone(), b.clone()))
+                .collect())
+        }
+
         async fn list_friends(&self, handle: &str) -> Result<Vec<Friend>, SocialError> {
             let g = self.inner.lock().unwrap();
             let mut out: Vec<Friend> = g
@@ -1001,7 +1032,11 @@ mod tests {
         ] {
             assert_eq!(FriendRequestStatus::parse(s.as_str()), Some(s));
         }
-        for p in [FriendRequestPolicy::Everyone, FriendRequestPolicy::Nobody] {
+        for p in [
+            FriendRequestPolicy::Everyone,
+            FriendRequestPolicy::OrgMates,
+            FriendRequestPolicy::Nobody,
+        ] {
             assert_eq!(FriendRequestPolicy::parse(p.as_str()), Some(p));
         }
         assert_eq!(FriendRequestStatus::parse("bogus"), None);
@@ -1240,6 +1275,41 @@ mod postgres_tests {
         s.add_friendship(B, A).await.unwrap();
         s.add_friendship(A, B).await.unwrap();
         assert!(s.are_friends("SOCIALPROBEA", B).await.unwrap());
+        // The reconcile listing spells each side as its claimed handle,
+        // whatever case the row was written in: SpiceDB ids are exact.
+        sqlx::query(
+            "UPDATE friendships SET handle_a = upper(handle_a), handle_b = upper(handle_b)
+             WHERE lower(handle_a) IN ('socialprobea', 'socialprobeb')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let mut probe: Vec<(String, String)> = s
+            .list_all_friendships()
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|(x, y)| {
+                [x, y]
+                    .iter()
+                    .all(|h| h.to_ascii_lowercase().starts_with("socialprobe"))
+            })
+            .map(|(x, y)| if x <= y { (x, y) } else { (y, x) })
+            .collect();
+        probe.sort();
+        assert_eq!(probe, vec![(A.to_string(), B.to_string())]);
+        // Put the rows back as written, for the assertions below.
+        for h in [A, B] {
+            for col in ["handle_a", "handle_b"] {
+                sqlx::query(&format!(
+                    "UPDATE friendships SET {col} = $1 WHERE lower({col}) = lower($1)"
+                ))
+                .bind(h)
+                .execute(&pool)
+                .await
+                .unwrap();
+            }
+        }
         let fa = s.list_friends(A).await.unwrap();
         assert_eq!(fa.len(), 1);
         assert_eq!(fa[0].handle, B);

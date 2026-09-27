@@ -19,7 +19,9 @@
 use crate::api_error::ApiErrorBody;
 use crate::audit::{AuditEntry, AuditLog};
 use crate::auth::{AuthenticatedUser, TokenType};
+use crate::friend_sync;
 use crate::notifications::{Notification, NotificationKind, NotificationStore, PAGE_LIMIT_MAX};
+use crate::rsi_org_store::RsiOrgStore;
 use crate::share_metadata::ShareMetadataStore;
 use crate::social::{
     request_rate_limit_window, Friend, FriendRequest, FriendRequestPolicy, FriendRequestStatus,
@@ -213,6 +215,55 @@ async fn target(handle: &str, users: &dyn UserStore) -> Result<User, Response> {
     }
 }
 
+/// Whether two users share an org, for the `org_mates` request policy:
+/// an RSI org in both users' latest snapshots (by `sid`), or a
+/// StarStats org in any role. RSI is checked first because it needs
+/// only Postgres. `Err` means SpiceDB could not answer and no RSI org
+/// matched, so the answer is unknown rather than no.
+async fn share_an_org(
+    a: &User,
+    b: &User,
+    spicedb: &Option<SpicedbClient>,
+    rsi_orgs: &dyn RsiOrgStore,
+) -> Result<bool, ()> {
+    let sids = |snap: Option<crate::rsi_org_store::RsiOrgsSnapshot>| -> Vec<String> {
+        snap.map(|s| {
+            s.orgs
+                .into_iter()
+                .map(|o| o.sid.to_ascii_lowercase())
+                .collect()
+        })
+        .unwrap_or_default()
+    };
+    match (
+        rsi_orgs.latest_for_user(a.id).await,
+        rsi_orgs.latest_for_user(b.id).await,
+    ) {
+        (Ok(x), Ok(y)) => {
+            let (x, y) = (sids(x), sids(y));
+            if x.iter().any(|sid| y.contains(sid)) {
+                return Ok(true);
+            }
+        }
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::warn!(error = %e, "org_mates: rsi org snapshot read failed")
+        }
+    }
+    let Some(client) = spicedb.as_ref() else {
+        return Err(());
+    };
+    match (
+        client.list_orgs_for_user(&a.claimed_handle).await,
+        client.list_orgs_for_user(&b.claimed_handle).await,
+    ) {
+        (Ok(x), Ok(y)) => Ok(x.iter().any(|slug| y.contains(slug))),
+        (Err(e), _) | (_, Err(e)) => {
+            tracing::warn!(error = %e, "org_mates: spicedb org lookup failed");
+            Err(())
+        }
+    }
+}
+
 async fn audit_best_effort(
     audit: &dyn AuditLog,
     me: &User,
@@ -324,12 +375,15 @@ pub async fn list_friends(
     ),
     security(("bearer" = [])),
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn send_request(
     auth: AuthenticatedUser,
     Extension(users): Extension<Arc<dyn UserStore>>,
     Extension(social): Extension<Arc<dyn SocialStore>>,
     Extension(notes): Extension<Arc<dyn NotificationStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(rsi_orgs): Extension<Arc<dyn RsiOrgStore>>,
     Json(body): Json<SendFriendRequestBody>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -374,6 +428,13 @@ pub async fn send_request(
         Ok(FriendRequestPolicy::Nobody) => {
             return err(StatusCode::FORBIDDEN, "not_accepting_requests")
         }
+        Ok(FriendRequestPolicy::OrgMates) => {
+            match share_an_org(&me, &them, spicedb.as_ref(), rsi_orgs.as_ref()).await {
+                Ok(true) => {}
+                Ok(false) => return err(StatusCode::FORBIDDEN, "not_accepting_requests"),
+                Err(()) => return err(StatusCode::SERVICE_UNAVAILABLE, "spicedb_unavailable"),
+            }
+        }
         Ok(FriendRequestPolicy::Everyone) => {}
         Err(e) => return social_err(e, "send_request.policy"),
     }
@@ -397,6 +458,7 @@ pub async fn send_request(
                 if let Err(e) = social.add_friendship(mine, theirs).await {
                     return social_err(e, "send_request.add_friendship");
                 }
+                friend_sync::apply(spicedb.as_ref(), mine, theirs, true).await;
                 notify(
                     social.as_ref(),
                     notes.as_ref(),
@@ -505,12 +567,14 @@ async fn request_for(
     ),
     security(("bearer" = [])),
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn accept_request(
     auth: AuthenticatedUser,
     Extension(users): Extension<Arc<dyn UserStore>>,
     Extension(social): Extension<Arc<dyn SocialStore>>,
     Extension(notes): Extension<Arc<dyn NotificationStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Path(id): Path<Uuid>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -534,6 +598,13 @@ pub async fn accept_request(
     {
         return social_err(e, "accept.add_friendship");
     }
+    friend_sync::apply(
+        spicedb.as_ref(),
+        &req.requester_handle,
+        &req.recipient_handle,
+        true,
+    )
+    .await;
     notify(
         social.as_ref(),
         notes.as_ref(),
@@ -672,6 +743,7 @@ pub async fn remove_friend(
     Extension(users): Extension<Arc<dyn UserStore>>,
     Extension(social): Extension<Arc<dyn SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Path(handle): Path<String>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -684,6 +756,13 @@ pub async fn remove_friend(
     }
     match social.remove_friendship(&me.claimed_handle, handle).await {
         Ok(true) => {
+            // SpiceDB ids are case-sensitive: delete under the spelling
+            // the tuples were written with, not the one in the URL.
+            let theirs = match users.find_by_handle(handle).await {
+                Ok(Some(u)) => u.claimed_handle,
+                _ => handle.to_string(),
+            };
+            friend_sync::apply(spicedb.as_ref(), &me.claimed_handle, &theirs, false).await;
             audit_best_effort(
                 audit.as_ref(),
                 &me,
@@ -772,6 +851,9 @@ pub async fn block_user(
     if let Err(e) = social.remove_friendship(mine, theirs).await {
         tracing::warn!(error = %e, "block: remove_friendship failed");
     }
+    // Removes their view of a friends share. Unconditional: a failed
+    // remove_friendship above must not leave the tuples behind.
+    friend_sync::apply(spicedb.as_ref(), mine, theirs, false).await;
     if let Err(e) = social.cancel_pending_between(mine, theirs).await {
         tracing::warn!(error = %e, "block: cancel_pending_between failed");
     }
@@ -1078,6 +1160,8 @@ mod tests {
     use crate::devices::test_support::MemoryDeviceStore;
     use crate::devices::DeviceStore;
     use crate::notifications::test_support::MemoryNotificationStore;
+    use crate::rsi_org_store::test_support::MemoryRsiOrgStore;
+    use crate::rsi_verify::RsiOrg;
     use crate::share_metadata::test_support::MemoryShareMetadataStore;
     use crate::social::test_support::MemorySocialStore;
     use crate::users::hash_password;
@@ -1094,9 +1178,14 @@ mod tests {
         social: Arc<MemorySocialStore>,
         notes: Arc<MemoryNotificationStore>,
         devices: Arc<MemoryDeviceStore>,
+        rsi_orgs: Arc<MemoryRsiOrgStore>,
     }
 
     fn fixture() -> Fixture {
+        fixture_with(None)
+    }
+
+    fn fixture_with(spicedb: Option<SpicedbClient>) -> Fixture {
         let users = Arc::new(MemoryUserStore::new());
         let social = Arc::new(MemorySocialStore::new());
         let notes = Arc::new(MemoryNotificationStore::new());
@@ -1108,9 +1197,12 @@ mod tests {
         let devices_dyn: Arc<dyn DeviceStore> = devices.clone();
         let audit: Arc<dyn AuditLog> = Arc::new(MemoryAuditLog::default());
         let meta: Arc<dyn ShareMetadataStore> = Arc::new(MemoryShareMetadataStore::default());
-        let spicedb: Arc<Option<SpicedbClient>> = Arc::new(None);
+        let spicedb: Arc<Option<SpicedbClient>> = Arc::new(spicedb);
+        let rsi_orgs = Arc::new(MemoryRsiOrgStore::new());
+        let rsi_orgs_dyn: Arc<dyn RsiOrgStore> = rsi_orgs.clone();
         let app = routes()
             .layer(Extension(users_dyn))
+            .layer(Extension(rsi_orgs_dyn))
             .layer(Extension(social_dyn))
             .layer(Extension(notes_dyn))
             .layer(Extension(audit))
@@ -1125,6 +1217,7 @@ mod tests {
             social,
             notes,
             devices,
+            rsi_orgs,
         }
     }
 
@@ -1354,6 +1447,102 @@ mod tests {
         assert_eq!(a["incoming"].as_array().unwrap().len(), 1);
         let (_, v) = f.call("GET", "/v1/me/mutes", &alice, None).await;
         assert_eq!(v["mutes"][0]["handle"], "bob");
+    }
+
+    /// The routes keep SpiceDB's friend tuples in step: written on
+    /// accept, deleted on unfriend and on block. Needs a real SpiceDB
+    /// (see `spicedb::test_live`); skipped without one.
+    #[tokio::test]
+    async fn live_spicedb_friend_routes_write_and_delete_tuples() {
+        let Some(c) = crate::spicedb::test_live::live_spicedb().await else {
+            return;
+        };
+        let f = fixture_with(Some(c.clone()));
+        let alice = f.user("Alice", false).await;
+        let bob = f.user("Bob", false).await;
+        let tuples = || async {
+            let mut t = c.list_friend_tuples().await.unwrap();
+            t.sort();
+            t
+        };
+        let pair = vec![
+            ("Alice".to_string(), "Bob".to_string()),
+            ("Bob".to_string(), "Alice".to_string()),
+        ];
+
+        let (_, v) = f.request(&alice, "bob").await;
+        assert!(tuples().await.is_empty(), "a request alone writes nothing");
+        let id = v["request"]["id"].as_str().unwrap().to_string();
+        let (s, _) = f
+            .call(
+                "POST",
+                &format!("/v1/me/friends/requests/{id}/accept"),
+                &bob,
+                None,
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(
+            tuples().await,
+            pair,
+            "accept writes both, spelled as claimed"
+        );
+
+        // Unfriend by a differently-cased handle still finds the tuples.
+        let (s, _) = f.call("DELETE", "/v1/me/friends/BOB", &alice, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert!(tuples().await.is_empty(), "unfriend deletes both");
+
+        // Crossing requests make friends too, then a block unmakes it.
+        let (s, _) = f.request(&alice, "bob").await;
+        assert_eq!(s, StatusCode::OK);
+        let (s, v) = f.request(&bob, "alice").await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(v["outcome"], "became_friends");
+        assert_eq!(tuples().await, pair);
+        let (s, _) = f.call("PUT", "/v1/me/blocks/alice", &bob, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert!(tuples().await.is_empty(), "block deletes both");
+    }
+
+    #[tokio::test]
+    async fn policy_org_mates_admits_a_shared_rsi_org() {
+        let f = fixture();
+        let alice = f.user("alice", false).await;
+        let carol = f.user("carol", false).await;
+        let bob = f.user("bob", false).await;
+        let (s, v) = f
+            .call(
+                "PUT",
+                "/v1/me/social/settings",
+                &bob,
+                Some(serde_json::json!({ "friend_request_policy": "org_mates" })),
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(v["friend_request_policy"], "org_mates");
+
+        let org = |sid: &str| RsiOrg {
+            sid: sid.into(),
+            name: sid.into(),
+            rank: None,
+            is_main: false,
+        };
+        for (handle, sid) in [("bob", "MINERS"), ("alice", "miners"), ("carol", "HAULERS")] {
+            let id = f.users.find_by_handle(handle).await.unwrap().unwrap().id;
+            f.rsi_orgs.save(id, &[org(sid)]).await.unwrap();
+        }
+
+        // Alice shares Bob's RSI org (sids compare case-insensitively).
+        let (s, _) = f.request(&alice, "bob").await;
+        assert_eq!(s, StatusCode::OK);
+
+        // Carol shares no RSI org, and with SpiceDB unreachable her
+        // StarStats orgs cannot be checked: the answer is unknown, so
+        // she is told to retry rather than told Bob refuses.
+        let (s, v) = f.request(&carol, "bob").await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v["error"], "spicedb_unavailable");
     }
 
     #[tokio::test]

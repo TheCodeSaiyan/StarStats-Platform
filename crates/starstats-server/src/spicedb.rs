@@ -835,6 +835,195 @@ impl SpicedbClient {
         }
         Ok(out)
     }
+
+    /// Fully consistent [`Self::check_permission`], for a decision
+    /// that must see a write this request has just made (a revoke
+    /// followed by a re-check). Costs a trip past the cache.
+    pub async fn check_permission_fully_consistent(
+        &self,
+        resource: ObjectRef,
+        permission: &str,
+        subject: ObjectRef,
+    ) -> Result<bool> {
+        self.check_permission_with_consistency(resource, permission, subject, true)
+            .await
+    }
+
+    // -- Friends -----------------------------------------------------
+    //
+    // Friendship is symmetric and stored as two tuples,
+    // `user:<a>#friend@user:<b>` and `user:<b>#friend@user:<a>`, both
+    // written or deleted in ONE WriteRelationships request so the pair
+    // lands or fails together. Postgres `friendships` is the source of
+    // truth; `friend_sync` repairs any drift.
+
+    /// Write both friend tuples for `a` and `b`. Idempotent (TOUCH).
+    pub async fn write_friendship(&self, a: &str, b: &str) -> Result<()> {
+        let mut req = WriteRelationshipsRequest::default();
+        req.update_relationship("user", a, "friend", "user", b);
+        req.update_relationship("user", b, "friend", "user", a);
+        let mut inner = self.inner.clone();
+        inner
+            .write_relationships(req)
+            .await
+            .context("SpiceDB WriteRelationships (friend) failed")?;
+        Ok(())
+    }
+
+    /// Delete both friend tuples for `a` and `b`. Idempotent.
+    pub async fn delete_friendship(&self, a: &str, b: &str) -> Result<()> {
+        let mut req = WriteRelationshipsRequest::default();
+        req.delete_relationship("user", a, "friend", "user", b);
+        req.delete_relationship("user", b, "friend", "user", a);
+        let mut inner = self.inner.clone();
+        inner
+            .write_relationships(req)
+            .await
+            .context("SpiceDB WriteRelationships (delete friend) failed")?;
+        Ok(())
+    }
+
+    /// Every `user#friend` tuple, as `(resource, subject)` handle
+    /// pairs. Each friendship appears twice, once per direction.
+    /// Used only by the reconcile loop.
+    pub async fn list_friend_tuples(&self) -> Result<Vec<(String, String)>> {
+        self.read_pairs(RelationshipFilter {
+            resource_type: "user".to_string(),
+            optional_resource_id: String::new(),
+            optional_resource_id_prefix: String::new(),
+            optional_relation: "friend".to_string(),
+            optional_subject_filter: Some(SubjectFilter {
+                subject_type: "user".to_string(),
+                optional_subject_id: String::new(),
+                optional_relation: None,
+            }),
+        })
+        .await
+    }
+
+    /// Share `owner_handle`'s stats with every friend, present and
+    /// future: `stats_record:<owner>#share_with_friends_of@user:<owner>`.
+    pub async fn write_share_with_friends(&self, owner_handle: &str) -> Result<()> {
+        let mut req = WriteRelationshipsRequest::default();
+        req.update_relationship(
+            "stats_record",
+            owner_handle,
+            "share_with_friends_of",
+            "user",
+            owner_handle,
+        );
+        let mut inner = self.inner.clone();
+        inner
+            .write_relationships(req)
+            .await
+            .context("SpiceDB WriteRelationships (share_with_friends_of) failed")?;
+        Ok(())
+    }
+
+    /// Inverse of [`Self::write_share_with_friends`]. Idempotent.
+    pub async fn delete_share_with_friends(&self, owner_handle: &str) -> Result<()> {
+        let mut req = WriteRelationshipsRequest::default();
+        req.delete_relationship(
+            "stats_record",
+            owner_handle,
+            "share_with_friends_of",
+            "user",
+            owner_handle,
+        );
+        let mut inner = self.inner.clone();
+        inner
+            .write_relationships(req)
+            .await
+            .context("SpiceDB WriteRelationships (delete share_with_friends_of) failed")?;
+        Ok(())
+    }
+
+    /// Whether `owner_handle` currently shares with their friends.
+    pub async fn has_share_with_friends(&self, owner_handle: &str) -> Result<bool> {
+        let pairs = self
+            .read_pairs(RelationshipFilter {
+                resource_type: "stats_record".to_string(),
+                optional_resource_id: owner_handle.to_string(),
+                optional_resource_id_prefix: String::new(),
+                optional_relation: "share_with_friends_of".to_string(),
+                optional_subject_filter: Some(SubjectFilter {
+                    subject_type: "user".to_string(),
+                    optional_subject_id: String::new(),
+                    optional_relation: None,
+                }),
+            })
+            .await?;
+        Ok(!pairs.is_empty())
+    }
+
+    /// Slugs of the StarStats orgs `handle` belongs to in any role.
+    /// Organisation membership lives only in SpiceDB, so this reads
+    /// `organization:*#<any relation>@user:<handle>`.
+    pub async fn list_orgs_for_user(&self, handle: &str) -> Result<Vec<String>> {
+        let mut slugs: Vec<String> = self
+            .read_pairs(RelationshipFilter {
+                resource_type: "organization".to_string(),
+                optional_resource_id: String::new(),
+                optional_resource_id_prefix: String::new(),
+                optional_relation: String::new(),
+                optional_subject_filter: Some(SubjectFilter {
+                    subject_type: "user".to_string(),
+                    optional_subject_id: handle.to_string(),
+                    optional_relation: None,
+                }),
+            })
+            .await?
+            .into_iter()
+            .map(|(org, _)| org)
+            .collect();
+        slugs.sort();
+        slugs.dedup();
+        Ok(slugs)
+    }
+
+    /// Stream `ReadRelationships` for `filter` and collect
+    /// `(resource id, subject id)`, dropping wildcard subjects.
+    /// Fully consistent: these back a page that must show a toggle it
+    /// has just made, and a reconcile that must not act on stale state.
+    async fn read_pairs(&self, filter: RelationshipFilter) -> Result<Vec<(String, String)>> {
+        let req = ReadRelationshipsRequest {
+            consistency: consistency_requirement(true),
+            relationship_filter: Some(filter),
+            optional_limit: 0,
+            optional_cursor: None,
+        };
+        let mut inner = self.inner.clone();
+        let mut stream = inner
+            .read_relationships(req)
+            .await
+            .context("SpiceDB ReadRelationships failed")?;
+        let mut out = Vec::new();
+        loop {
+            match stream.message().await {
+                Ok(Some(msg)) => {
+                    let Some(rel) = msg.relationship else {
+                        continue;
+                    };
+                    let resource = rel.resource.map(|r| r.object_id).unwrap_or_default();
+                    let subject = rel
+                        .subject
+                        .and_then(|s| s.object)
+                        .map(|o| o.object_id)
+                        .unwrap_or_default();
+                    if !resource.is_empty() && !subject.is_empty() && subject != "*" {
+                        out.push((resource, subject));
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "SpiceDB ReadRelationships stream error: {e}"
+                    ));
+                }
+            }
+        }
+        Ok(out)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -953,6 +1142,51 @@ fn consistency_requirement(fully_consistent: bool) -> Option<Consistency> {
         })
     } else {
         None
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod test_live {
+    use super::*;
+    use spicedb_grpc::authzed::api::v1::WriteSchemaRequest;
+
+    // -- Against a real SpiceDB -----------------------------------------
+    //
+    // Sharing with friends is a permission expression in schema.zed, not
+    // code, so only a real SpiceDB loaded with the real schema can say
+    // whether it grants the right people. Run with:
+    //
+    //   docker run -p 50051:50051 authzed/spicedb:v1.43.0 serve-testing
+    //   STARSTATS_TEST_SPICEDB_URL=http://127.0.0.1:50051 \
+    //     cargo test -p starstats-server live_spicedb
+    //
+    // serve-testing gives every preshared key its own empty datastore,
+    // so each test takes a fresh key. Skipped when the variable is unset.
+
+    pub(crate) async fn live_spicedb() -> Option<SpicedbClient> {
+        let endpoint = std::env::var("STARSTATS_TEST_SPICEDB_URL").ok()?;
+        let key = format!("test-{}", uuid::Uuid::new_v4());
+        let client = SpicedbClient::connect(SpicedbConfig {
+            endpoint,
+            preshared_key: key.clone(),
+        })
+        .await
+        .expect("STARSTATS_TEST_SPICEDB_URL is set but unreachable");
+        let token: MetadataValue<_> = format!("bearer {key}").parse().unwrap();
+        let mut schemas = SchemaServiceClient::with_interceptor(
+            client.inner.channel.clone(),
+            move |mut req: tonic::Request<()>| {
+                req.metadata_mut().insert("authorization", token.clone());
+                Ok(req)
+            },
+        );
+        schemas
+            .write_schema(WriteSchemaRequest {
+                schema: include_str!("../../../infra/spicedb/schema.zed").to_string(),
+            })
+            .await
+            .expect("infra/spicedb/schema.zed must be accepted by SpiceDB");
+        Some(client)
     }
 }
 
@@ -1107,5 +1341,97 @@ mod tests {
             err.to_string().contains("SpiceDB ping failed"),
             "got: {err}"
         );
+    }
+
+    use test_live::live_spicedb;
+
+    async fn can_view(c: &SpicedbClient, owner: &str, viewer: &str) -> bool {
+        c.check_permission_fully_consistent(
+            ObjectRef::new("stats_record", owner),
+            "view",
+            ObjectRef::new("user", viewer),
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn live_spicedb_friends_share_reaches_friends_only() {
+        let Some(c) = live_spicedb().await else {
+            return;
+        };
+        c.write_owner("Alice").await.unwrap();
+        c.write_friendship("Alice", "Bob").await.unwrap();
+
+        assert!(
+            !can_view(&c, "Alice", "Bob").await,
+            "a friendship alone shares nothing"
+        );
+
+        c.write_share_with_friends("Alice").await.unwrap();
+        assert!(c.has_share_with_friends("Alice").await.unwrap());
+        assert!(can_view(&c, "Alice", "Bob").await, "a friend can view");
+        assert!(!can_view(&c, "Alice", "Carol").await, "a stranger cannot");
+        assert!(
+            !can_view(&c, "Bob", "Alice").await,
+            "sharing is one way: Bob has not shared with his friends"
+        );
+
+        c.write_friendship("Alice", "Carol").await.unwrap();
+        assert!(
+            can_view(&c, "Alice", "Carol").await,
+            "a friend made after the share can view too"
+        );
+
+        c.delete_friendship("Alice", "Bob").await.unwrap();
+        assert!(
+            !can_view(&c, "Alice", "Bob").await,
+            "unfriending removes access"
+        );
+
+        c.delete_share_with_friends("Alice").await.unwrap();
+        assert!(!c.has_share_with_friends("Alice").await.unwrap());
+        assert!(
+            !can_view(&c, "Alice", "Carol").await,
+            "turning the share off removes access for every friend"
+        );
+        assert!(can_view(&c, "Alice", "Alice").await, "the owner always can");
+    }
+
+    #[tokio::test]
+    async fn live_spicedb_friend_tuples_are_written_and_deleted_in_pairs() {
+        let Some(c) = live_spicedb().await else {
+            return;
+        };
+        c.write_friendship("Alice", "Bob").await.unwrap();
+        c.write_friendship("Alice", "Bob").await.unwrap(); // idempotent
+        let mut tuples = c.list_friend_tuples().await.unwrap();
+        tuples.sort();
+        assert_eq!(
+            tuples,
+            vec![
+                ("Alice".to_string(), "Bob".to_string()),
+                ("Bob".to_string(), "Alice".to_string()),
+            ]
+        );
+        c.delete_friendship("Bob", "Alice").await.unwrap();
+        assert!(c.list_friend_tuples().await.unwrap().is_empty());
+        c.delete_friendship("Bob", "Alice").await.unwrap(); // idempotent
+    }
+
+    #[tokio::test]
+    async fn live_spicedb_lists_orgs_in_every_role() {
+        let Some(c) = live_spicedb().await else {
+            return;
+        };
+        c.write_org_role("miners", "Alice", "member").await.unwrap();
+        c.write_org_role("haulers", "Alice", "owner").await.unwrap();
+        c.write_org_role("haulers", "Alice", "admin").await.unwrap();
+        c.write_org_role("pirates", "Bob", "member").await.unwrap();
+        assert_eq!(
+            c.list_orgs_for_user("Alice").await.unwrap(),
+            vec!["haulers".to_string(), "miners".to_string()]
+        );
+        assert!(c.list_orgs_for_user("Carol").await.unwrap().is_empty());
     }
 }
