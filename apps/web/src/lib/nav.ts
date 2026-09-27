@@ -120,6 +120,15 @@ export const SITE_NAV: readonly NavDestination[] = [
     access: 'user',
     rowExempt: true,
   },
+  // Menu only too: the inline row is full, and a twelfth entry collapses
+  // the bar at 1440px (chrome-nav.spec.ts).
+  {
+    id: 'lfg',
+    label: 'Looking for Group',
+    href: '/lfg' as Route,
+    access: 'user',
+    rowExempt: true,
+  },
   // Menu only, like Friends: the account-menu badge is the way in.
   {
     id: 'whats-new',

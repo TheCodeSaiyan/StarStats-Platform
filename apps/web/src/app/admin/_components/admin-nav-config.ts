@@ -59,6 +59,7 @@ export const ADMIN_NAV: readonly AdminNavCategory[] = [
         href: '/admin/submissions?status=review',
       },
       { id: 'sharing', label: 'Sharing', href: '/admin/sharing' },
+      { id: 'lfg', label: 'LFG reports', href: '/admin/lfg/reports' },
       { id: 'audit', label: 'Audit log', href: '/admin/audit' },
     ],
   },
