@@ -30,6 +30,7 @@ mod location_catalog;
 // from already-parsed Game.log events; spawned from the setup closure
 // below only when the user opts in via `[org_connector]` in config.toml.
 mod org_connector;
+mod presence;
 // Tray-side hangar fetcher (Wave 5b). Spawned from the Tauri setup
 // closure below when an api_url + access_token are configured.
 mod hangar;
@@ -463,6 +464,12 @@ fn main() {
                 Arc::new(parking_lot::Mutex::new(handle))
             };
 
+            // The presence worker reads the same stored events and the
+            // same hot-swappable catalogue; cloned before AppState takes
+            // ownership of them.
+            let presence_storage = Arc::clone(&storage);
+            let presence_catalog = Arc::clone(&location_catalog_state);
+
             app.manage(AppState {
                 storage,
                 location_catalog: location_catalog_state,
@@ -539,6 +546,17 @@ fn main() {
             // and keep the friends list `detect_pii` redacts with. Idles
             // cheaply while unpaired; config is reloaded every tick.
             tauri::async_runtime::spawn(crate::social::run_poller(app.handle().clone()));
+
+            // Friends-only presence over the realtime gateway. Receives
+            // friends' presence and notification nudges while paired;
+            // reports this player's presence only if they turned
+            // `social.share_presence` on (and the server-side setting
+            // agrees).
+            tauri::async_runtime::spawn(crate::presence::run(
+                app.handle().clone(),
+                presence_storage,
+                presence_catalog,
+            ));
 
             // 6. One-shot preferences pull on app launch. Reconciles
             //    any drift from another device since last shutdown.
@@ -711,6 +729,9 @@ fn main() {
             commands::social_get_notifications,
             commands::social_mark_read,
             commands::social_get_prefs,
+            commands::social_get_presence,
+            commands::social_get_presence_level,
+            commands::social_set_presence_level,
             commands::social_set_prefs,
             commands::mark_whats_new_seen,
             commands::get_autostart_enabled,

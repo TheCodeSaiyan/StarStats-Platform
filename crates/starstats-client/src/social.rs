@@ -28,6 +28,20 @@ use uuid::Uuid;
 /// realtime gateway replaces it.
 pub const POLL_INTERVAL: Duration = Duration::from_secs(60);
 
+/// Wakes the poller early. The realtime gateway calls [`nudge`] when the
+/// server says a notification arrived, so a friend request reaches the
+/// tray in a second instead of up to a minute.
+static NUDGE: std::sync::OnceLock<tokio::sync::Notify> = std::sync::OnceLock::new();
+
+fn nudge_signal() -> &'static tokio::sync::Notify {
+    NUDGE.get_or_init(tokio::sync::Notify::new)
+}
+
+/// Ask the poller to poll now.
+pub fn nudge() {
+    nudge_signal().notify_one();
+}
+
 /// Above this many new notifications in one tick, show one summary toast
 /// rather than a stack of them.
 const TOAST_SUMMARY_THRESHOLD: usize = 3;
@@ -295,6 +309,39 @@ impl SocialClient {
             .await
     }
 
+    /// The WebSocket URL of the realtime gateway and the bearer token for
+    /// its upgrade request. `https` becomes `wss`; plain `http` is only
+    /// ever a local development server.
+    pub fn gateway(&self) -> (String, String) {
+        let url = if let Some(rest) = self.api_url.strip_prefix("https://") {
+            format!("wss://{rest}/v1/ws")
+        } else if let Some(rest) = self.api_url.strip_prefix("http://") {
+            format!("ws://{rest}/v1/ws")
+        } else {
+            format!("{}/v1/ws", self.api_url)
+        };
+        (url, self.bearer.clone())
+    }
+
+    /// The server-side presence gate: `off`, `status` or `system`.
+    pub async fn presence_level(&self) -> Result<String, SocialClientError> {
+        let v: serde_json::Value = self
+            .json(Method::GET, "/v1/me/presence/settings", None)
+            .await?;
+        Ok(v["level"].as_str().unwrap_or("off").to_string())
+    }
+
+    pub async fn set_presence_level(&self, level: &str) -> Result<String, SocialClientError> {
+        let v: serde_json::Value = self
+            .json(
+                Method::PUT,
+                "/v1/me/presence/settings",
+                Some(serde_json::json!({ "level": level })),
+            )
+            .await?;
+        Ok(v["level"].as_str().unwrap_or("off").to_string())
+    }
+
     pub async fn update_settings(
         &self,
         friend_request_policy: &str,
@@ -522,7 +569,10 @@ pub async fn run_poller(app: tauri::AppHandle) {
             }
             Err(e) => tracing::debug!(error = %e, "social poll: notifications fetch failed"),
         }
-        tokio::time::sleep(POLL_INTERVAL).await;
+        tokio::select! {
+            _ = tokio::time::sleep(POLL_INTERVAL) => {}
+            _ = nudge_signal().notified() => {}
+        }
     }
 }
 

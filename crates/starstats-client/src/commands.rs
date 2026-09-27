@@ -4861,6 +4861,32 @@ pub async fn social_mark_read(
     Ok(resp)
 }
 
+/// Friends' presence as last pushed by the realtime gateway.
+#[tauri::command(rename_all = "snake_case")]
+pub fn social_get_presence() -> Vec<crate::presence::FriendPresence> {
+    crate::presence::friends_snapshot()
+}
+
+/// The server-side presence gate: `off`, `status` or `system`.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_get_presence_level() -> Result<String, String> {
+    social_client()?
+        .presence_level()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_set_presence_level(level: String) -> Result<String, String> {
+    if !matches!(level.as_str(), "off" | "status" | "system") {
+        return Err(format!("unknown presence level: {level}"));
+    }
+    social_client()?
+        .set_presence_level(&level)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub fn social_get_prefs() -> Result<crate::config::SocialConfig, String> {
     Ok(config::load().map_err(|e| e.to_string())?.social)
@@ -4871,12 +4897,14 @@ pub fn social_set_prefs(
     toasts: bool,
     quiet_in_game: bool,
     release_toasts: bool,
+    share_presence: bool,
 ) -> Result<(), String> {
     let mut cfg = config::load().map_err(|e| e.to_string())?;
     cfg.social = crate::config::SocialConfig {
         toasts,
         quiet_in_game,
         release_toasts,
+        share_presence,
     };
     config::save(&cfg).map_err(|e| e.to_string())
 }

@@ -20,13 +20,16 @@ import { listen } from '@tauri-apps/api/event';
 import { open as openShell } from '@tauri-apps/plugin-shell';
 import {
   api,
+  type FriendPresence,
   type FriendRequestPolicy,
   type FriendsResponse,
   type ListedHandle,
   type NotificationsResponse,
   type SocialNotification,
+  type PresenceLevel,
   type SocialPrefs,
 } from '../api';
+import { presenceLabel } from '../lib/presence';
 import {
   Banner,
   DangerButton,
@@ -137,19 +140,27 @@ export function SocialPane() {
   const [blocks, setBlocks] = useState<ListedHandle[]>([]);
   const [mutes, setMutes] = useState<ListedHandle[]>([]);
   const [prefs, setPrefs] = useState<SocialPrefs | null>(null);
+  const [presence, setPresence] = useState<Record<string, FriendPresence>>({});
+  const [level, setLevel] = useState<PresenceLevel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [handle, setHandle] = useState('');
 
   const refresh = useCallback(async () => {
     // Each call settles on its own so one failure blanks one card.
-    const [f, n, b, m, p] = await Promise.allSettled([
+    const [f, n, b, m, p, pr, lv] = await Promise.allSettled([
       api.socialGetFriends(),
       api.socialGetNotifications(30),
       api.socialGetBlocks(),
       api.socialGetMutes(),
       api.socialGetPrefs(),
+      api.socialGetPresence(),
+      api.socialGetPresenceLevel(),
     ]);
+    if (pr.status === 'fulfilled') {
+      setPresence(Object.fromEntries(pr.value.map((x) => [x.handle.toLowerCase(), x])));
+    }
+    if (lv.status === 'fulfilled') setLevel(lv.value);
     if (f.status === 'fulfilled') setFriends(f.value);
     if (n.status === 'fulfilled') setNotes(n.value);
     if (b.status === 'fulfilled') setBlocks(b.value.blocks);
@@ -164,6 +175,22 @@ export function SocialPane() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  // The presence worker emits each friend's presence as the gateway pushes it.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<FriendPresence>('friend-presence', (e) => {
+      setPresence((prev) => ({ ...prev, [e.payload.handle.toLowerCase()]: e.payload }));
+    }).then((unl) => {
+      if (cancelled) unl();
+      else unlisten = unl;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   // The Rust poller emits after every poll; a changed unread count means a
   // new request or reply, so reload what the pane shows.
@@ -321,6 +348,14 @@ export function SocialPane() {
                 {f.rsi_verified ? null : (
                   <span style={{ color: 'var(--fg-dim)', fontSize: 11 }}> · not verified</span>
                 )}
+                {(() => {
+                  const label = presenceLabel(presence[f.handle.toLowerCase()]);
+                  return label ? (
+                    <span data-testid="friend-presence" style={{ color: 'var(--ok, var(--accent))', fontSize: 11 }}>
+                      {' '}· {label}
+                    </span>
+                  ) : null;
+                })()}
               </span>
               <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
                 <CopyButtons handle={f.handle} verified={f.rsi_verified} />
@@ -406,6 +441,45 @@ export function SocialPane() {
           onClick={(h) => void act(() => api.socialSetMuted(h, false), `Unmuted @${h}.`)}
         />
       </TrayCard>
+
+      {prefs ? (
+        <TrayCard title="Presence">
+          <p style={{ color: 'var(--fg-dim)', margin: '0 0 8px', fontSize: 12 }}>
+            Friends can see whether you are online, in game or in quantum, and your star
+            system if you allow it. Both switches below must be on. Nothing is kept once
+            you go offline.
+          </p>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={prefs.share_presence}
+              onChange={(e) => {
+                const next = { ...prefs, share_presence: e.target.checked };
+                void act(() => api.socialSetPrefs(next), 'Saved.');
+              }}
+            />
+            Share my presence from this tray
+          </label>
+          {level ? (
+            <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+              Friends see
+              <select
+                value={level}
+                onChange={(e) => {
+                  const v = e.target.value as PresenceLevel;
+                  void act(async () => {
+                    setLevel(await api.socialSetPresenceLevel(v));
+                  }, 'Saved.');
+                }}
+              >
+                <option value="off">nothing</option>
+                <option value="status">whether I am online, in game or in quantum</option>
+                <option value="system">that, and my star system</option>
+              </select>
+            </label>
+          ) : null}
+        </TrayCard>
+      ) : null}
 
       {prefs ? (
         <TrayCard title="Desktop notifications">
