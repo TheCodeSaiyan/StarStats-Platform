@@ -169,6 +169,35 @@ function AppInner() {
     return m;
   }, [bundles]);
 
+  // Players waiting on your open group, for the Crew tab badge. A join
+  // request arrives as a notification, so refresh on each one; the minute
+  // tick catches your own answers from the web and posts expiring.
+  const [crewPending, setCrewPending] = useState(0);
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    const load = () =>
+      api
+        .lfgSummary()
+        .then((s) => {
+          if (!cancelled) setCrewPending(s.pending_requests);
+        })
+        .catch(() => {
+          // Informational badge; unpaired or offline just hides it.
+        });
+    void load();
+    const tick = window.setInterval(() => void load(), 60_000);
+    listen('social-notifications', () => void load()).then((unl) => {
+      if (cancelled) unl();
+      else unlisten = unl;
+    });
+    return () => {
+      cancelled = true;
+      window.clearInterval(tick);
+      unlisten?.();
+    };
+  }, []);
+
   // Unread friend notifications for the Friends tab badge. The Rust
   // poller (`social::run_poller`) emits `social-notifications` after every
   // poll and after mark-read, so this listens rather than polling. One
@@ -272,6 +301,7 @@ function AppInner() {
         version={appVersion}
         reviewBadge={unknownCount}
         socialBadge={socialUnread}
+        crewBadge={crewPending}
         whatsNewBadge={whatsNewUnread}
       />
       <main className="app__main">

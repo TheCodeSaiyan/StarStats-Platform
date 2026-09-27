@@ -1146,6 +1146,8 @@ export const api = {
     }),
   socialGetPresence: () => invoke<FriendPresence[]>('social_get_presence'),
   lfgOptions: () => invoke<LfgOptions>('lfg_options'),
+  lfgSummary: () =>
+    invoke<{ hosting: boolean; pending_requests: number }>('lfg_summary'),
   lfgList: (activity: string | null, system: string | null) =>
     invoke<{ posts: LfgPost[] }>('lfg_list', { activity, system }),
   lfgGet: (id: string) => invoke<LfgPostDetail>('lfg_get', { id }),

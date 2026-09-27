@@ -34,6 +34,8 @@ interface Props {
   socialBadge?: number;
   /** Unread What's New entries. Shown on the What's New tab. 0 hides it. */
   whatsNewBadge?: number;
+  /** Players waiting on your open group. Shown on the Crew tab. 0 hides it. */
+  crewBadge?: number;
 }
 
 const TABS: ReadonlyArray<TrayView> = [
@@ -82,6 +84,7 @@ export function TrayHeader({
   version,
   reviewBadge = 0,
   socialBadge = 0,
+  crewBadge = 0,
   whatsNewBadge = 0,
 }: Props) {
   return (
@@ -137,9 +140,11 @@ export function TrayHeader({
               ? reviewBadge
               : tab === 'social'
                 ? socialBadge
-                : tab === 'whats-new'
-                  ? whatsNewBadge
-                  : 0;
+                : tab === 'lfg'
+                  ? crewBadge
+                  : tab === 'whats-new'
+                    ? whatsNewBadge
+                    : 0;
           const showBadge = badge > 0;
           return (
             <button
@@ -157,7 +162,9 @@ export function TrayHeader({
                     ? `Review, ${badge} unknown ${badge === 1 ? 'line' : 'lines'}`
                     : tab === 'social'
                       ? `Friends, ${badge} unread ${badge === 1 ? 'notification' : 'notifications'}`
-                      : `What's New, ${badge} unread`
+                      : tab === 'lfg'
+                        ? `Crew, ${badge} ${badge === 1 ? 'player' : 'players'} waiting`
+                        : `What's New, ${badge} unread`
               }
               style={{
                 background: active ? 'var(--accent-soft)' : 'transparent',
