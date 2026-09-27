@@ -2180,6 +2180,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/share-with-friends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Share the caller's stats with every friend, present and future.
+         *     One SpiceDB tuple (`stats_record:<me>#share_with_friends_of@user:<me>`)
+         *     grants it through the caller's `user#friend` tuples, so becoming or
+         *     ceasing to be friends changes access with no further write here.
+         *     Like an org share it carries no scope, expiry or note: a friend
+         *     with a narrower direct share keeps that share's clamp.
+         */
+        put: operations["share_with_friends"];
+        post?: never;
+        /**
+         * Stop sharing with friends as a group. Direct shares to individual
+         *     friends are separate grants and stay.
+         */
+        delete: operations["unshare_with_friends"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/share/org": {
         parameters: {
             query?: never;
@@ -5618,7 +5646,7 @@ export interface components {
          *     as `Everyone`, so existing users need no backfill.
          * @enum {string}
          */
-        FriendRequestPolicy: "everyone" | "nobody";
+        FriendRequestPolicy: "everyone" | "org_mates" | "nobody";
         FriendRequestResponse: {
             request: components["schemas"]["FriendRequest"];
         };
@@ -6051,6 +6079,12 @@ export interface components {
              */
             org_shares?: components["schemas"]["OrgShareEntry"][];
             shares: components["schemas"]["ShareEntry"][];
+            /**
+             * @description Whether the caller shares with all their friends. `None` when
+             *     SpiceDB could not say: reading that as "not sharing" would tell
+             *     someone their stats are private when they may not be.
+             */
+            with_friends?: boolean | null;
         };
         /** @description One entry on a block or mute list. */
         ListedHandle: {
@@ -8038,6 +8072,9 @@ export interface components {
              *     beyond what the owner could request themselves.
              */
             window_days?: number | null;
+        };
+        ShareWithFriendsResponse: {
+            with_friends: boolean;
         };
         /**
          * @description One row of a shared event feed.
@@ -15609,6 +15646,87 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
+            };
+            /** @description SpiceDB not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    share_with_friends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sharing with friends (idempotent) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareWithFriendsResponse"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller hasn't proven RSI handle ownership, or sharing is paused */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description SpiceDB not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    unshare_with_friends: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not sharing with friends (idempotent) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareWithFriendsResponse"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description SpiceDB not configured */
             503: {

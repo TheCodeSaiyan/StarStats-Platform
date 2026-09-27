@@ -42,7 +42,7 @@ use axum::{
     extract::{Path, Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Json, Response},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Extension, Router,
 };
 use chrono::{DateTime, Utc};
@@ -69,6 +69,13 @@ pub fn routes(
     // `listing_opt_out` read so it can return both fields in one shot.
     let share_user_router = Router::new()
         .route("/v1/me/share", post(add_share::<PostgresUserStore>))
+        // Not `/v1/me/share/friends`: that would shadow
+        // `DELETE /v1/me/share/{recipient_handle}` for a user named
+        // "friends".
+        .route(
+            "/v1/me/share-with-friends",
+            put(share_with_friends::<PostgresUserStore>).delete(unshare_with_friends),
+        )
         .route(
             "/v1/me/visibility",
             post(set_visibility::<PostgresUserStore>).get(get_visibility::<PostgresUserStore>),
@@ -319,6 +326,16 @@ pub struct ListSharesResponse {
     /// checks.
     #[serde(default)]
     pub org_shares: Vec<OrgShareEntry>,
+    /// Whether the caller shares with all their friends. `None` when
+    /// SpiceDB could not say: reading that as "not sharing" would tell
+    /// someone their stats are private when they may not be.
+    #[serde(default)]
+    pub with_friends: Option<bool>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct ShareWithFriendsResponse {
+    pub with_friends: bool,
 }
 
 /// One inbound share: an owner who has granted the caller view
@@ -1390,12 +1407,23 @@ pub async fn list_shares(
             Vec::new()
         }
     };
+    let with_friends = match client
+        .has_share_with_friends(&auth.preferred_username)
+        .await
+    {
+        Ok(b) => Some(b),
+        Err(e) => {
+            tracing::warn!(error = %e, "friends share read failed; returning with_friends=null");
+            None
+        }
+    };
     (
         StatusCode::OK,
         no_store(),
         Json(ListSharesResponse {
             shares: user_shares,
             org_shares,
+            with_friends,
         }),
     )
         .into_response()
@@ -1633,6 +1661,125 @@ pub async fn unshare_with_org(
         .into_response()
 }
 
+/// Share the caller's stats with every friend, present and future.
+/// One SpiceDB tuple (`stats_record:<me>#share_with_friends_of@user:<me>`)
+/// grants it through the caller's `user#friend` tuples, so becoming or
+/// ceasing to be friends changes access with no further write here.
+/// Like an org share it carries no scope, expiry or note: a friend
+/// with a narrower direct share keeps that share's clamp.
+#[utoipa::path(
+    put,
+    path = "/v1/me/share-with-friends",
+    tag = "sharing",
+    responses(
+        (status = 200, description = "Sharing with friends (idempotent)", body = ShareWithFriendsResponse),
+        (status = 401, description = "Missing or invalid bearer token"),
+        (status = 403, description = "Caller hasn't proven RSI handle ownership, or sharing is paused", body = ApiErrorBody),
+        (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
+    ),
+    security(("BearerAuth" = []))
+)]
+pub async fn share_with_friends<U: UserStore>(
+    State(users): State<Arc<U>>,
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(audit): Extension<Arc<dyn AuditLog>>,
+    guard: RequireUnrestricted<Sharing>,
+) -> Response {
+    let auth = guard.into_user();
+    if let Some(resp) = require_rsi_verified(users.as_ref(), &auth).await {
+        return resp;
+    }
+    // Same auto-pause gate as `add_share`: this is a grant, to everyone
+    // on the friends list at once.
+    match users
+        .get_shares_paused_until_by_handle(&auth.preferred_username)
+        .await
+    {
+        Ok(Some(until)) if until > Utc::now() => {
+            return (
+                StatusCode::FORBIDDEN,
+                Json(ApiErrorBody {
+                    error: "shares_paused".into(),
+                    detail: Some(format!("paused until {}", until.to_rfc3339())),
+                }),
+            )
+                .into_response();
+        }
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(error = %e, "shares_paused_until lookup failed; skipping gate");
+        }
+    }
+
+    let Some(client) = spicedb.as_ref() else {
+        return err(StatusCode::SERVICE_UNAVAILABLE, "spicedb_unavailable");
+    };
+    if let Err(e) = client
+        .write_share_with_friends(&auth.preferred_username)
+        .await
+    {
+        tracing::error!(error = %e, "write_share_with_friends failed");
+        return err(StatusCode::INTERNAL_SERVER_ERROR, "spicedb_error");
+    }
+    if let Err(e) = audit
+        .append(AuditEntry {
+            actor_sub: Some(auth.sub.clone()),
+            actor_handle: Some(auth.preferred_username.clone()),
+            action: "share.friends_granted".to_string(),
+            payload: serde_json::json!({}),
+        })
+        .await
+    {
+        tracing::warn!(error = %e, "audit log append failed (share.friends_granted)");
+    }
+    Json(ShareWithFriendsResponse { with_friends: true }).into_response()
+}
+
+/// Stop sharing with friends as a group. Direct shares to individual
+/// friends are separate grants and stay.
+#[utoipa::path(
+    delete,
+    path = "/v1/me/share-with-friends",
+    tag = "sharing",
+    responses(
+        (status = 200, description = "Not sharing with friends (idempotent)", body = ShareWithFriendsResponse),
+        (status = 401, description = "Missing or invalid bearer token"),
+        (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
+    ),
+    security(("BearerAuth" = []))
+)]
+pub async fn unshare_with_friends(
+    Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    Extension(audit): Extension<Arc<dyn AuditLog>>,
+    auth: AuthenticatedUser,
+) -> Response {
+    let Some(client) = spicedb.as_ref() else {
+        return err(StatusCode::SERVICE_UNAVAILABLE, "spicedb_unavailable");
+    };
+    if let Err(e) = client
+        .delete_share_with_friends(&auth.preferred_username)
+        .await
+    {
+        tracing::error!(error = %e, "delete_share_with_friends failed");
+        return err(StatusCode::INTERNAL_SERVER_ERROR, "spicedb_error");
+    }
+    if let Err(e) = audit
+        .append(AuditEntry {
+            actor_sub: Some(auth.sub.clone()),
+            actor_handle: Some(auth.preferred_username.clone()),
+            action: "share.friends_revoked".to_string(),
+            payload: serde_json::json!({}),
+        })
+        .await
+    {
+        tracing::warn!(error = %e, "audit log append failed (share.friends_revoked)");
+    }
+    Json(ShareWithFriendsResponse {
+        with_friends: false,
+    })
+    .into_response()
+}
+
 // -- Public read endpoints ------------------------------------------
 
 /// Check `public_view` on `stats_record:<handle>`. Returns `Ok(bool)`
@@ -1729,7 +1876,17 @@ async fn check_view_with_expiry(
     {
         tracing::warn!(error = %e, "audit log append failed (share.expired_revoked)");
     }
-    Ok(false)
+    // Only the direct share expired. The viewer may still be allowed
+    // another way (an org share, or a friends share), so ask again,
+    // fully consistent so the answer reflects the revoke just made.
+    client
+        .check_permission_fully_consistent(
+            ObjectRef::new("stats_record", owner),
+            "view",
+            ObjectRef::new("user", viewer),
+        )
+        .await
+        .inspect_err(|e| tracing::warn!(error = %e, "spicedb re-check after expiry failed"))
 }
 
 /// Convert `check_public`/`check_view` results into a handler response.
@@ -3919,6 +4076,56 @@ mod tests {
         let (status, body) = read_body(resp).await;
         assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(body["error"], "spicedb_unavailable");
+    }
+
+    /// An expired direct share is revoked, but only it: a viewer who is
+    /// also allowed as a friend keeps access. Before, the expiry path
+    /// answered "no" outright and locked the friend out. Needs a real
+    /// SpiceDB (see `spicedb::test_live`); skipped without one.
+    #[tokio::test]
+    async fn live_spicedb_expired_direct_share_leaves_friend_access() {
+        let Some(c) = crate::spicedb::test_live::live_spicedb().await else {
+            return;
+        };
+        let meta = MemoryShareMetadataStore::default();
+        let audit = MemoryAuditLog::default();
+        let expired = Some(Utc::now() - chrono::Duration::hours(1));
+
+        c.write_share_with_user("Alice", "Bob").await.unwrap();
+        meta.upsert("Alice", "Bob", expired, None, None)
+            .await
+            .unwrap();
+        c.write_share_with_user("Alice", "Carol").await.unwrap();
+        meta.upsert("Alice", "Carol", expired, None, None)
+            .await
+            .unwrap();
+        c.write_share_with_friends("Alice").await.unwrap();
+        c.write_friendship("Alice", "Bob").await.unwrap();
+
+        assert!(
+            check_view_with_expiry(&c, &meta, &audit, "Alice", "Bob")
+                .await
+                .unwrap(),
+            "Bob is still a friend, and Alice shares with friends"
+        );
+        assert!(
+            !check_view_with_expiry(&c, &meta, &audit, "Alice", "Carol")
+                .await
+                .unwrap(),
+            "Carol had only the expired share"
+        );
+        // Bob's expired direct share was still revoked: without the
+        // friendship he has nothing left.
+        assert!(meta.find("Alice", "Bob").await.unwrap().is_none());
+        c.delete_friendship("Alice", "Bob").await.unwrap();
+        assert!(!c
+            .check_permission_fully_consistent(
+                ObjectRef::new("stats_record", "Alice"),
+                "view",
+                ObjectRef::new("user", "Bob"),
+            )
+            .await
+            .unwrap());
     }
 }
 

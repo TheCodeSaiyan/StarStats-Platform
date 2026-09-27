@@ -1,7 +1,15 @@
 // StarStats authorization schema (Zanzibar-style ReBAC)
 // Apply with: zed schema write infra/spicedb/schema.zed
 
-definition user {}
+definition user {
+    // Friendship is symmetric and written as two tuples, one each way
+    // (user:<a>#friend@user:<b> and user:<b>#friend@user:<a>), so
+    // share_with_friends_of->friend below reads from the owner's side.
+    // Postgres `friendships` is the source of truth; the server writes
+    // these on accept, deletes them on unfriend and block, and a
+    // reconcile loop repairs any write that failed.
+    relation friend: user
+}
 
 // Org-wide membership and roles
 definition organization {
@@ -24,6 +32,9 @@ definition stats_record {
     relation share_with_org: organization
     relation share_with_user: user
     relation public_view: user:*  // wildcard = anyone, including unauthenticated
+    // Always the owner themselves: one tuple that covers every friend,
+    // present and future, via the owner's user#friend tuples.
+    relation share_with_friends_of: user
 
     // Single line on purpose: SpiceDB's schema parser does NOT accept
     // a leading `+` on a continuation line — it terminates the
@@ -33,7 +44,7 @@ definition stats_record {
     // statement or definition, found: TokenTypePlus"). If splitting
     // for readability, put the `+` at the END of the previous line,
     // not the start of the next one — that the parser does accept.
-    permission view = owner + share_with_user + share_with_org->view + share_with_org->view_all_member_stats + public_view
+    permission view = owner + share_with_user + share_with_org->view + share_with_org->view_all_member_stats + public_view + share_with_friends_of->friend
     permission edit = owner
 }
 

@@ -241,7 +241,14 @@ SpiceDB hosts a Zanzibar-style ReBAC schema (see
 `stats_record`. The intended permissions:
 
 - `view` on a `stats_record` — owner, share-with-user grant,
-  share-with-org grant, public wildcard.
+  share-with-org grant, public wildcard, and share-with-friends: one
+  `share_with_friends_of` tuple on the owner that reaches everyone the
+  owner is friends with, through `user#friend`.
+- `friend` on a `user` — written as a pair, one tuple each way, from
+  Postgres `friendships`, which stays the source of truth. The friend
+  routes write and delete the pair best effort, and
+  `friend_sync::spawn_reconcile_loop` repairs drift every ten minutes;
+  its first pass after a deploy is also the backfill.
 - `manage_members` / `manage_org` on an organization — admin / owner.
 
 Current state: **advisory only**. `query::summary` calls

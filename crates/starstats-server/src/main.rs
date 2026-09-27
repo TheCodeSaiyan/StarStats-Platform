@@ -78,6 +78,7 @@ mod export_routes;
 mod facts;
 mod facts_routes;
 mod facts_store;
+mod friend_sync;
 mod hangar_routes;
 mod hangar_store;
 mod health;
@@ -617,6 +618,10 @@ async fn main() -> anyhow::Result<()> {
         crate::notifications::PostgresNotificationStore::new(pool.clone()),
     );
     let notifications_for_purge = notifications_dyn.clone();
+    // Friend tuples in SpiceDB follow Postgres friendships (phase 1b).
+    let social_for_friend_sync = social_dyn.clone();
+    let spicedb_for_friend_sync = spicedb.clone();
+    let rsi_orgs_dyn: Arc<dyn crate::rsi_org_store::RsiOrgStore> = rsi_orgs.clone();
     // News posts from the admin console (migration 0071).
     let news_dyn: Arc<dyn crate::news::NewsStore> =
         Arc::new(crate::news::PostgresNewsStore::new(pool.clone()));
@@ -1000,6 +1005,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(account_restrictions_dyn))
         .layer(Extension(share_reports_dyn))
         .layer(Extension(social_dyn))
+        // The org_mates friend-request policy reads RSI org snapshots.
+        .layer(Extension(rsi_orgs_dyn))
         .layer(Extension(notifications_dyn))
         .layer(Extension(news_dyn))
         .layer(Extension(releases_dyn))
@@ -1281,6 +1288,11 @@ async fn main() -> anyhow::Result<()> {
     // Notifications are prompts, not records: drop them after
     // `notifications::RETENTION_DAYS`.
     notifications::spawn_purge_loop(notifications_for_purge);
+
+    // Keep SpiceDB's friend tuples in step with Postgres friendships:
+    // the first pass backfills friendships made before sharing with
+    // friends existed, later passes repair writes the routes missed.
+    friend_sync::spawn_reconcile_loop(social_for_friend_sync, spicedb_for_friend_sync);
 
     // Daily parser-health pass: detect an event type that has stopped being
     // produced while users stayed active. Motivated by `vehicle_stowed`

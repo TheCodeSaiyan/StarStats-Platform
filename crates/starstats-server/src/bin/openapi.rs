@@ -179,6 +179,8 @@ mod unknown_tags;
 // `mod.rs` enumerates the submodules; we only need the top-level mod
 // here. main.rs adds its own copy when it wires the routes (post-
 // Phase 7 follow-up).
+#[path = "../friend_sync.rs"]
+mod friend_sync;
 #[path = "../news.rs"]
 mod news;
 #[path = "../news_routes.rs"]
