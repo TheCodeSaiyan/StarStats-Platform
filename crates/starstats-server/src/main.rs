@@ -63,6 +63,8 @@ mod audit;
 mod audit_mirror;
 mod auth;
 mod auth_routes;
+mod commend_routes;
+mod commends;
 mod config;
 mod contract_entities;
 mod contract_routes;
@@ -649,6 +651,11 @@ async fn main() -> anyhow::Result<()> {
     let salutes_dyn: Arc<dyn crate::salutes::SaluteStore> =
         Arc::new(crate::salutes::PostgresSaluteStore::new(pool.clone()));
     let salute_limiter = Arc::new(crate::salutes::SaluteRateLimiter::new());
+    // Social phase 5: crew history and commends (migration 0076).
+    let commends_dyn: Arc<dyn crate::commends::CommendStore> =
+        Arc::new(crate::commends::PostgresCommendStore::new(pool.clone()));
+    let commends_for_purge = commends_dyn.clone();
+    let commend_limiter = Arc::new(crate::commends::CommendRateLimiter::new());
     // News posts from the admin console (migration 0071).
     let news_dyn: Arc<dyn crate::news::NewsStore> =
         Arc::new(crate::news::PostgresNewsStore::new(pool.clone()));
@@ -969,6 +976,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(salute_routes::routes())
         .merge(presence_routes::routes())
         .merge(lfg_routes::routes())
+        .merge(commend_routes::routes())
         .merge(news_routes::routes())
         .merge(release_routes::routes())
         .merge(rsi_router)
@@ -1042,6 +1050,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(presence_hub))
         .layer(Extension(presence_settings_dyn))
         .layer(Extension(lfg_dyn))
+        .layer(Extension(commends_dyn))
+        .layer(Extension(commend_limiter))
         .layer(Extension(notifications_dyn))
         .layer(Extension(news_dyn))
         .layer(Extension(releases_dyn))
@@ -1333,8 +1343,9 @@ async fn main() -> anyhow::Result<()> {
     presence_routes::spawn_sweep_loop(presence_hub_for_sweep, social_for_presence_sweep);
 
     // Ended LFG posts are deleted after `lfg::RETAIN_ENDED_DAYS`, unless an
-    // open report still points at one.
-    lfg_routes::spawn_purge_loop(lfg_for_purge);
+    // open report still points at one; crew history after
+    // `commends::CREW_HISTORY_DAYS`.
+    lfg_routes::spawn_purge_loop(lfg_for_purge, commends_for_purge);
 
     // Daily parser-health pass: detect an event type that has stopped being
     // produced while users stayed active. Motivated by `vehicle_stowed`

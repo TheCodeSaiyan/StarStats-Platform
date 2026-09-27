@@ -39,6 +39,9 @@ pub enum NotificationKind {
     LfgJoinRequest,
     /// The host accepted you into their group.
     LfgJoinAccepted,
+    /// A crewmate commended you. Carries the kind and the post's
+    /// activity, never who gave it.
+    Commend,
 }
 
 impl NotificationKind {
@@ -49,6 +52,7 @@ impl NotificationKind {
             Self::Salute => "salute",
             Self::LfgJoinRequest => "lfg_join_request",
             Self::LfgJoinAccepted => "lfg_join_accepted",
+            Self::Commend => "commend",
         }
     }
 
@@ -59,6 +63,7 @@ impl NotificationKind {
             "salute" => Self::Salute,
             "lfg_join_request" => Self::LfgJoinRequest,
             "lfg_join_accepted" => Self::LfgJoinAccepted,
+            "commend" => Self::Commend,
             _ => return None,
         })
     }

@@ -81,7 +81,7 @@ fn not_found() -> Response {
 /// Whether `viewer` can see `owner`'s profile: their own, a public one
 /// that is not restricted, or one shared with them (as a person, an org
 /// member or a friend). Mirrors what the profile routes serve.
-async fn profile_visible(
+pub(crate) async fn profile_visible(
     client: &SpicedbClient,
     social: &dyn SocialStore,
     meta: &dyn ShareMetadataStore,

@@ -725,6 +725,7 @@ pub async fn respond(
     Extension(social): Extension<Arc<dyn SocialStore>>,
     Extension(notes): Extension<Arc<dyn NotificationStore>>,
     Extension(store): Extension<Arc<dyn LfgStore>>,
+    Extension(commends): Extension<Arc<dyn crate::commends::CommendStore>>,
     Path((id, handle)): Path<(Uuid, String)>,
     Json(body): Json<RespondBody>,
 ) -> Response {
@@ -767,6 +768,14 @@ pub async fn respond(
         Ok(None) => return not_found(),
         Err(e) => return store_err(e, "set_member_status"),
     };
+    record_crew_change(
+        commends.as_ref(),
+        store.as_ref(),
+        &post,
+        current.status,
+        &updated,
+    )
+    .await;
     if status == MemberStatus::Accepted {
         let host_verified = me.rsi_verified_at.is_some();
         notify(
@@ -780,6 +789,58 @@ pub async fn respond(
         .await;
     }
     Json(updated).into_response()
+}
+
+/// Keep crew history in step with the group. An accepted player flew with
+/// the host and everyone already in the crew (a player who left still
+/// flew); a player removed after being accepted did not, and loses their
+/// history and commends on this post. Best-effort: the response has
+/// already been decided, and a missed row only costs a commend.
+async fn record_crew_change(
+    commends: &dyn crate::commends::CommendStore,
+    store: &dyn LfgStore,
+    post: &LfgPost,
+    before: MemberStatus,
+    after: &LfgMember,
+) {
+    match after.status {
+        MemberStatus::Accepted => {
+            let members = match store.members(post.id).await {
+                Ok(m) => m,
+                Err(e) => {
+                    tracing::warn!(error = %e, "crew history: members failed");
+                    return;
+                }
+            };
+            let others = std::iter::once(post.host_handle.clone()).chain(
+                members
+                    .into_iter()
+                    .filter(|m| matches!(m.status, MemberStatus::Accepted | MemberStatus::Left))
+                    .filter(|m| !m.handle.eq_ignore_ascii_case(&after.handle))
+                    .map(|m| m.handle),
+            );
+            for other in others {
+                if let Err(e) = commends
+                    .record_crew(
+                        post.id,
+                        post.activity.as_str(),
+                        &after.handle,
+                        &other,
+                        Utc::now(),
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %e, "crew history: record failed");
+                }
+            }
+        }
+        MemberStatus::Removed if before == MemberStatus::Accepted => {
+            if let Err(e) = commends.forget_crew(post.id, &after.handle).await {
+                tracing::warn!(error = %e, "crew history: forget failed");
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Report a post to the moderators. The post is kept as it was when
@@ -991,7 +1052,10 @@ pub async fn admin_resolve(
 
 /// Delete ended posts once they are no longer useful, daily. A post with
 /// an open report is kept until the report is resolved.
-pub fn spawn_purge_loop(store: Arc<dyn LfgStore>) {
+pub fn spawn_purge_loop(
+    store: Arc<dyn LfgStore>,
+    commends: Arc<dyn crate::commends::CommendStore>,
+) {
     tokio::spawn(async move {
         let mut tick = tokio::time::interval(std::time::Duration::from_secs(24 * 60 * 60));
         loop {
@@ -1000,6 +1064,11 @@ pub fn spawn_purge_loop(store: Arc<dyn LfgStore>) {
             match store.purge_ended(before).await {
                 Ok(n) => tracing::info!(purged = n, "lfg retention sweep"),
                 Err(e) => tracing::warn!(error = %e, "lfg retention sweep failed"),
+            }
+            let before = Utc::now() - Duration::days(crate::commends::CREW_HISTORY_DAYS);
+            match commends.purge_crew_before(before).await {
+                Ok(n) => tracing::info!(purged = n, "crew history retention sweep"),
+                Err(e) => tracing::warn!(error = %e, "crew history retention sweep failed"),
             }
         }
     });
@@ -1030,6 +1099,7 @@ mod tests {
         notes: Arc<MemoryNotificationStore>,
         staff: Arc<MemoryStaffRoleStore>,
         restrictions: Arc<MemoryAccountRestrictionStore>,
+        commends: Arc<crate::commends::test_support::MemoryCommendStore>,
     }
 
     fn fixture() -> Fixture {
@@ -1046,7 +1116,14 @@ mod tests {
         let restrictions_dyn: Arc<dyn AccountRestrictionStore> = restrictions.clone();
         let store: Arc<dyn LfgStore> = Arc::new(MemoryLfgStore::new());
         let audit: Arc<dyn AuditLog> = Arc::new(MemoryAuditLog::default());
+        let commends = Arc::new(crate::commends::test_support::MemoryCommendStore::new());
+        let commends_dyn: Arc<dyn crate::commends::CommendStore> = commends.clone();
         let app = routes()
+            .merge(crate::commend_routes::routes())
+            .layer(Extension(commends_dyn))
+            .layer(Extension(Arc::new(
+                crate::commends::CommendRateLimiter::new(),
+            )))
             .layer(Extension(users_dyn))
             .layer(Extension(social_dyn))
             .layer(Extension(notes_dyn))
@@ -1063,6 +1140,7 @@ mod tests {
             notes,
             staff,
             restrictions,
+            commends,
         }
     }
 
@@ -1379,5 +1457,275 @@ mod tests {
             .await;
         assert_eq!(s, StatusCode::CONFLICT);
         assert_eq!(v["error"], "already_resolved");
+    }
+
+    async fn crew_of_three(f: &Fixture) -> (String, String, String, String) {
+        let host = f.user("Host", true).await;
+        let bob = f.user("Bob", true).await;
+        let carol = f.user("Carol", true).await;
+        let id = f.post(&host, 3).await;
+        for (who, handle) in [(&bob, "bob"), (&carol, "carol")] {
+            f.call("POST", &format!("/v1/lfg/{id}/join"), who, None)
+                .await;
+            let (s, v) = f
+                .call(
+                    "PUT",
+                    &format!("/v1/lfg/{id}/members/{handle}"),
+                    &host,
+                    Some(serde_json::json!({ "action": "accept" })),
+                )
+                .await;
+            assert_eq!(s, StatusCode::OK, "{v}");
+        }
+        (host, bob, carol, id)
+    }
+
+    #[tokio::test]
+    async fn accepted_crew_flew_together_and_a_requester_did_not() {
+        use crate::commends::CommendStore;
+        let f = fixture();
+        let (host, _bob, _carol, id) = crew_of_three(&f).await;
+        let dave = f.user("Dave", true).await;
+        f.call("POST", &format!("/v1/lfg/{id}/join"), &dave, None)
+            .await;
+        let post: Uuid = id.parse().unwrap();
+        assert!(f.commends.flew_together(post, "Bob", "Host").await.unwrap());
+        assert!(
+            f.commends
+                .flew_together(post, "Carol", "Bob")
+                .await
+                .unwrap(),
+            "crewmates, not just the host"
+        );
+        assert!(!f
+            .commends
+            .flew_together(post, "Dave", "Host")
+            .await
+            .unwrap());
+
+        // Removed after being accepted: did not fly.
+        f.call(
+            "PUT",
+            &format!("/v1/lfg/{id}/members/carol"),
+            &host,
+            Some(serde_json::json!({ "action": "remove" })),
+        )
+        .await;
+        assert!(!f
+            .commends
+            .flew_together(post, "Carol", "Host")
+            .await
+            .unwrap());
+        assert!(f.commends.flew_together(post, "Bob", "Host").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn crew_commend_once_the_post_ends_and_nobody_learns_who() {
+        let f = fixture();
+        let (host, bob, carol, id) = crew_of_three(&f).await;
+        let uri = format!("/v1/crew/{id}/commends/host");
+        let body = Some(serde_json::json!({ "kind": "great_pilot" }));
+
+        let (s, v) = f.call("PUT", &uri, &bob, body.clone()).await;
+        assert_eq!(s, StatusCode::CONFLICT);
+        assert_eq!(v["error"], "post_not_ended");
+
+        let (s, _) = f
+            .call("DELETE", &format!("/v1/lfg/{id}"), &host, None)
+            .await;
+        assert!(s.is_success(), "{s}");
+        let before = f.notes.all_for("Host").len();
+
+        let (s, v) = f.call("PUT", &uri, &bob, body.clone()).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        assert_eq!(v["kind"], "great_pilot");
+        let told = f.notes.all_for("Host");
+        assert_eq!(told.len(), before + 1, "the host is told");
+        let n = told
+            .iter()
+            .find(|n| n.kind == NotificationKind::Commend)
+            .unwrap();
+        assert_eq!(n.actor_handle, None, "without a name");
+        assert_eq!(n.payload["kind"], "great_pilot");
+
+        // Changing the word does not notify again.
+        let (s, _) = f
+            .call(
+                "PUT",
+                &uri,
+                &bob,
+                Some(serde_json::json!({ "kind": "good_comms" })),
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(f.notes.all_for("Host").len(), before + 1);
+        f.call("PUT", &uri, &carol, body.clone()).await;
+
+        let (_, v) = f.call("GET", "/v1/me/commends", &host, None).await;
+        let count = |k: &str| {
+            v["totals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|t| t["kind"] == k)
+                .unwrap()["count"]
+                .clone()
+        };
+        assert_eq!(count("good_comms"), 1);
+        assert_eq!(count("great_pilot"), 1);
+        assert_eq!(count("reliable"), 0);
+
+        // Bob sees the window, his crewmates, and what he gave.
+        let (_, v) = f.call("GET", "/v1/me/crew", &bob, None).await;
+        let w = &v["windows"][0];
+        assert_eq!(w["post_id"], id.as_str());
+        assert_eq!(w["crew"].as_array().unwrap().len(), 2);
+        let host_row = w["crew"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|m| m["handle"] == "Host")
+            .unwrap();
+        assert_eq!(host_row["my_commend"], "good_comms");
+        assert_eq!(v["history"].as_array().unwrap().len(), 2);
+
+        let (s, _) = f.call("DELETE", &uri, &bob, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        let (_, v) = f.call("GET", "/v1/me/commends", &host, None).await;
+        assert_eq!(
+            v["totals"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|t| t["count"] != 0)
+                .count(),
+            1,
+            "only Carol's is left"
+        );
+    }
+
+    #[tokio::test]
+    async fn only_crewmates_can_commend_and_never_themselves() {
+        let f = fixture();
+        let (host, bob, _carol, id) = crew_of_three(&f).await;
+        let dave = f.user("Dave", true).await;
+        f.call("POST", &format!("/v1/lfg/{id}/join"), &dave, None)
+            .await;
+        f.call("DELETE", &format!("/v1/lfg/{id}"), &host, None)
+            .await;
+        let body = Some(serde_json::json!({ "kind": "reliable" }));
+
+        let (s, v) = f
+            .call(
+                "PUT",
+                &format!("/v1/crew/{id}/commends/host"),
+                &dave,
+                body.clone(),
+            )
+            .await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "asked but never flew");
+        assert_eq!(v["error"], "not_found");
+        let (s, v) = f
+            .call(
+                "PUT",
+                &format!("/v1/crew/{id}/commends/BOB"),
+                &bob,
+                body.clone(),
+            )
+            .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"], "cannot_commend_self");
+        let (s, _) = f
+            .call(
+                "PUT",
+                &format!("/v1/crew/{id}/commends/ghost"),
+                &bob,
+                body.clone(),
+            )
+            .await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        let (s, _) = f
+            .call(
+                "PUT",
+                &format!("/v1/crew/{id}/commends/host"),
+                &bob,
+                Some(serde_json::json!({ "kind": "toxic" })),
+            )
+            .await;
+        assert!(s.is_client_error(), "no word outside the list: {s}");
+    }
+
+    #[tokio::test]
+    async fn an_unverified_crewmate_cannot_commend() {
+        use crate::commends::CommendStore;
+        let f = fixture();
+        let host = f.user("Host", true).await;
+        let eve = f.user("Eve", false).await;
+        let id = f.post(&host, 2).await;
+        f.call("DELETE", &format!("/v1/lfg/{id}"), &host, None)
+            .await;
+        // Joining needs a verified handle, so put her in the crew directly.
+        f.commends
+            .record_crew(id.parse().unwrap(), "mining", "Eve", "Host", Utc::now())
+            .await
+            .unwrap();
+        let (s, v) = f
+            .call(
+                "PUT",
+                &format!("/v1/crew/{id}/commends/host"),
+                &eve,
+                Some(serde_json::json!({ "kind": "reliable" })),
+            )
+            .await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+        assert_eq!(v["error"], "rsi_handle_not_verified");
+    }
+
+    fn ended_post(closed: Option<i64>, expires: i64, removed: bool) -> LfgPost {
+        let now = Utc::now();
+        LfgPost {
+            id: Uuid::new_v4(),
+            host_handle: "Host".into(),
+            activity: LfgActivity::Mining,
+            system: None,
+            location: None,
+            ship: None,
+            crew_slots: 2,
+            voice: LfgVoice::Optional,
+            region: LfgRegion::Eu,
+            note: None,
+            created_at: now - Duration::hours(100),
+            expires_at: now + Duration::hours(expires),
+            closed_at: closed.map(|h| now + Duration::hours(h)),
+            removed_at: removed.then_some(now),
+            crew_count: 1,
+        }
+    }
+
+    #[test]
+    fn the_commend_window_is_the_48_hours_after_the_post_ends() {
+        use crate::commend_routes::window_open;
+        let now = Utc::now();
+        assert_eq!(
+            window_open(&ended_post(None, 1, false), now).unwrap_err(),
+            "post_not_ended"
+        );
+        assert!(
+            window_open(&ended_post(Some(-47), 3, false), now).is_ok(),
+            "closed"
+        );
+        assert!(
+            window_open(&ended_post(None, -47, false), now).is_ok(),
+            "expired"
+        );
+        assert_eq!(
+            window_open(&ended_post(Some(-49), 3, false), now).unwrap_err(),
+            "window_closed"
+        );
+        assert_eq!(
+            window_open(&ended_post(Some(-1), 3, true), now).unwrap_err(),
+            "not_found",
+            "a post a moderator removed opens no window"
+        );
     }
 }
