@@ -34,7 +34,7 @@ interface Props {
   socialBadge?: number;
   /** Unread What's New entries. Shown on the What's New tab. 0 hides it. */
   whatsNewBadge?: number;
-  /** Players waiting on your open group. Shown on the Crew tab. 0 hides it. */
+  /** Players waiting on your group, plus crewmates you can still commend. 0 hides it. */
   crewBadge?: number;
 }
 
@@ -163,7 +163,7 @@ export function TrayHeader({
                     : tab === 'social'
                       ? `Friends, ${badge} unread ${badge === 1 ? 'notification' : 'notifications'}`
                       : tab === 'lfg'
-                        ? `Crew, ${badge} ${badge === 1 ? 'player' : 'players'} waiting`
+                        ? `Crew, ${badge} waiting on you`
                         : `What's New, ${badge} unread`
               }
               style={{

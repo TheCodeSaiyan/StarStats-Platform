@@ -29,6 +29,7 @@ import {
   type PresenceLevel,
   type SocialPrefs,
 } from '../api';
+import { commendLabel } from '../lib/commends';
 import { presenceLabel } from '../lib/presence';
 import {
   Banner,
@@ -542,7 +543,12 @@ function NotificationRow({
             ? `@${who} asked to join your group`
             : n.kind === 'lfg_join_accepted'
               ? `@${who} accepted you into their group`
-              : `New activity from @${who}`;
+              : n.kind === 'commend'
+                ? // Anonymous by design: the word, never who gave it.
+                  typeof n.payload.kind === 'string'
+                  ? `A crewmate commended you: ${commendLabel(n.payload.kind)}`
+                  : 'A crewmate commended you'
+                : `New activity from @${who}`;
   return (
     <div style={rowStyle} data-unread={n.read_at ? undefined : 'true'}>
       <span style={{ color: n.read_at ? 'var(--fg-muted)' : 'var(--fg)' }}>

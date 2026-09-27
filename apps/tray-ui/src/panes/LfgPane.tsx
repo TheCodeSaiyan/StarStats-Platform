@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import {
   api,
+  type CrewOverview,
   type LfgOptions,
   type LfgPost,
   type LfgPostDetail,
@@ -26,6 +27,7 @@ import {
   TextInput,
   TrayCard,
 } from '../components/tray/primitives';
+import { COMMEND_KINDS, commendLabel } from '../lib/commends';
 import { activityLabel, crewHandles, matchSystem, regionLabel, voiceLabel } from '../lib/lfg';
 import { CopyButtons } from './SocialPane';
 
@@ -43,6 +45,8 @@ const ERROR_COPY: Record<string, string> = {
   removed_from_group: 'The host removed you from that group.',
   post_ended: 'That post has ended.',
   account_restricted: 'Your account is restricted from this for now.',
+  post_not_ended: 'You can commend your crew once the post has ended.',
+  window_closed: 'Commends for that group have closed. They stay open for 48 hours.',
 };
 
 function describe(e: unknown): string {
@@ -86,13 +90,20 @@ export function LfgPane() {
   const [options, setOptions] = useState<LfgOptions | null>(null);
   const [posts, setPosts] = useState<LfgPost[] | null>(null);
   const [mine, setMine] = useState<LfgPostDetail | null>(null);
+  const [crew, setCrew] = useState<CrewOverview | null>(null);
   const [form, setForm] = useState<NewLfgPost>(emptyForm(null));
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [o, l] = await Promise.allSettled([api.lfgOptions(), api.lfgList(null, null)]);
+    const [o, l, c] = await Promise.allSettled([
+      api.lfgOptions(),
+      api.lfgList(null, null),
+      api.crewMine(),
+    ]);
     if (o.status === 'fulfilled') setOptions(o.value);
+    // Informational: an older server or a blip hides the crew cards only.
+    if (c.status === 'fulfilled') setCrew(c.value);
     if (l.status === 'fulfilled') {
       setPosts(l.value.posts);
       const own = l.value.posts.find((p) => p.is_host);
@@ -255,6 +266,69 @@ export function LfgPane() {
         </TrayCard>
       ) : null}
 
+      {crew && crew.windows.length > 0 ? (
+        <TrayCard title="Commend your crew" kicker={`${crew.windows.length} open`}>
+          <p style={{ margin: '0 0 6px', color: 'var(--fg-dim)', fontSize: 12 }}>
+            One word each, for someone you just flew with. Nobody sees who gave which, not even
+            them, though in a crew of two they can work it out.
+          </p>
+          {crew.windows.map((w) => (
+            <div key={w.post_id} data-testid="commend-window">
+              <p style={{ margin: '6px 0 0', color: 'var(--fg-dim)', fontSize: 11 }}>
+                {activityLabel(w.activity)} · open until{' '}
+                {new Date(w.closes_at).toLocaleString(undefined, {
+                  weekday: 'short',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+              {w.crew.map((m) => (
+                <div key={m.handle} style={rowStyle} data-testid="commend-mate">
+                  <span>@{m.handle}</span>
+                  <span
+                    style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}
+                    role="group"
+                    aria-label={`Commend @${m.handle}`}
+                  >
+                    {COMMEND_KINDS.map((kind) =>
+                      m.my_commend === kind ? (
+                        <PrimaryButton
+                          key={kind}
+                          type="button"
+                          aria-pressed
+                          onClick={() =>
+                            void act(
+                              () => api.crewWithdrawCommend(w.post_id, m.handle),
+                              'Commend withdrawn.',
+                            )
+                          }
+                        >
+                          {commendLabel(kind)}
+                        </PrimaryButton>
+                      ) : (
+                        <GhostButton
+                          key={kind}
+                          type="button"
+                          aria-pressed={false}
+                          onClick={() =>
+                            void act(
+                              () => api.crewCommend(w.post_id, m.handle, kind),
+                              `Commended @${m.handle}: ${commendLabel(kind)}.`,
+                            )
+                          }
+                        >
+                          {commendLabel(kind)}
+                        </GhostButton>
+                      ),
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ))}
+        </TrayCard>
+      ) : null}
+
       <TrayCard title="Looking for Group" kicker={posts ? `${others.length} open` : undefined}>
         {!posts ? (
           <p style={{ color: 'var(--fg-dim)', margin: 0 }}>Loading…</p>
@@ -303,6 +377,27 @@ export function LfgPane() {
           })
         )}
       </TrayCard>
+
+      {crew && crew.history.length > 0 ? (
+        <TrayCard title="Players you flew with" kicker="last 90 days">
+          <p style={{ margin: '0 0 6px', color: 'var(--fg-dim)', fontSize: 12 }}>
+            Only you can see this list.
+          </p>
+          {crew.history.slice(0, 20).map((m) => (
+            <div key={`${m.post_id}-${m.handle}`} style={rowStyle} data-testid="crew-history">
+              <span>
+                @{m.handle}
+                <span style={{ color: 'var(--fg-dim)', fontSize: 11 }}>
+                  {' '}
+                  · {activityLabel(m.activity)} ·{' '}
+                  {new Date(m.flew_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}
+                </span>
+              </span>
+              <CopyButtons handle={m.handle} verified />
+            </div>
+          ))}
+        </TrayCard>
+      ) : null}
 
       {!mine && options ? (
         <TrayCard title="Post a group">

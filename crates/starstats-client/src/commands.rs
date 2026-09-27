@@ -4988,6 +4988,56 @@ pub async fn lfg_respond(
     .await
 }
 
+/// Your crew history and the commend windows open to you.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn crew_mine() -> Result<serde_json::Value, String> {
+    lfg_call(reqwest::Method::GET, "/v1/me/crew", None).await
+}
+
+/// The words a crewmate can be commended with; the server holds the same
+/// closed list and refuses anything else.
+const COMMEND_KINDS: [&str; 4] = ["great_pilot", "good_comms", "reliable", "good_teacher"];
+
+/// Give or change a commend for someone you flew with.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn crew_commend(
+    post_id: String,
+    handle: String,
+    kind: String,
+) -> Result<serde_json::Value, String> {
+    if !COMMEND_KINDS.contains(&kind.as_str()) {
+        return Err(format!("unknown commend: {kind}"));
+    }
+    lfg_call(
+        reqwest::Method::PUT,
+        &format!(
+            "/v1/crew/{}/commends/{}",
+            lfg_id(&post_id)?,
+            crate::social::path_segment(&handle)
+        ),
+        Some(serde_json::json!({ "kind": kind })),
+    )
+    .await
+}
+
+/// Withdraw a commend while its window is open.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn crew_withdraw_commend(
+    post_id: String,
+    handle: String,
+) -> Result<serde_json::Value, String> {
+    lfg_call(
+        reqwest::Method::DELETE,
+        &format!(
+            "/v1/crew/{}/commends/{}",
+            lfg_id(&post_id)?,
+            crate::social::path_segment(&handle)
+        ),
+        None,
+    )
+    .await
+}
+
 /// Where the player is and what they are flying, from the game log, to
 /// pre-fill a post. Every field is a suggestion.
 #[tauri::command(rename_all = "snake_case")]
