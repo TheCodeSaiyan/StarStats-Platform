@@ -69,6 +69,7 @@ const STATUS_MESSAGES: Record<string, string> = {
   muted: 'Muted — their activity no longer notifies you.',
   unmuted: 'Unmuted.',
   policy_everyone: 'Anyone can now send you friend requests.',
+  policy_org_mates: 'Only people in one of your orgs can send you friend requests now.',
   policy_nobody: 'Nobody can send you friend requests now.',
   notifications_read: 'All notifications marked read.',
 };
@@ -329,6 +330,7 @@ export default async function FriendsPage(props: {
             defaultValue={friends.friend_request_policy}
           >
             <option value="everyone">Anyone with a StarStats account</option>
+            <option value="org_mates">People in one of my orgs</option>
             <option value="nobody">Nobody</option>
           </BeamSelect>
           <BeamButton type="submit" style={{ alignSelf: 'flex-start' }}>
