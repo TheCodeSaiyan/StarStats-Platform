@@ -314,11 +314,16 @@ pub mod test_support {
         /// Associate a handle with a user so `restricted_public_handles`
         /// can resolve it, mirroring the Postgres join.
         pub fn with_handle(self, user_id: Uuid, handle: &str) -> Self {
+            self.add_handle(user_id, handle);
+            self
+        }
+
+        /// [`Self::with_handle`] for a store already shared behind an `Arc`.
+        pub fn add_handle(&self, user_id: Uuid, handle: &str) {
             self.handles
                 .lock()
                 .unwrap()
                 .insert(user_id, handle.to_lowercase());
-            self
         }
 
         fn err() -> sqlx::Error {

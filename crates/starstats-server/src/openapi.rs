@@ -38,6 +38,7 @@ use crate::hangar_routes;
 use crate::hangar_store;
 use crate::health;
 use crate::ingest;
+use crate::lfg_routes;
 use crate::magic_link_routes;
 use crate::news;
 use crate::news_routes;
@@ -340,6 +341,17 @@ impl Modify for SecurityAddon {
         presence_routes::friends_presence,
         presence_routes::get_settings,
         presence_routes::put_settings,
+        lfg_routes::options,
+        lfg_routes::list_posts,
+        lfg_routes::create_post,
+        lfg_routes::get_post,
+        lfg_routes::close_post,
+        lfg_routes::join,
+        lfg_routes::leave,
+        lfg_routes::respond,
+        lfg_routes::report,
+        lfg_routes::admin_list_reports,
+        lfg_routes::admin_resolve,
         social_routes::mark_notifications_read,
         // News from the admin console
         news_routes::list_public,
@@ -793,6 +805,24 @@ impl Modify for SecurityAddon {
         crate::presence::PresenceLevel,
         crate::presence::ServerMessage,
         crate::presence::ClientMessage,
+        lfg_routes::CreateLfgPost,
+        lfg_routes::LfgPostView,
+        lfg_routes::LfgListResponse,
+        lfg_routes::LfgPostDetail,
+        lfg_routes::LfgOptions,
+        lfg_routes::RespondBody,
+        lfg_routes::ReportLfgPost,
+        lfg_routes::LfgReportList,
+        lfg_routes::ResolveLfgReport,
+        crate::lfg::LfgPost,
+        crate::lfg::LfgMember,
+        crate::lfg::LfgReport,
+        crate::lfg::LfgActivity,
+        crate::lfg::LfgVoice,
+        crate::lfg::LfgRegion,
+        crate::lfg::MemberStatus,
+        crate::lfg::LfgReportReason,
+        crate::lfg::LfgReportStatus,
         social_routes::NotificationsResponse,
         social_routes::MarkNotificationsReadBody,
         social_routes::MarkNotificationsReadResponse,

@@ -181,6 +181,10 @@ mod unknown_tags;
 // Phase 7 follow-up).
 #[path = "../friend_sync.rs"]
 mod friend_sync;
+#[path = "../lfg.rs"]
+mod lfg;
+#[path = "../lfg_routes.rs"]
+mod lfg_routes;
 #[path = "../news.rs"]
 mod news;
 #[path = "../news_routes.rs"]

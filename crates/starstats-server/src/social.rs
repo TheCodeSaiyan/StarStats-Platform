@@ -236,6 +236,11 @@ pub async fn delete_social_rows_for(
         ("user_blocks", "blocked_handle"),
         ("profile_salutes", "saluter_handle"),
         ("profile_salutes", "target_handle"),
+        // A deleted host's posts go, and their crew rows with them.
+        ("lfg_posts", "host_handle"),
+        ("lfg_members", "member_handle"),
+        ("lfg_reports", "reporter_handle"),
+        ("lfg_reports", "host_handle"),
         ("user_mutes", "muter_handle"),
         ("user_mutes", "muted_handle"),
         ("notifications", "recipient_handle"),

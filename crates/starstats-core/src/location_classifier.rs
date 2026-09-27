@@ -1189,6 +1189,22 @@ fn system_or_body_heuristic(parts: &[String], raw: &str) -> Option<LocationClass
     None
 }
 
+/// The canonical display name of a known star system, matched
+/// case-insensitively (`"pyro"` → `"Pyro"`), or `None`. For validating a
+/// system a player typed or picked, e.g. on a Looking for Group post.
+pub fn canonical_system(name: &str) -> Option<&'static str> {
+    KNOWN_SYSTEMS
+        .get(name.trim().to_ascii_lowercase().as_str())
+        .copied()
+}
+
+/// Every known star system, canonical display names, sorted.
+pub fn known_systems() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = KNOWN_SYSTEMS.values().copied().collect();
+    v.sort_unstable();
+    v
+}
+
 // ---- static lookup tables -----------------------------------------
 
 static KNOWN_SYSTEMS: Lazy<HashMap<&'static str, &'static str>> = Lazy::new(|| {
@@ -2422,5 +2438,19 @@ mod tests {
     fn noise_race_track() {
         let c = classify("racing_static_st2c_ghexasteroid", &empty_catalog());
         assert_eq!(c.subtype.as_deref(), Some("race_track"));
+    }
+}
+
+#[cfg(test)]
+mod system_name_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_system_matches_known_systems_only() {
+        assert_eq!(canonical_system(" PYRO "), Some("Pyro"));
+        assert_eq!(canonical_system("stanton"), Some("Stanton"));
+        assert_eq!(canonical_system("Pyro III"), None);
+        assert_eq!(canonical_system(""), None);
+        assert!(known_systems().contains(&"Nyx"));
     }
 }

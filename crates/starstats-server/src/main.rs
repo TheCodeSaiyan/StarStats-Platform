@@ -85,6 +85,8 @@ mod health;
 mod inference_rules;
 mod ingest;
 mod kek;
+mod lfg;
+mod lfg_routes;
 mod location_catalog_cache;
 mod location_enrichment;
 mod locations;
@@ -632,6 +634,10 @@ async fn main() -> anyhow::Result<()> {
     let presence_settings_dyn: Arc<dyn crate::presence::PresenceSettingsStore> = Arc::new(
         crate::presence::PostgresPresenceSettingsStore::new(pool.clone()),
     );
+    // Social phase 4: the Looking for Group board (migration 0075).
+    let lfg_dyn: Arc<dyn crate::lfg::LfgStore> =
+        Arc::new(crate::lfg::PostgresLfgStore::new(pool.clone()));
+    let lfg_for_purge = lfg_dyn.clone();
     let notifications_for_purge = notifications_dyn.clone();
     // Friend tuples in SpiceDB follow Postgres friendships (phase 1b).
     let social_for_friend_sync = social_dyn.clone();
@@ -962,6 +968,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(social_routes::routes())
         .merge(salute_routes::routes())
         .merge(presence_routes::routes())
+        .merge(lfg_routes::routes())
         .merge(news_routes::routes())
         .merge(release_routes::routes())
         .merge(rsi_router)
@@ -1034,6 +1041,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(salute_limiter))
         .layer(Extension(presence_hub))
         .layer(Extension(presence_settings_dyn))
+        .layer(Extension(lfg_dyn))
         .layer(Extension(notifications_dyn))
         .layer(Extension(news_dyn))
         .layer(Extension(releases_dyn))
@@ -1323,6 +1331,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Let go of presence nobody has refreshed, and tell their friends.
     presence_routes::spawn_sweep_loop(presence_hub_for_sweep, social_for_presence_sweep);
+
+    // Ended LFG posts are deleted after `lfg::RETAIN_ENDED_DAYS`, unless an
+    // open report still points at one.
+    lfg_routes::spawn_purge_loop(lfg_for_purge);
 
     // Daily parser-health pass: detect an event type that has stopped being
     // produced while users stayed active. Motivated by `vehicle_stowed`
