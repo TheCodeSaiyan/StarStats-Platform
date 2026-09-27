@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.68] - 2026-09-27
+
+### New
+- Put Crew, the Looking for Group board, in the main navigation.
+
 ## [Platform 0.1.67] - 2026-09-27
 
 ### New
