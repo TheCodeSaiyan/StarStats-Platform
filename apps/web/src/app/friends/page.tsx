@@ -34,6 +34,7 @@ import {
   type MutesResponse,
   type NotificationsResponse,
 } from '@/lib/api';
+import { notificationText } from '@/lib/notification-text';
 import { logger } from '@/lib/logger';
 import { navSections } from '@/lib/nav';
 import { getSession } from '@/lib/session';
@@ -410,12 +411,8 @@ export default async function FriendsPage(props: {
 }
 
 function NotificationRow({ n }: { n: AppNotification }) {
-  const who = n.actor_handle ?? 'Someone';
   const payload = (n.payload ?? {}) as { request_id?: string; rsi_verified?: boolean };
-  const text =
-    n.kind === 'friend_request'
-      ? `@${who} sent you a friend request`
-      : `@${who} accepted your friend request`;
+  const text = notificationText(n.kind, n.actor_handle);
   return (
     <div className="hp-grant" data-unread={n.read_at ? undefined : 'true'}>
       <div className="hp-grant__who">
