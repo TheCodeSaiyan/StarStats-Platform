@@ -16,6 +16,14 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.66] - 2026-09-27
+
+### New
+- See which friends are in game, and choose what they see.
+
+### Fixed
+- Cover friends, salutes and presence in the privacy notice.
+
 ## [Platform 0.1.65] - 2026-09-27
 
 ### New
