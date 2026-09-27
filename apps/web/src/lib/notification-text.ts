@@ -15,6 +15,10 @@ export function notificationText(kind: string, actor: string | null | undefined)
       return `${who} accepted your friend request`;
     case 'salute':
       return `${who} saluted your profile. o7`;
+    case 'lfg_join_request':
+      return `${who} asked to join your group`;
+    case 'lfg_join_accepted':
+      return `${who} accepted you into their group`;
     default:
       return `New activity from ${who}`;
   }

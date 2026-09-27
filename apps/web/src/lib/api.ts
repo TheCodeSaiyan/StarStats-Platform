@@ -800,6 +800,99 @@ export async function getPublicProfile(
   );
 }
 
+// -- Looking for Group ----------------------------------------------
+
+export type LfgPostView = apiSchema['schemas']['LfgPostView'];
+export type LfgPostDetail = apiSchema['schemas']['LfgPostDetail'];
+export type LfgOptions = apiSchema['schemas']['LfgOptions'];
+export type LfgMember = apiSchema['schemas']['LfgMember'];
+export type LfgReport = apiSchema['schemas']['LfgReport'];
+export type CreateLfgPost = apiSchema['schemas']['CreateLfgPost'];
+
+export async function getLfgOptions(): Promise<LfgOptions> {
+  return request<LfgOptions>('GET', '/v1/lfg/options', undefined, undefined);
+}
+
+/** Open posts, newest first, without anyone you blocked or who blocked you. */
+export async function listLfgPosts(
+  bearer: string,
+  filter: { activity?: string; system?: string } = {},
+): Promise<{ posts: LfgPostView[] }> {
+  const qs = new URLSearchParams();
+  if (filter.activity) qs.set('activity', filter.activity);
+  if (filter.system) qs.set('system', filter.system);
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  return request<{ posts: LfgPostView[] }>('GET', `/v1/lfg${suffix}`, undefined, bearer);
+}
+
+export async function getLfgPost(bearer: string, id: string): Promise<LfgPostDetail> {
+  return request<LfgPostDetail>('GET', `/v1/lfg/${encodeURIComponent(id)}`, undefined, bearer);
+}
+
+export async function createLfgPost(bearer: string, body: CreateLfgPost): Promise<LfgPostView> {
+  return request<LfgPostView>('POST', '/v1/lfg', body, bearer);
+}
+
+export async function closeLfgPost(bearer: string, id: string): Promise<void> {
+  await request<unknown>('DELETE', `/v1/lfg/${encodeURIComponent(id)}`, undefined, bearer);
+}
+
+export async function joinLfgPost(bearer: string, id: string): Promise<LfgMember> {
+  return request<LfgMember>('POST', `/v1/lfg/${encodeURIComponent(id)}/join`, undefined, bearer);
+}
+
+export async function leaveLfgPost(bearer: string, id: string): Promise<void> {
+  await request<unknown>('DELETE', `/v1/lfg/${encodeURIComponent(id)}/join`, undefined, bearer);
+}
+
+export async function respondToLfgMember(
+  bearer: string,
+  id: string,
+  handle: string,
+  action: 'accept' | 'decline' | 'remove',
+): Promise<LfgMember> {
+  return request<LfgMember>(
+    'PUT',
+    `/v1/lfg/${encodeURIComponent(id)}/members/${encodeURIComponent(handle)}`,
+    { action },
+    bearer,
+  );
+}
+
+export async function reportLfgPost(
+  bearer: string,
+  id: string,
+  body: { reason: string; details?: string },
+): Promise<void> {
+  await request<unknown>('POST', `/v1/lfg/${encodeURIComponent(id)}/report`, body, bearer);
+}
+
+export async function getAdminLfgReports(
+  bearer: string,
+  status?: string,
+): Promise<{ reports: LfgReport[] }> {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : '';
+  return request<{ reports: LfgReport[] }>(
+    'GET',
+    `/v1/admin/lfg/reports${suffix}`,
+    undefined,
+    bearer,
+  );
+}
+
+export async function resolveLfgReport(
+  bearer: string,
+  id: string,
+  body: { outcome: string; note?: string },
+): Promise<LfgReport> {
+  return request<LfgReport>(
+    'POST',
+    `/v1/admin/lfg/reports/${encodeURIComponent(id)}/resolve`,
+    body,
+    bearer,
+  );
+}
+
 // -- Presence -------------------------------------------------------
 
 export type PresenceLevel = apiSchema['schemas']['PresenceLevel'];
