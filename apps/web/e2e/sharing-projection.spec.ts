@@ -337,3 +337,86 @@ test('the clamp can be chosen before the profile is ever public', async ({
   // than pre-selecting the default the server would seed.
   await expect(page.locator('#public-max-types')).toHaveValue('all');
 });
+
+test('sharing with friends reports what the server did, not what was clicked', async ({
+  page,
+  request,
+}) => {
+  // The chip after a toggle is built from the response. A server that
+  // answered 200 without changing anything would otherwise produce a
+  // cheerful "your friends can now see your stats" over a share that
+  // does not exist — the SpiceDB wildcard incident, in a new place.
+  await setScenario(
+    request,
+    scenarioFor('sharing-projection', {
+      ...FIXTURES,
+      'GET /v1/me/shares': {
+        status: 200,
+        body: { shares: [], org_shares: [], with_friends: false },
+      },
+      'PUT /v1/me/share-with-friends': {
+        status: 200,
+        body: { with_friends: false },
+      },
+    }),
+  );
+  await page.goto('/sharing');
+  await openGroup(page, 'Outbound');
+  await page
+    .getByRole('button', { name: 'Share with all my friends' })
+    .click({ timeout: 30_000 });
+  await expect(page).toHaveURL(/status=friends_share_off/, { timeout: 30_000 });
+  await expect(
+    page.getByText('No longer sharing with friends as a group.'),
+  ).toBeVisible();
+});
+
+test('an unreadable friends share says so instead of showing it off', async ({
+  page,
+  request,
+}) => {
+  // `with_friends: null` means the server could not read the tuple. Showing
+  // "Share with all my friends" there would tell someone who IS sharing
+  // that they are not.
+  await setScenario(
+    request,
+    scenarioFor('sharing-projection', {
+      ...FIXTURES,
+      'GET /v1/me/shares': {
+        status: 200,
+        body: { shares: [], org_shares: [], with_friends: null },
+      },
+    }),
+  );
+  await page.goto('/sharing');
+  await openGroup(page, 'Outbound');
+  await expect(page.getByText("We couldn't check this just now.")).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: /share with all my friends/i }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('button', { name: /stop sharing with friends/i }),
+  ).toHaveCount(0);
+});
+
+test('a friends share that is on offers to turn it off', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('sharing-projection', {
+      ...FIXTURES,
+      'GET /v1/me/shares': {
+        status: 200,
+        body: { shares: [], org_shares: [], with_friends: true },
+      },
+    }),
+  );
+  await page.goto('/sharing');
+  await openGroup(page, 'Outbound');
+  await expect(page.getByText('Every friend can see your stats')).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Stop sharing with friends' }),
+  ).toBeVisible();
+});
