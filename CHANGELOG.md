@@ -23,6 +23,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 - Show news from the StarStats team on the changelog.
 - Add a What's New page with unread markers shared with the tray.
 
+## [Tray 0.1.32] - 2026-09-26
+
+### New
+- Show release notes in What's New and announce new versions.
+
 ## [Tray 0.1.31] - 2026-09-26
 
 ### New
