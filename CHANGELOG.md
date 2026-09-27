@@ -16,6 +16,10 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.70] - 2026-09-27
+
+No player-facing changes.
+
 ## [Platform 0.1.69] - 2026-09-27
 
 ### New
