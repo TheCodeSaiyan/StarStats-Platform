@@ -878,6 +878,69 @@ export interface SocialPrefs {
   share_presence: boolean;
 }
 
+/** A Looking for Group post as the board shows it. */
+export interface LfgPost {
+  id: string;
+  host_handle: string;
+  activity: string;
+  system: string | null;
+  location: string | null;
+  ship: string | null;
+  crew_slots: number;
+  voice: string;
+  region: string;
+  note: string | null;
+  created_at: string;
+  expires_at: string;
+  crew_count: number;
+  host_verified: boolean;
+  /** The caller's standing: requested | accepted | declined | left | removed. */
+  my_status: string | null;
+  is_host: boolean;
+}
+
+export interface LfgMember {
+  handle: string;
+  status: string;
+  created_at: string;
+  responded_at: string | null;
+}
+
+export interface LfgPostDetail extends LfgPost {
+  members: LfgMember[];
+}
+
+export interface LfgOptions {
+  activities: string[];
+  systems: string[];
+  voices: string[];
+  regions: string[];
+  crew_min: number;
+  crew_max: number;
+  expiry_default_minutes: number;
+  expiry_min_minutes: number;
+  expiry_max_minutes: number;
+}
+
+export interface NewLfgPost {
+  activity: string;
+  system: string | null;
+  location: string | null;
+  ship: string | null;
+  crew_slots: number;
+  voice: string;
+  region: string;
+  note: string | null;
+  expires_in_minutes: number;
+}
+
+/** Suggestions for a post, from the game log. */
+export interface WhereAmI {
+  system: string | null;
+  location: string | null;
+  ship: string | null;
+}
+
 /** How much of your presence friends see; set on the server. */
 export type PresenceLevel = 'off' | 'status' | 'system';
 
@@ -1082,6 +1145,17 @@ export const api = {
       share_presence: prefs.share_presence,
     }),
   socialGetPresence: () => invoke<FriendPresence[]>('social_get_presence'),
+  lfgOptions: () => invoke<LfgOptions>('lfg_options'),
+  lfgList: (activity: string | null, system: string | null) =>
+    invoke<{ posts: LfgPost[] }>('lfg_list', { activity, system }),
+  lfgGet: (id: string) => invoke<LfgPostDetail>('lfg_get', { id }),
+  lfgCreate: (post: NewLfgPost) => invoke<LfgPost>('lfg_create', { post }),
+  lfgClose: (id: string) => invoke<null>('lfg_close', { id }),
+  lfgJoin: (id: string) => invoke<LfgMember>('lfg_join', { id }),
+  lfgLeave: (id: string) => invoke<null>('lfg_leave', { id }),
+  lfgRespond: (id: string, handle: string, action: 'accept' | 'decline' | 'remove') =>
+    invoke<LfgMember>('lfg_respond', { id, handle, action }),
+  lfgWhereAmI: () => invoke<WhereAmI>('lfg_where_am_i'),
   socialGetPresenceLevel: () => invoke<PresenceLevel>('social_get_presence_level'),
   socialSetPresenceLevel: (level: PresenceLevel) =>
     invoke<PresenceLevel>('social_set_presence_level', { level }),

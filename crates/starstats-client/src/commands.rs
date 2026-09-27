@@ -4861,6 +4861,134 @@ pub async fn social_mark_read(
     Ok(resp)
 }
 
+// -- Looking for Group ------------------------------------------------------
+//
+// Thin pass-throughs to /v1/lfg: the server owns every rule (verified
+// handle, one open post, blocks, capacity), and its error codes reach the
+// pane as the `Err` string.
+
+fn lfg_id(id: &str) -> Result<String, String> {
+    uuid::Uuid::parse_str(id.trim())
+        .map(|u| u.to_string())
+        .map_err(|_| "invalid post id".to_string())
+}
+
+/// A filter value from the server's closed vocabularies: letters, digits
+/// and underscores only, so it can go in a query string as it is.
+fn lfg_filter(v: Option<String>) -> Option<String> {
+    v.map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+}
+
+async fn lfg_call(
+    method: reqwest::Method,
+    path: &str,
+    body: Option<serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    social_client()?
+        .lfg(method, path, body)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_options() -> Result<serde_json::Value, String> {
+    lfg_call(reqwest::Method::GET, "/v1/lfg/options", None).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_list(
+    activity: Option<String>,
+    system: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mut q: Vec<String> = Vec::new();
+    if let Some(a) = lfg_filter(activity) {
+        q.push(format!("activity={a}"));
+    }
+    if let Some(s) = lfg_filter(system) {
+        q.push(format!("system={s}"));
+    }
+    let path = if q.is_empty() {
+        "/v1/lfg".to_string()
+    } else {
+        format!("/v1/lfg?{}", q.join("&"))
+    };
+    lfg_call(reqwest::Method::GET, &path, None).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_get(id: String) -> Result<serde_json::Value, String> {
+    lfg_call(
+        reqwest::Method::GET,
+        &format!("/v1/lfg/{}", lfg_id(&id)?),
+        None,
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_create(post: serde_json::Value) -> Result<serde_json::Value, String> {
+    lfg_call(reqwest::Method::POST, "/v1/lfg", Some(post)).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_close(id: String) -> Result<serde_json::Value, String> {
+    lfg_call(
+        reqwest::Method::DELETE,
+        &format!("/v1/lfg/{}", lfg_id(&id)?),
+        None,
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_join(id: String) -> Result<serde_json::Value, String> {
+    lfg_call(
+        reqwest::Method::POST,
+        &format!("/v1/lfg/{}/join", lfg_id(&id)?),
+        None,
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_leave(id: String) -> Result<serde_json::Value, String> {
+    lfg_call(
+        reqwest::Method::DELETE,
+        &format!("/v1/lfg/{}/join", lfg_id(&id)?),
+        None,
+    )
+    .await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub async fn lfg_respond(
+    id: String,
+    handle: String,
+    action: String,
+) -> Result<serde_json::Value, String> {
+    if !matches!(action.as_str(), "accept" | "decline" | "remove") {
+        return Err(format!("unknown action: {action}"));
+    }
+    lfg_call(
+        reqwest::Method::PUT,
+        &format!(
+            "/v1/lfg/{}/members/{}",
+            lfg_id(&id)?,
+            crate::social::path_segment(&handle)
+        ),
+        Some(serde_json::json!({ "action": action })),
+    )
+    .await
+}
+
+/// Where the player is and what they are flying, from the game log, to
+/// pre-fill a post. Every field is a suggestion.
+#[tauri::command(rename_all = "snake_case")]
+pub fn lfg_where_am_i(state: State<'_, AppState>) -> crate::presence::WhereAmI {
+    crate::presence::current_where(&state.storage, &state.location_catalog)
+}
+
 /// Friends' presence as last pushed by the realtime gateway.
 #[tauri::command(rename_all = "snake_case")]
 pub fn social_get_presence() -> Vec<crate::presence::FriendPresence> {

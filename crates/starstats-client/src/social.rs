@@ -154,6 +154,11 @@ pub struct SocialClient {
     bearer: String,
 }
 
+/// [`seg`] for callers outside this module.
+pub fn path_segment(s: &str) -> String {
+    seg(s)
+}
+
 /// Percent-encode a handle for a path segment. Handles are validated to
 /// `[A-Za-z0-9_-]` server-side, so this only matters for input the server
 /// will reject anyway, but it must never be able to change the path.
@@ -323,6 +328,23 @@ impl SocialClient {
         (url, self.bearer.clone())
     }
 
+    /// A Looking for Group call, passed through as JSON: the tray's UI
+    /// types it, so the Rust side does not mirror every shape. A 204 is
+    /// `null`.
+    pub async fn lfg(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, SocialClientError> {
+        let resp = self.send(method, path, body).await?;
+        let text = resp.text().await.context("read lfg response")?;
+        if text.trim().is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        Ok(serde_json::from_str(&text).context("decode lfg response")?)
+    }
+
     /// The server-side presence gate: `off`, `status` or `system`.
     pub async fn presence_level(&self) -> Result<String, SocialClientError> {
         let v: serde_json::Value = self
@@ -435,6 +457,14 @@ pub fn toast_text(n: &Notification) -> Option<(String, String)> {
             format!("@{who} accepted your friend request."),
         )),
         "salute" => Some(("o7".to_string(), format!("@{who} saluted your profile."))),
+        "lfg_join_request" => Some((
+            "Someone wants to join".to_string(),
+            format!("@{who} asked to join your group. Open StarStats to answer."),
+        )),
+        "lfg_join_accepted" => Some((
+            "You're in".to_string(),
+            format!("@{who} accepted you into their group. Add them in game by handle."),
+        )),
         _ => None,
     }
 }
@@ -643,6 +673,16 @@ mod tests {
                 "@Wingman saluted your profile.".to_string()
             )])
         );
+    }
+
+    #[test]
+    fn lfg_requests_and_acceptances_toast() {
+        let w = Utc::now();
+        let (title, body) = toast_text(&note("lfg_join_request", w, false)).expect("a known kind");
+        assert_eq!(title, "Someone wants to join");
+        assert!(body.starts_with("@Wingman asked to join"), "{body}");
+        let (title, _) = toast_text(&note("lfg_join_accepted", w, false)).expect("a known kind");
+        assert_eq!(title, "You're in");
     }
 
     #[test]

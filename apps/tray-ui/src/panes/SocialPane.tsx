@@ -91,7 +91,7 @@ export async function copyHandle(handle: string, addInGame: boolean): Promise<bo
   }
 }
 
-function CopyButtons({ handle, verified }: { handle: string; verified: boolean }) {
+export function CopyButtons({ handle, verified }: { handle: string; verified: boolean }) {
   const [said, setSaid] = useState('');
   useEffect(() => {
     if (!said) return;
@@ -538,7 +538,11 @@ function NotificationRow({
         ? `@${who} accepted your friend request`
         : n.kind === 'salute'
           ? `@${who} saluted your profile. o7`
-          : `New activity from @${who}`;
+          : n.kind === 'lfg_join_request'
+            ? `@${who} asked to join your group`
+            : n.kind === 'lfg_join_accepted'
+              ? `@${who} accepted you into their group`
+              : `New activity from @${who}`;
   return (
     <div style={rowStyle} data-unread={n.read_at ? undefined : 'true'}>
       <span style={{ color: n.read_at ? 'var(--fg-muted)' : 'var(--fg)' }}>
