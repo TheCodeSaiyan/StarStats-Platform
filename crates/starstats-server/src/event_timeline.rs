@@ -1706,6 +1706,10 @@ mod tests {
             // idempotency_key = zero-padded index → (event_timestamp,
             // idempotency_key) order == fixture order, so the oracle and the SQL
             // sessionizer walk the identical stream even on timestamp ties.
+            // raw_line is distinct per row because events_content_uq (0069)
+            // dedupes on type + timestamp + raw_line + payload, and
+            // caps_at_limit's inits differ only in metadata. Real log lines
+            // never collide like that; the sessionizer does not read raw_line.
             for (i, (ty, t, meta, ls)) in rows.iter().enumerate() {
                 let payload = match ls {
                     Some(s) => serde_json::json!({ "local_session": s }),
@@ -1720,7 +1724,7 @@ mod tests {
                         (id, idempotency_key, claimed_handle, event_type,
                          event_timestamp, log_source, source_offset, raw_line,
                          payload, metadata)
-                    VALUES (gen_random_uuid(), $1, $2, $3, $4, 'test', $5, '', $6, $7)
+                    VALUES (gen_random_uuid(), $1, $2, $3, $4, 'test', $5, $6, $7, $8)
                     "#,
                 )
                 .bind(format!("{i:05}"))
@@ -1728,6 +1732,7 @@ mod tests {
                 .bind(ty)
                 .bind(*t)
                 .bind(i as i64)
+                .bind(format!("{name} row {i}"))
                 .bind(&payload)
                 .bind(&metadata)
                 .execute(&pool)
