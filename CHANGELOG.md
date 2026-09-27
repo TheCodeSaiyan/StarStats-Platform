@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.65] - 2026-09-27
+
+### New
+- Salute profiles with o7 and see which friends saluted you.
+
 ## [Platform 0.1.64] - 2026-09-27
 
 ### New
