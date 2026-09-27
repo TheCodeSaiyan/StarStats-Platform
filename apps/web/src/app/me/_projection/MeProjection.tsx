@@ -6,7 +6,7 @@ import { bucketSeries } from './series';
 import { SiteLegalPlate } from '@/components/projection/SiteLegalPlate';
 import { OutstandingTasks } from '@/components/projection/OutstandingTasks';
 import type { OutstandingTask } from '@/lib/outstanding-tasks';
-import { useShellData } from '@/components/projection/ShellData';
+import { useNavWithBadges, useShellData } from '@/components/projection/ShellData';
 import { useRouter } from 'next/navigation';
 import { chromeLink } from '@/components/projection/chromeLink';
 import type { Route } from 'next';
@@ -160,6 +160,8 @@ export function MeProjection({
   onSaveLayout,
   onCalibrate,
 }: MeProjectionProps) {
+  // Counts on nav links (players waiting on your group, on Crew).
+  const navWithBadges = useNavWithBadges(nav);
   const router = useRouter();
   const { inboundShares, unreadNotifications, unreadWhatsNew } = useShellData();
   const [lens, setLens] = React.useState(initialLens);
@@ -454,7 +456,7 @@ export function MeProjection({
           handle={handle}
           calibration={cal}
           onCalibrate={calibrate}
-          sections={nav}
+          sections={navWithBadges}
           since={enlistmentYear ? `Citizen since ${enlistmentYear}` : undefined}
           supporter={
             supporterTier ? (

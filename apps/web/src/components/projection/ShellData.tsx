@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import type { NavSection } from 'holo';
 
 /**
  * Chrome-level facts that every projection surface needs and none of them
@@ -32,27 +33,51 @@ export interface ShellData {
   unreadNotifications: number;
   /** Unread staff news plus unread shipped roadmap items: What's New. */
   unreadWhatsNew: number;
+  /** Players waiting on the reader's open Looking for Group post. */
+  crewPending: number;
 }
 
 const Ctx = React.createContext<ShellData>({
   inboundShares: 0,
   unreadNotifications: 0,
   unreadWhatsNew: 0,
+  crewPending: 0,
 });
 
 export function ShellDataProvider({
   inboundShares,
   unreadNotifications,
   unreadWhatsNew,
+  crewPending,
   children,
 }: ShellData & { children: React.ReactNode }) {
   const value = React.useMemo(
-    () => ({ inboundShares, unreadNotifications, unreadWhatsNew }),
-    [inboundShares, unreadNotifications, unreadWhatsNew],
+    () => ({ inboundShares, unreadNotifications, unreadWhatsNew, crewPending }),
+    [inboundShares, unreadNotifications, unreadWhatsNew, crewPending],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useShellData(): ShellData {
   return React.useContext(Ctx);
+}
+
+/**
+ * The site nav with its counts attached: players waiting on your group, on
+ * Crew. Every shell that draws the bar runs its nav through this, for the
+ * same reason the account badges live in this context: a count that shows on
+ * some pages and not others teaches the reader the wrong place to look.
+ */
+export function withNavBadges(nav: NavSection[], data: ShellData): NavSection[] {
+  if (data.crewPending <= 0) return nav;
+  return nav.map((sec) => ({
+    ...sec,
+    items: sec.items.map((it) => (it.id === 'lfg' ? { ...it, badge: data.crewPending } : it)),
+  }));
+}
+
+/** {@link withNavBadges} from the shell's own data. */
+export function useNavWithBadges(nav: NavSection[]): NavSection[] {
+  const data = useShellData();
+  return React.useMemo(() => withNavBadges(nav, data), [nav, data]);
 }
