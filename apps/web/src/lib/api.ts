@@ -800,6 +800,33 @@ export async function getPublicProfile(
   );
 }
 
+// -- Presence -------------------------------------------------------
+
+export type PresenceLevel = apiSchema['schemas']['PresenceLevel'];
+export type FriendsPresenceResponse = apiSchema['schemas']['FriendsPresenceResponse'];
+
+/** Friends' presence. Anyone not sharing reads as offline. The web polls
+ *  this on page load; only the tray holds the realtime socket. */
+export async function getFriendsPresence(bearer: string): Promise<FriendsPresenceResponse> {
+  return request<FriendsPresenceResponse>('GET', '/v1/me/friends/presence', undefined, bearer);
+}
+
+export async function getPresenceSettings(bearer: string): Promise<{ level: PresenceLevel }> {
+  return request<{ level: PresenceLevel }>('GET', '/v1/me/presence/settings', undefined, bearer);
+}
+
+export async function setPresenceLevel(
+  bearer: string,
+  level: PresenceLevel,
+): Promise<{ level: PresenceLevel }> {
+  return request<{ level: PresenceLevel }>(
+    'PUT',
+    '/v1/me/presence/settings',
+    { level },
+    bearer,
+  );
+}
+
 // -- o7 salutes -----------------------------------------------------
 
 export type SaluteSummary = apiSchema['schemas']['SaluteSummary'];

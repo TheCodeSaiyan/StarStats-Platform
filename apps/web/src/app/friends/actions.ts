@@ -12,6 +12,7 @@ import {
   unblockUser,
   unmuteUser,
   updateSocialSettings,
+  setPresenceLevel,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
@@ -148,6 +149,22 @@ export async function unmuteAction(formData: FormData) {
     fail(e, 'friends.unmute');
   }
   redirect('/friends?status=unmuted');
+}
+
+export async function presenceAction(formData: FormData) {
+  const t = await token();
+  const wanted = field(formData, 'presence_level');
+  if (wanted !== 'off' && wanted !== 'status' && wanted !== 'system') {
+    redirect('/friends?error=unexpected');
+  }
+  let stored: string;
+  try {
+    stored = (await setPresenceLevel(t, wanted)).level;
+  } catch (e) {
+    fail(e, 'friends.presence');
+  }
+  // From the read-back, not the form: the chip says what is stored.
+  redirect(`/friends?status=presence_${stored}`);
 }
 
 export async function policyAction(formData: FormData) {

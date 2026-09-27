@@ -1094,6 +1094,8 @@ export function scenarioFor(
     // Layout-level: every signed-in render reads both for the badge.
     'GET /v1/me/news': { status: 200, body: { items: [], unread_count: 0 } },
     'GET /v1/me/releases': { status: 200, body: { releases: [], unread_count: 0 } },
+    'GET /v1/me/friends/presence': { status: 200, body: { friends: [] } },
+    'GET /v1/me/presence/settings': { status: 200, body: { level: 'off' } },
     'GET /v1/releases': { status: 200, body: { releases: [] } },
     'GET /v1/me/roadmap/whats-new': { status: 200, body: { items: [], seen_via_auth: true } },
     'GET /v1/me/friends': noFriends,

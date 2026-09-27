@@ -140,3 +140,48 @@ test('the page has exactly one h1, naming the page', async ({ page }) => {
   await expect(page.locator('h1')).toHaveCount(1);
   await expect(page.locator('h1')).toHaveText('Friends');
 });
+
+test('a friend sharing presence shows it; one not sharing shows nothing', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('friends_presence', {
+      ...FIXTURES,
+      'GET /v1/me/friends/presence': {
+        status: 200,
+        body: {
+          friends: [
+            { handle: 'SSDemoWingman', state: 'in_quantum', system: 'Pyro', updated_at: null },
+            { handle: 'SSDemoUnproven', state: null, system: null, updated_at: null },
+          ],
+        },
+      },
+    }),
+  );
+  await visit(page);
+  const labels = page.getByTestId('friend-presence');
+  await expect(labels).toHaveCount(1);
+  await expect(labels.first()).toHaveText('In quantum · Pyro');
+});
+
+test('the presence setting reports what the server stored', async ({ page, request }) => {
+  // The server read back `status` although `system` was asked for, as a
+  // server that clamps the choice would. The confirmation must say status.
+  await setScenario(
+    request,
+    scenarioFor('friends_presence_setting', {
+      ...FIXTURES,
+      'PUT /v1/me/presence/settings': { status: 200, body: { level: 'status' } },
+    }),
+  );
+  await visit(page);
+  await page.locator('.hp-lens button', { hasText: 'Privacy' }).click();
+  await page.locator('#presence-level').selectOption('system');
+  await page
+    .locator('form:has(#presence-level)')
+    .getByRole('button', { name: 'Save' })
+    .click({ timeout: 30_000 });
+  await expect(page).toHaveURL(/status=presence_status/, { timeout: 30_000 });
+});
