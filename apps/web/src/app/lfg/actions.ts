@@ -4,13 +4,17 @@ import { redirect } from 'next/navigation';
 import {
   ApiCallError,
   closeLfgPost,
+  commendCrewmate,
   createLfgPost,
   joinLfgPost,
   leaveLfgPost,
   reportLfgPost,
   respondToLfgMember,
+  withdrawCommend,
+  type CommendKind,
   type CreateLfgPost,
 } from '@/lib/api';
+import { COMMEND_KINDS } from '@/lib/commends';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
 
@@ -39,6 +43,9 @@ const KNOWN_ERRORS = new Set([
   'post_ended',
   'not_requested',
   'account_restricted',
+  'post_not_ended',
+  'window_closed',
+  'cannot_commend_self',
 ]);
 
 async function token(): Promise<string> {
@@ -146,4 +153,26 @@ export async function reportAction(formData: FormData) {
     fail(e, 'lfg.report');
   }
   redirect('/lfg?status=reported');
+}
+
+/** Give, change or withdraw a commend for a crewmate. */
+export async function commendAction(formData: FormData) {
+  const t = await token();
+  const postId = field(formData, 'post_id');
+  const handle = field(formData, 'handle');
+  const kind = field(formData, 'kind');
+  const withdraw = field(formData, 'intent') === 'withdraw';
+  if (!withdraw && !(COMMEND_KINDS as readonly string[]).includes(kind)) {
+    redirect('/lfg?error=unexpected');
+  }
+  try {
+    if (withdraw) {
+      await withdrawCommend(t, postId, handle);
+    } else {
+      await commendCrewmate(t, postId, handle, kind as CommendKind);
+    }
+  } catch (e) {
+    fail(e, 'lfg.commend');
+  }
+  redirect(`/lfg?status=${withdraw ? 'commend_withdrawn' : 'commended'}`);
 }

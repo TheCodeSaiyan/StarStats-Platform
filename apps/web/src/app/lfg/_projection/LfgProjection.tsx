@@ -19,6 +19,7 @@ export const LFG_GROUPS: readonly SurfaceGroup[] = [
   { key: 'board', label: 'Board' },
   { key: 'mine', label: 'Your group' },
   { key: 'post', label: 'Post' },
+  { key: 'crew', label: 'Crew' },
 ];
 
 export type LfgProjectionProps = Omit<

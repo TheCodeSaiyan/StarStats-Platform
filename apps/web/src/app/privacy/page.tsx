@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     'How StarStats handles your data: what we collect, why, how long we keep it, and the rights you have over it.',
 };
 
-const LAST_UPDATED = '27 September 2026';
+const LAST_UPDATED = '28 September 2026';
 const CONTROLLER_EMAIL = 'dojo@thecodesaiyan.io';
 
 /* Reusable wrappers to keep each numbered policy section visually
@@ -235,7 +235,9 @@ export default function PrivacyPage() {
           <li>
             <strong>Notifications</strong>: a friend request, an
             accepted request or a salute creates a notification naming
-            the other player. Lawful basis: contract.
+            the other player. A commend creates one that names the word
+            and the group&apos;s activity, never who gave it. Lawful
+            basis: contract.
           </li>
           <li>
             <strong>Salutes (o7)</strong>: who saluted whose profile.
@@ -256,6 +258,21 @@ export default function PrivacyPage() {
             moderators, with the reason and anything the reporter wrote.
             Lawful basis: contract, and legitimate interest (keeping the
             board safe) for reports.
+          </li>
+          <li>
+            <strong>Crew history and commends</strong>: when a host
+            accepts you into a Looking for Group post, we record that you
+            flew with the host and the rest of that crew, with the
+            post&apos;s activity and the time. Only you see your own list
+            of players you flew with. For 48 hours after the post ends,
+            crewmates can commend each other with one word from a fixed
+            list (great pilot, good comms, reliable, good teacher). We
+            store who commended whom, with which word, on which post. The
+            totals for each word are shown on your profile to anyone who
+            can see your profile; who gave them is shown to nobody, you
+            included. Commends from an account whose sharing has been
+            restricted are not counted while the restriction lasts.
+            Lawful basis: contract.
           </li>
           <li>
             <strong>Presence</strong> is off unless you turn it on, and
@@ -459,6 +476,14 @@ export default function PrivacyPage() {
             <strong>Presence</strong>: not stored. It is kept in memory
             for at most three minutes after the last report; only your
             presence setting is stored, until you delete your account.
+          </li>
+          <li>
+            <strong>Crew history</strong>: 90 days from when you flew
+            together. <strong>Commends</strong>: kept after the crew
+            history has gone, because they are the totals on your
+            profile, until either person deletes their account or blocks
+            the other. A host removing a player from a group removes
+            that player&apos;s crew history and commends for that post.
           </li>
           <li>
             <strong>Administrator deletion in response to misuse</strong>:

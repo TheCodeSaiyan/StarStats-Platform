@@ -10,6 +10,8 @@
  *  - POST/DEL /v1/lfg/:id/join                   — ask to join / leave
  *  - PUT  /v1/lfg/:id/members/:handle            — accept | decline | remove
  *  - POST /v1/lfg/:id/report                     — report to moderators
+ *  - GET  /v1/me/crew                            — crew history, commend windows
+ *  - PUT/DEL /v1/crew/:post/commends/:handle     — commend a crewmate
  *
  * Each section is fed by its own call through `allSettled`, so one failing
  * endpoint blanks one section, not the page.
@@ -22,11 +24,16 @@ import {
   ApiCallError,
   getLfgOptions,
   getLfgPost,
+  getMyCrew,
   listLfgPosts,
+  type CommendWindow,
+  type CrewMate,
+  type CrewOverview,
   type LfgOptions,
   type LfgPostDetail,
   type LfgPostView,
 } from '@/lib/api';
+import { COMMEND_KINDS, commendLabel } from '@/lib/commends';
 import { activityLabel, regionLabel, timeLeft, voiceLabel } from '@/lib/lfg';
 import { logger } from '@/lib/logger';
 import { navSections } from '@/lib/nav';
@@ -38,6 +45,7 @@ import { CopyHandleButton } from '@/components/social/CopyHandleButton';
 import { LfgProjection, type LfgSection } from './_projection/LfgProjection';
 import {
   closePostAction,
+  commendAction,
   createPostAction,
   joinAction,
   leaveAction,
@@ -56,6 +64,8 @@ const STATUS_MESSAGES: Record<string, string> = {
   member_declined: 'Declined. They are not told why.',
   member_removed: 'Removed. They cannot ask to join this group again.',
   reported: 'Thanks. A moderator will look at it.',
+  commended: 'Commended. They are told the word, not who gave it.',
+  commend_withdrawn: 'Commend withdrawn.',
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -81,6 +91,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   post_ended: 'That post has ended.',
   not_requested: 'They are not waiting on an answer.',
   account_restricted: 'Your account is restricted from this for now.',
+  post_not_ended: 'You can commend your crew once the post has ended.',
+  window_closed: 'Commends for that group have closed. They stay open for 48 hours.',
+  cannot_commend_self: 'You cannot commend yourself.',
   unexpected: 'Something went wrong. Try again.',
 };
 
@@ -98,13 +111,15 @@ export default async function LfgPage(props: { searchParams: Promise<SearchParam
     logger.warn({ err: e, call: 'lfg.theme' }, 'load theme failed');
   }
 
-  const [optionsRes, boardRes] = await Promise.allSettled([
+  const [optionsRes, boardRes, crewRes] = await Promise.allSettled([
     getLfgOptions(),
     listLfgPosts(session.token, { activity: params.activity, system: params.system }),
+    getMyCrew(session.token),
   ]);
   for (const [r, call] of [
     [optionsRes, 'lfg.options'],
     [boardRes, 'lfg.list'],
+    [crewRes, 'lfg.crew'],
   ] as const) {
     if (r.status === 'rejected') {
       const status = r.reason instanceof ApiCallError ? r.reason.status : undefined;
@@ -115,6 +130,7 @@ export default async function LfgPage(props: { searchParams: Promise<SearchParam
   const options: LfgOptions | null = optionsRes.status === 'fulfilled' ? optionsRes.value : null;
   const board: LfgPostView[] | null =
     boardRes.status === 'fulfilled' ? boardRes.value.posts : null;
+  const crew: CrewOverview | null = crewRes.status === 'fulfilled' ? crewRes.value : null;
 
   // The host's own post, with everyone who asked. The list is filtered, so
   // look for it unfiltered when a filter is on.
@@ -297,6 +313,51 @@ export default async function LfgPage(props: { searchParams: Promise<SearchParam
         </form>
       ),
     },
+    {
+      id: 'commend',
+      title: 'Commend your crew',
+      ctx: crew && crew.windows.length > 0 ? `${crew.windows.length} open` : undefined,
+      group: 'crew',
+      node: !crew ? (
+        unavailable('your crew')
+      ) : crew.windows.length === 0 ? (
+        <p className="hp-prose">
+          When a group you flew in ends, you have 48 hours to commend your crewmates here.
+        </p>
+      ) : (
+        <>
+          <p className="hp-prose">
+            One word each, for someone you just flew with. It counts towards the totals on their
+            profile. Nobody sees who gave which, not even them, though in a crew of two they can
+            work it out.
+          </p>
+          {crew.windows.map((w) => (
+            <CrewWindow key={w.post_id} window={w} now={now} />
+          ))}
+        </>
+      ),
+    },
+    {
+      id: 'history',
+      title: 'Players you flew with',
+      ctx: crew ? `${crew.history.length}` : undefined,
+      group: 'crew',
+      node: !crew ? (
+        unavailable('your crew history')
+      ) : crew.history.length === 0 ? (
+        <p className="hp-prose">
+          Nobody yet. Players you crew with through Looking for Group appear here for 90 days.
+          Only you can see this list.
+        </p>
+      ) : (
+        <>
+          <p className="hp-prose">
+            The last 90 days, newest first. Only you can see this list.
+          </p>
+          <CrewHistory history={crew.history} />
+        </>
+      ),
+    },
   ];
 
   const notice =
@@ -468,5 +529,69 @@ function HostPanel({ detail, now }: { detail: LfgPostDetail; now: number }) {
         </ConfirmSubmitButton>
       </form>
     </>
+  );
+}
+
+function CrewWindow({ window: w, now }: { window: CommendWindow; now: number }) {
+  return (
+    <div data-testid="commend-window" style={{ marginBottom: 18 }}>
+      <h3 className="hp-subheading">
+        {activityLabel(w.activity)} · commend within {timeLeft(w.closes_at, now).replace(' left', '')}
+      </h3>
+      {w.crew.map((m) => (
+        <div className="hp-grant" key={m.handle} data-testid="commend-mate">
+          <div className="hp-grant__who">
+            <span>@{m.handle}</span>
+            <span className="hp-grant__note">
+              {m.my_commend ? `You said: ${commendLabel(m.my_commend)}` : 'Not commended yet'}
+            </span>
+          </div>
+          <div className="hp-grant__act-btns" role="group" aria-label={`Commend @${m.handle}`}>
+            {COMMEND_KINDS.map((kind) => (
+              <form action={commendAction} key={kind} style={{ margin: 0 }}>
+                <input type="hidden" name="post_id" value={w.post_id} />
+                <input type="hidden" name="handle" value={m.handle} />
+                <input type="hidden" name="kind" value={kind} />
+                <ConfirmSubmitButton
+                  className={m.my_commend === kind ? 'hp-btn' : 'hp-btn hp-btn--ghost'}
+                  aria-pressed={m.my_commend === kind}
+                >
+                  {commendLabel(kind)}
+                </ConfirmSubmitButton>
+              </form>
+            ))}
+            {m.my_commend ? (
+              <form action={commendAction} style={{ margin: 0 }}>
+                <input type="hidden" name="post_id" value={w.post_id} />
+                <input type="hidden" name="handle" value={m.handle} />
+                <input type="hidden" name="intent" value="withdraw" />
+                <ConfirmSubmitButton className="hp-btn hp-btn--ghost">Withdraw</ConfirmSubmitButton>
+              </form>
+            ) : null}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CrewHistory({ history }: { history: CrewMate[] }) {
+  return (
+    <Plane tilt="flat" style={{ marginTop: 18 }}>
+      {history.map((m) => (
+        <div className="hp-grant" key={`${m.post_id}-${m.handle}`} data-testid="crew-history">
+          <div className="hp-grant__who">
+            <span>@{m.handle}</span>
+            <span className="hp-grant__note">
+              {activityLabel(m.activity)} ·{' '}
+              {new Date(m.flew_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+            </span>
+          </div>
+          <div className="hp-grant__act-btns">
+            <CopyHandleButton handle={m.handle} verified />
+          </div>
+        </div>
+      ))}
+    </Plane>
   );
 }

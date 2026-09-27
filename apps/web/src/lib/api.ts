@@ -971,6 +971,52 @@ export async function getMySalutes(bearer: string): Promise<MySalutes> {
   return request<MySalutes>('GET', '/v1/me/salutes', undefined, bearer);
 }
 
+// -- Crew commends ---------------------------------------------------
+
+export type CommendKind = apiSchema['schemas']['CommendKind'];
+export type CommendTotals = apiSchema['schemas']['CommendTotals'];
+export type CrewOverview = apiSchema['schemas']['CrewOverview'];
+export type CommendWindow = apiSchema['schemas']['CommendWindow'];
+export type CrewMate = apiSchema['schemas']['CrewMate'];
+
+/** Your crew history and the commend windows open to you. */
+export async function getMyCrew(bearer: string): Promise<CrewOverview> {
+  return request<CrewOverview>('GET', '/v1/me/crew', undefined, bearer);
+}
+
+export async function commendCrewmate(
+  bearer: string,
+  postId: string,
+  handle: string,
+  kind: CommendKind,
+): Promise<void> {
+  await request<unknown>(
+    'PUT',
+    `/v1/crew/${encodeURIComponent(postId)}/commends/${encodeURIComponent(handle)}`,
+    { kind },
+    bearer,
+  );
+}
+
+export async function withdrawCommend(bearer: string, postId: string, handle: string): Promise<void> {
+  await request<unknown>(
+    'DELETE',
+    `/v1/crew/${encodeURIComponent(postId)}/commends/${encodeURIComponent(handle)}`,
+    undefined,
+    bearer,
+  );
+}
+
+/** A profile's public commend totals; a 404 means you cannot see it. */
+export async function getProfileCommends(handle: string, bearer?: string): Promise<CommendTotals> {
+  return request<CommendTotals>(
+    'GET',
+    `/v1/u/${encodeURIComponent(handle)}/commends`,
+    undefined,
+    bearer,
+  );
+}
+
 // -- RSI org snapshots ---------------------------------------------
 //
 // Triad mirrors the citizen-profile flow above:
