@@ -25,15 +25,20 @@ import type { Calibration } from 'holo';
 import {
   ApiCallError,
   getFriends,
+  getFriendsPresence,
   getNotifications,
+  getPresenceSettings,
   listBlocks,
   listMutes,
   type AppNotification,
   type BlocksResponse,
   type FriendsResponse,
   type MutesResponse,
+  type FriendsPresenceResponse,
   type NotificationsResponse,
+  type PresenceLevel,
 } from '@/lib/api';
+import { presenceLabel } from '@/lib/presence-label';
 import { notificationText } from '@/lib/notification-text';
 import { logger } from '@/lib/logger';
 import { navSections } from '@/lib/nav';
@@ -54,6 +59,7 @@ import {
   sendFriendRequestAction,
   unblockAction,
   unmuteAction,
+  presenceAction,
 } from './actions';
 
 export const metadata = { title: 'Friends' };
@@ -72,6 +78,9 @@ const STATUS_MESSAGES: Record<string, string> = {
   policy_everyone: 'Anyone can now send you friend requests.',
   policy_org_mates: 'Only people in one of your orgs can send you friend requests now.',
   policy_nobody: 'Nobody can send you friend requests now.',
+  presence_off: 'Friends no longer see your presence.',
+  presence_status: 'Friends can see whether you are online, in game or in quantum.',
+  presence_system: 'Friends can see your status and your star system.',
   notifications_read: 'All notifications marked read.',
 };
 
@@ -115,6 +124,8 @@ export default async function FriendsPage(props: {
     ['blocks', listBlocks(session.token)],
     ['mutes', listMutes(session.token)],
     ['notifications', getNotifications(session.token, { limit: 50 })],
+    ['presence', getFriendsPresence(session.token)],
+    ['presenceSettings', getPresenceSettings(session.token)],
   ] as const;
   const settled = await Promise.allSettled(calls.map(([, p]) => p));
   settled.forEach((r, i) => {
@@ -133,6 +144,11 @@ export default async function FriendsPage(props: {
   const blocks = value<BlocksResponse>(1);
   const mutes = value<MutesResponse>(2);
   const notes = value<NotificationsResponse>(3);
+  const presence = value<FriendsPresenceResponse>(4);
+  const presenceSettings = value<{ level: PresenceLevel }>(5);
+  const presenceOf = new Map(
+    (presence?.friends ?? []).map((p) => [p.handle.toLowerCase(), p] as const),
+  );
 
   const unavailable = (what: string) => (
     <BeamAlert tone="bad">Couldn&apos;t load {what}. Refresh to retry.</BeamAlert>
@@ -179,6 +195,14 @@ export default async function FriendsPage(props: {
                   Friends since {formatRelativePast(f.since) ?? 'recently'}
                   {f.rsi_verified ? '' : ' · RSI handle not verified'}
                 </span>
+                {(() => {
+                  const label = presenceLabel(presenceOf.get(f.handle.toLowerCase()));
+                  return label ? (
+                    <span className="hp-grant__note" data-testid="friend-presence">
+                      {label}
+                    </span>
+                  ) : null;
+                })()}
               </div>
               <div className="hp-grant__act-btns">
                 <CopyHandleButton handle={f.handle} verified={f.rsi_verified} />
@@ -333,6 +357,31 @@ export default async function FriendsPage(props: {
             <option value="everyone">Anyone with a StarStats account</option>
             <option value="org_mates">People in one of my orgs</option>
             <option value="nobody">Nobody</option>
+          </BeamSelect>
+          <BeamButton type="submit" style={{ alignSelf: 'flex-start' }}>
+            Save
+          </BeamButton>
+        </form>
+      ),
+    },
+    {
+      id: 'presence',
+      title: 'Your presence',
+      group: 'privacy',
+      node: !presenceSettings ? (
+        unavailable('your presence setting')
+      ) : (
+        <form action={presenceAction} className="hp-formcol">
+          <BeamSelect
+            id="presence-level"
+            name="presence_level"
+            label="Friends see"
+            defaultValue={presenceSettings.level}
+            hint="Only friends, and only while your tray is running with presence sharing on as well. Nothing is kept once you go offline."
+          >
+            <option value="off">Nothing</option>
+            <option value="status">Whether I am online, in game or in quantum</option>
+            <option value="system">That, and my star system</option>
           </BeamSelect>
           <BeamButton type="submit" style={{ alignSelf: 'flex-start' }}>
             Save
