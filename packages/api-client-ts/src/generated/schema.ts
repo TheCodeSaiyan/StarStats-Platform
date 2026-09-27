@@ -1698,6 +1698,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/friends/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your friends' presence. Anyone not sharing reads as offline. */
+        get: operations["social_friends_presence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/friends/requests": {
         parameters: {
             query?: never;
@@ -2003,6 +2020,48 @@ export interface paths {
         };
         get: operations["preferences_get"];
         put: operations["preferences_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/presence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Report your presence. Kept only if your presence setting is not
+         *     `off`; the system only if it is `system`.
+         */
+        put: operations["social_report_presence"];
+        post?: never;
+        /** Stop showing as present now, rather than when the report expires. */
+        delete: operations["social_clear_presence"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/presence/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["social_get_presence_settings"];
+        /**
+         * Set how much of your presence friends see. Takes effect at once:
+         *     turning it off, or down from `system` to `status`, is pushed to
+         *     friends straight away rather than when the next report arrives.
+         */
+        put: operations["social_put_presence_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -3612,6 +3671,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The realtime gateway. Authenticated like any other route (the tray
+         *     sends its bearer token on the upgrade request). On connect it sends
+         *     each friend's presence, then pushes changes and notification nudges;
+         *     the client sends presence reports, `offline`, or `ping`.
+         */
+        get: operations["social_gateway"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -4345,6 +4426,17 @@ export interface components {
          * @enum {string}
          */
         ClassificationSourceSchema: "catalog" | "fuzzy" | "synthetic" | "heuristic" | "fallback";
+        /** @description Messages a tray sends. */
+        ClientMessage: (components["schemas"]["PresenceUpdate"] & {
+            /** @enum {string} */
+            type: "presence";
+        }) | {
+            /** @enum {string} */
+            type: "offline";
+        } | {
+            /** @enum {string} */
+            type: "ping";
+        };
         /**
          * @description OpenAPI schema mirror of `starstats_core::cohort::Cohort` (core has no
          *     utoipa dep). Keep field-for-field in sync.
@@ -5691,6 +5783,18 @@ export interface components {
             /** Format: date-time */
             since: string;
         };
+        /**
+         * @description One friend's presence as another friend sees it. `state: null` is
+         *     offline, which is also what "not sharing" looks like: a friend cannot
+         *     tell the two apart.
+         */
+        FriendPresence: {
+            handle: string;
+            state?: null | components["schemas"]["PresenceState"];
+            system?: string | null;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
         FriendRequest: {
             /** Format: date-time */
             created_at: string;
@@ -5713,6 +5817,9 @@ export interface components {
         };
         /** @enum {string} */
         FriendRequestStatus: "pending" | "accepted" | "declined" | "cancelled";
+        FriendsPresenceResponse: {
+            friends: components["schemas"]["FriendPresence"][];
+        };
         FriendsResponse: {
             friend_request_policy: components["schemas"]["FriendRequestPolicy"];
             friends: components["schemas"]["Friend"][];
@@ -6824,6 +6931,25 @@ export interface components {
             /** Format: int64 */
             total_playtime_secs: number;
         };
+        /**
+         * @description How much of a user's presence their friends may see.
+         * @enum {string}
+         */
+        PresenceLevel: "off" | "status" | "system";
+        PresenceSettings: {
+            level: components["schemas"]["PresenceLevel"];
+        };
+        /** @enum {string} */
+        PresenceState: "online" | "in_game" | "in_quantum";
+        /** @description What a tray reports. */
+        PresenceUpdate: {
+            state: components["schemas"]["PresenceState"];
+            /**
+             * @description Star system name, e.g. "Stanton". Kept only when the level is
+             *     `system`, and only if it looks like a system name.
+             */
+            system?: string | null;
+        };
         ProcessInitSchema: {
             env_session: string;
             local_session: string;
@@ -7907,6 +8033,14 @@ export interface components {
         SendFriendRequestResponse: {
             outcome: components["schemas"]["SendFriendRequestOutcome"];
             request?: null | components["schemas"]["FriendRequest"];
+        };
+        /** @description Messages pushed to a connected tray. */
+        ServerMessage: (components["schemas"]["FriendPresence"] & {
+            /** @enum {string} */
+            type: "presence";
+        }) | {
+            /** @enum {string} */
+            type: "notification";
         };
         /** @enum {string} */
         ServerPhaseSchema: "start" | "end";
@@ -14458,6 +14592,26 @@ export interface operations {
             };
         };
     };
+    social_friends_presence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Friends' presence */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FriendsPresenceResponse"];
+                };
+            };
+        };
+    };
     social_send_friend_request: {
         parameters: {
             query?: never;
@@ -15332,6 +15486,90 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_report_presence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresenceUpdate"];
+            };
+        };
+        responses: {
+            /** @description Reported (or ignored: presence is off) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    social_clear_presence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Shown as offline */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    social_get_presence_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your presence setting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresenceSettings"];
+                };
+            };
+        };
+    };
+    social_put_presence_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PresenceSettings"];
+            };
+        };
+        responses: {
+            /** @description Saved, read back */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PresenceSettings"];
                 };
             };
         };
@@ -19642,6 +19880,31 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
                 };
+            };
+        };
+    };
+    social_gateway: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Switching to the realtime gateway */
+            101: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
