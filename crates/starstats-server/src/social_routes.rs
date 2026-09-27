@@ -22,6 +22,7 @@ use crate::auth::{AuthenticatedUser, TokenType};
 use crate::friend_sync;
 use crate::notifications::{Notification, NotificationKind, NotificationStore, PAGE_LIMIT_MAX};
 use crate::rsi_org_store::RsiOrgStore;
+use crate::salutes::SaluteStore;
 use crate::share_metadata::ShareMetadataStore;
 use crate::social::{
     request_rate_limit_window, Friend, FriendRequest, FriendRequestPolicy, FriendRequestStatus,
@@ -182,7 +183,10 @@ fn social_err(e: SocialError, context: &'static str) -> Response {
 /// The signed-in user behind the token, by id. Accepts user and device
 /// tokens; refuses the short-lived TOTP interim token, which must only
 /// ever reach the second-factor endpoint.
-async fn caller(auth: &AuthenticatedUser, users: &dyn UserStore) -> Result<User, Response> {
+pub(crate) async fn caller(
+    auth: &AuthenticatedUser,
+    users: &dyn UserStore,
+) -> Result<User, Response> {
     if !matches!(auth.token_type, TokenType::User | TokenType::Device) {
         return Err(err(StatusCode::UNAUTHORIZED, "user_token_required"));
     }
@@ -200,7 +204,7 @@ async fn caller(auth: &AuthenticatedUser, users: &dyn UserStore) -> Result<User,
 }
 
 /// Resolve another user by handle to their canonical record.
-async fn target(handle: &str, users: &dyn UserStore) -> Result<User, Response> {
+pub(crate) async fn target(handle: &str, users: &dyn UserStore) -> Result<User, Response> {
     let handle = handle.trim();
     if !validate_handle(handle) {
         return Err(err(StatusCode::BAD_REQUEST, "invalid_handle"));
@@ -213,6 +217,31 @@ async fn target(handle: &str, users: &dyn UserStore) -> Result<User, Response> {
             Err(err(StatusCode::INTERNAL_SERVER_ERROR, "internal"))
         }
     }
+}
+
+/// Whether the signed-in `viewer` is blocked by `owner`. A block hides
+/// the owner's profile from them the way a private profile is hidden,
+/// so callers answer 404. An anonymous viewer is never blocked: a block
+/// is between two accounts, and this is not a way to hide a public
+/// profile from someone who signs out.
+///
+/// Fails CLOSED with 503: showing the profile to the person it was
+/// hidden from is the one outcome this exists to prevent.
+pub(crate) async fn blocked_by_owner(
+    social: &dyn SocialStore,
+    owner: &str,
+    viewer: Option<&str>,
+) -> Result<bool, Response> {
+    let Some(viewer) = viewer else {
+        return Ok(false);
+    };
+    if viewer.eq_ignore_ascii_case(owner) {
+        return Ok(false);
+    }
+    social.is_blocked(owner, viewer).await.map_err(|e| {
+        tracing::error!(error = %e, "block lookup failed (profile view); refusing to serve");
+        err(StatusCode::SERVICE_UNAVAILABLE, "block_check_unavailable")
+    })
 }
 
 /// Whether two users share an org, for the `org_mates` request policy:
@@ -286,7 +315,7 @@ async fn audit_best_effort(
 /// Deliver a notification unless the recipient has blocked or muted
 /// the actor. Best-effort: a failed notification must not undo the
 /// action that caused it.
-async fn notify(
+pub(crate) async fn notify(
     social: &dyn SocialStore,
     notes: &dyn NotificationStore,
     recipient: &str,
@@ -828,6 +857,7 @@ pub async fn block_user(
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(salutes): Extension<Arc<dyn SaluteStore>>,
     Path(handle): Path<String>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -854,6 +884,10 @@ pub async fn block_user(
     // Removes their view of a friends share. Unconditional: a failed
     // remove_friendship above must not leave the tuples behind.
     friend_sync::apply(spicedb.as_ref(), mine, theirs, false).await;
+    // Their salute on my profile goes, and mine on theirs.
+    if let Err(e) = salutes.delete_between(mine, theirs).await {
+        tracing::warn!(error = %e, "block: salute delete failed");
+    }
     if let Err(e) = social.cancel_pending_between(mine, theirs).await {
         tracing::warn!(error = %e, "block: cancel_pending_between failed");
     }
@@ -1154,6 +1188,7 @@ pub async fn mark_notifications_read(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::account_restrictions::test_support::MemoryAccountRestrictionStore;
     use crate::audit::test_support::MemoryAuditLog;
     use crate::auth::test_support::fresh_pair;
     use crate::auth::TokenIssuer;
@@ -1162,6 +1197,7 @@ mod tests {
     use crate::notifications::test_support::MemoryNotificationStore;
     use crate::rsi_org_store::test_support::MemoryRsiOrgStore;
     use crate::rsi_verify::RsiOrg;
+    use crate::salutes::test_support::MemorySaluteStore;
     use crate::share_metadata::test_support::MemoryShareMetadataStore;
     use crate::social::test_support::MemorySocialStore;
     use crate::users::hash_password;
@@ -1179,6 +1215,7 @@ mod tests {
         notes: Arc<MemoryNotificationStore>,
         devices: Arc<MemoryDeviceStore>,
         rsi_orgs: Arc<MemoryRsiOrgStore>,
+        salutes: Arc<MemorySaluteStore>,
     }
 
     fn fixture() -> Fixture {
@@ -1200,7 +1237,18 @@ mod tests {
         let spicedb: Arc<Option<SpicedbClient>> = Arc::new(spicedb);
         let rsi_orgs = Arc::new(MemoryRsiOrgStore::new());
         let rsi_orgs_dyn: Arc<dyn RsiOrgStore> = rsi_orgs.clone();
+        let salutes = Arc::new(MemorySaluteStore::new());
+        let salutes_dyn: Arc<dyn SaluteStore> = salutes.clone();
         let app = routes()
+            .merge(crate::salute_routes::routes())
+            .layer(Extension(salutes_dyn))
+            .layer(Extension(
+                Arc::new(crate::salutes::SaluteRateLimiter::new()),
+            ))
+            .layer(Extension(Arc::new(MemoryAccountRestrictionStore::new())
+                as Arc<
+                    dyn crate::account_restrictions::AccountRestrictionStore,
+                >))
             .layer(Extension(users_dyn))
             .layer(Extension(rsi_orgs_dyn))
             .layer(Extension(social_dyn))
@@ -1218,6 +1266,7 @@ mod tests {
             notes,
             devices,
             rsi_orgs,
+            salutes,
         }
     }
 
@@ -1447,6 +1496,149 @@ mod tests {
         assert_eq!(a["incoming"].as_array().unwrap().len(), 1);
         let (_, v) = f.call("GET", "/v1/me/mutes", &alice, None).await;
         assert_eq!(v["mutes"][0]["handle"], "bob");
+    }
+
+    // -- Salutes ---------------------------------------------------------
+
+    #[tokio::test]
+    async fn salute_gates_come_before_any_profile_lookup() {
+        let f = fixture();
+        let unverified = f.user("alice", false).await;
+        let bob = f.user("bob", true).await;
+        f.user("carol", true).await;
+
+        // The count is public, so an unverified account cannot add to it.
+        let (s, v) = f.call("PUT", "/v1/u/carol/salute", &unverified, None).await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+        assert_eq!(v["error"], "rsi_handle_not_verified");
+
+        let (s, v) = f.call("PUT", "/v1/u/BOB/salute", &bob, None).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"], "cannot_salute_self");
+
+        // An unknown handle and a hidden profile answer alike.
+        let (s, v) = f.call("PUT", "/v1/u/ghost/salute", &bob, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        assert_eq!(v["error"], "not_found");
+
+        // Past the gates, visibility needs SpiceDB; without it, 503.
+        let (s, v) = f.call("PUT", "/v1/u/carol/salute", &bob, None).await;
+        assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v["error"], "spicedb_unavailable");
+        assert_eq!(f.salutes.count("carol").await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_blocked_viewer_sees_no_salutes_and_cannot_salute() {
+        let f = fixture();
+        let alice = f.user("alice", true).await;
+        let bob = f.user("bob", true).await;
+        f.salutes.salute("alice", "bob").await.unwrap();
+        f.salutes.salute("bob", "alice").await.unwrap();
+
+        let (s, _) = f.call("PUT", "/v1/me/blocks/alice", &bob, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert_eq!(f.salutes.count("bob").await.unwrap(), 0, "hers on his goes");
+        assert_eq!(
+            f.salutes.count("alice").await.unwrap(),
+            0,
+            "and his on hers"
+        );
+
+        // The same 404 as a stranger, before SpiceDB is ever asked.
+        let (s, v) = f.call("PUT", "/v1/u/bob/salute", &alice, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        assert_eq!(v["error"], "not_found");
+        let (s, _) = f.call("GET", "/v1/u/bob/salutes", &alice, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn my_salutes_names_friends_only() {
+        let f = fixture();
+        let bob = f.user("bob", true).await;
+        f.social.add_friendship("bob", "alice").await.unwrap();
+        f.social.add_friendship("bob", "carol").await.unwrap();
+        f.salutes.salute("alice", "bob").await.unwrap();
+        f.salutes.salute("stranger", "bob").await.unwrap();
+
+        let (s, v) = f.call("GET", "/v1/me/salutes", &bob, None).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(v["count"], 2, "the count includes everyone");
+        assert_eq!(
+            v["friends"],
+            serde_json::json!(["alice"]),
+            "the names do not"
+        );
+    }
+
+    #[tokio::test]
+    async fn saluting_and_unsaluting_share_one_rate_limit() {
+        let f = fixture();
+        let alice = f.user("alice", true).await;
+        let bursts = crate::salutes::SALUTE_BURST as usize;
+        for _ in 0..bursts {
+            let (s, _) = f.call("DELETE", "/v1/u/bob/salute", &alice, None).await;
+            assert_eq!(s, StatusCode::OK);
+        }
+        let (s, v) = f.call("DELETE", "/v1/u/bob/salute", &alice, None).await;
+        assert_eq!(s, StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(v["error"], "rate_limited");
+    }
+
+    /// The whole flow against a real SpiceDB: a public profile can be
+    /// saluted by anyone verified, a private one only by someone it is
+    /// shared with, and only the first salute notifies. Skipped without
+    /// one (see `spicedb::test_live`).
+    #[tokio::test]
+    async fn live_spicedb_salutes_follow_what_the_viewer_can_see() {
+        let Some(c) = crate::spicedb::test_live::live_spicedb().await else {
+            return;
+        };
+        let f = fixture_with(Some(c.clone()));
+        let alice = f.user("Alice", true).await;
+        f.user("Pub", true).await;
+        f.user("Priv", true).await;
+        f.user("Shared", true).await;
+        c.write_public_view("Pub").await.unwrap();
+        // Written before any check touches it: SpiceDB reuses a check
+        // result for a few seconds, so checking a profile before and
+        // after sharing it would read the old answer.
+        c.write_share_with_friends("Shared").await.unwrap();
+        c.write_friendship("Shared", "Alice").await.unwrap();
+
+        let (s, v) = f.call("PUT", "/v1/u/pub/salute", &alice, None).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        assert_eq!(v["count"], 1);
+        assert_eq!(v["saluted_by_me"], true);
+        let (s, _) = f.call("PUT", "/v1/u/Pub/salute", &alice, None).await;
+        assert_eq!(s, StatusCode::OK);
+        let salutes: Vec<_> = f
+            .notes
+            .all_for("Pub")
+            .into_iter()
+            .filter(|n| n.kind == NotificationKind::Salute)
+            .collect();
+        assert_eq!(salutes.len(), 1, "saluting twice notifies once");
+
+        // Signed out, a public profile's count is still readable.
+        let (s, v) = f.call("GET", "/v1/u/pub/salutes", "", None).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(v["count"], 1);
+        assert!(v.get("saluted_by_me").is_none());
+
+        // A private profile is invisible; one shared with friends is not.
+        let (s, _) = f.call("PUT", "/v1/u/priv/salute", &alice, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        let (s, _) = f.call("GET", "/v1/u/priv/salutes", "", None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+        let (s, v) = f.call("PUT", "/v1/u/shared/salute", &alice, None).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        let (s, v) = f.call("GET", "/v1/u/shared/salutes", &alice, None).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(v["saluted_by_me"], true);
+        let (s, _) = f.call("GET", "/v1/u/shared/salutes", "", None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "signed out, it is private again");
     }
 
     /// The routes keep SpiceDB's friend tuples in step: written on

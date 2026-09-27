@@ -141,15 +141,29 @@ pub async fn put_share_scopes(
     ),
     tag = "share-scopes",
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn public_share_scopes(
     Path(handle): Path<String>,
     Extension(checker): Extension<Arc<Option<Arc<dyn PublicAccessChecker>>>>,
     Extension(store): Extension<Arc<dyn ShareScopesStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
+    viewer: Option<crate::auth::AuthenticatedUser>,
 ) -> Response {
     // Reject malformed handles before they reach SpiceDB or Postgres.
     // Mirrors the gate used by public_summary / public_timeline in sharing_routes.rs.
     if !validate_handle(&handle) {
         return (StatusCode::NOT_FOUND, ()).into_response();
+    }
+    match crate::social_routes::blocked_by_owner(
+        social.as_ref(),
+        &handle,
+        viewer.as_ref().map(|v| v.preferred_username.as_str()),
+    )
+    .await
+    {
+        Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
+        Ok(false) => {}
+        Err(resp) => return resp,
     }
 
     let checker = match checker.as_ref().as_ref() {
@@ -255,6 +269,10 @@ mod tests {
             .route("/v1/public/{handle}/share-scopes", get(public_share_scopes))
             .layer(Extension(checker))
             .layer(Extension(store))
+            .layer(Extension(
+                Arc::new(crate::social::test_support::MemorySocialStore::new())
+                    as Arc<dyn crate::social::SocialStore>,
+            ))
     }
 
     fn mint_token(issuer: &crate::auth::TokenIssuer, handle: &str) -> String {

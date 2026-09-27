@@ -2164,6 +2164,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/salutes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Your own salutes: the count, and which of your friends saluted you. */
+        get: operations["social_my_salutes"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/share": {
         parameters: {
             query?: never;
@@ -3286,6 +3303,50 @@ export interface paths {
          *     allow/deny lists — via `EventFilters`.
          */
         get: operations["friend_events"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/u/{handle}/salute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Salute a profile. Idempotent: saluting twice is one salute, and only
+         *     the first notifies the owner.
+         */
+        put: operations["social_salute"];
+        post?: never;
+        /**
+         * Take your salute back. Idempotent. Answers without a count, so it
+         *     cannot be used to read the count of a profile you cannot see.
+         */
+        delete: operations["social_unsalute"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/u/{handle}/salutes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A profile's salute count. Public for a public profile; signed in, it
+         *     also covers profiles shared with you and says whether you saluted.
+         */
+        get: operations["social_salute_summary"];
         put?: never;
         post?: never;
         delete?: never;
@@ -6349,6 +6410,12 @@ export interface components {
             releases: components["schemas"]["MyRelease"][];
             unread_count: number;
         };
+        MySalutes: {
+            /** Format: int64 */
+            count: number;
+            /** @description Which of your friends saluted you. Nobody else's name is shown. */
+            friends: string[];
+        };
         /**
          * @description How many catalogue rows carry a given contract name.
          *
@@ -6404,7 +6471,7 @@ export interface components {
             read_at?: string | null;
         };
         /** @enum {string} */
-        NotificationKind: "friend_request" | "friend_accepted";
+        NotificationKind: "friend_request" | "friend_accepted" | "salute";
         NotificationsResponse: {
             items: components["schemas"]["Notification"][];
             /**
@@ -7791,6 +7858,16 @@ export interface components {
             /** @description `true` when the handle is now (or was already) proven. */
             verified: boolean;
         };
+        SaluteSummary: {
+            /**
+             * Format: int64
+             * @description Public: salutes on this profile, leaving out accounts whose
+             *     sharing is restricted.
+             */
+            count: number;
+            /** @description Whether the signed-in caller saluted it. Absent when signed out. */
+            saluted_by_me?: boolean | null;
+        };
         /**
          * @description Response body for `GET /v1/admin/sharing/scope-histogram`. NULL
          *     scope rows fold into `full` (the legacy default preserved by
@@ -8659,6 +8736,9 @@ export interface components {
             /** Format: int64 */
             count: number;
             event_type: string;
+        };
+        UnsaluteResponse: {
+            saluted: boolean;
         };
         /**
          * @description Top-level Tauri 2 update manifest. Field names are dictated by the
@@ -15591,6 +15671,26 @@ export interface operations {
             };
         };
     };
+    social_my_salutes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your salutes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MySalutes"];
+                };
+            };
+        };
+    };
     add_share: {
         parameters: {
             query?: never;
@@ -18628,6 +18728,156 @@ export interface operations {
                 content?: never;
             };
             /** @description SpiceDB not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_salute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Profile to salute */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saluted */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaluteSummary"];
+                };
+            };
+            /** @description Your own profile */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description RSI handle not verified, or sharing restricted */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such profile, or not one you can see */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many salutes */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description SpiceDB unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_unsalute: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Profile to unsalute */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Not saluting */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnsaluteResponse"];
+                };
+            };
+            /** @description Invalid handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many salutes */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    social_salute_summary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Profile */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Salute count */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaluteSummary"];
+                };
+            };
+            /** @description No such profile, or not one you can see */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description SpiceDB unavailable */
             503: {
                 headers: {
                     [name: string]: unknown;

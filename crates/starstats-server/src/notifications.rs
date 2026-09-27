@@ -33,6 +33,8 @@ pub fn retention_window() -> Duration {
 pub enum NotificationKind {
     FriendRequest,
     FriendAccepted,
+    /// Someone saluted your profile (o7).
+    Salute,
 }
 
 impl NotificationKind {
@@ -40,6 +42,7 @@ impl NotificationKind {
         match self {
             Self::FriendRequest => "friend_request",
             Self::FriendAccepted => "friend_accepted",
+            Self::Salute => "salute",
         }
     }
 
@@ -47,6 +50,7 @@ impl NotificationKind {
         Some(match s {
             "friend_request" => Self::FriendRequest,
             "friend_accepted" => Self::FriendAccepted,
+            "salute" => Self::Salute,
             _ => return None,
         })
     }
@@ -206,7 +210,19 @@ impl NotificationStore for PostgresNotificationStore {
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
-        rows.into_iter().map(row_to_notification).collect()
+        // Skip a kind this build does not know rather than failing the
+        // whole inbox: a rollback to an older server, or a newer kind
+        // written by a newer one, must not empty everyone's list.
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| match row_to_notification(row) {
+                Ok(n) => Some(n),
+                Err(e) => {
+                    tracing::debug!(error = %e, "skipping notification of unknown kind");
+                    None
+                }
+            })
+            .collect())
     }
 
     async fn unread_count(&self, recipient: &str) -> Result<i64, NotificationError> {
@@ -428,6 +444,7 @@ mod tests {
         for k in [
             NotificationKind::FriendRequest,
             NotificationKind::FriendAccepted,
+            NotificationKind::Salute,
         ] {
             assert_eq!(NotificationKind::parse(k.as_str()), Some(k));
         }

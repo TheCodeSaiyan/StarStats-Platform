@@ -309,10 +309,13 @@ pub async fn me<S: RsiOrgStore>(State(store): State<Arc<S>>, auth: Authenticated
         (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
     ),
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn public_orgs<U: UserStore, S: RsiOrgStore>(
     State((users, store)): State<(Arc<U>, Arc<S>)>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(scopes): Extension<Arc<dyn crate::share_scopes::ShareScopesStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
+    viewer: Option<crate::auth::AuthenticatedUser>,
     Path(handle): Path<String>,
 ) -> Response {
     // Same posture as `sharing_routes::public_summary` /
@@ -334,6 +337,17 @@ pub async fn public_orgs<U: UserStore, S: RsiOrgStore>(
             return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
         }
     };
+    match crate::social_routes::blocked_by_owner(
+        social.as_ref(),
+        &user.claimed_handle,
+        viewer.as_ref().map(|v| v.preferred_username.as_str()),
+    )
+    .await
+    {
+        Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
+        Ok(false) => {}
+        Err(resp) => return resp,
+    }
 
     let Some(client) = spicedb.as_ref() else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "spicedb_unavailable", None);

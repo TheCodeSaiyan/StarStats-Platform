@@ -67,6 +67,7 @@ use crate::rsi_org_store;
 use crate::rsi_profile_routes;
 use crate::rsi_verify;
 use crate::rsi_verify_routes;
+use crate::salute_routes;
 use crate::share_scopes;
 use crate::share_scopes_routes;
 use crate::sharing_routes;
@@ -328,6 +329,10 @@ impl Modify for SecurityAddon {
         social_routes::unmute_user,
         social_routes::update_settings,
         social_routes::list_notifications,
+        salute_routes::salute,
+        salute_routes::unsalute,
+        salute_routes::salute_summary,
+        salute_routes::my_salutes,
         social_routes::mark_notifications_read,
         // News from the admin console
         news_routes::list_public,
@@ -770,6 +775,9 @@ impl Modify for SecurityAddon {
         social_routes::BlocksResponse,
         social_routes::MutesResponse,
         social_routes::SocialSettings,
+        salute_routes::SaluteSummary,
+        salute_routes::UnsaluteResponse,
+        salute_routes::MySalutes,
         social_routes::NotificationsResponse,
         social_routes::MarkNotificationsReadBody,
         social_routes::MarkNotificationsReadResponse,

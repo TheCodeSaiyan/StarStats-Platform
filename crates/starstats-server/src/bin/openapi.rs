@@ -203,6 +203,10 @@ mod rsi_profile_routes;
 mod rsi_verify;
 #[path = "../rsi_verify_routes.rs"]
 mod rsi_verify_routes;
+#[path = "../salute_routes.rs"]
+mod salute_routes;
+#[path = "../salutes.rs"]
+mod salutes;
 #[path = "../share_metadata.rs"]
 mod share_metadata;
 #[path = "../share_reports.rs"]

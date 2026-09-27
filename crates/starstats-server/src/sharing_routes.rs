@@ -1824,13 +1824,20 @@ async fn check_view(client: &SpicedbClient, owner: &str, viewer: &str) -> anyhow
 /// `audit` is best-effort — the share is already revoked logically
 /// once metadata says so, so an audit hiccup doesn't reverse the
 /// effective decision.
-async fn check_view_with_expiry(
+pub(crate) async fn check_view_with_expiry(
     client: &SpicedbClient,
+    social: &dyn crate::social::SocialStore,
     meta: &dyn ShareMetadataStore,
     audit: &dyn AuditLog,
     owner: &str,
     viewer: &str,
 ) -> anyhow::Result<bool> {
+    // A viewer the owner has blocked sees what a stranger sees, whatever
+    // share they still hold. Checked first, so the block also stops the
+    // lazy expiry cleanup below from running on their behalf.
+    if social.is_blocked(owner, viewer).await? {
+        return Ok(false);
+    }
     let allowed = check_view(client, owner, viewer).await?;
     if !allowed {
         return Ok(false);
@@ -2037,7 +2044,7 @@ async fn render_timeline_scoped<Q: EventQuery>(
 /// falling through to "serve it". Removing someone from /discover while
 /// still serving their profile to anyone holding the handle -- including
 /// whoever reported them -- is the half-done version of this feature.
-async fn public_profile_restricted(
+pub(crate) async fn public_profile_restricted(
     restrictions: &Arc<dyn crate::account_restrictions::AccountRestrictionStore>,
     handle: &str,
 ) -> Result<bool, Response> {
@@ -2072,6 +2079,7 @@ async fn public_profile_restricted(
         (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
     ),
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn public_summary<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
@@ -2080,12 +2088,25 @@ pub async fn public_summary<Q: EventQuery>(
     Extension(restrictions): Extension<
         Arc<dyn crate::account_restrictions::AccountRestrictionStore>,
     >,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
+    viewer: Option<AuthenticatedUser>,
     Path(handle): Path<String>,
 ) -> Response {
     if !validate_handle(&handle) {
         return (StatusCode::NOT_FOUND, ()).into_response();
     }
     match public_profile_restricted(&restrictions, &handle).await {
+        Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
+        Ok(false) => {}
+        Err(resp) => return resp,
+    }
+    match crate::social_routes::blocked_by_owner(
+        social.as_ref(),
+        &handle,
+        viewer.as_ref().map(|v| v.preferred_username.as_str()),
+    )
+    .await
+    {
         Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
         Ok(false) => {}
         Err(resp) => return resp,
@@ -2133,6 +2154,7 @@ pub async fn public_summary<Q: EventQuery>(
         (status = 503, description = "SpiceDB not configured", body = ApiErrorBody),
     ),
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn public_timeline<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
@@ -2140,6 +2162,8 @@ pub async fn public_timeline<Q: EventQuery>(
     Extension(restrictions): Extension<
         Arc<dyn crate::account_restrictions::AccountRestrictionStore>,
     >,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
+    viewer: Option<AuthenticatedUser>,
     Path(handle): Path<String>,
     Query(params): Query<PublicTimelineParams>,
 ) -> Response {
@@ -2147,6 +2171,17 @@ pub async fn public_timeline<Q: EventQuery>(
         return (StatusCode::NOT_FOUND, ()).into_response();
     }
     match public_profile_restricted(&restrictions, &handle).await {
+        Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
+        Ok(false) => {}
+        Err(resp) => return resp,
+    }
+    match crate::social_routes::blocked_by_owner(
+        social.as_ref(),
+        &handle,
+        viewer.as_ref().map(|v| v.preferred_username.as_str()),
+    )
+    .await
+    {
         Ok(true) => return (StatusCode::NOT_FOUND, ()).into_response(),
         Ok(false) => {}
         Err(resp) => return resp,
@@ -2195,10 +2230,12 @@ pub async fn public_timeline<Q: EventQuery>(
     ),
     security(("BearerAuth" = []))
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn friend_summary<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     Extension(supporters): Extension<Arc<dyn SupporterStore>>,
     auth: AuthenticatedUser,
@@ -2219,6 +2256,7 @@ pub async fn friend_summary<Q: EventQuery>(
     };
     let check = check_view_with_expiry(
         client,
+        social.as_ref(),
         meta.as_ref(),
         audit.as_ref(),
         &handle,
@@ -2264,10 +2302,12 @@ pub async fn friend_summary<Q: EventQuery>(
     ),
     security(("BearerAuth" = []))
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn friend_timeline<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     auth: AuthenticatedUser,
     Path(handle): Path<String>,
@@ -2291,6 +2331,7 @@ pub async fn friend_timeline<Q: EventQuery>(
     };
     let check = check_view_with_expiry(
         client,
+        social.as_ref(),
         meta.as_ref(),
         audit.as_ref(),
         &handle,
@@ -2428,6 +2469,7 @@ pub async fn friend_events<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     Extension(catalog_cache): Extension<LocationCatalogCache>,
     auth: AuthenticatedUser,
@@ -2453,6 +2495,7 @@ pub async fn friend_events<Q: EventQuery>(
 
     let check = check_view_with_expiry(
         client,
+        social.as_ref(),
         meta.as_ref(),
         audit.as_ref(),
         &handle,
@@ -2586,10 +2629,12 @@ pub async fn friend_events<Q: EventQuery>(
 ///
 /// Hidden rows and the scope's type clamps reach the COUNTS as well as the
 /// page, via `CommerceView` — see `count_event_type_shared`.
+#[allow(clippy::too_many_arguments)]
 pub async fn friend_commerce_recent<Q: EventQuery>(
     State(query): State<Arc<Q>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     auth: AuthenticatedUser,
     Path(handle): Path<String>,
@@ -2619,6 +2664,7 @@ pub async fn friend_commerce_recent<Q: EventQuery>(
 
     let check = check_view_with_expiry(
         client,
+        social.as_ref(),
         meta.as_ref(),
         audit.as_ref(),
         &handle,
@@ -2699,9 +2745,11 @@ pub async fn friend_commerce_recent<Q: EventQuery>(
     ),
     security(("BearerAuth" = []))
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn friend_scope(
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     auth: AuthenticatedUser,
     Path(handle): Path<String>,
@@ -2721,6 +2769,7 @@ pub async fn friend_scope(
     };
     let check = check_view_with_expiry(
         client,
+        social.as_ref(),
         meta.as_ref(),
         audit.as_ref(),
         &handle,
@@ -4083,12 +4132,37 @@ mod tests {
     /// answered "no" outright and locked the friend out. Needs a real
     /// SpiceDB (see `spicedb::test_live`); skipped without one.
     #[tokio::test]
+    async fn live_spicedb_a_block_hides_a_share_the_viewer_still_holds() {
+        use crate::social::SocialStore;
+        let Some(c) = crate::spicedb::test_live::live_spicedb().await else {
+            return;
+        };
+        let meta = MemoryShareMetadataStore::default();
+        let audit = MemoryAuditLog::default();
+        let social = crate::social::test_support::MemorySocialStore::new();
+        c.write_share_with_user("Alice", "Bob").await.unwrap();
+        assert!(
+            check_view_with_expiry(&c, &social, &meta, &audit, "Alice", "Bob")
+                .await
+                .unwrap()
+        );
+        social.block("alice", "BOB").await.unwrap();
+        assert!(
+            !check_view_with_expiry(&c, &social, &meta, &audit, "Alice", "Bob")
+                .await
+                .unwrap(),
+            "the share tuple is still there; the block is what hides it"
+        );
+    }
+
+    #[tokio::test]
     async fn live_spicedb_expired_direct_share_leaves_friend_access() {
         let Some(c) = crate::spicedb::test_live::live_spicedb().await else {
             return;
         };
         let meta = MemoryShareMetadataStore::default();
         let audit = MemoryAuditLog::default();
+        let social = crate::social::test_support::MemorySocialStore::new();
         let expired = Some(Utc::now() - chrono::Duration::hours(1));
 
         c.write_share_with_user("Alice", "Bob").await.unwrap();
@@ -4103,13 +4177,13 @@ mod tests {
         c.write_friendship("Alice", "Bob").await.unwrap();
 
         assert!(
-            check_view_with_expiry(&c, &meta, &audit, "Alice", "Bob")
+            check_view_with_expiry(&c, &social, &meta, &audit, "Alice", "Bob")
                 .await
                 .unwrap(),
             "Bob is still a friend, and Alice shares with friends"
         );
         assert!(
-            !check_view_with_expiry(&c, &meta, &audit, "Alice", "Carol")
+            !check_view_with_expiry(&c, &social, &meta, &audit, "Alice", "Carol")
                 .await
                 .unwrap(),
             "Carol had only the expired share"
@@ -4168,6 +4242,16 @@ mod public_restriction_tests {
     }
 
     fn app(restrictions: Arc<dyn AccountRestrictionStore>) -> Router {
+        app_with(
+            restrictions,
+            Arc::new(crate::social::test_support::MemorySocialStore::new()),
+        )
+    }
+
+    fn app_with(
+        restrictions: Arc<dyn AccountRestrictionStore>,
+        social: Arc<dyn crate::social::SocialStore>,
+    ) -> Router {
         let spicedb: Arc<Option<SpicedbClient>> = Arc::new(None);
         let supporters: Arc<dyn SupporterStore> =
             Arc::new(crate::supporters::test_support::MemorySupporterStore::default());
@@ -4184,6 +4268,7 @@ mod public_restriction_tests {
             .layer(Extension(spicedb))
             .layer(Extension(supporters))
             .layer(Extension(restrictions))
+            .layer(Extension(social))
             .layer(Extension({
                 // `public_summary` reads the owner's public clamp here.
                 // Empty store = nothing stored = no clamp, which is the
@@ -4192,6 +4277,45 @@ mod public_restriction_tests {
                     Arc::new(crate::share_scopes::test_support::MemoryShareScopesStore::default());
                 s
             }))
+    }
+
+    /// A signed-in viewer the owner blocked gets the same 404 as for a
+    /// private profile; anyone else goes on to the SpiceDB check, which
+    /// is absent here and answers 503. The block is checked before
+    /// SpiceDB, so this needs no live one.
+    #[tokio::test]
+    async fn a_blocked_viewer_gets_404_on_the_public_profile() {
+        use crate::social::SocialStore;
+        let social = Arc::new(crate::social::test_support::MemorySocialStore::new());
+        social.block("Owner", "Pest").await.unwrap();
+        let (issuer, verifier) = crate::auth::test_support::fresh_pair();
+        let token = |h: &str| issuer.sign_user(&Uuid::now_v7().to_string(), h).unwrap();
+        let app = app_with(Arc::new(MemoryAccountRestrictionStore::new()), social)
+            .layer(Extension(Arc::new(verifier)));
+        let status = |uri: &str, bearer: Option<String>| {
+            let app = app.clone();
+            let mut req = Request::builder().uri(uri.to_string());
+            if let Some(t) = bearer {
+                req = req.header("authorization", format!("Bearer {t}"));
+            }
+            async move {
+                app.oneshot(req.body(Body::empty()).unwrap())
+                    .await
+                    .unwrap()
+                    .status()
+            }
+        };
+        for path in ["/v1/public/owner/summary", "/v1/public/OWNER/timeline"] {
+            assert_eq!(
+                status(path, Some(token("pest"))).await,
+                StatusCode::NOT_FOUND
+            );
+            assert_eq!(
+                status(path, Some(token("Friendly"))).await,
+                StatusCode::SERVICE_UNAVAILABLE
+            );
+            assert_eq!(status(path, None).await, StatusCode::SERVICE_UNAVAILABLE);
+        }
     }
 
     async fn get_status(app: Router, uri: &str) -> StatusCode {
