@@ -1,5 +1,5 @@
 #!/bin/sh
-# Idempotently provision starstats / spicedb / glitchtip databases and roles
+# Idempotently provision starstats / spicedb / glitchtip / synapse databases and roles
 # in the existing voyager Postgres. Reads passwords from /run/secrets.
 # Safe to re-run on every `docker compose up`.
 
@@ -35,6 +35,27 @@ ensure_db() {
   fi
 }
 
+# Synapse refuses to start on a database whose collation is not C, so its
+# database is created from template0 with C collation and ctype, and an
+# existing one with anything else stops the init loudly rather than leaving
+# Synapse to crash-loop later.
+ensure_db_c() {
+  db="$1"
+  owner="$2"
+  exists="$(psql -At -c "SELECT 1 FROM pg_database WHERE datname='${db}'")"
+  if [ "${exists}" = "1" ]; then
+    collation="$(psql -At -c "SELECT datcollate || '/' || datctype FROM pg_database WHERE datname='${db}'")"
+    if [ "${collation}" != "C/C" ]; then
+      echo "database ${db}: collation is ${collation}, Synapse needs C/C" >&2
+      exit 1
+    fi
+    echo "database ${db}: present (C collation)"
+  else
+    echo "database ${db}: creating with C collation, owner=${owner}"
+    psql -c "CREATE DATABASE ${db} OWNER ${owner} ENCODING 'UTF8' LC_COLLATE 'C' LC_CTYPE 'C' TEMPLATE template0"
+  fi
+}
+
 ensure_extensions() {
   db="$1"
   shift
@@ -52,5 +73,15 @@ ensure_db spicedb   spicedb_app
 ensure_db glitchtip glitchtip_app
 
 ensure_extensions starstats "uuid-ossp" pgcrypto pg_stat_statements
+
+# Chat (social phase 6). Only once the stack mounts the secret: this image
+# rolls out on every push to main, before the Compose change that adds
+# Synapse, and the API waits for this init to succeed.
+if [ -f /run/secrets/synapse_db_password ]; then
+  ensure_role synapse_app /run/secrets/synapse_db_password
+  ensure_db_c synapse synapse_app
+else
+  echo "synapse: no synapse_db_password secret mounted, skipping"
+fi
 
 echo "starstats-db-init: complete"

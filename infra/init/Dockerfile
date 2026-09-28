@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # Postgres bootstrap — provisions roles, DBs, and extensions for
-# starstats / spicedb / glitchtip in the existing shared cluster.
+# starstats / spicedb / glitchtip / synapse in the existing shared cluster.
 # Idempotent; safe to run on every `docker compose up`.
 #
 # Base must match the libpq major of the server (pg17). Using the

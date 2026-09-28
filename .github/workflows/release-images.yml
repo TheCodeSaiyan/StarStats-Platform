@@ -532,6 +532,9 @@ jobs:
         - { image: tempo,          context: infra/tempo }
         - { image: prometheus,     context: infra/prometheus }
         - { image: db-init,        context: infra/init }
+        # Chat homeserver: pinned Synapse + the StarStats chat guard module.
+        # Nothing runs it until the Compose change adds the service.
+        - { image: synapse,        context: infra/synapse }
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
     - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
