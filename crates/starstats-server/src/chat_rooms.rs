@@ -100,6 +100,9 @@ pub trait ChatRoomStore: Send + Sync + 'static {
     async fn close_room(&self, room_id: &str) -> Result<(), ChatRoomError>;
     /// Open rooms `handle` is a member of, newest first.
     async fn rooms_of(&self, handle: &str) -> Result<Vec<MyChatRoom>, ChatRoomError>;
+    /// Whether `handle` is in `room_id` (invited by the API and not since
+    /// removed), and the room is open.
+    async fn is_member(&self, room_id: &str, handle: &str) -> Result<bool, ChatRoomError>;
 }
 
 pub struct PostgresChatRoomStore {
@@ -197,6 +200,19 @@ impl ChatRoomStore for PostgresChatRoomStore {
             .await?;
         tx.commit().await?;
         Ok(())
+    }
+
+    async fn is_member(&self, room_id: &str, handle: &str) -> Result<bool, ChatRoomError> {
+        let row: Option<(i32,)> = sqlx::query_as(
+            "SELECT 1 FROM chat_room_members m
+             JOIN chat_rooms r ON r.room_id = m.room_id
+             WHERE m.room_id = $1 AND m.handle = lower($2) AND r.closed_at IS NULL",
+        )
+        .bind(room_id)
+        .bind(handle)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.is_some())
     }
 
     async fn rooms_of(&self, handle: &str) -> Result<Vec<MyChatRoom>, ChatRoomError> {
@@ -629,6 +645,23 @@ pub mod test_support {
             Ok(())
         }
 
+        async fn is_member(&self, room_id: &str, handle: &str) -> Result<bool, ChatRoomError> {
+            let h = handle.to_ascii_lowercase();
+            let open = self
+                .rooms
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|r| r.0 == room_id && !r.4);
+            Ok(open
+                && self
+                    .members
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(r, x)| r == room_id && *x == h))
+        }
+
         async fn rooms_of(&self, handle: &str) -> Result<Vec<MyChatRoom>, ChatRoomError> {
             let me = handle.to_ascii_lowercase();
             let members = self.members.lock().unwrap();
@@ -887,7 +920,9 @@ mod tests {
         let d = mine.iter().find(|r| r.kind == RoomKind::Dm).unwrap();
         assert_eq!(d.other_handle.as_deref(), Some(bob.to_lowercase().as_str()));
 
+        assert!(s.is_member(&crew, &alice.to_uppercase()).await.unwrap());
         s.remove_member(&crew, &alice).await.unwrap();
+        assert!(!s.is_member(&crew, &alice).await.unwrap());
         assert_eq!(s.rooms_of(&alice).await.unwrap().len(), 1);
         s.close_room(&dm).await.unwrap();
         assert!(s.dm_room(&alice, &bob).await.unwrap().is_none());

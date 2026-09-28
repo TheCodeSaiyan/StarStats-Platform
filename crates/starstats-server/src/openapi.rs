@@ -25,6 +25,7 @@ use crate::admin_user_routes;
 use crate::api_error;
 use crate::appearance_routes;
 use crate::auth_routes;
+use crate::chat_report_routes;
 use crate::chat_routes;
 use crate::commend_routes;
 use crate::contract_entities;
@@ -366,6 +367,9 @@ impl Modify for SecurityAddon {
         chat_routes::login_token,
         chat_routes::open_dm,
         chat_routes::my_rooms,
+        chat_report_routes::report,
+        chat_report_routes::admin_list,
+        chat_report_routes::admin_resolve,
         social_routes::mark_notifications_read,
         // News from the admin console
         news_routes::list_public,
@@ -846,6 +850,14 @@ impl Modify for SecurityAddon {
         chat_routes::AgeDeclaration,
         chat_routes::MatrixLoginToken,
         chat_routes::DmRoom,
+        chat_report_routes::ReportChat,
+        chat_report_routes::ChatReportFiled,
+        chat_report_routes::ChatReportList,
+        chat_report_routes::ResolveChatReport,
+        crate::chat_reports::ChatReport,
+        crate::chat_reports::ChatReportReason,
+        crate::chat_reports::ChatReportStatus,
+        crate::chat_reports::RevealedMessage,
         chat_routes::MyChatRooms,
         crate::chat_rooms::MyChatRoom,
         crate::chat_rooms::RoomKind,

@@ -60,6 +60,7 @@ export const ADMIN_NAV: readonly AdminNavCategory[] = [
       },
       { id: 'sharing', label: 'Sharing', href: '/admin/sharing' },
       { id: 'lfg', label: 'LFG reports', href: '/admin/lfg/reports' },
+      { id: 'chat', label: 'Chat reports', href: '/admin/chat/reports' },
       { id: 'audit', label: 'Audit log', href: '/admin/audit' },
     ],
   },
