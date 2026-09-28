@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     'The terms you agree to when you use StarStats: what the service is, what it promises, what it does not, and the law it runs under.',
 };
 
-const LAST_UPDATED = '27 September 2026';
+const LAST_UPDATED = '28 September 2026';
 const CONTACT_EMAIL = 'dojo@thecodesaiyan.io';
 
 /* Mirrors the wrappers in privacy/page.tsx so the two legal pages read as
@@ -193,8 +193,9 @@ export default function TermsPage() {
         <h3 className="hp-subheading">Things you post</h3>
         <p style={{ marginTop: 0 }}>
           Some of what you write is seen by other players: Looking for Group
-          posts are on a board every signed-in player can read. What you post
-          must not:
+          posts are on a board every signed-in player can read, and chat
+          messages are read by the people in the chat. Chat is for players
+          aged 18 and over. What you post or send must not:
         </p>
         <ul style={listStyle}>
           <li>Be illegal, or link to anything illegal</li>
@@ -212,8 +213,12 @@ export default function TermsPage() {
           Any player can report a post with the report button on it, and a
           moderator reviews every report. A moderator can take a post down
           and, under section 8, suspend the account that made it. Posts also
-          expire on their own within a few hours. If you think a post of
-          yours was taken down by mistake, email me.
+          expire on their own within a few hours. Chat is end-to-end
+          encrypted, so nobody at StarStats reads it; but anyone in a chat
+          can report a player, and the messages they choose to include are
+          seen by moderators, who can restrict an account from chat or
+          suspend it. If you think a post of yours was taken down, or your
+          account restricted, by mistake, email me.
         </p>
       </PolicySection>
 

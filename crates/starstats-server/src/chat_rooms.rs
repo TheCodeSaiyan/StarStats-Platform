@@ -267,6 +267,13 @@ pub trait MatrixRooms: Send + Sync + 'static {
     ) -> Result<String, ChatRoomError>;
     async fn invite(&self, room_id: &str, user_id: &str) -> Result<(), ChatRoomError>;
     async fn kick(&self, room_id: &str, user_id: &str, reason: &str) -> Result<(), ChatRoomError>;
+    /// Deactivate a player's Matrix account and erase it (account
+    /// deletion). Needs the service account to be a Synapse admin, which
+    /// db-init sets. A deactivated ID can never be used again.
+    async fn deactivate(&self, user_id: &str) -> Result<(), ChatRoomError>;
+    /// Make sure the service account exists as a Synapse user, so db-init
+    /// can mark it admin. Safe to repeat.
+    async fn ensure_registered(&self) -> Result<(), ChatRoomError>;
 }
 
 /// Percent-encode for a URL path segment or query value. Matrix IDs are
@@ -412,6 +419,47 @@ impl MatrixRooms for HttpMatrixRooms {
         .await
         .map(|_| ())
     }
+
+    async fn deactivate(&self, user_id: &str) -> Result<(), ChatRoomError> {
+        self.post(
+            &format!("/_synapse/admin/v1/deactivate/{}", enc(user_id)),
+            serde_json::json!({ "erase": true }),
+        )
+        .await
+        .map(|_| ())
+    }
+
+    async fn ensure_registered(&self) -> Result<(), ChatRoomError> {
+        let localpart = self
+            .service_user
+            .trim_start_matches('@')
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_string();
+        let resp = self
+            .http
+            .post(format!("{}/_matrix/client/v3/register", self.base))
+            .bearer_auth(&self.as_token)
+            .json(&serde_json::json!({
+                "type": "m.login.application_service",
+                "username": localpart,
+                "inhibit_login": true,
+            }))
+            .send()
+            .await
+            .map_err(|e| ChatRoomError::Homeserver(e.without_url().to_string()))?;
+        let status = resp.status();
+        let json: serde_json::Value = resp.json().await.unwrap_or(serde_json::Value::Null);
+        // Already registered is the usual answer after the first start.
+        if status.is_success() || json["errcode"] == "M_USER_IN_USE" {
+            return Ok(());
+        }
+        let code = json["errcode"].as_str().unwrap_or("unknown");
+        Err(ChatRoomError::Homeserver(format!(
+            "{status} {code} on register"
+        )))
+    }
 }
 
 /// Rooms and memberships, kept in step with StarStats. Holds everything
@@ -505,6 +553,15 @@ impl ChatRooms {
             }
         }
         self.store.close_room(&room).await
+    }
+
+    /// Account deletion: out of every room, then the Matrix account itself
+    /// is deactivated and erased, as the chat DPIA says. The kicks come
+    /// first so the rooms are left tidy even if deactivation fails.
+    pub async fn close_account(&self, handle: &str) -> Result<(), ChatRoomError> {
+        let kicked = self.remove_everywhere(handle, "Account deleted").await;
+        self.matrix.deactivate(&self.user_id(handle)).await?;
+        kicked
     }
 
     /// Restriction or deletion: out of every room the API put them in.
@@ -736,6 +793,18 @@ pub mod test_support {
                 .push(format!("kick {room_id} {user_id}"));
             Ok(())
         }
+
+        async fn deactivate(&self, user_id: &str) -> Result<(), ChatRoomError> {
+            self.calls
+                .lock()
+                .unwrap()
+                .push(format!("deactivate {user_id}"));
+            Ok(())
+        }
+
+        async fn ensure_registered(&self) -> Result<(), ChatRoomError> {
+            Ok(())
+        }
     }
 
     pub fn rooms() -> (
@@ -839,6 +908,19 @@ mod tests {
             room,
             "a new one after"
         );
+    }
+
+    #[tokio::test]
+    async fn closing_an_account_empties_its_rooms_then_erases_it() {
+        let (rooms, store, matrix) = rooms();
+        let dm = rooms.dm("Gone", "Alice").await.unwrap();
+        rooms.close_account("GONE").await.unwrap();
+        let calls = matrix.calls();
+        assert_eq!(calls.last().unwrap(), "deactivate @gone:starstats.app");
+        assert!(calls
+            .iter()
+            .any(|c| c == &format!("kick {dm} @gone:starstats.app")));
+        assert_eq!(store.members_of(&dm), vec!["alice"]);
     }
 
     #[tokio::test]

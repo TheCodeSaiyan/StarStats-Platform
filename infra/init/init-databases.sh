@@ -80,6 +80,15 @@ ensure_extensions starstats "uuid-ossp" pgcrypto pg_stat_statements
 if [ -f /run/secrets/synapse_db_password ]; then
   ensure_role synapse_app /run/secrets/synapse_db_password
   ensure_db_c synapse synapse_app
+  # The API's application-service account erases deleted players' Matrix
+  # accounts, which needs Synapse admin. It has no config switch, so it is
+  # set here, every deploy. The row appears once the API has registered
+  # the account (on its first start); until then this matches nothing.
+  # Synapse caches the flag, so the first time it takes effect after
+  # Synapse restarts.
+  if [ "$(psql -d synapse -At -c "SELECT to_regclass('public.users') IS NOT NULL")" = "t" ]; then
+    psql -d synapse -c "UPDATE users SET admin = 1 WHERE name = '@starstats:starstats.app' AND admin = 0"
+  fi
 else
   echo "synapse: no synapse_db_password secret mounted, skipping"
 fi
