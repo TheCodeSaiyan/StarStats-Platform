@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.71] - 2026-09-27
+
+### New
+- Commend your crew and show commend totals.
+
 ## [Platform 0.1.70] - 2026-09-27
 
 No player-facing changes.
