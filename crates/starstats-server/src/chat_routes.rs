@@ -14,6 +14,7 @@ use crate::auth::AuthenticatedUser;
 use crate::chat::{declared_for_chat, ChatAccessStore, MatrixLoginSigner, CHAT_MIN_AGE};
 use crate::social_routes::caller;
 use crate::users::{User, UserStore};
+use axum::extract::Path;
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
@@ -30,6 +31,8 @@ pub fn routes() -> Router {
         .route("/v1/me/chat", get(chat_status))
         .route("/v1/me/chat/age-declaration", post(declare_age))
         .route("/v1/me/matrix/login-token", post(login_token))
+        .route("/v1/me/chat/dm/{handle}", post(open_dm))
+        .route("/v1/me/chat/rooms", get(my_rooms))
 }
 
 /// Mints are cheap for us and each one can open a Matrix session, so a
@@ -262,6 +265,128 @@ pub async fn login_token(
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct DmRoom {
+    pub room_id: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct MyChatRooms {
+    pub rooms: Vec<crate::chat_rooms::MyChatRoom>,
+}
+
+/// The DM room with a friend, created on first request. Both must be able
+/// to chat; the other player's reason for not being able to is not said.
+#[utoipa::path(
+    post,
+    path = "/v1/me/chat/dm/{handle}",
+    tag = "chat",
+    operation_id = "chat_open_dm",
+    params(("handle" = String, Path, description = "The friend to message")),
+    responses(
+        (status = 200, description = "The DM room", body = DmRoom),
+        (status = 400, description = "Yourself, or an invalid handle", body = ApiErrorBody),
+        (status = 403, description = "rsi_handle_not_verified, age_not_declared or chat_restricted", body = ApiErrorBody),
+        (status = 404, description = "Not a friend", body = ApiErrorBody),
+        (status = 409, description = "They cannot be messaged", body = ApiErrorBody),
+        (status = 503, description = "Chat is not available", body = ApiErrorBody),
+    ),
+    security(("bearer" = [])),
+)]
+#[allow(clippy::too_many_arguments)]
+pub async fn open_dm(
+    auth: AuthenticatedUser,
+    Extension(users): Extension<Arc<dyn UserStore>>,
+    Extension(social): Extension<Arc<dyn crate::social::SocialStore>>,
+    Extension(chat): Extension<Arc<dyn ChatAccessStore>>,
+    Extension(restrictions): Extension<Arc<dyn AccountRestrictionStore>>,
+    Extension(signer): Extension<Arc<Option<MatrixLoginSigner>>>,
+    Extension(rooms): Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>,
+    Path(handle): Path<String>,
+) -> Response {
+    let me = match caller(&auth, users.as_ref()).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let Some(rooms) = rooms.as_ref() else {
+        return err(StatusCode::SERVICE_UNAVAILABLE, "chat_unavailable");
+    };
+    let status = match status_for(&me, chat.as_ref(), restrictions.as_ref(), &signer).await {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    if !status.rsi_verified {
+        return err(StatusCode::FORBIDDEN, "rsi_handle_not_verified");
+    }
+    if !status.age_declared {
+        return err(StatusCode::FORBIDDEN, "age_not_declared");
+    }
+    if status.restricted {
+        return err(StatusCode::FORBIDDEN, "chat_restricted");
+    }
+    let them = match crate::social_routes::target(&handle, users.as_ref()).await {
+        Ok(u) => u,
+        Err(r) if r.status() == StatusCode::BAD_REQUEST => return r,
+        Err(_) => return err(StatusCode::NOT_FOUND, "not_friends"),
+    };
+    if them.id == me.id {
+        return err(StatusCode::BAD_REQUEST, "cannot_message_self");
+    }
+    match social
+        .are_friends(&me.claimed_handle, &them.claimed_handle)
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => return err(StatusCode::NOT_FOUND, "not_friends"),
+        Err(e) => return internal("are_friends", e),
+    }
+    // Their restriction fails closed too, and is not named: "cannot be
+    // messaged" says nothing about why.
+    let them_restricted = match restrictions.effective(them.id).await {
+        Ok(r) => r.is_some_and(|r| r.blocks(Capability::Chat)),
+        Err(_) => true,
+    };
+    if them_restricted {
+        return err(StatusCode::CONFLICT, "cannot_message");
+    }
+    match rooms.dm(&me.claimed_handle, &them.claimed_handle).await {
+        Ok(room_id) => Json(DmRoom { room_id }).into_response(),
+        Err(e) => {
+            tracing::warn!(error = %e, "chat: opening a DM failed");
+            err(StatusCode::SERVICE_UNAVAILABLE, "chat_unavailable")
+        }
+    }
+}
+
+/// The chat rooms the API put you in, with what each is for: a crew's LFG
+/// post, or the other player in a DM. Our screens need this because rooms
+/// carry no name.
+#[utoipa::path(
+    get,
+    path = "/v1/me/chat/rooms",
+    tag = "chat",
+    operation_id = "chat_my_rooms",
+    responses((status = 200, description = "Your chat rooms", body = MyChatRooms)),
+    security(("bearer" = [])),
+)]
+pub async fn my_rooms(
+    auth: AuthenticatedUser,
+    Extension(users): Extension<Arc<dyn UserStore>>,
+    Extension(rooms): Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>,
+) -> Response {
+    let me = match caller(&auth, users.as_ref()).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let Some(rooms) = rooms.as_ref() else {
+        return Json(MyChatRooms { rooms: Vec::new() }).into_response();
+    };
+    match rooms.store.rooms_of(&me.claimed_handle).await {
+        Ok(rooms) => Json(MyChatRooms { rooms }).into_response(),
+        Err(e) => internal("rooms_of", e),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,5 +592,96 @@ mod tests {
         let (s, v) = f.call("POST", "/v1/me/matrix/login-token", &me, None).await;
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(v["error"], "chat_unavailable");
+    }
+
+    fn dm_fixture() -> (
+        Fixture,
+        Arc<crate::social::test_support::MemorySocialStore>,
+        Arc<crate::chat_rooms::test_support::RecordingMatrix>,
+    ) {
+        let mut f = fixture_with(true);
+        let social = Arc::new(crate::social::test_support::MemorySocialStore::new());
+        let (rooms, _store, matrix) = crate::chat_rooms::test_support::rooms();
+        let rooms: Arc<Option<crate::chat_rooms::ChatRooms>> =
+            Arc::new(Arc::try_unwrap(rooms).ok());
+        f.app = f
+            .app
+            .layer(Extension(
+                social.clone() as Arc<dyn crate::social::SocialStore>
+            ))
+            .layer(Extension(rooms));
+        (f, social, matrix)
+    }
+
+    async fn ready(f: &Fixture, handle: &str) -> (String, uuid::Uuid) {
+        let (t, id) = f.user(handle, true).await;
+        f.call(
+            "POST",
+            "/v1/me/chat/age-declaration",
+            &t,
+            Some(serde_json::json!({ "minimum_age": 18 })),
+        )
+        .await;
+        (t, id)
+    }
+
+    #[tokio::test]
+    async fn a_dm_opens_only_between_friends_and_once() {
+        let (f, social, matrix) = dm_fixture();
+        let (alice, _) = ready(&f, "Alice").await;
+        let (_bob, _) = ready(&f, "Bob").await;
+        let (s, v) = f.call("POST", "/v1/me/chat/dm/bob", &alice, None).await;
+        assert_eq!(s, StatusCode::NOT_FOUND, "{v}");
+        assert_eq!(v["error"], "not_friends");
+
+        crate::social::SocialStore::add_friendship(social.as_ref(), "Alice", "Bob")
+            .await
+            .unwrap();
+        let (s, v) = f.call("POST", "/v1/me/chat/dm/BOB", &alice, None).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        let room = v["room_id"].as_str().unwrap().to_string();
+        let (_, v) = f.call("POST", "/v1/me/chat/dm/bob", &alice, None).await;
+        assert_eq!(v["room_id"], room.as_str(), "the same room again");
+        assert_eq!(
+            matrix.calls(),
+            vec![format!(
+                "create {room} invite=@alice:starstats.app,@bob:starstats.app mod=- direct=true"
+            )]
+        );
+        let (_, v) = f.call("GET", "/v1/me/chat/rooms", &alice, None).await;
+        assert_eq!(v["rooms"][0]["kind"], "dm");
+        assert_eq!(v["rooms"][0]["other_handle"], "bob");
+
+        let (s, v) = f.call("POST", "/v1/me/chat/dm/alice", &alice, None).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"], "cannot_message_self");
+    }
+
+    #[tokio::test]
+    async fn a_dm_needs_the_caller_to_qualify_and_the_friend_unrestricted() {
+        let (f, social, _) = dm_fixture();
+        let (carol, _) = f.user("Carol", true).await;
+        let (_, dave_id) = ready(&f, "Dave").await;
+        crate::social::SocialStore::add_friendship(social.as_ref(), "Carol", "Dave")
+            .await
+            .unwrap();
+        let (s, v) = f.call("POST", "/v1/me/chat/dm/dave", &carol, None).await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+        assert_eq!(v["error"], "age_not_declared");
+
+        f.call(
+            "POST",
+            "/v1/me/chat/age-declaration",
+            &carol,
+            Some(serde_json::json!({ "minimum_age": 18 })),
+        )
+        .await;
+        f.restrictions
+            .upsert(dave_id, &chat_restriction())
+            .await
+            .unwrap();
+        let (s, v) = f.call("POST", "/v1/me/chat/dm/dave", &carol, None).await;
+        assert_eq!(s, StatusCode::CONFLICT);
+        assert_eq!(v["error"], "cannot_message", "without saying why");
     }
 }

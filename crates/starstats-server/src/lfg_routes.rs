@@ -726,6 +726,7 @@ pub async fn respond(
     Extension(notes): Extension<Arc<dyn NotificationStore>>,
     Extension(store): Extension<Arc<dyn LfgStore>>,
     Extension(commends): Extension<Arc<dyn crate::commends::CommendStore>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path((id, handle)): Path<(Uuid, String)>,
     Json(body): Json<RespondBody>,
 ) -> Response {
@@ -776,6 +777,28 @@ pub async fn respond(
         &updated,
     )
     .await;
+    // The crew's chat room follows the same answers.
+    if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+        match updated.status {
+            MemberStatus::Accepted => {
+                crate::chat_rooms::best_effort("crew_member_added", async {
+                    rooms
+                        .crew_member_added(post.id, &post.host_handle, &updated.handle)
+                        .await
+                        .map(|_| ())
+                })
+                .await
+            }
+            MemberStatus::Removed if current.status == MemberStatus::Accepted => {
+                crate::chat_rooms::best_effort(
+                    "crew_member_removed",
+                    rooms.crew_member_removed(post.id, &updated.handle),
+                )
+                .await
+            }
+            _ => {}
+        }
+    }
     if status == MemberStatus::Accepted {
         let host_verified = me.rsi_verified_at.is_some();
         notify(
@@ -966,6 +989,7 @@ pub async fn admin_resolve(
     Extension(store): Extension<Arc<dyn LfgStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     Extension(restrictions): Extension<Arc<dyn AccountRestrictionStore>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path(id): Path<Uuid>,
     Json(body): Json<ResolveLfgReport>,
 ) -> Response {
@@ -1019,7 +1043,16 @@ pub async fn admin_resolve(
             .upsert_by_handle(&pending.host_handle, &restriction)
             .await
         {
-            Ok(Some(_)) => {}
+            Ok(Some(_)) => {
+                // A suspension includes chat: out of every room.
+                if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+                    crate::chat_rooms::best_effort(
+                        "remove_everywhere",
+                        rooms.remove_everywhere(&pending.host_handle, "Suspended"),
+                    )
+                    .await;
+                }
+            }
             // No account under that handle any more: nothing was
             // suspended, so do not record that it was.
             Ok(None) => return err(StatusCode::CONFLICT, "host_not_found"),
@@ -1101,6 +1134,7 @@ mod tests {
         staff: Arc<MemoryStaffRoleStore>,
         restrictions: Arc<MemoryAccountRestrictionStore>,
         commends: Arc<crate::commends::test_support::MemoryCommendStore>,
+        chat: Arc<crate::chat_rooms::test_support::RecordingMatrix>,
     }
 
     fn fixture() -> Fixture {
@@ -1119,8 +1153,12 @@ mod tests {
         let audit: Arc<dyn AuditLog> = Arc::new(MemoryAuditLog::default());
         let commends = Arc::new(crate::commends::test_support::MemoryCommendStore::new());
         let commends_dyn: Arc<dyn crate::commends::CommendStore> = commends.clone();
+        let (rooms, _, chat) = crate::chat_rooms::test_support::rooms();
+        let rooms: Arc<Option<crate::chat_rooms::ChatRooms>> =
+            Arc::new(Arc::try_unwrap(rooms).ok());
         let app = routes()
             .merge(crate::commend_routes::routes())
+            .layer(Extension(rooms))
             .layer(Extension(commends_dyn))
             .layer(Extension(Arc::new(
                 crate::commends::CommendRateLimiter::new(),
@@ -1142,6 +1180,7 @@ mod tests {
             staff,
             restrictions,
             commends,
+            chat,
         }
     }
 
@@ -1680,6 +1719,50 @@ mod tests {
             .await;
         assert_eq!(s, StatusCode::FORBIDDEN);
         assert_eq!(v["error"], "rsi_handle_not_verified");
+    }
+
+    #[tokio::test]
+    async fn the_crew_chat_room_follows_acceptances_and_removals() {
+        let f = fixture();
+        let (host, _bob, _carol, id) = crew_of_three(&f).await;
+        let calls = f.chat.calls();
+        assert_eq!(calls.len(), 2, "{calls:?}");
+        assert!(
+            calls[0].starts_with("create ")
+                && calls[0].contains("invite=@host:starstats.app,@bob:starstats.app")
+                && calls[0].contains("mod=@host:starstats.app"),
+            "the first acceptance creates the room with the host as moderator: {calls:?}"
+        );
+        assert!(calls[1].starts_with("invite ") && calls[1].ends_with("@carol:starstats.app"));
+
+        // A requester who is declined never touches the room.
+        let dave = f.user("Dave", true).await;
+        f.call("POST", &format!("/v1/lfg/{id}/join"), &dave, None)
+            .await;
+        f.call(
+            "PUT",
+            &format!("/v1/lfg/{id}/members/dave"),
+            &host,
+            Some(serde_json::json!({ "action": "decline" })),
+        )
+        .await;
+        assert_eq!(f.chat.calls().len(), 2);
+
+        f.call(
+            "PUT",
+            &format!("/v1/lfg/{id}/members/carol"),
+            &host,
+            Some(serde_json::json!({ "action": "remove" })),
+        )
+        .await;
+        assert!(
+            f.chat.calls().last().unwrap().starts_with("kick ")
+                && f.chat
+                    .calls()
+                    .last()
+                    .unwrap()
+                    .ends_with("@carol:starstats.app")
+        );
     }
 
     fn ended_post(closed: Option<i64>, expires: i64, removed: bool) -> LfgPost {

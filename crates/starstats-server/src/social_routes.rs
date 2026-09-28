@@ -834,6 +834,7 @@ pub async fn remove_friend(
     Extension(social): Extension<Arc<dyn SocialStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path(handle): Path<String>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -853,6 +854,11 @@ pub async fn remove_friend(
                 _ => handle.to_string(),
             };
             friend_sync::apply(spicedb.as_ref(), &me.claimed_handle, &theirs, false).await;
+            // DMs are between friends only.
+            if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+                crate::chat_rooms::best_effort("end_dm", rooms.end_dm(&me.claimed_handle, &theirs))
+                    .await;
+            }
             audit_best_effort(
                 audit.as_ref(),
                 &me,
@@ -920,6 +926,7 @@ pub async fn block_user(
     Extension(meta): Extension<Arc<dyn ShareMetadataStore>>,
     Extension(salutes): Extension<Arc<dyn SaluteStore>>,
     Extension(commends): Extension<Arc<dyn crate::commends::CommendStore>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path(handle): Path<String>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
@@ -953,6 +960,10 @@ pub async fn block_user(
     // So do commends either way, and each from the other's crew history.
     if let Err(e) = commends.delete_between(mine, theirs).await {
         tracing::warn!(error = %e, "block: commend delete failed");
+    }
+    // And the DM: a block ends it, as unfriending does.
+    if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+        crate::chat_rooms::best_effort("end_dm", rooms.end_dm(mine, theirs)).await;
     }
     if let Err(e) = social.cancel_pending_between(mine, theirs).await {
         tracing::warn!(error = %e, "block: cancel_pending_between failed");
@@ -1343,6 +1354,8 @@ mod tests {
         rsi_orgs: Arc<MemoryRsiOrgStore>,
         salutes: Arc<MemorySaluteStore>,
         commends: Arc<crate::commends::test_support::MemoryCommendStore>,
+        chat_rooms: Arc<crate::chat_rooms::test_support::MemoryChatRoomStore>,
+        chat: Arc<crate::chat_rooms::test_support::RecordingMatrix>,
     }
 
     fn fixture() -> Fixture {
@@ -1368,7 +1381,11 @@ mod tests {
         let salutes_dyn: Arc<dyn SaluteStore> = salutes.clone();
         let commends = Arc::new(crate::commends::test_support::MemoryCommendStore::new());
         let commends_dyn: Arc<dyn crate::commends::CommendStore> = commends.clone();
+        let (rooms, chat_rooms, chat) = crate::chat_rooms::test_support::rooms();
+        let rooms: Arc<Option<crate::chat_rooms::ChatRooms>> =
+            Arc::new(Arc::try_unwrap(rooms).ok());
         let app = routes()
+            .layer(Extension(rooms))
             .merge(crate::salute_routes::routes())
             .layer(Extension(salutes_dyn))
             .layer(Extension(commends_dyn))
@@ -1399,6 +1416,8 @@ mod tests {
             rsi_orgs,
             salutes,
             commends,
+            chat_rooms,
+            chat,
         }
     }
 
@@ -1742,6 +1761,60 @@ mod tests {
     fn like_prefix_escapes_the_underscore_wildcard() {
         assert_eq!(crate::social::like_prefix("Wing_7"), "wing\\_7%");
         assert_eq!(crate::social::like_prefix("abc"), "abc%");
+    }
+
+    #[tokio::test]
+    async fn blocking_or_unfriending_ends_the_dm() {
+        use crate::chat_rooms::ChatRoomStore;
+        let f = fixture();
+        let alice = f.user("alice", true).await;
+        f.user("bob", true).await;
+        f.user("carol", true).await;
+        for (a, b, room) in [
+            ("alice", "bob", "!ab:starstats.app"),
+            ("alice", "carol", "!ac:starstats.app"),
+        ] {
+            f.social.add_friendship(a, b).await.unwrap();
+            f.chat_rooms
+                .insert_room(
+                    room,
+                    crate::chat_rooms::RoomKind::Dm,
+                    None,
+                    Some(crate::chat_rooms::dm_pair(a, b)),
+                )
+                .await
+                .unwrap();
+            f.chat_rooms.add_member(room, a).await.unwrap();
+            f.chat_rooms.add_member(room, b).await.unwrap();
+        }
+
+        let (s, _) = f.call("PUT", "/v1/me/blocks/bob", &alice, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert!(
+            f.chat_rooms
+                .dm_room("alice", "bob")
+                .await
+                .unwrap()
+                .is_none(),
+            "closed"
+        );
+        let (s, _) = f.call("DELETE", "/v1/me/friends/carol", &alice, None).await;
+        assert_eq!(s, StatusCode::NO_CONTENT);
+        assert!(
+            f.chat_rooms
+                .dm_room("alice", "carol")
+                .await
+                .unwrap()
+                .is_none(),
+            "closed"
+        );
+        let kicks = f
+            .chat
+            .calls()
+            .into_iter()
+            .filter(|c| c.starts_with("kick"))
+            .count();
+        assert_eq!(kicks, 4, "both players out of both rooms");
     }
 
     #[tokio::test]
