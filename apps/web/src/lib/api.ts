@@ -307,11 +307,28 @@ export async function unmuteUser(bearer: string, handle: string): Promise<void> 
   await request<void>('DELETE', `/v1/me/mutes/${handlePath(handle)}`, undefined, bearer);
 }
 
+/** Change one or both settings; the response is what is stored. */
 export async function updateSocialSettings(
   bearer: string,
-  settings: SocialSettings,
+  settings: apiSchema['schemas']['UpdateSocialSettings'],
 ): Promise<SocialSettings> {
   return putJson<SocialSettings>('/v1/me/social/settings', settings, bearer);
+}
+
+export type PlayerSearchResponse = apiSchema['schemas']['PlayerSearchResponse'];
+
+/**
+ * Player lookup: verified players whose handle starts with `q` (three
+ * characters or more), without you, anyone blocked either way, or anyone who
+ * turned lookup off.
+ */
+export async function searchPlayers(bearer: string, q: string): Promise<PlayerSearchResponse> {
+  return request<PlayerSearchResponse>(
+    'GET',
+    `/v1/players/search?q=${encodeURIComponent(q)}`,
+    undefined,
+    bearer,
+  );
 }
 
 export async function getNotifications(

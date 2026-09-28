@@ -1064,6 +1064,7 @@ export const noFriends = {
     incoming: [] as Array<unknown>,
     outgoing: [] as Array<unknown>,
     friend_request_policy: 'everyone',
+    discoverable: true,
   },
 };
 

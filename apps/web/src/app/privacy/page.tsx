@@ -233,6 +233,17 @@ export default function PrivacyPage() {
             asked for (contract).
           </li>
           <li>
+            <strong>Player lookup</strong>: signed-in players can find
+            you by typing the start of your handle, so they can send you
+            a friend request. Only players whose RSI handle is verified
+            are listed (RSI handles are already public), a search needs
+            at least three characters and returns at most ten, and
+            nobody you have blocked, or who has blocked you, sees you.
+            You can turn it off on the Friends page; someone who knows
+            your exact handle can still send a request. Lawful basis:
+            contract.
+          </li>
+          <li>
             <strong>Notifications</strong>: a friend request, an
             accepted request or a salute creates a notification naming
             the other player. A commend creates one that names the word
