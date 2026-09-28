@@ -60,4 +60,31 @@ describe('ConfirmSubmitButton', () => {
     expect(btn.value).toBe('user_suspended');
     expect(btn.type).toBe('submit');
   });
+
+  it("the clicked button's value reaches the submitted form data", () => {
+    // A form action reads new FormData(form), which leaves out the
+    // submitter: and the button disables itself while pending, which would
+    // drop it anyway. Every multi-outcome moderation queue depends on this.
+    let seen: FormDataEntryValue | null = 'not submitted';
+    const onSubmit = vi.fn((e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      seen = new FormData(e.currentTarget).get('outcome');
+    });
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    render(
+      <form onSubmit={onSubmit}>
+        <ConfirmSubmitButton name="outcome" value="dismissed">
+          Dismiss
+        </ConfirmSubmitButton>
+        <ConfirmSubmitButton name="outcome" value="user_suspended" confirm="Sure?">
+          Suspend
+        </ConfirmSubmitButton>
+      </form>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend' }));
+    expect(seen).toBe('user_suspended');
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(seen).toBe('dismissed');
+    confirmSpy.mockRestore();
+  });
 });

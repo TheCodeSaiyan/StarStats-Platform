@@ -55,6 +55,24 @@ export function ConfirmSubmitButton({
           e.preventDefault();
           return;
         }
+        // A form action reads `new FormData(form)`, which leaves out the
+        // submitting button, and this button disables itself while the
+        // action is pending, which would drop it anyway. So a named
+        // button writes its name/value into a hidden field before the
+        // submit, or multi-outcome forms (the moderation queues) would
+        // submit with no outcome at all and quietly do nothing.
+        const form = e.currentTarget.form;
+        if (form && rest.name) {
+          let field = form.querySelector<HTMLInputElement>('input[data-confirm-submitter]');
+          if (!field) {
+            field = document.createElement('input');
+            field.type = 'hidden';
+            field.setAttribute('data-confirm-submitter', '');
+            form.appendChild(field);
+          }
+          field.name = rest.name;
+          field.value = String(rest.value ?? '');
+        }
         onClick?.(e);
       }}
     >
