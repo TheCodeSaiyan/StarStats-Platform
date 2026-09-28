@@ -183,6 +183,20 @@ export async function policyAction(formData: FormData) {
   redirect(`/friends?status=policy_${stored}`);
 }
 
+export async function discoverableAction(formData: FormData) {
+  const t = await token();
+  const wanted = field(formData, 'discoverable');
+  if (wanted !== 'yes' && wanted !== 'no') redirect('/friends?error=unexpected');
+  let stored: boolean;
+  try {
+    stored = (await updateSocialSettings(t, { discoverable: wanted === 'yes' })).discoverable;
+  } catch (e) {
+    fail(e, 'friends.discoverable');
+  }
+  // From the read-back, not the form: the chip says what is stored.
+  redirect(`/friends?status=discoverable_${stored ? 'on' : 'off'}`);
+}
+
 export async function markAllReadAction() {
   const t = await token();
   try {

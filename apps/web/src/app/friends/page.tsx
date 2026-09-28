@@ -30,12 +30,14 @@ import {
   getPresenceSettings,
   listBlocks,
   listMutes,
+  searchPlayers,
   type AppNotification,
   type BlocksResponse,
   type FriendsResponse,
   type MutesResponse,
   type FriendsPresenceResponse,
   type NotificationsResponse,
+  type PlayerSearchResponse,
   type PresenceLevel,
 } from '@/lib/api';
 import { presenceLabel } from '@/lib/presence-label';
@@ -60,6 +62,7 @@ import {
   unblockAction,
   unmuteAction,
   presenceAction,
+  discoverableAction,
 } from './actions';
 
 export const metadata = { title: 'Friends' };
@@ -78,6 +81,8 @@ const STATUS_MESSAGES: Record<string, string> = {
   policy_everyone: 'Anyone can now send you friend requests.',
   policy_org_mates: 'Only people in one of your orgs can send you friend requests now.',
   policy_nobody: 'Nobody can send you friend requests now.',
+  discoverable_on: 'Players can find you by your handle.',
+  discoverable_off: 'Players can no longer find you by lookup. Anyone with your exact handle can still send a request.',
   presence_off: 'Friends no longer see your presence.',
   presence_status: 'Friends can see whether you are online, in game or in quantum.',
   presence_system: 'Friends can see your status and your star system.',
@@ -103,7 +108,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   unexpected: 'Something went wrong. Try again.',
 };
 
-type SearchParams = { status?: string; error?: string };
+type SearchParams = { status?: string; error?: string; q?: string };
 
 export default async function FriendsPage(props: {
   searchParams: Promise<SearchParams>;
@@ -146,6 +151,20 @@ export default async function FriendsPage(props: {
   const notes = value<NotificationsResponse>(3);
   const presence = value<FriendsPresenceResponse>(4);
   const presenceSettings = value<{ level: PresenceLevel }>(5);
+  // Player lookup runs only when the find form was submitted.
+  const q = (params.q ?? '').trim().replace(/^@/, '');
+  let found: PlayerSearchResponse | { error: string } | null = null;
+  if (q) {
+    try {
+      found = await searchPlayers(session.token, q);
+    } catch (e) {
+      if (e instanceof ApiCallError && (e.status === 400 || e.status === 429)) {
+        found = { error: e.body.error };
+      } else {
+        logger.error({ err: e, call: 'friends.search' }, 'player lookup failed');
+      }
+    }
+  }
   const presenceOf = new Map(
     (presence?.friends ?? []).map((p) => [p.handle.toLowerCase(), p] as const),
   );
@@ -155,6 +174,29 @@ export default async function FriendsPage(props: {
   );
 
   const sections: FriendsSection[] = [
+    {
+      id: 'find',
+      title: 'Find players',
+      group: 'friends',
+      node: (
+        <>
+          <form method="get" className="hp-formrow" style={{ flexWrap: 'wrap' }} role="search">
+            <BeamInput
+              id="player-search"
+              name="q"
+              label="Start of their handle"
+              hint="At least three characters. Only players with a verified RSI handle appear."
+              defaultValue={q}
+              minLength={3}
+              maxLength={64}
+              autoComplete="off"
+            />
+            <BeamButton type="submit">Search</BeamButton>
+          </form>
+          {q ? <FoundPlayers q={q} found={found} friends={friends} /> : null}
+        </>
+      ),
+    },
     {
       id: 'add',
       title: 'Add a friend',
@@ -365,6 +407,30 @@ export default async function FriendsPage(props: {
       ),
     },
     {
+      id: 'lookup',
+      title: 'Player lookup',
+      group: 'privacy',
+      node: !friends ? (
+        unavailable('your settings')
+      ) : (
+        <form action={discoverableAction} className="hp-formcol">
+          <BeamSelect
+            id="discoverable"
+            name="discoverable"
+            label="Let players find me by my handle"
+            hint="Only players signed in to StarStats can search, and only if your RSI handle is verified. Turning it off does not stop someone who knows your exact handle."
+            defaultValue={friends.discoverable ? 'yes' : 'no'}
+          >
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </BeamSelect>
+          <BeamButton type="submit" style={{ alignSelf: 'flex-start' }}>
+            Save
+          </BeamButton>
+        </form>
+      ),
+    },
+    {
       id: 'presence',
       title: 'Your presence',
       group: 'privacy',
@@ -515,6 +581,65 @@ function HandleList({
             <input type="hidden" name="handle" value={e.handle} />
             <ConfirmSubmitButton className="hp-btn hp-btn--ghost">{button}</ConfirmSubmitButton>
           </form>
+        </div>
+      ))}
+    </Plane>
+  );
+}
+
+function FoundPlayers({
+  q,
+  found,
+  friends,
+}: {
+  q: string;
+  found: PlayerSearchResponse | { error: string } | null;
+  friends: FriendsResponse | null;
+}) {
+  if (!found) return <BeamAlert tone="bad">Couldn&apos;t search right now. Try again.</BeamAlert>;
+  if ('error' in found) {
+    return (
+      <p className="hp-prose">
+        {found.error === 'query_too_short'
+          ? 'Type at least three characters of their handle.'
+          : found.error === 'invalid_query'
+            ? 'Handles only have letters, digits, underscores and dashes.'
+            : found.error === 'rate_limited'
+              ? 'That is a lot of searches. Wait a moment and try again.'
+              : 'Couldn\u2019t search right now. Try again.'}
+      </p>
+    );
+  }
+  if (found.players.length === 0) {
+    return (
+      <p className="hp-prose">
+        Nobody found for &ldquo;{q}&rdquo;. Only players with a verified RSI handle appear, and
+        anyone can turn lookup off. If you know their exact handle, add them below.
+      </p>
+    );
+  }
+  const lower = (h: string) => h.toLowerCase();
+  const friendSet = new Set((friends?.friends ?? []).map((f) => lower(f.handle)));
+  const asked = new Set((friends?.outgoing ?? []).map((r) => lower(r.recipient_handle)));
+  return (
+    <Plane tilt="flat" style={{ marginTop: 12 }}>
+      {found.players.map((p) => (
+        <div className="hp-grant" key={p.handle} data-testid="found-player">
+          <div className="hp-grant__who">
+            <span>@{p.handle}</span>
+          </div>
+          <div className="hp-grant__act-btns">
+            {friendSet.has(lower(p.handle)) ? (
+              <BeamChip tone="good">Friends</BeamChip>
+            ) : asked.has(lower(p.handle)) ? (
+              <BeamChip tone="warn">Requested</BeamChip>
+            ) : (
+              <form action={sendFriendRequestAction} style={{ margin: 0 }}>
+                <input type="hidden" name="handle" value={p.handle} />
+                <ConfirmSubmitButton className="hp-btn">Add friend</ConfirmSubmitButton>
+              </form>
+            )}
+          </div>
         </div>
       ))}
     </Plane>

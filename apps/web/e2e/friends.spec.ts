@@ -36,6 +36,7 @@ const FIXTURES = {
       ],
       outgoing: [],
       friend_request_policy: 'everyone',
+      discoverable: true,
     },
   },
   'GET /v1/me/notifications': {
@@ -184,4 +185,44 @@ test('the presence setting reports what the server stored', async ({ page, reque
     .getByRole('button', { name: 'Save' })
     .click({ timeout: 30_000 });
   await expect(page).toHaveURL(/status=presence_status/, { timeout: 30_000 });
+});
+
+test('finding a player by the start of their handle and adding them', async ({
+  page,
+  request,
+}) => {
+  await setScenario(
+    request,
+    scenarioFor('friends_lookup', {
+      ...FIXTURES,
+      'GET /v1/players/search': {
+        status: 200,
+        body: { players: [{ handle: 'SSDemoWingman' }, { handle: 'SSDemoWanderer' }] },
+      },
+      'POST /v1/me/friends/requests': {
+        status: 200,
+        body: {
+          outcome: 'requested',
+          request: {
+            id: '0199a000-0000-7000-8000-000000000002',
+            requester_handle: 'StarStatsDemo',
+            recipient_handle: 'SSDemoWanderer',
+            status: 'pending',
+            created_at: '2026-09-28T12:00:00Z',
+            responded_at: null,
+          },
+        },
+      },
+    }),
+  );
+  await page.goto('/friends?q=ssdemow', { timeout: 60_000 });
+  const found = page.getByTestId('found-player');
+  await expect(found).toHaveCount(2);
+  // Someone already a friend is marked, not offered again.
+  await expect(found.filter({ hasText: '@SSDemoWingman' })).toContainText('Friends');
+  await found
+    .filter({ hasText: '@SSDemoWanderer' })
+    .getByRole('button', { name: 'Add friend' })
+    .click({ timeout: 30_000 });
+  await expect(page).toHaveURL(/status=request_sent/, { timeout: 30_000 });
 });
