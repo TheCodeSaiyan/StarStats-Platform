@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.73] - 2026-09-28
+
+### New
+- Moderators can restrict an account from chat.
+
 ## [Platform 0.1.72] - 2026-09-28
 
 ### New
