@@ -47,6 +47,11 @@ const CAPABILITIES: ReadonlyArray<{
     label: 'Submissions',
     hint: 'They cannot file new parser submissions.',
   },
+  {
+    name: 'chat_blocked',
+    label: 'Chat',
+    hint: 'They cannot sign in to chat, and are removed from their chat rooms.',
+  },
 ];
 
 export function RestrictionPanel({
@@ -97,7 +102,7 @@ export function RestrictionPanel({
           }}
         >
           No restrictions. This account can ingest, share, publish a
-          public profile and file submissions.
+          public profile, file submissions and chat.
         </p>
       )}
 

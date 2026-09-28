@@ -213,6 +213,7 @@ export default async function AdminUserDetailPage(props: PageProps) {
         sharing_blocked: on('sharing_blocked'),
         public_profile_blocked: on('public_profile_blocked'),
         submissions_blocked: on('submissions_blocked'),
+        chat_blocked: on('chat_blocked'),
         reason,
         expires_at,
       });

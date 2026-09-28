@@ -14,6 +14,7 @@ function restriction(
     sharing_blocked: true,
     public_profile_blocked: true,
     submissions_blocked: true,
+    chat_blocked: true,
     reason: 'harassment',
     restricted_by: 'modhandle',
     restricted_at: '2026-08-11T12:00:00Z',
@@ -76,6 +77,7 @@ describe('RestrictionPanel', () => {
         ingest_blocked: false,
         public_profile_blocked: false,
         submissions_blocked: false,
+        chat_blocked: false,
         is_suspension: false,
       }),
     );
@@ -132,6 +134,7 @@ describe('RestrictionPanel', () => {
         sharing_blocked: true,
         public_profile_blocked: false,
         submissions_blocked: false,
+        chat_blocked: false,
         is_suspension: false,
       }),
     );
