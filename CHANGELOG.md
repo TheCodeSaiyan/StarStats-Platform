@@ -16,6 +16,14 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.74] - 2026-09-28
+
+### New
+- Encrypted crew and friend chat, behind a launch switch.
+
+### Fixed
+- Moderation queues send the outcome the moderator clicked.
+
 ## [Platform 0.1.73] - 2026-09-28
 
 ### New
