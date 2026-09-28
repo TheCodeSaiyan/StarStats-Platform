@@ -21,6 +21,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 ### New
 - Find players by handle and add them as friends.
 
+## [Tray 0.1.40] - 2026-09-28
+
+### New
+- Look players up as you type a handle to add.
+
 ## [Platform 0.1.71] - 2026-09-27
 
 ### New
