@@ -4818,10 +4818,22 @@ pub async fn social_set_muted(handle: String, muted: bool) -> Result<(), String>
 
 #[tauri::command(rename_all = "snake_case")]
 pub async fn social_update_settings(
-    friend_request_policy: String,
+    friend_request_policy: Option<String>,
+    discoverable: Option<bool>,
 ) -> Result<crate::social::SocialSettings, String> {
     social_client()?
-        .update_settings(&friend_request_policy)
+        .update_settings(friend_request_policy.as_deref(), discoverable)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Player lookup: verified players whose handle starts with `q`.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn social_search_players(
+    q: String,
+) -> Result<crate::social::PlayerSearchResponse, String> {
+    social_client()?
+        .search_players(&q)
         .await
         .map_err(|e| e.to_string())
 }
