@@ -651,6 +651,7 @@ async fn main() -> anyhow::Result<()> {
     let salutes_dyn: Arc<dyn crate::salutes::SaluteStore> =
         Arc::new(crate::salutes::PostgresSaluteStore::new(pool.clone()));
     let salute_limiter = Arc::new(crate::salutes::SaluteRateLimiter::new());
+    let player_search_limiter = Arc::new(crate::social_routes::PlayerSearchLimiter::new());
     // Social phase 5: crew history and commends (migration 0076).
     let commends_dyn: Arc<dyn crate::commends::CommendStore> =
         Arc::new(crate::commends::PostgresCommendStore::new(pool.clone()));
@@ -1047,6 +1048,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(rsi_orgs_dyn))
         .layer(Extension(salutes_dyn))
         .layer(Extension(salute_limiter))
+        .layer(Extension(player_search_limiter))
         .layer(Extension(presence_hub))
         .layer(Extension(presence_settings_dyn))
         .layer(Extension(lfg_dyn))

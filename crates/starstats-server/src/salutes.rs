@@ -163,15 +163,31 @@ pub const SALUTE_BURST: f64 = 10.0;
 pub const SALUTE_REFILL_PER_SEC: f64 = 1.0 / 30.0;
 
 /// Per-user token bucket for salute and unsalute, keyed on the
-/// lower-cased handle. In-process, like the roadmap vote limiter.
-#[derive(Default)]
+/// lower-cased handle. In-process, like the roadmap vote limiter. Other
+/// per-user limits reuse it at their own rate through [`Self::with_rate`].
 pub struct SaluteRateLimiter {
     buckets: Mutex<HashMap<String, (f64, Instant)>>,
+    burst: f64,
+    refill_per_sec: f64,
+}
+
+impl Default for SaluteRateLimiter {
+    fn default() -> Self {
+        Self::with_rate(SALUTE_BURST, SALUTE_REFILL_PER_SEC)
+    }
 }
 
 impl SaluteRateLimiter {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn with_rate(burst: f64, refill_per_sec: f64) -> Self {
+        Self {
+            buckets: Mutex::new(HashMap::new()),
+            burst,
+            refill_per_sec,
+        }
     }
 
     /// `true` when the action may go ahead.
@@ -180,9 +196,9 @@ impl SaluteRateLimiter {
         let now = Instant::now();
         let (tokens, last) = buckets
             .entry(handle.to_lowercase())
-            .or_insert((SALUTE_BURST, now));
-        *tokens = (*tokens + now.duration_since(*last).as_secs_f64() * SALUTE_REFILL_PER_SEC)
-            .min(SALUTE_BURST);
+            .or_insert((self.burst, now));
+        *tokens = (*tokens + now.duration_since(*last).as_secs_f64() * self.refill_per_sec)
+            .min(self.burst);
         *last = now;
         if *tokens >= 1.0 {
             *tokens -= 1.0;
