@@ -50,6 +50,41 @@
   }
 }
 
+.ss-chat__line {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.ss-chat__line > span {
+  flex: 1;
+  min-width: 0;
+}
+
+.ss-chat__report {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 11px;
+  color: var(--fg-muted);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.ss-chat__reportform {
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+.ss-chat__linktag {
+  font-size: 11px;
+  color: var(--fg-muted);
+}
+
+.ss-chat__linktag--warn {
+  color: var(--danger);
+}
+
 /* Visible to assistive technology only. */
 .ss-sr-only {
   position: absolute;

@@ -6,7 +6,9 @@ import {
   declareChatAge,
   getMatrixLoginToken,
   openDm,
+  reportChat,
   type MatrixLoginToken,
+  type ReportChat,
 } from '@/lib/api';
 import { chatEnabledFor } from '@/lib/chat/flag';
 import { logger } from '@/lib/logger';
@@ -93,4 +95,23 @@ export async function openDmAction(formData: FormData) {
     fail(e, 'chat.open_dm', '/friends');
   }
   redirect(`/chat?room=${encodeURIComponent(room)}`);
+}
+
+/** Report a player, with the messages the reporter chose to reveal.
+ * Called from the chat client, so it answers rather than redirecting. */
+export async function reportChatAction(
+  report: ReportChat,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const s = await getSession();
+  if (!s || !chatEnabledFor(s)) return { ok: false, error: 'chat_unavailable' };
+  try {
+    await reportChat(s.token, report);
+    return { ok: true };
+  } catch (e) {
+    if (e instanceof ApiCallError && typeof e.body.error === 'string' && e.status < 500) {
+      return { ok: false, error: e.body.error };
+    }
+    logger.error({ err: e, call: 'chat.report' }, 'chat report failed');
+    return { ok: false, error: 'unexpected' };
+  }
 }

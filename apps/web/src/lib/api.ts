@@ -1023,6 +1023,35 @@ export async function openDm(bearer: string, handle: string): Promise<{ room_id:
   );
 }
 
+export type ChatReport = apiSchema['schemas']['ChatReport'];
+export type ReportChat = apiSchema['schemas']['ReportChat'];
+
+/** Report a player in a chat you share, revealing the messages you chose. */
+export async function reportChat(bearer: string, body: ReportChat): Promise<{ id: string }> {
+  return request<{ id: string }>('POST', '/v1/chat/reports', body, bearer);
+}
+
+export async function getAdminChatReports(
+  bearer: string,
+  status?: string,
+): Promise<{ reports: ChatReport[] }> {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : '';
+  return request<{ reports: ChatReport[] }>('GET', `/v1/admin/chat/reports${suffix}`, undefined, bearer);
+}
+
+export async function resolveChatReport(
+  bearer: string,
+  id: string,
+  body: { outcome: string; note?: string },
+): Promise<ChatReport> {
+  return request<ChatReport>(
+    'POST',
+    `/v1/admin/chat/reports/${encodeURIComponent(id)}/resolve`,
+    body,
+    bearer,
+  );
+}
+
 /** The chat rooms the API put you in, with what each is for. */
 export async function getMyChatRooms(bearer: string): Promise<{ rooms: MyChatRoom[] }> {
   return request<{ rooms: MyChatRoom[] }>('GET', '/v1/me/chat/rooms', undefined, bearer);

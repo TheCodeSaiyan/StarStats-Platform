@@ -62,6 +62,10 @@ mod auth;
 mod auth_routes;
 #[path = "../chat.rs"]
 mod chat;
+#[path = "../chat_report_routes.rs"]
+mod chat_report_routes;
+#[path = "../chat_reports.rs"]
+mod chat_reports;
 #[path = "../chat_rooms.rs"]
 mod chat_rooms;
 #[path = "../chat_routes.rs"]

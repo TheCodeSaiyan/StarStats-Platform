@@ -258,6 +258,8 @@ pub async fn delete_social_rows_for(
         ("crew_history", "other_handle"),
         ("crew_commends", "giver_handle"),
         ("crew_commends", "recipient_handle"),
+        ("chat_reports", "reporter_handle"),
+        ("chat_reports", "reported_handle"),
         ("user_mutes", "muter_handle"),
         ("user_mutes", "muted_handle"),
         ("notifications", "recipient_handle"),

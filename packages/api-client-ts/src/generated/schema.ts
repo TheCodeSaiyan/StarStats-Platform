@@ -194,6 +194,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/chat/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["admin_chat_reports"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/chat/reports/{id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve a report. `chat_restricted` adds a chat restriction to whatever
+         *     the player already has; `user_suspended` suspends them outright. Both
+         *     take them out of every chat room. Enforce first, then record, so a
+         *     failed enforcement leaves the report open to retry.
+         */
+        post: operations["admin_chat_resolve"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/contracts/gaps": {
         parameters: {
             query?: never;
@@ -1499,6 +1537,26 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["totp_verify_login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chat/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report a player in a chat you share. Only messages you reveal are sent,
+         *     and only moderators see them.
+         */
+        post: operations["chat_report"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4784,6 +4842,34 @@ export interface components {
             deployed_at?: string | null;
             status: string;
         };
+        ChatReport: {
+            /** Format: date-time */
+            created_at: string;
+            details?: string | null;
+            /** Format: uuid */
+            id: string;
+            messages: components["schemas"]["RevealedMessage"][];
+            reason: components["schemas"]["ChatReportReason"];
+            reported_handle: string;
+            reporter_handle: string;
+            resolution_note?: string | null;
+            /** Format: date-time */
+            resolved_at?: string | null;
+            resolved_by?: string | null;
+            room_id: string;
+            status: components["schemas"]["ChatReportStatus"];
+        };
+        ChatReportFiled: {
+            /** Format: uuid */
+            id: string;
+        };
+        ChatReportList: {
+            reports: components["schemas"]["ChatReport"][];
+        };
+        /** @enum {string} */
+        ChatReportReason: "harassment" | "spam" | "scam" | "illegal_content" | "other";
+        /** @enum {string} */
+        ChatReportStatus: "open" | "dismissed" | "chat_restricted" | "user_suspended";
         ChatStatus: {
             /** @description The caller has declared they meet `minimum_age`. */
             age_declared: boolean;
@@ -8161,6 +8247,18 @@ export interface components {
         RemoveMemberResponse: {
             removed: boolean;
         };
+        ReportChat: {
+            details?: string | null;
+            /**
+             * @description The messages the reporter chooses to reveal, 1 to 20, all sent by
+             *     the reported player.
+             */
+            messages: components["schemas"]["RevealedMessage"][];
+            reason: components["schemas"]["ChatReportReason"];
+            /** @description The player being reported; they must be in the room. */
+            reported_handle: string;
+            room_id: string;
+        };
         ReportLfgPost: {
             details?: string | null;
             reason: components["schemas"]["LfgReportReason"];
@@ -8214,6 +8312,11 @@ export interface components {
         };
         ResendVerificationResponse: {
             sent: boolean;
+        };
+        ResolveChatReport: {
+            note?: string | null;
+            /** @description `dismissed`, `chat_restricted` or `user_suspended`. */
+            outcome: string;
         };
         ResolveLfgReport: {
             note?: string | null;
@@ -8410,6 +8513,17 @@ export interface components {
             users_truncated: number;
             /** Format: int64 */
             users_unlimited: number;
+        };
+        /**
+         * @description One message as the reporter revealed it. Not proof: Matrix has no
+         *     message franking, so the sender is the reporter's word.
+         */
+        RevealedMessage: {
+            event_id: string;
+            sender: string;
+            /** Format: date-time */
+            sent_at: string;
+            text: string;
         };
         RevokeOrgShareResponse: {
             revoked: boolean;
@@ -10458,6 +10572,95 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    admin_chat_reports: {
+        parameters: {
+            query?: {
+                /**
+                 * @description `open` (default), `dismissed`, `chat_restricted`, `user_suspended`
+                 *     or `all`.
+                 */
+                status?: string | null;
+                limit?: number | null;
+                offset?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reports, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatReportList"];
+                };
+            };
+            /** @description Not a moderator */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    admin_chat_resolve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Report id */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveChatReport"];
+            };
+        };
+        responses: {
+            /** @description Resolved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatReport"];
+                };
+            };
+            /** @description Unknown outcome, or note too long */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description No such report */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Already resolved, or the player is gone */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };
@@ -14710,6 +14913,66 @@ export interface operations {
             };
             /** @description Server error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    chat_report: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportChat"];
+            };
+        };
+        responses: {
+            /** @description Reported */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatReportFiled"];
+                };
+            };
+            /** @description Invalid report */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not a chat you share */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many reports today */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Chat is not available */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

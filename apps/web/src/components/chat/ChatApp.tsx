@@ -19,7 +19,8 @@
 import React from 'react';
 import type { MatrixClient, MatrixEvent, Room } from 'matrix-js-sdk';
 import type { MyChatRoom } from '@/lib/api';
-import { chatLoginAction } from '@/app/chat/actions';
+import { chatLoginAction, reportChatAction } from '@/app/chat/actions';
+import { MessageText } from './MessageText';
 import { localpartOf, MAX_MESSAGE_CHARS, toLine, type ChatLine } from '@/lib/chat/render';
 import { CHAT_SESSION_KEY, cryptoStorePrefix, sessionFor, type StoredChatSession } from '@/lib/chat/session';
 import { chatStoreKey } from '@/lib/chat/storage-key';
@@ -92,6 +93,12 @@ export function ChatApp({
   const [canSend, setCanSend] = React.useState(false);
   const [draft, setDraft] = React.useState('');
   const [sending, setSending] = React.useState(false);
+  // Reporting: whose messages, which ones ticked, and the outcome.
+  const [reportFor, setReportFor] = React.useState<string | null>(null);
+  const [ticked, setTicked] = React.useState<Set<string>>(new Set());
+  const [reason, setReason] = React.useState('harassment');
+  const [details, setDetails] = React.useState('');
+  const [reportNote, setReportNote] = React.useState<string | null>(null);
   const clientRef = React.useRef<MatrixClient | null>(null);
   const [myId, setMyId] = React.useState('');
 
@@ -227,6 +234,46 @@ export function ChatApp({
     }
   };
 
+  const startReport = (sender: string, eventId: string) => {
+    setReportFor(sender);
+    setTicked(new Set([eventId]));
+    setReportNote(null);
+  };
+
+  const sendReport = async (ev: React.FormEvent) => {
+    ev.preventDefault();
+    if (!reportFor || !selected) return;
+    const messages = lines
+      .filter((l): l is Extract<ChatLine, { kind: 'text' }> => l.kind === 'text')
+      .filter((l) => l.sender === reportFor && ticked.has(l.id))
+      .map((l) => ({
+        event_id: l.id,
+        sender: l.sender,
+        sent_at: new Date(l.ts).toISOString(),
+        text: l.text,
+      }));
+    if (messages.length === 0) return;
+    const res = await reportChatAction({
+      room_id: selected,
+      reported_handle: localpartOf(reportFor),
+      reason: reason as 'harassment' | 'spam' | 'scam' | 'illegal_content' | 'other',
+      details: details.trim() || undefined,
+      messages,
+    });
+    if (res.ok) {
+      setReportFor(null);
+      setTicked(new Set());
+      setDetails('');
+      setReportNote('Reported. Moderators see only the messages you ticked.');
+    } else {
+      setReportNote(
+        res.error === 'rate_limited'
+          ? 'You have sent a lot of reports today. Try again tomorrow.'
+          : 'That report was not sent. Try again.',
+      );
+    }
+  };
+
   if (rooms.length === 0) {
     return (
       <p className="hp-prose">
@@ -263,9 +310,33 @@ export function ChatApp({
             <ol className="ss-chat__lines" data-testid="chat-lines">
               {lines.map((l) =>
                 l.kind === 'text' ? (
-                  <li key={l.id}>
-                    <strong>{l.sender === myId ? 'You' : `@${localpartOf(l.sender)}`}</strong>{' '}
-                    <span style={{ whiteSpace: 'pre-wrap' }}>{l.text}</span>
+                  <li key={l.id} className="ss-chat__line">
+                    {reportFor && l.sender === reportFor ? (
+                      <input
+                        type="checkbox"
+                        aria-label="Include this message in the report"
+                        checked={ticked.has(l.id)}
+                        onChange={(e) => {
+                          const next = new Set(ticked);
+                          if (e.target.checked) next.add(l.id);
+                          else next.delete(l.id);
+                          setTicked(next);
+                        }}
+                      />
+                    ) : null}
+                    <span>
+                      <strong>{l.sender === myId ? 'You' : `@${localpartOf(l.sender)}`}</strong>{' '}
+                      <MessageText text={l.text} />
+                    </span>
+                    {l.sender !== myId && !reportFor ? (
+                      <button
+                        type="button"
+                        className="ss-chat__report"
+                        onClick={() => startReport(l.sender, l.id)}
+                      >
+                        Report
+                      </button>
+                    ) : null}
                   </li>
                 ) : l.kind === 'undecryptable' ? (
                   <li key={l.id} className="ss-chat__muted">
@@ -275,6 +346,51 @@ export function ChatApp({
                 ) : null,
               )}
             </ol>
+            {reportNote ? (
+              <p className="ss-chat__muted" role="status">
+                {reportNote}
+              </p>
+            ) : null}
+            {reportFor ? (
+              <form
+                onSubmit={(e) => void sendReport(e)}
+                className="hp-formcol ss-chat__reportform"
+                data-testid="chat-report-form"
+              >
+                <p className="hp-prose" style={{ margin: 0 }}>
+                  Report @{localpartOf(reportFor)}. Tick the messages to include: only those are
+                  sent, in plain text, to StarStats moderators. Nothing else in this chat is.
+                </p>
+                <label className="hp-formcol">
+                  Reason
+                  <select className="hp-input" value={reason} onChange={(e) => setReason(e.target.value)}>
+                    <option value="harassment">Harassment or abuse</option>
+                    <option value="scam">Scam or phishing</option>
+                    <option value="spam">Spam</option>
+                    <option value="illegal_content">Illegal content</option>
+                    <option value="other">Something else</option>
+                  </select>
+                </label>
+                <label className="hp-formcol">
+                  Anything else moderators should know (optional)
+                  <textarea
+                    className="hp-input"
+                    rows={2}
+                    maxLength={500}
+                    value={details}
+                    onChange={(e) => setDetails(e.target.value)}
+                  />
+                </label>
+                <span className="hp-formrow">
+                  <button type="submit" className="hp-btn" disabled={ticked.size === 0}>
+                    Send report ({ticked.size})
+                  </button>
+                  <button type="button" className="hp-btn hp-btn--ghost" onClick={() => setReportFor(null)}>
+                    Cancel
+                  </button>
+                </span>
+              </form>
+            ) : null}
             <form onSubmit={(e) => void send(e)} className="hp-formrow">
               <label htmlFor="chat-draft" className="ss-sr-only">
                 Message
