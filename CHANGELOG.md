@@ -57,6 +57,11 @@ No player-facing changes.
 - Share your stats with all your friends in one step.
 - Take friend requests only from people in your orgs.
 
+## [Tray 0.1.39] - 2026-09-27
+
+### New
+- Commend players you flew with, straight from the tray.
+
 ## [Tray 0.1.38] - 2026-09-27
 
 ### New
