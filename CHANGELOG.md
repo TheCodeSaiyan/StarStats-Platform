@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.72] - 2026-09-28
+
+### New
+- Find players by handle and add them as friends.
+
 ## [Platform 0.1.71] - 2026-09-27
 
 ### New
