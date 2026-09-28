@@ -632,6 +632,7 @@ pub async fn delete_account<U: UserStore>(
     State(users): State<Arc<U>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     spicedb: Option<Extension<Arc<Option<crate::spicedb::SpicedbClient>>>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     auth: AuthenticatedUser,
     Json(req): Json<DeleteAccountRequest>,
 ) -> impl IntoResponse {
@@ -683,6 +684,14 @@ pub async fn delete_account<U: UserStore>(
     if let Some(Extension(spicedb)) = spicedb {
         crate::spicedb::forget_handle(spicedb.as_ref(), &user.claimed_handle, "account_deleted")
             .await;
+    }
+    // And out of every chat room, so the handle leaves nothing behind.
+    if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+        crate::chat_rooms::best_effort(
+            "remove_everywhere",
+            rooms.remove_everywhere(&user.claimed_handle, "Account deleted"),
+        )
+        .await;
     }
 
     (

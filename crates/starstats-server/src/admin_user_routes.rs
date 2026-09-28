@@ -680,6 +680,7 @@ pub async fn delete_user_admin<U: UserStore>(
     Extension(staff): Extension<Arc<dyn StaffRoleStore>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     spicedb: Option<Extension<Arc<Option<crate::spicedb::SpicedbClient>>>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path(id_str): Path<String>,
     Json(body): Json<AdminDeleteUserRequest>,
 ) -> Response {
@@ -756,6 +757,13 @@ pub async fn delete_user_admin<U: UserStore>(
     if let Some(Extension(spicedb)) = spicedb {
         crate::spicedb::forget_handle(spicedb.as_ref(), &target.claimed_handle, "admin_deleted")
             .await;
+    }
+    if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+        crate::chat_rooms::best_effort(
+            "remove_everywhere",
+            rooms.remove_everywhere(&target.claimed_handle, "Account deleted"),
+        )
+        .await;
     }
 
     (

@@ -194,6 +194,12 @@ pub struct MatrixConfig {
     pub server_name: String,
     /// The homeserver client API base URL clients use.
     pub public_url: String,
+    /// The homeserver as the API reaches it on the internal network.
+    pub homeserver_url: String,
+    /// The application service token (1Password "starstats synapse"
+    /// as_token). Without it the API cannot manage rooms: logins still
+    /// work, rooms do not.
+    pub as_token: Option<String>,
 }
 
 impl std::fmt::Debug for MatrixConfig {
@@ -203,6 +209,8 @@ impl std::fmt::Debug for MatrixConfig {
             .field("issuer", &self.issuer)
             .field("server_name", &self.server_name)
             .field("public_url", &self.public_url)
+            .field("homeserver_url", &self.homeserver_url)
+            .field("as_token", &self.as_token.as_ref().map(|_| "<redacted>"))
             .finish()
     }
 }
@@ -227,6 +235,15 @@ impl MatrixConfig {
             issuer: var("STARSTATS_MATRIX_ISSUER", "starstats-api"),
             server_name: var("STARSTATS_MATRIX_SERVER_NAME", "starstats.app"),
             public_url: var("STARSTATS_MATRIX_PUBLIC_URL", "https://api.starstats.app/"),
+            homeserver_url: var(
+                "STARSTATS_MATRIX_HOMESERVER_URL",
+                "http://starstats-synapse:8008",
+            ),
+            as_token: read_env_or_file(
+                "STARSTATS_MATRIX_AS_TOKEN",
+                "STARSTATS_MATRIX_AS_TOKEN_FILE",
+            )?
+            .filter(|v| !v.is_empty()),
         }))
     }
 }

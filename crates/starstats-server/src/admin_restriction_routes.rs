@@ -229,6 +229,7 @@ pub async fn set_restrictions<U: UserStore>(
     Extension(restrictions): Extension<Arc<dyn AccountRestrictionStore>>,
     Extension(spicedb): Extension<Arc<Option<SpicedbClient>>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path(id_str): Path<String>,
     Json(body): Json<RestrictionRequest>,
 ) -> Response {
@@ -305,11 +306,24 @@ pub async fn set_restrictions<U: UserStore>(
     )
     .await
     {
-        Ok((stored, revoked)) => (
-            StatusCode::OK,
-            Json(AdminRestrictionDto::from_restriction(&stored, revoked)),
-        )
-            .into_response(),
+        Ok((stored, revoked)) => {
+            // Restricted from chat: out of every room now, not at their
+            // next sign-in.
+            if stored.chat_blocked {
+                if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+                    crate::chat_rooms::best_effort(
+                        "remove_everywhere",
+                        rooms.remove_everywhere(&target.claimed_handle, "Restricted from chat"),
+                    )
+                    .await;
+                }
+            }
+            (
+                StatusCode::OK,
+                Json(AdminRestrictionDto::from_restriction(&stored, revoked)),
+            )
+                .into_response()
+        }
         Err(resp) => resp,
     }
 }

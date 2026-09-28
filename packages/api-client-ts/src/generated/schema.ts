@@ -1798,6 +1798,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/chat/dm/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The DM room with a friend, created on first request. Both must be able
+         *     to chat; the other player's reason for not being able to is not said.
+         */
+        post: operations["chat_open_dm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/chat/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The chat rooms the API put you in, with what each is for: a crew's LFG
+         *     post, or the other player in a DM. Our screens need this because rooms
+         *     carry no name.
+         */
+        get: operations["chat_my_rooms"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/commends": {
         parameters: {
             query?: never;
@@ -5370,6 +5411,9 @@ export interface components {
             next_after?: string | null;
             profiles: components["schemas"]["DiscoverProfile"][];
         };
+        DmRoom: {
+            room_id: string;
+        };
         DockKindCounts: {
             /** Format: int64 */
             hangar: number;
@@ -7065,6 +7109,23 @@ export interface components {
         MutesResponse: {
             mutes: components["schemas"]["ListedHandle"][];
         };
+        /** @description A room the caller is in, as our screens need it. */
+        MyChatRoom: {
+            /** Format: date-time */
+            created_at: string;
+            kind: components["schemas"]["RoomKind"];
+            /** @description The other player, lowercased, for a DM. */
+            other_handle?: string | null;
+            /**
+             * Format: uuid
+             * @description The LFG post, for a crew room.
+             */
+            post_id?: string | null;
+            room_id: string;
+        };
+        MyChatRooms: {
+            rooms: components["schemas"]["MyChatRoom"][];
+        };
         MyNewsItem: {
             body: string;
             /** Format: uuid */
@@ -8419,6 +8480,11 @@ export interface components {
              */
             staff_roles: string[];
         };
+        /**
+         * @description Crew rooms and DMs.
+         * @enum {string}
+         */
+        RoomKind: "crew" | "dm";
         RouteRow: {
             /** Format: int64 */
             count: number;
@@ -15495,6 +15561,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    chat_open_dm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The friend to message */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The DM room */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DmRoom"];
+                };
+            };
+            /** @description Yourself, or an invalid handle */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description rsi_handle_not_verified, age_not_declared or chat_restricted */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not a friend */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description They cannot be messaged */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Chat is not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    chat_my_rooms: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Your chat rooms */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MyChatRooms"];
                 };
             };
         };

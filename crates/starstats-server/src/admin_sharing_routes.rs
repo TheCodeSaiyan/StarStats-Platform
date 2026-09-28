@@ -399,6 +399,7 @@ async fn revoke_owner_shares(client: &crate::spicedb::SpicedbClient, owner: &str
     ),
     security(("BearerAuth" = []))
 )]
+#[allow(clippy::too_many_arguments)]
 pub async fn resolve_report(
     RequireModerator(user): RequireModerator,
     Extension(reports): Extension<Arc<dyn ShareReportStore>>,
@@ -407,6 +408,7 @@ pub async fn resolve_report(
         Arc<dyn crate::account_restrictions::AccountRestrictionStore>,
     >,
     Extension(spicedb): Extension<Arc<Option<crate::spicedb::SpicedbClient>>>,
+    chat: Option<Extension<Arc<Option<crate::chat_rooms::ChatRooms>>>>,
     Path(id): Path<Uuid>,
     Json(body): Json<ResolveReportRequest>,
 ) -> Response {
@@ -468,6 +470,14 @@ pub async fn resolve_report(
                     .await
                 {
                     Ok(Some(target_id)) => {
+                        // A suspension includes chat: out of every room.
+                        if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
+                            crate::chat_rooms::best_effort(
+                                "remove_everywhere",
+                                rooms.remove_everywhere(&row.owner_handle, "Suspended"),
+                            )
+                            .await;
+                        }
                         if let Some(client) = spicedb.as_ref() {
                             revoke_owner_shares(client, &row.owner_handle).await;
                         } else {

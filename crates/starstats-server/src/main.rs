@@ -64,6 +64,7 @@ mod audit_mirror;
 mod auth;
 mod auth_routes;
 mod chat;
+mod chat_rooms;
 mod chat_routes;
 mod commend_routes;
 mod commends;
@@ -677,6 +678,35 @@ async fn main() -> anyhow::Result<()> {
             None => None,
         });
     let chat_token_limiter = Arc::new(crate::chat_routes::ChatTokenLimiter::new());
+    // Chat rooms (migration 0079): only with the application service
+    // token, which is what lets the API create rooms and invite.
+    let chat_rooms: Arc<Option<crate::chat_rooms::ChatRooms>> =
+        Arc::new(match cfg.matrix.as_ref() {
+            Some(m) => match m.as_token.clone() {
+                Some(as_token) => {
+                    let service_user = format!("@starstats:{}", m.server_name);
+                    Some(crate::chat_rooms::ChatRooms {
+                        store: Arc::new(crate::chat_rooms::PostgresChatRoomStore::new(
+                            pool.clone(),
+                        )),
+                        matrix: Arc::new(
+                            crate::chat_rooms::HttpMatrixRooms::new(
+                                &m.homeserver_url,
+                                as_token,
+                                service_user,
+                            )
+                            .map_err(|e| anyhow::anyhow!("chat homeserver client: {e}"))?,
+                        ),
+                        server_name: m.server_name.clone(),
+                    })
+                }
+                None => {
+                    tracing::warn!("chat: STARSTATS_MATRIX_AS_TOKEN unset; rooms are off");
+                    None
+                }
+            },
+            None => None,
+        });
     // Social phase 5: crew history and commends (migration 0076).
     let commends_dyn: Arc<dyn crate::commends::CommendStore> =
         Arc::new(crate::commends::PostgresCommendStore::new(pool.clone()));
@@ -1078,6 +1108,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(chat_access_dyn))
         .layer(Extension(matrix_signer))
         .layer(Extension(chat_token_limiter))
+        .layer(Extension(chat_rooms))
         .layer(Extension(presence_hub))
         .layer(Extension(presence_settings_dyn))
         .layer(Extension(lfg_dyn))
