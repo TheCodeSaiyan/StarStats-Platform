@@ -689,7 +689,7 @@ pub async fn delete_account<U: UserStore>(
     if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
         crate::chat_rooms::best_effort(
             "remove_everywhere",
-            rooms.remove_everywhere(&user.claimed_handle, "Account deleted"),
+            rooms.close_account(&user.claimed_handle),
         )
         .await;
     }

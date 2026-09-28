@@ -713,6 +713,26 @@ async fn main() -> anyhow::Result<()> {
             },
             None => None,
         });
+    // The service account must exist as a Synapse user so db-init can make
+    // it an admin (needed to erase deleted accounts). Retried in the
+    // background, because Synapse may come up after the API.
+    if let Some(rooms) = chat_rooms.as_ref() {
+        let matrix = rooms.matrix.clone();
+        tokio::spawn(async move {
+            for attempt in 1..=20u32 {
+                match matrix.ensure_registered().await {
+                    Ok(()) => {
+                        tracing::info!("chat: service account registered");
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, attempt, "chat: service account registration failed");
+                        tokio::time::sleep(std::time::Duration::from_secs(15)).await;
+                    }
+                }
+            }
+        });
+    }
     // Social phase 5: crew history and commends (migration 0076).
     let commends_dyn: Arc<dyn crate::commends::CommendStore> =
         Arc::new(crate::commends::PostgresCommendStore::new(pool.clone()));

@@ -286,6 +286,34 @@ export default function PrivacyPage() {
             Lawful basis: contract.
           </li>
           <li>
+            <strong>Chat</strong>: crew chat (for the players a Looking for
+            Group host accepted) and direct messages between friends. It
+            is end-to-end encrypted: messages are encrypted on your device
+            and only the people in the chat can read them. StarStats
+            cannot read them, and never has the keys. What our chat server
+            does hold, because it has to deliver messages: who is in which
+            chat, when each message was sent and by whom, and the list of
+            devices you have signed in to chat on. Chat is for players
+            aged 18 and over; before your first chat we record that you
+            confirmed you are, and when. Your message history is kept on
+            your own devices (in this browser, for the web); signing out
+            or clearing site data removes it there. Links in messages are
+            checked on your device only, to warn you about lookalike and
+            suspicious sites; we never learn what anyone linked or
+            clicked. Lawful basis: providing the service you asked for
+            (contract).
+          </li>
+          <li>
+            <strong>Chat reports</strong>: if you report someone in a chat,
+            you choose which of their messages to include. Only those are
+            sent to StarStats, in plain text, with your reason and anything
+            you add, and only moderators see them. A report cannot prove
+            who sent a message, and moderators take that into account. If
+            someone reports you, the messages they chose are seen by
+            moderators in the same way. Lawful basis: legitimate interest
+            in keeping chat safe.
+          </li>
+          <li>
             <strong>Presence</strong> is off unless you turn it on, and
             it needs two switches: one in the desktop tray and one in
             your account settings. When both are on, your friends (and
@@ -482,6 +510,19 @@ export default function PrivacyPage() {
             still open. <strong>Reports</strong> are kept after the post has
             gone, so a moderator decision can be reviewed. Account deletion
             removes your posts and your reports.
+          </li>
+          <li>
+            <strong>Chat messages</strong>: stored on our chat server only
+            in encrypted form, and deleted after the chat&apos;s retention
+            period: 30 days unless the chat chooses a shorter one (from a
+            day), never more than 90. Who is in which chat is kept while
+            the chat is open. <strong>Chat reports</strong> are kept after
+            the chat has gone, so a moderator decision can be reviewed.
+            <strong>The age confirmation</strong> is kept until you delete
+            your account. Deleting your account removes you from every
+            chat, deletes the reports that name you and permanently closes
+            your chat account; a closed chat account cannot be opened
+            again, even under the same handle.
           </li>
           <li>
             <strong>Presence</strong>: not stored. It is kept in memory
