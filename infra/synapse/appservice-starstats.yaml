@@ -1,0 +1,17 @@
+# The StarStats API as a Matrix application service: it creates every room
+# and sends every invite, as @starstats:starstats.app. A template, rendered
+# by entrypoint.py like homeserver.yaml.
+id: starstats
+# The API does not need to receive room events, so Synapse pushes nothing.
+url: null
+as_token: secret:synapse_as_token
+hs_token: secret:synapse_hs_token
+sender_localpart: starstats
+rate_limited: false
+namespaces:
+  # Only its own account: it does not act as players.
+  users:
+    - exclusive: true
+      regex: '@starstats:starstats\.app'
+  rooms: []
+  aliases: []

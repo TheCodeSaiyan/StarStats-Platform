@@ -1,0 +1,120 @@
+# StarStats Synapse configuration (social phase 6, design spec §4.6).
+#
+# A template: entrypoint.py replaces every `secret:NAME` value with the file
+# /run/secrets/NAME and every `env:NAME` value with that environment
+# variable, then writes the result outside the data volume. No secret is
+# baked into the image or written to /data.
+#
+# Why each setting is what it is: docs/superpowers/specs social design
+# §4.6.2 (kept outside the repo) and the chat DPIA. In short: our clients
+# are the only way in, federation is off, the server holds ciphertext only,
+# and anything server-visible is kept to what delivery needs.
+
+# Permanent: every user and room ID embeds it (@handle:starstats.app).
+server_name: starstats.app
+# Where clients reach us: api.starstats.app, /_matrix/client only.
+public_baseurl: env:SYNAPSE_PUBLIC_BASEURL
+pid_file: /tmp/synapse.pid
+
+listeners:
+  - port: 8008
+    type: http
+    x_forwarded: true
+    bind_addresses: ["0.0.0.0"]
+    resources:
+      # Client API only: no federation, no key server.
+      - names: [client]
+        compress: false
+
+database:
+  name: psycopg2
+  args:
+    user: synapse_app
+    password: secret:synapse_db_password
+    database: synapse
+    host: env:SYNAPSE_DB_HOST
+    cp_min: 2
+    cp_max: 10
+
+log_config: /etc/starstats-synapse/log.config
+signing_key_path: /data/keys/starstats.app.signing.key
+report_stats: false
+
+# No federation: no other homeserver ever sees our users' metadata.
+federation_domain_whitelist: []
+trusted_key_servers: []
+suppress_key_server_warning: true
+
+# Accounts exist only through StarStats sign-in (JWT login below).
+enable_registration: false
+password_config:
+  enabled: false
+# validate_handle allows a leading underscore.
+allow_underscore_prefixed_localpart: true
+
+# A short-lived token minted by POST /v1/me/matrix/login-token, signed with
+# a key kept for this alone (1Password "starstats matrix login key").
+jwt_config:
+  enabled: true
+  secret: secret:matrix_login_public_key
+  algorithm: RS256
+  subject_claim: sub
+  display_name_claim: name
+  issuer: env:SYNAPSE_JWT_ISSUER
+  audiences: [matrix]
+
+macaroon_secret_key: secret:synapse_macaroon_secret
+form_secret: secret:synapse_form_secret
+# Admin bootstrap only; never used by the API or clients.
+registration_shared_secret: secret:synapse_registration_shared_secret
+
+# The StarStats API's application service creates every room and invite.
+app_service_config_files:
+  - /tmp/synapse-config/appservice-starstats.yaml
+
+# Text only: no uploads, and no URL previews (they would leak links and
+# are an SSRF risk).
+enable_media_repo: false
+media_store_path: /data/media_store
+url_preview_enabled: false
+
+# StarStats presence is the one source; player lookup is the one way to
+# find people.
+presence:
+  enabled: false
+user_directory:
+  enabled: false
+require_auth_for_profile_requests: true
+limit_profile_requests_to_users_who_share_rooms: true
+
+encryption_enabled_by_default_for_room_type: all
+
+# Logins are JWTs the API minted, so there is nothing to brute-force; the
+# limit is anti-flood. Keyed on the client address Traefik forwards
+# (x_forwarded above): if that header were ever lost, every login would
+# share Cloudflare's address and the default (burst 5) would lock players
+# out five minutes at a time.
+rc_login:
+  address:
+    per_second: 0.2
+    burst_count: 20
+  account:
+    per_second: 0.1
+    burst_count: 10
+
+# Default 30 days, players may choose 1 to 90 (the chat guard enforces the
+# same bounds on m.room.retention).
+retention:
+  enabled: true
+  default_policy:
+    max_lifetime: 30d
+  allowed_lifetime_min: 1d
+  allowed_lifetime_max: 90d
+  purge_jobs:
+    - interval: 12h
+
+modules:
+  - module: starstats_chat_guard.ChatGuard
+    config:
+      service_user: "@starstats:starstats.app"
+      max_lifetime_days: 90
