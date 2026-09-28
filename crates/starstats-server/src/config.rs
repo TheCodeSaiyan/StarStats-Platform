@@ -53,6 +53,9 @@ pub struct Config {
     /// the GitHub-touching workers (reconciler, writeback) and the
     /// internal webhook/CI-event routes go dark.
     pub roadmap: Option<RoadmapPipelineConfig>,
+    /// Chat (social phase 6). `None` until the matrix login key is set;
+    /// then the chat routes mint login tokens. See `chat.rs`.
+    pub matrix: Option<MatrixConfig>,
     /// RSI Ship Matrix vehicle-enrichment cron toggle. Default ON
     /// (`STARSTATS_SHIP_MATRIX_ENRICHMENT=false` to disable). When off,
     /// the cron is not spawned and vehicle rows keep only their wiki
@@ -177,6 +180,57 @@ impl RoadmapPipelineConfig {
 ///                              silently land in production.
 ///   - `REVOLUT_RETURN_URL`     Where Revolut's hosted checkout page
 ///                              redirects after a successful payment.
+/// Chat homeserver settings. Only the login key is secret; the rest have
+/// defaults for the production stack. Debug is written by hand so the key
+/// can never reach a log.
+#[derive(Clone)]
+pub struct MatrixConfig {
+    /// PEM private half of the dedicated matrix login key
+    /// (1Password "starstats matrix login key").
+    pub login_key_pem: String,
+    /// `iss` on login tokens; Synapse's `jwt_config.issuer` must match.
+    pub issuer: String,
+    /// The permanent Matrix server name (`@handle:<server_name>`).
+    pub server_name: String,
+    /// The homeserver client API base URL clients use.
+    pub public_url: String,
+}
+
+impl std::fmt::Debug for MatrixConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MatrixConfig")
+            .field("login_key_pem", &"<redacted>")
+            .field("issuer", &self.issuer)
+            .field("server_name", &self.server_name)
+            .field("public_url", &self.public_url)
+            .finish()
+    }
+}
+
+impl MatrixConfig {
+    pub fn from_env() -> Result<Option<Self>> {
+        let login_key_pem = match read_env_or_file(
+            "STARSTATS_MATRIX_LOGIN_KEY",
+            "STARSTATS_MATRIX_LOGIN_KEY_FILE",
+        )? {
+            Some(v) if !v.is_empty() => v,
+            _ => return Ok(None),
+        };
+        let var = |name: &str, default: &str| {
+            std::env::var(name)
+                .ok()
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| default.to_string())
+        };
+        Ok(Some(Self {
+            login_key_pem,
+            issuer: var("STARSTATS_MATRIX_ISSUER", "starstats-api"),
+            server_name: var("STARSTATS_MATRIX_SERVER_NAME", "starstats.app"),
+            public_url: var("STARSTATS_MATRIX_PUBLIC_URL", "https://api.starstats.app/"),
+        }))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct RevolutConfig {
     pub api_key: String,
@@ -477,6 +531,7 @@ impl Config {
         let updater = UpdaterConfig::from_env();
         let kek = KekConfig::from_env()?;
         let revolut = RevolutConfig::from_env()?;
+        let matrix = MatrixConfig::from_env()?;
         if revolut.is_some() {
             tracing::info!("Revolut Business merchant API configured");
         } else {
@@ -521,6 +576,7 @@ impl Config {
             kek,
             revolut,
             roadmap,
+            matrix,
             ship_matrix_enrichment,
             ingest_token,
         })

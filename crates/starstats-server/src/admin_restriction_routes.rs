@@ -48,6 +48,8 @@ pub struct RestrictionRequest {
     pub public_profile_blocked: bool,
     #[serde(default)]
     pub submissions_blocked: bool,
+    #[serde(default)]
+    pub chat_blocked: bool,
     /// Required, non-empty. Shown to the restricted user, so it is
     /// both the audit record and user-facing copy.
     pub reason: String,
@@ -62,6 +64,7 @@ pub struct AdminRestrictionDto {
     pub sharing_blocked: bool,
     pub public_profile_blocked: bool,
     pub submissions_blocked: bool,
+    pub chat_blocked: bool,
     pub reason: String,
     pub restricted_by: String,
     pub restricted_at: DateTime<Utc>,
@@ -86,6 +89,7 @@ impl AdminRestrictionDto {
             sharing_blocked: r.sharing_blocked,
             public_profile_blocked: r.public_profile_blocked,
             submissions_blocked: r.submissions_blocked,
+            chat_blocked: r.chat_blocked,
             reason: r.reason.clone(),
             restricted_by: r.restricted_by.clone(),
             restricted_at: r.restricted_at,
@@ -187,6 +191,7 @@ pub async fn apply_restriction(
                 "sharing_blocked": restriction.sharing_blocked,
                 "public_profile_blocked": restriction.public_profile_blocked,
                 "submissions_blocked": restriction.submissions_blocked,
+                "chat_blocked": restriction.chat_blocked,
                 "is_suspension": restriction.is_suspension(),
                 "reason": restriction.reason,
                 "expires_at": restriction.expires_at,
@@ -238,6 +243,7 @@ pub async fn set_restrictions<U: UserStore>(
         && !body.sharing_blocked
         && !body.public_profile_blocked
         && !body.submissions_blocked
+        && !body.chat_blocked
     {
         // An all-false restriction is a second way to spell
         // "unrestricted". Reinstate (DELETE) is the one way.
@@ -280,6 +286,7 @@ pub async fn set_restrictions<U: UserStore>(
         sharing_blocked: body.sharing_blocked,
         public_profile_blocked: body.public_profile_blocked,
         submissions_blocked: body.submissions_blocked,
+        chat_blocked: body.chat_blocked,
         reason: reason.to_string(),
         restricted_by: actor.preferred_username.clone(),
         restricted_at: Utc::now(),
@@ -466,6 +473,7 @@ mod tests {
             "sharing_blocked": true,
             "public_profile_blocked": true,
             "submissions_blocked": true,
+            "chat_blocked": true,
             "reason": "harassment"
         })
     }

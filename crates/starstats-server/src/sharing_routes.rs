@@ -4234,6 +4234,7 @@ mod public_restriction_tests {
             sharing_blocked: false,
             public_profile_blocked: true,
             submissions_blocked: false,
+            chat_blocked: false,
             reason: "harassment".into(),
             restricted_by: "modhandle".into(),
             restricted_at: chrono::Utc::now(),

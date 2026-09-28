@@ -152,6 +152,7 @@ mod tests {
             sharing_blocked: sharing,
             public_profile_blocked: false,
             submissions_blocked: false,
+            chat_blocked: false,
             reason: "spamming share invites".into(),
             restricted_by: "modhandle".into(),
             restricted_at: Utc::now(),

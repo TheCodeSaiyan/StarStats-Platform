@@ -60,6 +60,10 @@ mod audit_mirror;
 mod auth;
 #[path = "../auth_routes.rs"]
 mod auth_routes;
+#[path = "../chat.rs"]
+mod chat;
+#[path = "../chat_routes.rs"]
+mod chat_routes;
 #[path = "../commend_routes.rs"]
 mod commend_routes;
 #[path = "../commends.rs"]

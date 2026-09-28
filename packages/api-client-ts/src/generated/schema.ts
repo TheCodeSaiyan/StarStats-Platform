@@ -1764,6 +1764,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Whether the caller can chat, and if not, which gate is closed. */
+        get: operations["chat_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/chat/age-declaration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Declare you meet the minimum age for chat. Idempotent. */
+        post: operations["chat_declare_age"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/commends": {
         parameters: {
             query?: never;
@@ -2104,6 +2138,26 @@ export interface paths {
         get: operations["location_trace"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/matrix/login-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A Matrix login token, valid for a minute. Needs a verified RSI handle,
+         *     the age declaration and no chat restriction.
+         */
+        post: operations["chat_login_token"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4154,6 +4208,7 @@ export interface components {
             metadata: Record<string, never>;
         };
         AdminRestrictionDto: {
+            chat_blocked: boolean;
             /** Format: date-time */
             expires_at?: string | null;
             ingest_blocked: boolean;
@@ -4492,6 +4547,14 @@ export interface components {
              */
             admitted: number;
         };
+        AgeDeclaration: {
+            /**
+             * Format: int32
+             * @description The minimum age the player declares they meet. Must be the current
+             *     minimum, so a client showing an out-of-date number cannot record it.
+             */
+            minimum_age: number;
+        };
         /**
          * @description The single error envelope shape emitted by every API endpoint.
          *
@@ -4679,6 +4742,23 @@ export interface components {
             /** Format: date-time */
             deployed_at?: string | null;
             status: string;
+        };
+        ChatStatus: {
+            /** @description The caller has declared they meet `minimum_age`. */
+            age_declared: boolean;
+            /** @description Chat is switched on for this service. */
+            available: boolean;
+            /** @description Every gate below is met: the caller can get a login token. */
+            can_chat: boolean;
+            /** @description The homeserver's client API base URL, when chat is available. */
+            homeserver_url?: string | null;
+            /** Format: int32 */
+            minimum_age: number;
+            /** @description A moderator has restricted the caller from chat. */
+            restricted: boolean;
+            rsi_verified: boolean;
+            /** @description The caller's Matrix user ID, when chat is available. */
+            user_id?: string | null;
         };
         CheckoutRequest: {
             /**
@@ -6921,6 +7001,17 @@ export interface components {
             /** Format: uuid */
             roadmap_item_id: string;
         };
+        MatrixLoginToken: {
+            /**
+             * Format: int64
+             * @description Seconds until the token expires.
+             */
+            expires_in: number;
+            homeserver_url: string;
+            /** @description Exchange at the homeserver with `org.matrix.login.jwt`. */
+            token: string;
+            user_id: string;
+        };
         MeResponse: {
             claimed_handle: string;
             email: string;
@@ -8218,6 +8309,7 @@ export interface components {
             action: string;
         };
         RestrictionRequest: {
+            chat_blocked?: boolean;
             /**
              * Format: date-time
              * @description `None` means "until lifted".
@@ -15354,6 +15446,59 @@ export interface operations {
             };
         };
     };
+    chat_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Chat status */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatStatus"];
+                };
+            };
+        };
+    };
+    chat_declare_age: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgeDeclaration"];
+            };
+        };
+        responses: {
+            /** @description Recorded; chat status after it */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatStatus"];
+                };
+            };
+            /** @description Not the current minimum age */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     social_my_commends: {
         parameters: {
             query?: never;
@@ -16235,6 +16380,53 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    chat_login_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A login token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatrixLoginToken"];
+                };
+            };
+            /** @description rsi_handle_not_verified, age_not_declared or chat_restricted */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many tokens */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Chat is not available */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };

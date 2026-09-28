@@ -1283,6 +1283,7 @@ mod tests {
             sharing_blocked: sharing,
             public_profile_blocked: false,
             submissions_blocked: false,
+            chat_blocked: false,
             reason: "uploading junk".into(),
             restricted_by: "modhandle".into(),
             restricted_at: chrono::Utc::now(),

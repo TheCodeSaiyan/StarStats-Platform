@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 /// A thing an account can be barred from doing.
 ///
-/// Suspension is not a fifth variant — it is all four set at once. A
+/// Suspension is not another variant — it is all of them set at once. A
 /// separate `suspended` flag would be a second representation of the
 /// same state, and two representations drift.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -30,6 +30,9 @@ pub enum Capability {
     Sharing,
     PublicProfile,
     Submissions,
+    /// Crew and direct-message chat (social phase 6): no chat login token,
+    /// and removal from every chat room.
+    Chat,
 }
 
 impl Capability {
@@ -39,6 +42,7 @@ impl Capability {
             Capability::Sharing => "sharing",
             Capability::PublicProfile => "public_profile",
             Capability::Submissions => "submissions",
+            Capability::Chat => "chat",
         }
     }
 }
@@ -49,6 +53,7 @@ pub struct Restriction {
     pub sharing_blocked: bool,
     pub public_profile_blocked: bool,
     pub submissions_blocked: bool,
+    pub chat_blocked: bool,
     /// Required, and surfaced to the restricted user.
     pub reason: String,
     /// Moderator handle.
@@ -66,6 +71,7 @@ impl Restriction {
             Capability::Sharing => self.sharing_blocked,
             Capability::PublicProfile => self.public_profile_blocked,
             Capability::Submissions => self.submissions_blocked,
+            Capability::Chat => self.chat_blocked,
         }
     }
 
@@ -76,6 +82,7 @@ impl Restriction {
             && self.sharing_blocked
             && self.public_profile_blocked
             && self.submissions_blocked
+            && self.chat_blocked
     }
 
     /// Read-time expiry. An expired row is inert but deliberately left
@@ -156,6 +163,7 @@ type RestrictionRow = (
     String,
     DateTime<Utc>,
     Option<DateTime<Utc>>,
+    bool,
 );
 
 fn row_to_restriction(r: RestrictionRow) -> Restriction {
@@ -164,6 +172,7 @@ fn row_to_restriction(r: RestrictionRow) -> Restriction {
         sharing_blocked: r.1,
         public_profile_blocked: r.2,
         submissions_blocked: r.3,
+        chat_blocked: r.8,
         reason: r.4,
         restricted_by: r.5,
         restricted_at: r.6,
@@ -178,7 +187,8 @@ impl AccountRestrictionStore for PostgresAccountRestrictionStore {
         // `Restriction::is_effective_at` exactly (`> now()`).
         let row: Option<RestrictionRow> = sqlx::query_as(
             "SELECT ingest_blocked, sharing_blocked, public_profile_blocked,
-                    submissions_blocked, reason, restricted_by, restricted_at, expires_at
+                    submissions_blocked, reason, restricted_by, restricted_at, expires_at,
+                    chat_blocked
              FROM account_restrictions
              WHERE user_id = $1
                AND (expires_at IS NULL OR expires_at > now())",
@@ -195,8 +205,9 @@ impl AccountRestrictionStore for PostgresAccountRestrictionStore {
         sqlx::query(
             "INSERT INTO account_restrictions
                  (user_id, ingest_blocked, sharing_blocked, public_profile_blocked,
-                  submissions_blocked, reason, restricted_by, restricted_at, expires_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                  submissions_blocked, reason, restricted_by, restricted_at, expires_at,
+                  chat_blocked)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              ON CONFLICT (user_id) DO UPDATE SET
                  ingest_blocked         = EXCLUDED.ingest_blocked,
                  sharing_blocked        = EXCLUDED.sharing_blocked,
@@ -205,7 +216,8 @@ impl AccountRestrictionStore for PostgresAccountRestrictionStore {
                  reason                 = EXCLUDED.reason,
                  restricted_by          = EXCLUDED.restricted_by,
                  restricted_at          = EXCLUDED.restricted_at,
-                 expires_at             = EXCLUDED.expires_at",
+                 expires_at             = EXCLUDED.expires_at,
+                 chat_blocked           = EXCLUDED.chat_blocked",
         )
         .bind(user_id)
         .bind(restriction.ingest_blocked)
@@ -216,6 +228,7 @@ impl AccountRestrictionStore for PostgresAccountRestrictionStore {
         .bind(&restriction.restricted_by)
         .bind(restriction.restricted_at)
         .bind(restriction.expires_at)
+        .bind(restriction.chat_blocked)
         .execute(&self.pool)
         .await?;
         Ok(())
@@ -433,6 +446,7 @@ mod tests {
             sharing_blocked: sharing,
             public_profile_blocked: false,
             submissions_blocked: false,
+            chat_blocked: false,
             reason: "spam".into(),
             restricted_by: "mod".into(),
             restricted_at: base(),
@@ -460,6 +474,7 @@ mod tests {
             sharing_blocked: true,
             public_profile_blocked: true,
             submissions_blocked: true,
+            chat_blocked: true,
             ..restriction(true, None)
         };
         assert!(all.is_suspension());
@@ -491,6 +506,7 @@ mod tests {
             sharing_blocked: true,
             public_profile_blocked: true,
             submissions_blocked: true,
+            chat_blocked: true,
             ..restriction(true, None)
         }
     }
@@ -565,5 +581,73 @@ mod tests {
         // the other.
         let at_boundary = restriction(true, Some(base()));
         assert!(!at_boundary.is_effective_at(base()));
+    }
+}
+
+/// The store's SQL against the real schema, chat included. Skipped without
+/// STARSTATS_TEST_DATABASE_URL, like the other round-trip tests.
+#[cfg(test)]
+mod postgres_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn postgres_restriction_round_trip_carries_chat() {
+        let Ok(url) = std::env::var("STARSTATS_TEST_DATABASE_URL") else {
+            eprintln!("STARSTATS_TEST_DATABASE_URL unset — skipping Postgres restriction test");
+            return;
+        };
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .expect("connect STARSTATS_TEST_DATABASE_URL");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations on the test DB");
+        let handle = format!("RestrictProbe{}", &Uuid::new_v4().simple().to_string()[..8]);
+        let (id,): (Uuid,) = sqlx::query_as(
+            "INSERT INTO users (id, email, password_hash, claimed_handle)
+             VALUES (gen_random_uuid(), $1, 'x', $2) RETURNING id",
+        )
+        .bind(format!("{}@example.com", handle.to_lowercase()))
+        .bind(&handle)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        let s = PostgresAccountRestrictionStore::new(pool.clone());
+        let mut r = Restriction {
+            ingest_blocked: false,
+            sharing_blocked: false,
+            public_profile_blocked: false,
+            submissions_blocked: true,
+            chat_blocked: true,
+            reason: "abusive messages".into(),
+            restricted_by: "mod".into(),
+            restricted_at: Utc::now(),
+            expires_at: None,
+        };
+        s.upsert(id, &r).await.unwrap();
+        let got = s.effective(id).await.unwrap().unwrap();
+        assert!(got.blocks(Capability::Chat));
+        assert!(got.blocks(Capability::Submissions));
+        assert!(!got.blocks(Capability::Sharing));
+        assert_eq!(got.reason, "abusive messages", "columns stay aligned");
+
+        r.chat_blocked = false;
+        s.upsert(id, &r).await.unwrap();
+        assert!(!s
+            .effective(id)
+            .await
+            .unwrap()
+            .unwrap()
+            .blocks(Capability::Chat));
+
+        s.lift(id).await.unwrap();
+        sqlx::query("DELETE FROM users WHERE id = $1")
+            .bind(id)
+            .execute(&pool)
+            .await
+            .unwrap();
     }
 }
