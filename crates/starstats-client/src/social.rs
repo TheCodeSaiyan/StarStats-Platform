@@ -86,6 +86,25 @@ pub struct FriendsResponse {
     pub incoming: Vec<FriendRequest>,
     pub outgoing: Vec<FriendRequest>,
     pub friend_request_policy: String,
+    /// Whether players can find you by lookup. An older server does not
+    /// send it, and lookup did not exist there, so it reads as on.
+    #[serde(default = "default_true")]
+    pub discoverable: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// One player from `/v1/players/search`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PlayerMatch {
+    pub handle: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PlayerSearchResponse {
+    pub players: Vec<PlayerMatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -114,6 +133,8 @@ pub struct MutesResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SocialSettings {
     pub friend_request_policy: String,
+    #[serde(default = "default_true")]
+    pub discoverable: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -364,14 +385,36 @@ impl SocialClient {
         Ok(v["level"].as_str().unwrap_or("off").to_string())
     }
 
+    /// Change either setting; a field left `None` is not sent, so the
+    /// server leaves it as it is.
     pub async fn update_settings(
         &self,
-        friend_request_policy: &str,
+        friend_request_policy: Option<&str>,
+        discoverable: Option<bool>,
     ) -> Result<SocialSettings, SocialClientError> {
+        let mut body = serde_json::Map::new();
+        if let Some(p) = friend_request_policy {
+            body.insert("friend_request_policy".into(), p.into());
+        }
+        if let Some(d) = discoverable {
+            body.insert("discoverable".into(), d.into());
+        }
         self.json(
             Method::PUT,
             "/v1/me/social/settings",
-            Some(serde_json::json!({ "friend_request_policy": friend_request_policy })),
+            Some(serde_json::Value::Object(body)),
+        )
+        .await
+    }
+
+    /// Player lookup by the start of a handle. The server needs three
+    /// characters and refuses anything that is not handle characters.
+    pub async fn search_players(&self, q: &str) -> Result<PlayerSearchResponse, SocialClientError> {
+        let q = q.trim().trim_start_matches('@');
+        self.json(
+            Method::GET,
+            &format!("/v1/players/search?q={}", seg(q)),
+            None,
         )
         .await
     }
@@ -722,6 +765,19 @@ mod tests {
         let w = Utc::now();
         let items = vec![note("lfg_join", w + ChronoDuration::seconds(1), false)];
         assert_eq!(plan_toasts(&items, w, false), ToastPlan::Nothing);
+    }
+
+    #[test]
+    fn an_older_server_without_the_lookup_setting_reads_as_discoverable() {
+        let r: FriendsResponse = serde_json::from_str(
+            r#"{"friends":[],"incoming":[],"outgoing":[],"friend_request_policy":"everyone"}"#,
+        )
+        .unwrap();
+        assert!(r.discoverable);
+        let s: SocialSettings =
+            serde_json::from_str(r#"{"friend_request_policy":"nobody","discoverable":false}"#)
+                .unwrap();
+        assert!(!s.discoverable);
     }
 
     #[test]

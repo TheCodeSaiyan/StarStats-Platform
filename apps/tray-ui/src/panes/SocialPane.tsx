@@ -226,9 +226,39 @@ export function SocialPane() {
     await refresh();
   };
 
+  // Player lookup as you type: three handle characters, a pause, then the
+  // server's matches. Errors just clear the list; the exact-handle send
+  // below still works.
+  const [matches, setMatches] = useState<string[] | null>(null);
+  useEffect(() => {
+    const q = handle.trim().replace(/^@/, '');
+    if (q.length < 3 || !/^[A-Za-z0-9_-]+$/.test(q)) {
+      setMatches(null);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      api
+        .socialSearchPlayers(q)
+        .then((r) => {
+          if (!cancelled) setMatches(r.players.map((p) => p.handle));
+        })
+        .catch(() => {
+          if (!cancelled) setMatches(null);
+        });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [handle]);
+
   const onSend = async (ev: FormEvent) => {
     ev.preventDefault();
-    const h = handle.trim();
+    await sendTo(handle.trim());
+  };
+
+  const sendTo = async (h: string) => {
     if (!h) return;
     setNotice(null);
     setError(null);
@@ -297,8 +327,39 @@ export function SocialPane() {
             Send request
           </PrimaryButton>
         </form>
+        {matches ? (
+          <div data-testid="player-matches" style={{ marginTop: 6 }}>
+            {matches.length === 0 ? (
+              <p style={{ color: 'var(--fg-dim)', fontSize: 11, margin: 0 }}>
+                Nobody found. Only players with a verified RSI handle appear; if you know their
+                exact handle, send the request anyway.
+              </p>
+            ) : (
+              matches.map((h) => {
+                const lower = h.toLowerCase();
+                const isFriend = friends?.friends.some((f) => f.handle.toLowerCase() === lower);
+                const asked = friends?.outgoing.some((r) => r.recipient_handle.toLowerCase() === lower);
+                return (
+                  <div key={h} style={rowStyle} data-testid="player-match">
+                    <span>@{h}</span>
+                    {isFriend ? (
+                      <span style={{ color: 'var(--fg-dim)', fontSize: 11 }}>friends</span>
+                    ) : asked ? (
+                      <span style={{ color: 'var(--fg-dim)', fontSize: 11 }}>requested</span>
+                    ) : (
+                      <GhostButton type="button" onClick={() => void sendTo(h)}>
+                        Add
+                      </GhostButton>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        ) : null}
         <p style={{ color: 'var(--fg-dim)', fontSize: 11, margin: '6px 0 0' }}>
-          Being friends shares no stats. Sharing stays a separate choice on the web.
+          Type three letters of a handle to look players up. Being friends shares no stats.
+          Sharing stays a separate choice on the web.
         </p>
       </TrayCard>
 
@@ -420,13 +481,29 @@ export function SocialPane() {
               value={friends.friend_request_policy}
               onChange={(e) => {
                 const v = e.target.value as FriendRequestPolicy;
-                void act(() => api.socialUpdateSettings(v), 'Saved.');
+                void act(() => api.socialUpdateSettings({ friend_request_policy: v }), 'Saved.');
               }}
             >
               <option value="everyone">anyone</option>
               <option value="org_mates">people in one of my orgs</option>
               <option value="nobody">nobody</option>
             </select>
+          </label>
+        ) : null}
+        {friends ? (
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 6 }}>
+            <input
+              type="checkbox"
+              checked={friends.discoverable}
+              onChange={(e) => {
+                const on = e.target.checked;
+                void act(
+                  () => api.socialUpdateSettings({ discoverable: on }),
+                  on ? 'Players can find you by your handle.' : 'Players can no longer look you up.',
+                );
+              }}
+            />
+            Let players find me by my handle
           </label>
         ) : null}
         <HandleRows

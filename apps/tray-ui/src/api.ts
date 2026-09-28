@@ -840,6 +840,8 @@ export interface FriendsResponse {
   incoming: FriendRequest[];
   outgoing: FriendRequest[];
   friend_request_policy: FriendRequestPolicy;
+  /** Whether players can find you by lookup. */
+  discoverable: boolean;
 }
 
 export interface SendFriendRequestResponse {
@@ -1152,10 +1154,16 @@ export const api = {
   socialGetMutes: () => invoke<{ mutes: ListedHandle[] }>('social_get_mutes'),
   socialSetMuted: (handle: string, muted: boolean) =>
     invoke<void>('social_set_muted', { handle, muted }),
-  socialUpdateSettings: (policy: FriendRequestPolicy) =>
-    invoke<{ friend_request_policy: string }>('social_update_settings', {
-      friend_request_policy: policy,
+  socialUpdateSettings: (change: {
+    friend_request_policy?: FriendRequestPolicy;
+    discoverable?: boolean;
+  }) =>
+    invoke<{ friend_request_policy: string; discoverable: boolean }>('social_update_settings', {
+      friend_request_policy: change.friend_request_policy ?? null,
+      discoverable: change.discoverable ?? null,
     }),
+  socialSearchPlayers: (q: string) =>
+    invoke<{ players: { handle: string }[] }>('social_search_players', { q }),
   socialGetNotifications: (limit?: number) =>
     invoke<NotificationsResponse>('social_get_notifications', { limit: limit ?? null }),
   socialMarkRead: (ids: string[], all: boolean) =>

@@ -731,6 +731,7 @@ fn main() {
             commands::social_get_mutes,
             commands::social_set_muted,
             commands::social_update_settings,
+            commands::social_search_players,
             commands::social_get_notifications,
             commands::social_mark_read,
             commands::social_get_prefs,

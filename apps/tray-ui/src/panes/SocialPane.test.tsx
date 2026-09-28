@@ -39,6 +39,7 @@ const FRIENDS = {
   ],
   outgoing: [],
   friend_request_policy: 'everyone',
+  discoverable: true,
 };
 
 let calls: Array<{ cmd: string; args: unknown }>;
@@ -138,6 +139,51 @@ describe('SocialPane', () => {
     expect(
       await screen.findByText('No StarStats account exists for that handle.'),
     ).toBeInTheDocument();
+  });
+
+  it('looks players up as you type and adds one', async () => {
+    stub({
+      social_search_players: () =>
+        Promise.resolve({ players: [{ handle: 'Wingman' }, { handle: 'Wingnut' }] }),
+      social_send_request: () => Promise.resolve({ outcome: 'requested' }),
+    });
+    render(<SocialPane />);
+    fireEvent.change(await screen.findByLabelText('StarStats handle'), {
+      target: { value: 'win' },
+    });
+    const matches = await screen.findAllByTestId('player-match', {}, { timeout: 2000 });
+    expect(calls.find((c) => c.cmd === 'social_search_players')?.args).toEqual({ q: 'win' });
+    expect(matches[0]).toHaveTextContent('friends');
+    fireEvent.click(await screen.findByRole('button', { name: 'Add' }));
+    await waitFor(() =>
+      expect(calls.find((c) => c.cmd === 'social_send_request')?.args).toEqual({
+        handle: 'Wingnut',
+      }),
+    );
+  });
+
+  it('does not look up fewer than three characters', async () => {
+    render(<SocialPane />);
+    fireEvent.change(await screen.findByLabelText('StarStats handle'), {
+      target: { value: 'wi' },
+    });
+    await new Promise((r) => setTimeout(r, 400));
+    expect(calls.some((c) => c.cmd === 'social_search_players')).toBe(false);
+  });
+
+  it('the lookup setting sends only that field', async () => {
+    stub({
+      social_update_settings: () =>
+        Promise.resolve({ friend_request_policy: 'everyone', discoverable: false }),
+    });
+    render(<SocialPane />);
+    fireEvent.click(await screen.findByLabelText('Let players find me by my handle'));
+    await waitFor(() =>
+      expect(calls.find((c) => c.cmd === 'social_update_settings')?.args).toEqual({
+        friend_request_policy: null,
+        discoverable: false,
+      }),
+    );
   });
 
   it('explains pairing when the tray is not paired', () => {
