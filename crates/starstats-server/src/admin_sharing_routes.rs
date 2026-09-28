@@ -453,6 +453,7 @@ pub async fn resolve_report(
                     sharing_blocked: true,
                     public_profile_blocked: true,
                     submissions_blocked: true,
+                    chat_blocked: true,
                     reason: note
                         .clone()
                         .unwrap_or_else(|| format!("Suspended after share report {}", row.id)),

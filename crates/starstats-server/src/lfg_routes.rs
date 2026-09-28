@@ -1006,6 +1006,7 @@ pub async fn admin_resolve(
             sharing_blocked: true,
             public_profile_blocked: true,
             submissions_blocked: true,
+            chat_blocked: true,
             reason: note
                 .clone()
                 .unwrap_or_else(|| format!("Suspended after LFG report {}", pending.id)),

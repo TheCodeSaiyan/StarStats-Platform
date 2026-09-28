@@ -63,6 +63,8 @@ mod audit;
 mod audit_mirror;
 mod auth;
 mod auth_routes;
+mod chat;
+mod chat_routes;
 mod commend_routes;
 mod commends;
 mod config;
@@ -652,6 +654,29 @@ async fn main() -> anyhow::Result<()> {
         Arc::new(crate::salutes::PostgresSaluteStore::new(pool.clone()));
     let salute_limiter = Arc::new(crate::salutes::SaluteRateLimiter::new());
     let player_search_limiter = Arc::new(crate::social_routes::PlayerSearchLimiter::new());
+    // Chat access (social phase 6, migration 0078). A bad login key stops
+    // the server: chat configured but unable to sign is a deploy mistake
+    // to see at once, not a feature that quietly vanishes.
+    let chat_access_dyn: Arc<dyn crate::chat::ChatAccessStore> =
+        Arc::new(crate::chat::PostgresChatAccessStore::new(pool.clone()));
+    let matrix_signer: Arc<Option<crate::chat::MatrixLoginSigner>> =
+        Arc::new(match cfg.matrix.as_ref() {
+            Some(m) => Some(
+                crate::chat::MatrixLoginSigner::new(
+                    &m.login_key_pem,
+                    m.issuer.clone(),
+                    m.server_name.clone(),
+                    m.public_url.clone(),
+                )
+                .map_err(|e| {
+                    anyhow::anyhow!(
+                        "STARSTATS_MATRIX_LOGIN_KEY is not a usable RSA private key: {e}"
+                    )
+                })?,
+            ),
+            None => None,
+        });
+    let chat_token_limiter = Arc::new(crate::chat_routes::ChatTokenLimiter::new());
     // Social phase 5: crew history and commends (migration 0076).
     let commends_dyn: Arc<dyn crate::commends::CommendStore> =
         Arc::new(crate::commends::PostgresCommendStore::new(pool.clone()));
@@ -977,6 +1002,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(salute_routes::routes())
         .merge(presence_routes::routes())
         .merge(lfg_routes::routes())
+        .merge(chat_routes::routes())
         .merge(commend_routes::routes())
         .merge(news_routes::routes())
         .merge(release_routes::routes())
@@ -1049,6 +1075,9 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(salutes_dyn))
         .layer(Extension(salute_limiter))
         .layer(Extension(player_search_limiter))
+        .layer(Extension(chat_access_dyn))
+        .layer(Extension(matrix_signer))
+        .layer(Extension(chat_token_limiter))
         .layer(Extension(presence_hub))
         .layer(Extension(presence_settings_dyn))
         .layer(Extension(lfg_dyn))
