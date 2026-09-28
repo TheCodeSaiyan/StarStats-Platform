@@ -3011,6 +3011,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/players/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Player lookup: find verified players by the start of their handle, to
+         *     add them as friends. Needs three characters and returns at most ten.
+         *     Leaves out you, anyone either of you blocked, and anyone who turned
+         *     lookup off. Only verified handles are listed: they are public on RSI
+         *     already, and it keeps the lookup from being a way to list accounts.
+         */
+        get: operations["social_search_players"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/public/u/{handle}/orgs": {
         parameters: {
             query?: never;
@@ -6130,6 +6153,8 @@ export interface components {
             friends: components["schemas"]["FriendPresence"][];
         };
         FriendsResponse: {
+            /** @description Whether other players can find you by player lookup. */
+            discoverable: boolean;
             friend_request_policy: components["schemas"]["FriendRequestPolicy"];
             friends: components["schemas"]["Friend"][];
             /**
@@ -7375,6 +7400,13 @@ export interface components {
             queue_id: number;
             timestamp: string;
             zone?: string | null;
+        };
+        PlayerMatch: {
+            handle: string;
+        };
+        PlayerSearchResponse: {
+            /** @description Up to ten verified players, shortest handle first. */
+            players: components["schemas"]["PlayerMatch"][];
         };
         PlaytimeStatsResponse: {
             /** Format: int64 */
@@ -8885,6 +8917,7 @@ export interface components {
             web_origin: string;
         };
         SocialSettings: {
+            discoverable: boolean;
             friend_request_policy: components["schemas"]["FriendRequestPolicy"];
         };
         /**
@@ -9368,6 +9401,14 @@ export interface components {
         };
         UpdateProfileLayoutRequest: {
             layout?: components["schemas"]["LayoutEntry"][] | null;
+        };
+        /**
+         * @description A settings change. Each field is optional so a client can change one
+         *     without knowing the other.
+         */
+        UpdateSocialSettings: {
+            discoverable?: boolean | null;
+            friend_request_policy?: null | components["schemas"]["FriendRequestPolicy"];
         };
         /**
          * @description Sender's update suggestion. Mirrors sp-ingest `UpdateSuggestion`.
@@ -17423,7 +17464,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["SocialSettings"];
+                "application/json": components["schemas"]["UpdateSocialSettings"];
             };
         };
         responses: {
@@ -18605,6 +18646,47 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    social_search_players: {
+        parameters: {
+            query: {
+                /** @description The start of a handle, at least three characters. */
+                q: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching players */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlayerSearchResponse"];
+                };
+            };
+            /** @description Too short, or not handle characters */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many lookups */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
             };
         };
     };

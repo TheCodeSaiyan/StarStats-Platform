@@ -65,6 +65,7 @@ pub fn routes() -> Router {
         .route("/v1/me/mutes", get(list_mutes))
         .route("/v1/me/mutes/{handle}", put(mute_user).delete(unmute_user))
         .route("/v1/me/social/settings", put(update_settings))
+        .route("/v1/players/search", get(search_players))
         .route("/v1/me/notifications", get(list_notifications))
         .route("/v1/me/notifications/read", post(mark_notifications_read))
 }
@@ -80,6 +81,8 @@ pub struct FriendsResponse {
     /// Pending requests the caller has sent.
     pub outgoing: Vec<FriendRequest>,
     pub friend_request_policy: FriendRequestPolicy,
+    /// Whether other players can find you by player lookup.
+    pub discoverable: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -122,6 +125,59 @@ pub struct MutesResponse {
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct SocialSettings {
     pub friend_request_policy: FriendRequestPolicy,
+    pub discoverable: bool,
+}
+
+/// A settings change. Each field is optional so a client can change one
+/// without knowing the other.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateSocialSettings {
+    #[serde(default)]
+    pub friend_request_policy: Option<FriendRequestPolicy>,
+    #[serde(default)]
+    pub discoverable: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct PlayerSearchQuery {
+    /// The start of a handle, at least three characters.
+    pub q: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PlayerSearchResponse {
+    /// Up to ten verified players, shortest handle first.
+    pub players: Vec<PlayerMatch>,
+}
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct PlayerMatch {
+    pub handle: String,
+}
+
+/// The fewest characters a lookup needs: fewer would page through every
+/// handle a letter at a time.
+pub const PLAYER_SEARCH_MIN_CHARS: usize = 3;
+pub const PLAYER_SEARCH_LIMIT: i64 = 10;
+
+/// Search-as-you-type sends a request per keystroke, so the budget is
+/// wider than the salute limiter's: a burst of 30, one more every 2 s.
+pub struct PlayerSearchLimiter(crate::salutes::SaluteRateLimiter);
+
+impl Default for PlayerSearchLimiter {
+    fn default() -> Self {
+        Self(crate::salutes::SaluteRateLimiter::with_rate(30.0, 0.5))
+    }
+}
+
+impl PlayerSearchLimiter {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn check(&self, handle: &str) -> bool {
+        self.0.check(handle)
+    }
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -379,11 +435,16 @@ pub async fn list_friends(
             return social_err(e, "list_friends")
         }
     };
+    let discoverable = match social.get_discoverable(h).await {
+        Ok(d) => d,
+        Err(e) => return social_err(e, "list_friends.discoverable"),
+    };
     Json(FriendsResponse {
         friends,
         incoming,
         outgoing,
         friend_request_policy: policy,
+        discoverable,
     })
     .into_response()
 }
@@ -1070,7 +1131,7 @@ pub async fn unmute_user(
     path = "/v1/me/social/settings",
     tag = "social",
     operation_id = "social_update_settings",
-    request_body = SocialSettings,
+    request_body = UpdateSocialSettings,
     responses(
         (status = 200, description = "Settings as stored", body = SocialSettings),
         (status = 422, description = "Unknown policy value"),
@@ -1081,26 +1142,86 @@ pub async fn update_settings(
     auth: AuthenticatedUser,
     Extension(users): Extension<Arc<dyn UserStore>>,
     Extension(social): Extension<Arc<dyn SocialStore>>,
-    Json(body): Json<SocialSettings>,
+    Json(body): Json<UpdateSocialSettings>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
         Ok(u) => u,
         Err(r) => return r,
     };
-    if let Err(e) = social
-        .set_policy(&me.claimed_handle, body.friend_request_policy)
-        .await
-    {
-        return social_err(e, "update_settings");
+    let h = me.claimed_handle.as_str();
+    if let Some(policy) = body.friend_request_policy {
+        if let Err(e) = social.set_policy(h, policy).await {
+            return social_err(e, "update_settings");
+        }
+    }
+    if let Some(discoverable) = body.discoverable {
+        if let Err(e) = social.set_discoverable(h, discoverable).await {
+            return social_err(e, "update_settings.discoverable");
+        }
     }
     // Read back so the response reflects what was stored, not what was
     // asked for.
-    match social.get_policy(&me.claimed_handle).await {
-        Ok(p) => Json(SocialSettings {
+    match (social.get_policy(h).await, social.get_discoverable(h).await) {
+        (Ok(p), Ok(d)) => Json(SocialSettings {
             friend_request_policy: p,
+            discoverable: d,
         })
         .into_response(),
-        Err(e) => social_err(e, "update_settings.read_back"),
+        (Err(e), _) | (_, Err(e)) => social_err(e, "update_settings.read_back"),
+    }
+}
+
+/// Player lookup: find verified players by the start of their handle, to
+/// add them as friends. Needs three characters and returns at most ten.
+/// Leaves out you, anyone either of you blocked, and anyone who turned
+/// lookup off. Only verified handles are listed: they are public on RSI
+/// already, and it keeps the lookup from being a way to list accounts.
+#[utoipa::path(
+    get,
+    path = "/v1/players/search",
+    tag = "social",
+    operation_id = "social_search_players",
+    params(PlayerSearchQuery),
+    responses(
+        (status = 200, description = "Matching players", body = PlayerSearchResponse),
+        (status = 400, description = "Too short, or not handle characters", body = ApiErrorBody),
+        (status = 429, description = "Too many lookups", body = ApiErrorBody),
+    ),
+    security(("bearer" = [])),
+)]
+pub async fn search_players(
+    auth: AuthenticatedUser,
+    Extension(users): Extension<Arc<dyn UserStore>>,
+    Extension(social): Extension<Arc<dyn SocialStore>>,
+    Extension(limiter): Extension<Arc<PlayerSearchLimiter>>,
+    Query(query): Query<PlayerSearchQuery>,
+) -> Response {
+    let me = match caller(&auth, users.as_ref()).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    let q = query.q.trim();
+    if q.chars().count() < PLAYER_SEARCH_MIN_CHARS {
+        return err(StatusCode::BAD_REQUEST, "query_too_short");
+    }
+    if !validate_handle(q) {
+        return err(StatusCode::BAD_REQUEST, "invalid_query");
+    }
+    if !limiter.check(&me.claimed_handle) {
+        return err(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    match social
+        .search_players(&me.claimed_handle, q, PLAYER_SEARCH_LIMIT)
+        .await
+    {
+        Ok(handles) => Json(PlayerSearchResponse {
+            players: handles
+                .into_iter()
+                .map(|handle| PlayerMatch { handle })
+                .collect(),
+        })
+        .into_response(),
+        Err(e) => social_err(e, "search_players"),
     }
 }
 
@@ -1254,6 +1375,7 @@ mod tests {
             .layer(Extension(
                 Arc::new(crate::salutes::SaluteRateLimiter::new()),
             ))
+            .layer(Extension(Arc::new(PlayerSearchLimiter::new())))
             .layer(Extension(Arc::new(MemoryAccountRestrictionStore::new())
                 as Arc<
                     dyn crate::account_restrictions::AccountRestrictionStore,
@@ -1536,6 +1658,90 @@ mod tests {
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(v["error"], "spicedb_unavailable");
         assert_eq!(f.salutes.count("carol").await.unwrap(), 0);
+    }
+
+    #[tokio::test]
+    async fn player_lookup_finds_verified_players_by_prefix() {
+        let f = fixture();
+        let me = f.user("Searcher", true).await;
+        for (h, verified) in [
+            ("Wing", true),
+            ("Wingman", true),
+            ("wingnut_7", true),
+            ("WingUnverified", false),
+            ("Other", true),
+        ] {
+            f.user(h, verified).await;
+        }
+
+        let (s, v) = f.call("GET", "/v1/players/search?q=WING", &me, None).await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        let handles: Vec<&str> = v["players"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["handle"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            handles,
+            vec!["Wing", "Wingman", "wingnut_7"],
+            "shortest first, own spelling, unverified left out"
+        );
+
+        let (_, v) = f.call("GET", "/v1/players/search?q=sea", &me, None).await;
+        assert_eq!(v["players"], serde_json::json!([]), "never yourself");
+    }
+
+    #[tokio::test]
+    async fn player_lookup_needs_three_handle_characters() {
+        let f = fixture();
+        let me = f.user("Searcher", true).await;
+        let (s, v) = f.call("GET", "/v1/players/search?q=wi", &me, None).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"], "query_too_short");
+        let (s, v) = f
+            .call("GET", "/v1/players/search?q=wi%25n", &me, None)
+            .await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["error"], "invalid_query", "no LIKE wildcards through");
+    }
+
+    #[tokio::test]
+    async fn player_lookup_hides_blocks_either_way_and_the_opted_out() {
+        let f = fixture();
+        let me = f.user("Searcher", true).await;
+        for h in ["Wingblocked", "Wingblocker", "Wingvisible"] {
+            f.user(h, true).await;
+        }
+        let hidden = f.user("Winghidden", true).await;
+        f.social.block("Searcher", "Wingblocked").await.unwrap();
+        f.social.block("Wingblocker", "Searcher").await.unwrap();
+        let (s, v) = f
+            .call(
+                "PUT",
+                "/v1/me/social/settings",
+                &hidden,
+                Some(serde_json::json!({ "discoverable": false })),
+            )
+            .await;
+        assert_eq!(s, StatusCode::OK, "{v}");
+        assert_eq!(v["discoverable"], false);
+        assert_eq!(v["friend_request_policy"], "everyone", "untouched");
+
+        let (_, v) = f.call("GET", "/v1/players/search?q=wing", &me, None).await;
+        assert_eq!(
+            v["players"],
+            serde_json::json!([{ "handle": "Wingvisible" }])
+        );
+
+        let (_, v) = f.call("GET", "/v1/me/friends", &hidden, None).await;
+        assert_eq!(v["discoverable"], false, "the setting reads back");
+    }
+
+    #[test]
+    fn like_prefix_escapes_the_underscore_wildcard() {
+        assert_eq!(crate::social::like_prefix("Wing_7"), "wing\\_7%");
+        assert_eq!(crate::social::like_prefix("abc"), "abc%");
     }
 
     #[tokio::test]

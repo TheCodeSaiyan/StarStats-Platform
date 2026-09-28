@@ -142,6 +142,19 @@ pub enum SocialError {
 
 #[async_trait]
 pub trait SocialStore: Send + Sync + 'static {
+    /// Whether the player can be found by player lookup. Default true.
+    async fn get_discoverable(&self, handle: &str) -> Result<bool, SocialError>;
+    async fn set_discoverable(&self, handle: &str, discoverable: bool) -> Result<(), SocialError>;
+    /// Player lookup: verified, discoverable players whose handle starts
+    /// with `prefix` (case-insensitively), in their own spelling, leaving
+    /// out `me` and anyone either side has blocked. Shortest handle first,
+    /// so an exact match leads.
+    async fn search_players(
+        &self,
+        me: &str,
+        prefix: &str,
+        limit: i64,
+    ) -> Result<Vec<String>, SocialError>;
     async fn get_policy(&self, handle: &str) -> Result<FriendRequestPolicy, SocialError>;
     async fn set_policy(
         &self,
@@ -292,12 +305,80 @@ fn row_to_request(row: RequestRow) -> Result<FriendRequest, SocialError> {
     })
 }
 
+/// A LIKE pattern matching handles that start with `prefix`, lower-cased.
+/// `_` is a LIKE wildcard and is allowed in handles, so it is escaped (as
+/// are `%` and the escape character itself, though handles never hold
+/// them).
+pub(crate) fn like_prefix(prefix: &str) -> String {
+    let mut out = String::with_capacity(prefix.len() + 2);
+    for c in prefix.to_lowercase().chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('%');
+    out
+}
+
 fn is_unique_violation(e: &sqlx::Error) -> bool {
     matches!(e, sqlx::Error::Database(db) if db.code().as_deref() == Some("23505"))
 }
 
 #[async_trait]
 impl SocialStore for PostgresSocialStore {
+    async fn get_discoverable(&self, handle: &str) -> Result<bool, SocialError> {
+        let row: Option<(Option<bool>,)> = sqlx::query_as(
+            "SELECT discoverable FROM users WHERE lower(claimed_handle) = lower($1)",
+        )
+        .bind(handle)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row.and_then(|(d,)| d).unwrap_or(true))
+    }
+
+    async fn set_discoverable(&self, handle: &str, discoverable: bool) -> Result<(), SocialError> {
+        sqlx::query("UPDATE users SET discoverable = $2 WHERE lower(claimed_handle) = lower($1)")
+            .bind(handle)
+            .bind(discoverable)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    async fn search_players(
+        &self,
+        me: &str,
+        prefix: &str,
+        limit: i64,
+    ) -> Result<Vec<String>, SocialError> {
+        let rows: Vec<(String,)> = sqlx::query_as(
+            r#"
+            SELECT u.claimed_handle
+            FROM users u
+            WHERE lower(u.claimed_handle) LIKE $2 ESCAPE '\'
+              AND lower(u.claimed_handle) <> lower($1)
+              AND u.rsi_verified_at IS NOT NULL
+              AND u.discoverable IS NOT FALSE
+              AND NOT EXISTS (
+                  SELECT 1 FROM user_blocks b
+                  WHERE (lower(b.blocker_handle) = lower($1)
+                         AND lower(b.blocked_handle) = lower(u.claimed_handle))
+                     OR (lower(b.blocker_handle) = lower(u.claimed_handle)
+                         AND lower(b.blocked_handle) = lower($1))
+              )
+            ORDER BY length(u.claimed_handle), lower(u.claimed_handle)
+            LIMIT $3
+            "#,
+        )
+        .bind(me)
+        .bind(like_prefix(prefix))
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows.into_iter().map(|(h,)| h).collect())
+    }
+
     async fn get_policy(&self, handle: &str) -> Result<FriendRequestPolicy, SocialError> {
         let row: Option<(Option<String>,)> = sqlx::query_as(
             "SELECT friend_request_policy FROM users WHERE lower(claimed_handle) = lower($1)",
@@ -700,6 +781,9 @@ pub mod test_support {
         blocks: Vec<(String, String, DateTime<Utc>)>,
         mutes: Vec<(String, String, DateTime<Utc>)>,
         verified: HashSet<String>,
+        /// Verified handles in their own spelling, for player lookup.
+        spelling: HashMap<String, String>,
+        hidden: HashSet<String>,
     }
 
     #[derive(Default)]
@@ -715,16 +799,68 @@ pub mod test_support {
         /// Stand-in for `users.rsi_verified_at`, which the Postgres
         /// impl reads through a join.
         pub fn mark_verified(&self, handle: &str) {
-            self.inner
-                .lock()
-                .unwrap()
-                .verified
-                .insert(handle.to_ascii_lowercase());
+            let mut g = self.inner.lock().unwrap();
+            g.verified.insert(handle.to_ascii_lowercase());
+            g.spelling
+                .insert(handle.to_ascii_lowercase(), handle.to_string());
         }
     }
 
     #[async_trait]
     impl SocialStore for MemorySocialStore {
+        async fn get_discoverable(&self, handle: &str) -> Result<bool, SocialError> {
+            Ok(!self
+                .inner
+                .lock()
+                .unwrap()
+                .hidden
+                .contains(&handle.to_ascii_lowercase()))
+        }
+
+        async fn set_discoverable(
+            &self,
+            handle: &str,
+            discoverable: bool,
+        ) -> Result<(), SocialError> {
+            let mut g = self.inner.lock().unwrap();
+            if discoverable {
+                g.hidden.remove(&handle.to_ascii_lowercase());
+            } else {
+                g.hidden.insert(handle.to_ascii_lowercase());
+            }
+            Ok(())
+        }
+
+        async fn search_players(
+            &self,
+            me: &str,
+            prefix: &str,
+            limit: i64,
+        ) -> Result<Vec<String>, SocialError> {
+            let g = self.inner.lock().unwrap();
+            let p = prefix.to_ascii_lowercase();
+            let blocked = |h: &str| {
+                g.blocks
+                    .iter()
+                    .any(|(a, b, _)| (eq(a, me) && eq(b, h)) || (eq(a, h) && eq(b, me)))
+            };
+            let mut v: Vec<String> = g
+                .spelling
+                .iter()
+                .filter(|(lower, _)| lower.starts_with(&p))
+                .filter(|(lower, _)| !eq(lower, me) && !g.hidden.contains(*lower))
+                .map(|(_, h)| h.clone())
+                .filter(|h| !blocked(h))
+                .collect();
+            v.sort_by(|a, b| {
+                a.len()
+                    .cmp(&b.len())
+                    .then_with(|| a.to_lowercase().cmp(&b.to_lowercase()))
+            });
+            v.truncate(limit.max(0) as usize);
+            Ok(v)
+        }
+
         async fn get_policy(&self, handle: &str) -> Result<FriendRequestPolicy, SocialError> {
             Ok(self
                 .inner
@@ -1207,6 +1343,77 @@ mod postgres_tests {
                 .await
                 .unwrap();
         }
+    }
+
+    #[tokio::test]
+    async fn postgres_player_lookup() {
+        let Ok(url) = std::env::var("STARSTATS_TEST_DATABASE_URL") else {
+            eprintln!("STARSTATS_TEST_DATABASE_URL unset — skipping Postgres lookup test");
+            return;
+        };
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .max_connections(2)
+            .connect(&url)
+            .await
+            .expect("connect STARSTATS_TEST_DATABASE_URL");
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("run migrations on the test DB");
+        let seeded = [
+            ("LkMe", true),
+            ("lk_one", true),
+            ("lkXone", true),
+            ("lk_hidden", true),
+            ("lk_blocked", true),
+            ("lk_unver", false),
+        ];
+        let wipe = |pool: PgPool| async move {
+            let mut conn = pool.acquire().await.unwrap();
+            for (h, _) in seeded {
+                delete_social_rows_for(&mut conn, h).await.unwrap();
+                sqlx::query("DELETE FROM users WHERE lower(claimed_handle) = lower($1)")
+                    .bind(h)
+                    .execute(&mut *conn)
+                    .await
+                    .unwrap();
+            }
+        };
+        wipe(pool.clone()).await;
+        for (h, verified) in seeded {
+            sqlx::query(
+                "INSERT INTO users (id, email, password_hash, claimed_handle, rsi_verified_at)
+                 VALUES (gen_random_uuid(), $1, 'x', $2,
+                         CASE WHEN $3::bool THEN NOW() ELSE NULL END)",
+            )
+            .bind(format!("{}@example.com", h.to_ascii_lowercase()))
+            .bind(h)
+            .bind(verified)
+            .execute(&pool)
+            .await
+            .expect("seed user");
+        }
+        let s = PostgresSocialStore::new(pool.clone());
+        assert!(
+            s.get_discoverable("lk_hidden").await.unwrap(),
+            "NULL reads as true"
+        );
+        s.set_discoverable("LK_HIDDEN", false).await.unwrap();
+        assert!(!s.get_discoverable("lk_hidden").await.unwrap());
+        s.block("lk_blocked", "LkMe").await.unwrap();
+
+        // `_` is escaped: without it, lk_ would also match lkXone.
+        assert_eq!(
+            s.search_players("lkme", "LK_", 10).await.unwrap(),
+            vec!["lk_one".to_string()]
+        );
+        assert_eq!(
+            s.search_players("LkMe", "lk", 10).await.unwrap(),
+            vec!["lk_one".to_string(), "lkXone".to_string()],
+            "never yourself, the hidden, the blocked or the unverified"
+        );
+        assert_eq!(s.search_players("LkMe", "lk", 1).await.unwrap().len(), 1);
+        wipe(pool.clone()).await;
     }
 
     #[tokio::test]
