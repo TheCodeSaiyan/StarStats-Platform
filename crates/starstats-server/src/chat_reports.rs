@@ -361,7 +361,7 @@ pub mod test_support {
                 .filter(|r| status.is_none_or(|s| r.status == s))
                 .cloned()
                 .collect();
-            v.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+            v.sort_by_key(|r| std::cmp::Reverse(r.created_at));
             Ok(v.into_iter()
                 .skip(offset.max(0) as usize)
                 .take(limit.max(0) as usize)
