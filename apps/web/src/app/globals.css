@@ -5,6 +5,7 @@
  * both systems coexist; its patterns are all `.hp-*` prefixed. */
 @import 'holo/styles.css';
 @import '../styles/projection-shell.css';
+@import '../styles/chat.css';
 
 :root {
   /* Defensive fallbacks for the theme tokens. tokens.css scopes its

@@ -1,0 +1,64 @@
+/* Web chat (components/chat/ChatApp.tsx). Rooms on the left, the open room
+   on the right; stacked on narrow screens. */
+.ss-chat {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.ss-chat__rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ss-chat__room {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ss-chat__lines {
+  list-style: none;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  max-height: 55vh;
+  min-height: 12rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.ss-chat__muted {
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .ss-chat {
+    grid-template-columns: 1fr;
+  }
+  .ss-chat__rooms {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+/* Visible to assistive technology only. */
+.ss-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

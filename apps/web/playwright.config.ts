@@ -82,6 +82,10 @@ export default defineConfig({
         // rate-limited call to api.github.com. Fixture: `GET /gh/releases`
         // in `scenarioFor`'s base map.
         STARSTATS_RELEASES_API: `http://localhost:${MOCK_PORT}/gh/releases`,
+        // Chat's launch switch (lib/chat/flag). On here so the chat specs
+        // can reach /chat and the Message buttons; production is off until
+        // launch.
+        STARSTATS_CHAT_ENABLED: 'on',
         // Empty -> instrumentation.ts bails out cleanly. Setting it
         // to anything (including the literal "true" string) keeps
         // Next.js itself happy; the OTel SDK is gated on the

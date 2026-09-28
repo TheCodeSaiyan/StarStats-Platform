@@ -988,6 +988,46 @@ export async function getMySalutes(bearer: string): Promise<MySalutes> {
   return request<MySalutes>('GET', '/v1/me/salutes', undefined, bearer);
 }
 
+// -- Chat (social phase 6) --------------------------------------------
+
+export type ChatStatus = apiSchema['schemas']['ChatStatus'];
+export type MatrixLoginToken = apiSchema['schemas']['MatrixLoginToken'];
+export type MyChatRoom = apiSchema['schemas']['MyChatRoom'];
+
+/** Whether the caller can chat, and if not, which gate is closed. */
+export async function getChatStatus(bearer: string): Promise<ChatStatus> {
+  return request<ChatStatus>('GET', '/v1/me/chat', undefined, bearer);
+}
+
+export async function declareChatAge(bearer: string, minimumAge: number): Promise<ChatStatus> {
+  return request<ChatStatus>(
+    'POST',
+    '/v1/me/chat/age-declaration',
+    { minimum_age: minimumAge },
+    bearer,
+  );
+}
+
+/** A one-minute token the browser exchanges with the homeserver. */
+export async function getMatrixLoginToken(bearer: string): Promise<MatrixLoginToken> {
+  return request<MatrixLoginToken>('POST', '/v1/me/matrix/login-token', undefined, bearer);
+}
+
+/** The DM room with a friend, created on first request. */
+export async function openDm(bearer: string, handle: string): Promise<{ room_id: string }> {
+  return request<{ room_id: string }>(
+    'POST',
+    `/v1/me/chat/dm/${encodeURIComponent(handle)}`,
+    undefined,
+    bearer,
+  );
+}
+
+/** The chat rooms the API put you in, with what each is for. */
+export async function getMyChatRooms(bearer: string): Promise<{ rooms: MyChatRoom[] }> {
+  return request<{ rooms: MyChatRoom[] }>('GET', '/v1/me/chat/rooms', undefined, bearer);
+}
+
 // -- Crew commends ---------------------------------------------------
 
 export type CommendKind = apiSchema['schemas']['CommendKind'];

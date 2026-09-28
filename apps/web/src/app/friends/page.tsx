@@ -50,6 +50,8 @@ import { setCalibrationAction } from '@/app/me/_projection/actions';
 import { formatRelativePast } from '@/app/sharing/_projection/format';
 import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 import { CopyHandleButton } from '@/components/social/CopyHandleButton';
+import { openDmAction } from '@/app/chat/actions';
+import { chatEnabledFor } from '@/lib/chat/flag';
 import { FriendsProjection, type FriendsSection } from './_projection/FriendsProjection';
 import {
   blockAction,
@@ -103,6 +105,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_friends: 'You are not friends with that user.',
   not_blocked: 'That user is not blocked.',
   not_muted: 'That user is not muted.',
+  cannot_message: 'That player cannot be messaged.',
+  chat_unavailable: 'Chat is not available right now.',
+  age_not_declared: 'Open Chat once to confirm your age, then message them.',
+  chat_restricted: 'Your account is restricted from chat.',
   cannot_block_self: "You can't block yourself.",
   cannot_mute_self: "You can't mute yourself.",
   unexpected: 'Something went wrong. Try again.',
@@ -169,6 +175,7 @@ export default async function FriendsPage(props: {
     (presence?.friends ?? []).map((p) => [p.handle.toLowerCase(), p] as const),
   );
 
+  const chatOn = chatEnabledFor(session);
   const unavailable = (what: string) => (
     <BeamAlert tone="bad">Couldn&apos;t load {what}. Refresh to retry.</BeamAlert>
   );
@@ -230,7 +237,7 @@ export default async function FriendsPage(props: {
       ) : (
         <Plane tilt="flat" style={{ marginTop: 18 }}>
           {friends.friends.map((f) => (
-            <div className="hp-grant" key={f.handle}>
+            <div className="hp-grant" key={f.handle} data-testid="friend-row">
               <div className="hp-grant__who">
                 <Link href={`/u/${encodeURIComponent(f.handle)}` as Route}>@{f.handle}</Link>
                 <span className="hp-grant__note">
@@ -249,6 +256,12 @@ export default async function FriendsPage(props: {
               <div className="hp-grant__act-btns">
                 <CopyHandleButton handle={f.handle} verified={f.rsi_verified} />
                 <CopyHandleButton handle={f.handle} verified={f.rsi_verified} addInGame />
+                {chatOn ? (
+                  <form action={openDmAction} style={{ margin: 0 }}>
+                    <input type="hidden" name="handle" value={f.handle} />
+                    <ConfirmSubmitButton className="hp-btn">Message</ConfirmSubmitButton>
+                  </form>
+                ) : null}
               </div>
               <details className="hp-report">
                 <summary>More</summary>

@@ -1,3 +1,6 @@
+import { CHAT_SESSION_KEY, parseStoredSession } from '@/lib/chat/session';
+import { forgetChatStorage } from '@/lib/chat/storage-key';
+
 /**
  * Sign out from the chrome's account menu.
  *
@@ -8,5 +11,29 @@
  * `onSignOut`; before that none did, and the button never rendered.
  */
 export function signOut(): void {
+  forgetChat();
   window.location.assign('/auth/logout');
+}
+
+/**
+ * Chat keeps a device session and an encrypted store in this browser
+ * (components/chat/ChatApp). Signing out of StarStats ends both: the
+ * homeserver is asked to log the device out (keepalive, so the request
+ * outlives the navigation; best-effort, since the store is forgotten either
+ * way), and every chat key and store here is deleted.
+ */
+function forgetChat(): void {
+  try {
+    const stored = parseStoredSession(localStorage.getItem(CHAT_SESSION_KEY));
+    if (stored) {
+      void fetch(new URL('_matrix/client/v3/logout', stored.homeserverUrl), {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${stored.accessToken}` },
+        keepalive: true,
+      }).catch(() => undefined);
+    }
+  } catch {
+    // No storage: nothing was kept.
+  }
+  forgetChatStorage();
 }
