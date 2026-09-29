@@ -1897,6 +1897,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/chat/web-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sign the tray's chat window in to the web, so a player never types a
+         *     password into it (no password manager reaches a WebView). The tray
+         *     holds a paired-device token; this trades it for a one-use sign-in link
+         *     through the same redemption as an emailed magic link, so two-factor is
+         *     still asked for. Narrowed to what chat needs: only while chat is
+         *     offered to the caller, a minute's lifetime, rate-limited, and audited.
+         */
+        post: operations["chat_web_session"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/commends": {
         parameters: {
             query?: never;
@@ -9958,6 +9982,12 @@ export interface components {
             size?: string | null;
             weapon_type?: string | null;
         };
+        WebSessionToken: {
+            /** Format: int64 */
+            expires_in: number;
+            /** @description One use, for `/auth/magic-link/redeem?token=…&next=/chat`. */
+            token: string;
+        };
         WebhookAck: {
             status: string;
         };
@@ -15918,6 +15948,44 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MyChatRooms"];
+                };
+            };
+        };
+    };
+    chat_web_session: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A one-use sign-in token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebSessionToken"];
+                };
+            };
+            /** @description chat_not_offered */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Too many requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
         };

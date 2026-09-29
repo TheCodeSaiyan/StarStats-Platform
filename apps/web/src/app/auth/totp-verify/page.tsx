@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
+import { signInDestination } from '@/lib/sign-in-destination';
 import { ApiCallError, getMe, totpVerifyLogin } from '@/lib/api';
 import { logger } from '@/lib/logger';
 import { authAttemptsTotal } from '@/lib/metrics';
@@ -10,6 +11,8 @@ export const metadata = { title: "Two-factor auth" };
 interface SearchParams {
   interim?: string;
   error?: string;
+  /** Carried from the magic-link redeem; only `/chat` is honoured. */
+  next?: string;
 }
 
 /**
@@ -28,7 +31,8 @@ interface SearchParams {
 export default async function TotpVerifyPage(props: {
   searchParams: Promise<SearchParams>;
 }) {
-  const { interim, error } = await props.searchParams;
+  const { interim, error, next } = await props.searchParams;
+  const destination = signInDestination(next);
 
   if (!interim) {
     return (
@@ -51,6 +55,10 @@ export default async function TotpVerifyPage(props: {
   async function action(formData: FormData) {
     'use server';
     const interimToken = String(formData.get('interim') ?? '');
+    const landing = signInDestination(formData.get('next'));
+    const carry = landing === '/me' ? '' : `&next=${encodeURIComponent(landing)}`;
+    const again = (e: string) =>
+      `/auth/totp-verify?interim=${encodeURIComponent(interimToken)}&error=${e}${carry}` as const;
 
     // The form ships either six single-digit cells (c0..c5) for the
     // TOTP path, or a recovery-code field. Concatenate the cells; if
@@ -73,9 +81,7 @@ export default async function TotpVerifyPage(props: {
             outcome: 'rejected',
           });
           logger.info('totp verify-login rejected');
-          redirect(
-            `/auth/totp-verify?interim=${encodeURIComponent(interimToken)}&error=invalid`,
-          );
+          redirect(again('invalid'));
         }
         if (e.status === 403) {
           // Bearer is not a LoginInterim token (or the token is
@@ -85,9 +91,7 @@ export default async function TotpVerifyPage(props: {
       }
       authAttemptsTotal.inc({ action: 'totp_verify', outcome: 'unexpected' });
       logger.error({ err: e }, 'totp verify-login failed unexpectedly');
-      redirect(
-        `/auth/totp-verify?interim=${encodeURIComponent(interimToken)}&error=unexpected`,
-      );
+      redirect(again('unexpected'));
     }
 
     // Hydrate emailVerified — same as the password-login success path.
@@ -112,7 +116,7 @@ export default async function TotpVerifyPage(props: {
     });
     authAttemptsTotal.inc({ action: 'totp_verify', outcome: 'success' });
     logger.info({ user_id: auth.user_id }, 'totp verify success');
-    redirect('/me');
+    redirect(landing);
   }
 
   return (
@@ -139,6 +143,9 @@ export default async function TotpVerifyPage(props: {
 
         <form action={action} className="hp-authform">
           <input type="hidden" name="interim" value={interim} />
+          {destination === '/me' ? null : (
+            <input type="hidden" name="next" value={destination} />
+          )}
 
           <div className="ss-label">
             <span className="ss-label-text">Code</span>

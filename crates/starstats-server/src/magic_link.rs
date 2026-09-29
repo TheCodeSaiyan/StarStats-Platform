@@ -46,7 +46,17 @@ pub struct RedeemedMagicLink {
 pub trait MagicLinkStore: Send + Sync + 'static {
     /// Issue a token for `user_id` valid for `MAGIC_LINK_TTL`.
     /// Returns the token string the caller emails to the user.
-    async fn issue(&self, user_id: Uuid) -> Result<String, MagicLinkError>;
+    async fn issue(&self, user_id: Uuid) -> Result<String, MagicLinkError> {
+        self.issue_for(user_id, MAGIC_LINK_TTL).await
+    }
+
+    /// A link that lives for `ttl` instead of the emailed default. The
+    /// tray's chat window hand-off uses a much shorter one.
+    async fn issue_for(
+        &self,
+        user_id: Uuid,
+        ttl: chrono::Duration,
+    ) -> Result<String, MagicLinkError>;
 
     /// Atomically consume a token: mark it used and return the
     /// owning user. Returns `None` for unknown, expired, or already
@@ -95,9 +105,13 @@ impl PostgresMagicLinkStore {
 
 #[async_trait]
 impl MagicLinkStore for PostgresMagicLinkStore {
-    async fn issue(&self, user_id: Uuid) -> Result<String, MagicLinkError> {
+    async fn issue_for(
+        &self,
+        user_id: Uuid,
+        ttl: chrono::Duration,
+    ) -> Result<String, MagicLinkError> {
         let token = generate_token();
-        let expires_at: DateTime<Utc> = Utc::now() + MAGIC_LINK_TTL;
+        let expires_at: DateTime<Utc> = Utc::now() + ttl;
         sqlx::query(
             r#"
             INSERT INTO magic_link_tokens (token, user_id, expires_at)
@@ -153,9 +167,13 @@ pub mod test_support {
 
     #[async_trait]
     impl MagicLinkStore for MemoryMagicLinkStore {
-        async fn issue(&self, user_id: Uuid) -> Result<String, MagicLinkError> {
+        async fn issue_for(
+            &self,
+            user_id: Uuid,
+            ttl: chrono::Duration,
+        ) -> Result<String, MagicLinkError> {
             let token = generate_token();
-            let expires_at = Utc::now() + MAGIC_LINK_TTL;
+            let expires_at = Utc::now() + ttl;
             self.rows
                 .lock()
                 .unwrap()

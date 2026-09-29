@@ -404,6 +404,9 @@ async fn main() -> anyhow::Result<()> {
     // wrappers; no external deps to fail at boot. Construct before
     // the audit log because `PostgresAuditLog::new` consumes `pool`.
     let magic_link_store = Arc::new(PostgresMagicLinkStore::new(pool.clone()));
+    // The chat window's sign-in hand-off (`/v1/me/chat/web-session`)
+    // issues through the same store the emailed links use.
+    let magic_link_dyn: Arc<dyn crate::magic_link::MagicLinkStore> = magic_link_store.clone();
     let recovery_store = Arc::new(PostgresRecoveryCodeStore::new(pool.clone()));
     let submissions_store = Arc::new(submissions::PostgresSubmissionStore::new(pool.clone()));
     // Shared `dyn SubmissionStore` handle so the admin parser-submissions
@@ -1140,6 +1143,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(matrix_signer))
         .layer(Extension(chat_token_limiter))
         .layer(Extension(chat_launch))
+        .layer(Extension(magic_link_dyn))
         .layer(Extension(chat_reports_dyn))
         .layer(Extension(chat_rooms))
         .layer(Extension(presence_hub))
