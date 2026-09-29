@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.76] - 2026-09-29
+
+### New
+- Reach chat from the nav, and start a chat from /chat.
+
 ## [Tray 0.1.41] - 2026-09-29
 
 ### New
