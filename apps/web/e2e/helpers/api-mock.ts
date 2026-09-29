@@ -1117,6 +1117,11 @@ export function scenarioFor(
     'GET /v1/admin/smtp': defaultSmtpConfig,
     'GET /v1/admin/appearance': defaultAdminAppearance,
     'GET /v1/admin/ship-matrix': defaultShipMatrixConfig,
+    // /admin/settings "Event retention": the seeded tiers.
+    'GET /v1/admin/retention/policies': {
+      status: 200,
+      body: { policies: [{ tier: 'free', retention_days: 365 }, { tier: 'supporter' }] },
+    },
     // The root layout and auth pages read this public flag. Gate-off is
     // the dormant default; beta-specific tests override it explicitly.
     'GET /v1/waitlist/status': { status: 200, body: { gate_enabled: false } },

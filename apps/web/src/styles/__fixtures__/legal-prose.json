@@ -61,6 +61,7 @@
     ": 15 minutes, single-use. Once redeemed (or expired) the token row is no longer accepted; we keep the row briefly for audit purposes but it cannot be re-issued.",
     ": 24 hours, then auto-expire and are dropped on next access.",
     ": 30 days, then deleted.",
+    ": 365 days from when the desktop client uploaded them, then deleted. While you are a supporter nothing is deleted; if your support lapses, the 365 days apply again. If you delete your account first, they are",
     ": 5 minutes, single-use. Issued between &quot;you proved your password (or magic-link)&quot; and &quot;you typed an authentication code&quot; — useless on their own.",
     ": 90 days from when you flew together.",
     ": 90 days in the live database; an archived mirror exists for operational integrity. The audit mirror references your account UUID rather than personal details where possible.",

@@ -20,13 +20,17 @@ import { revalidatePath } from 'next/cache';
 import {
   ApiCallError,
   getAdminAppearance,
+  getRetentionPolicies,
   getShipMatrixConfig,
   getSmtpConfig,
+  putRetentionPolicy,
   putShipMatrixConfig,
   putSmtpConfig,
   testSmtp,
   type SmtpConfigRequest,
 } from '@/lib/api';
+import { BeamAlert } from 'holo';
+import { ConfirmSubmitButton } from '@/components/forms/ConfirmSubmitButton';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
 import { AdminPageHeader } from '../_components/AdminPageHeader';
@@ -39,14 +43,31 @@ import { SmtpForm, type ActionResult as SmtpActionResult } from './_components/S
 
 export const metadata = { title: 'Settings' };
 
-export default async function AdminSettingsPage() {
+/** Outcome chips for the retention form, keyed by `?retention=`. */
+const RETENTION_NOTICES: Record<string, { tone: 'good' | 'bad'; text: string }> = {
+  saved: { tone: 'good', text: 'Retention saved. The next daily purge uses it.' },
+  invalid_retention_days: { tone: 'bad', text: 'Pick a whole number of days from 1 to 3650, or unlimited.' },
+  unknown_tier: { tone: 'bad', text: 'That tier does not exist.' },
+  error: { tone: 'bad', text: 'Retention was not saved. Try again.' },
+};
+
+/** A tier's window as people read it. */
+function windowLabel(days: number | null | undefined): string {
+  return days == null ? 'unlimited' : `${days} day${days === 1 ? '' : 's'}`;
+}
+
+export default async function AdminSettingsPage(props: {
+  searchParams: Promise<{ retention?: string }>;
+}) {
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/admin/settings');
+  const { retention: retentionStatus } = await props.searchParams;
 
-  const [smtp, appearance, shipMatrix] = await Promise.allSettled([
+  const [smtp, appearance, shipMatrix, retention] = await Promise.allSettled([
     getSmtpConfig(session.token),
     getAdminAppearance(session.token),
     getShipMatrixConfig(session.token),
+    getRetentionPolicies(session.token),
   ]);
 
   // Log each rejection individually with call= and status= so the
@@ -55,6 +76,7 @@ export default async function AdminSettingsPage() {
     ['smtp', smtp],
     ['appearance', appearance],
     ['ship-matrix', shipMatrix],
+    ['retention', retention],
   ] as const) {
     if (result.status === 'rejected') {
       const status =
@@ -151,13 +173,97 @@ export default async function AdminSettingsPage() {
     }
   }
 
+  async function setRetentionAction(formData: FormData) {
+    'use server';
+    const s = await getSession();
+    if (!s) redirect('/auth/login?next=/admin/settings');
+    const tier = String(formData.get('tier') ?? '');
+    const unlimited = formData.get('unlimited') === 'on';
+    const days = Number(formData.get('days'));
+    let outcome = 'saved';
+    try {
+      const res = await putRetentionPolicy(tier, unlimited ? null : days, s.token);
+      // The chip follows what the server now holds, not what was asked.
+      const now = res.policies.find((p) => p.tier === tier);
+      const held = now?.retention_days ?? null;
+      if (!now || held !== (unlimited ? null : days)) outcome = 'error';
+    } catch (e) {
+      const code = e instanceof ApiCallError ? e.body.error : undefined;
+      outcome = code && code in RETENTION_NOTICES ? code : 'error';
+      logger.error({ err: e, call: 'retention.set', tier }, 'retention policy update failed');
+    }
+    revalidatePath('/admin/settings');
+    redirect(`/admin/settings?retention=${outcome}#retention`);
+  }
+
+  const retentionNotice = retentionStatus ? RETENTION_NOTICES[retentionStatus] : undefined;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
       <AdminPageHeader
         eyebrow="Admin · settings"
         title="Settings"
-        lede="Sitewide configuration: mail transport, appearance defaults, and Ship Matrix enrichment. Each section saves independently."
+        lede="Sitewide configuration: event retention, mail transport, appearance defaults, and Ship Matrix enrichment. Each section saves independently."
       />
+
+      <section
+        id="retention"
+        style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
+      >
+        <header>
+          <h2 className="hp-sectiontitle">Event retention</h2>
+          <p className="hp-fine">
+            How long players&apos; uploaded game events are kept, per tier. A
+            daily purge deletes events uploaded longer ago than the window;
+            supporters are the tier while their support is active. Shortening
+            a window deletes older events at the next purge, and they cannot
+            be recovered. The settings page and privacy notice describe these
+            windows, so change them together.
+          </p>
+        </header>
+        {retentionNotice ? (
+          <BeamAlert tone={retentionNotice.tone}>{retentionNotice.text}</BeamAlert>
+        ) : null}
+        {retention.status === 'fulfilled' ? (
+          retention.value.policies.map((p) => (
+            <form
+              key={p.tier}
+              action={setRetentionAction}
+              className="hp-formrow"
+              data-testid={`retention-${p.tier}`}
+              style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}
+            >
+              <input type="hidden" name="tier" value={p.tier} />
+              <p className="hp-prose" style={{ margin: 0, minWidth: 180 }}>
+                <strong>{p.tier}</strong>: {windowLabel(p.retention_days)}
+              </p>
+              <label className="ss-label">
+                <span className="ss-label-text">Days</span>
+                <input
+                  className="ss-input"
+                  type="number"
+                  name="days"
+                  min={1}
+                  max={3650}
+                  defaultValue={p.retention_days ?? ''}
+                />
+              </label>
+              <label className="hp-check">
+                <input type="checkbox" name="unlimited" defaultChecked={p.retention_days == null} />{' '}
+                Unlimited
+              </label>
+              <ConfirmSubmitButton
+                className="hp-btn"
+                confirm="Shortening a window deletes events outside it at the next purge, for good. Save?"
+              >
+                Save
+              </ConfirmSubmitButton>
+            </form>
+          ))
+        ) : (
+          <SectionUnavailable name="Event retention" />
+        )}
+      </section>
 
       <section
         id="smtp"

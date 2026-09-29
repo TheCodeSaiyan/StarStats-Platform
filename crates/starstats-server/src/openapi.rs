@@ -305,6 +305,7 @@ impl Modify for SecurityAddon {
         revolut_routes::checkout,
         revolut_routes::webhook,
         retention_routes::list_policies,
+        retention_routes::set_policy,
         retention_routes::trigger_purge,
         // Public-beta waitlist
         waitlist_routes::join,
@@ -673,6 +674,7 @@ impl Modify for SecurityAddon {
         // Data retention purge (admin surface; sweep runs on a tokio loop)
         retention_routes::RetentionPolicyDto,
         retention_routes::RetentionPoliciesResponse,
+        retention_routes::SetRetentionPolicy,
         retention_routes::RetentionPurgeResponse,
         // Auth
         auth_routes::SignupRequest,

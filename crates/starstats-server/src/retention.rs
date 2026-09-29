@@ -100,6 +100,10 @@ pub trait RetentionPolicyStore: Send + Sync + 'static {
     /// Returns every tier policy. The job loop reads this once per
     /// sweep, so callers don't need a `get_one` helper.
     async fn list_all(&self) -> Result<Vec<RetentionPolicy>, RetentionError>;
+
+    /// Set a tier's window (`None` = unlimited). Takes effect on the next
+    /// sweep.
+    async fn set(&self, tier: Tier, retention_days: Option<i32>) -> Result<(), RetentionError>;
 }
 
 pub struct PostgresRetentionPolicyStore {
@@ -128,6 +132,19 @@ impl RetentionPolicyStore for PostgresRetentionPolicyStore {
                 })
             })
             .collect())
+    }
+
+    async fn set(&self, tier: Tier, retention_days: Option<i32>) -> Result<(), RetentionError> {
+        sqlx::query(
+            "INSERT INTO retention_policies (tier, retention_days) VALUES ($1, $2)
+             ON CONFLICT (tier) DO UPDATE
+                SET retention_days = EXCLUDED.retention_days, updated_at = NOW()",
+        )
+        .bind(tier.as_str())
+        .bind(retention_days)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 }
 
@@ -479,6 +496,11 @@ pub mod test_support {
                 .lock()
                 .expect("policy memstore poisoned")
                 .clone())
+        }
+
+        async fn set(&self, tier: Tier, retention_days: Option<i32>) -> Result<(), RetentionError> {
+            self.seed(tier, retention_days);
+            Ok(())
         }
     }
 }

@@ -3485,6 +3485,38 @@ export async function putShipMatrixConfig(
   );
 }
 
+// -- Admin: event retention ------------------------------------------
+
+export type RetentionPoliciesResponse =
+  apiSchema['schemas']['RetentionPoliciesResponse'];
+
+/** Every tier's event retention window. `retention_days` absent means
+ *  unlimited. 403 unless admin. */
+export async function getRetentionPolicies(
+  bearer: string,
+): Promise<RetentionPoliciesResponse> {
+  return request<RetentionPoliciesResponse>(
+    'GET',
+    '/v1/admin/retention/policies',
+    undefined,
+    bearer,
+  );
+}
+
+/** Set a tier's window (`null` = unlimited). Audited server-side; the
+ *  next daily purge uses it. Returns every policy after the change. */
+export async function putRetentionPolicy(
+  tier: string,
+  retentionDays: number | null,
+  bearer: string,
+): Promise<RetentionPoliciesResponse> {
+  return putJson<RetentionPoliciesResponse>(
+    `/v1/admin/retention/policies/${encodeURIComponent(tier)}`,
+    { retention_days: retentionDays },
+    bearer,
+  );
+}
+
 // -- Discover (Piece 3 of public-profile UX) -----------------------
 //
 // `GET /v1/discover/profiles` returns the browsable listing of

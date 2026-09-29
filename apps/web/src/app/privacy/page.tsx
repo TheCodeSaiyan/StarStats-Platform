@@ -9,7 +9,7 @@ export const metadata: Metadata = {
     'How StarStats handles your data: what we collect, why, how long we keep it, and the rights you have over it.',
 };
 
-const LAST_UPDATED = '28 September 2026';
+const LAST_UPDATED = '29 September 2026';
 const CONTROLLER_EMAIL = 'dojo@thecodesaiyan.io';
 
 /* Reusable wrappers to keep each numbered policy section visually
@@ -479,11 +479,13 @@ export default function PrivacyPage() {
             hash, handle): until you delete your account.
           </li>
           <li>
-            <strong>Ingested game events</strong>: until you delete
-            your account, at which point they are{' '}
-            <em>pseudonymised</em> — the row count and structure
-            stay so people who shared a timeline with you don&apos;t
-            see holes, but your handle and raw log lines are
+            <strong>Ingested game events</strong>: 365 days from when
+            the desktop client uploaded them, then deleted. While you
+            are a supporter nothing is deleted; if your support lapses,
+            the 365 days apply again. If you delete your account first,
+            they are <em>pseudonymised</em> — the row count and
+            structure stay so people who shared a timeline with you
+            don&apos;t see holes, but your handle and raw log lines are
             replaced with a non-resolvable tombstone. The events are
             no longer linked to you.
           </li>
