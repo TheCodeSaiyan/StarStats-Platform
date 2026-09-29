@@ -3571,6 +3571,26 @@ mod tests {
     use crate::storage::Storage;
     use tempfile::TempDir;
 
+    #[test]
+    fn chat_opens_only_over_https_or_on_this_machine() {
+        let url = |o: &str| super::chat_page_url(o).map(|u| u.to_string());
+        assert_eq!(
+            url("https://starstats.app").unwrap(),
+            "https://starstats.app/chat"
+        );
+        assert_eq!(
+            url("https://starstats.app/somewhere/").unwrap(),
+            "https://starstats.app/chat"
+        );
+        assert_eq!(
+            url("http://localhost:3000").unwrap(),
+            "http://localhost:3000/chat"
+        );
+        assert!(url("http://starstats.app").is_err());
+        assert!(url("file:///etc/passwd").is_err());
+        assert!(url("not a url").is_err());
+    }
+
     /// Build a single TimelineEntry fixture for the session-summary
     /// formatter tests. Synced/raw_line/log_source aren't surfaced by
     /// the summary text, so they get throwaway placeholders.
@@ -4914,6 +4934,45 @@ pub async fn lfg_summary() -> Result<serde_json::Value, String> {
 #[tauri::command(rename_all = "snake_case")]
 pub async fn chat_status() -> Result<serde_json::Value, String> {
     lfg_call(reqwest::Method::GET, "/v1/me/chat", None).await
+}
+
+/// The web's chat page for a web origin. Only https, or http on the local
+/// machine for development: the page holds the player's chat keys, so it
+/// must never load over plain http from anywhere else.
+pub(crate) fn chat_page_url(web_origin: &str) -> Result<tauri::Url, String> {
+    let base = tauri::Url::parse(web_origin).map_err(|e| format!("bad web origin: {e}"))?;
+    let local = matches!(base.host_str(), Some("localhost") | Some("127.0.0.1"));
+    if base.scheme() != "https" && !(base.scheme() == "http" && local) {
+        return Err("chat needs an https web origin".into());
+    }
+    base.join("/chat").map_err(|e| e.to_string())
+}
+
+/// Chat in its own tray window: the web's /chat page. It is a remote page,
+/// so it gets no Tauri capabilities (capabilities/default.json names only
+/// `main`), and it keeps its own sign-in and chat keys in the webview's
+/// storage. Async because building a window from a sync command deadlocks
+/// on Windows.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn open_chat_window(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    if let Some(w) = app.get_webview_window("chat") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        return w.set_focus().map_err(|e| e.to_string());
+    }
+    let cfg = config::load().map_err(|e| e.to_string())?;
+    let origin = cfg
+        .effective_web_origin()
+        .ok_or_else(|| "no web origin configured".to_string())?;
+    let url = chat_page_url(&origin)?;
+    tauri::WebviewWindowBuilder::new(&app, "chat", tauri::WebviewUrl::External(url))
+        .title("StarStats Chat")
+        .inner_size(960.0, 720.0)
+        .min_inner_size(420.0, 480.0)
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command(rename_all = "snake_case")]

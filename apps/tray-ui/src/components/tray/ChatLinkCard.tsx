@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { open as openShell } from '@tauri-apps/plugin-shell';
 import { api } from '../../api';
 import { GhostButton, TrayCard } from './primitives';
 
 /**
- * A way into chat until the tray has its own: opens `/chat` on the web.
+ * A way into chat until the tray has its own: opens the web's `/chat` in a
+ * tray window (`open_chat_window`).
  *
  * Shown only when the server says chat is offered to this player
  * (`GET /v1/me/chat` → `offered`), which follows the same launch switch as
@@ -14,6 +14,7 @@ import { GhostButton, TrayCard } from './primitives';
  */
 export function ChatLinkCard({ webOrigin }: { webOrigin: string | null }) {
   const [offered, setOffered] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -38,9 +39,8 @@ export function ChatLinkCard({ webOrigin }: { webOrigin: string | null }) {
         <GhostButton
           type="button"
           onClick={() => {
-            // openShell rejects if there is no default browser; nothing
-            // useful to show beyond the button doing nothing.
-            openShell(`${webOrigin}/chat`).catch(() => {});
+            setFailed(null);
+            api.openChatWindow().catch((e) => setFailed(String(e)));
           }}
         >
           Open chat
@@ -48,8 +48,14 @@ export function ChatLinkCard({ webOrigin }: { webOrigin: string | null }) {
       }
     >
       <p style={{ margin: 0, color: 'var(--fg-dim)' }}>
-        Crew chat and messages with friends, end-to-end encrypted. Opens in your browser.
+        Crew chat and messages with friends, end-to-end encrypted. Sign in once in the chat
+        window; it remembers you.
       </p>
+      {failed ? (
+        <p role="alert" style={{ margin: '6px 0 0', color: 'var(--danger)' }}>
+          Couldn&apos;t open chat: {failed}
+        </p>
+      ) : null}
     </TrayCard>
   );
 }
