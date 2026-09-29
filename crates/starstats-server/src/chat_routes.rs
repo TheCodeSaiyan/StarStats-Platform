@@ -11,8 +11,11 @@
 use crate::account_restrictions::{AccountRestrictionStore, Capability};
 use crate::api_error::ApiErrorBody;
 use crate::auth::AuthenticatedUser;
-use crate::chat::{declared_for_chat, ChatAccessStore, MatrixLoginSigner, CHAT_MIN_AGE};
+use crate::chat::{
+    declared_for_chat, ChatAccessStore, ChatLaunch, MatrixLoginSigner, CHAT_MIN_AGE,
+};
 use crate::social_routes::caller;
+use crate::staff_roles::StaffRoleStore;
 use crate::users::{User, UserStore};
 use axum::extract::Path;
 use axum::{
@@ -74,6 +77,11 @@ pub struct ChatStatus {
     pub user_id: Option<String>,
     /// The homeserver's client API base URL, when chat is available.
     pub homeserver_url: Option<String>,
+    /// Clients should offer a way into chat: it is available and its
+    /// launch switch (`STARSTATS_CHAT_ENABLED`) includes the caller. Only
+    /// `GET /v1/me/chat` works this out; other responses say false.
+    #[serde(default)]
+    pub offered: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -140,6 +148,7 @@ async fn status_for(
         restricted,
         user_id: signer.as_ref().map(|s| s.user_id(&me.claimed_handle)),
         homeserver_url: signer.as_ref().map(|s| s.public_url.clone()),
+        offered: false,
     })
 }
 
@@ -158,15 +167,29 @@ pub async fn chat_status(
     Extension(chat): Extension<Arc<dyn ChatAccessStore>>,
     Extension(restrictions): Extension<Arc<dyn AccountRestrictionStore>>,
     Extension(signer): Extension<Arc<Option<MatrixLoginSigner>>>,
+    Extension(launch): Extension<Arc<ChatLaunch>>,
+    Extension(staff): Extension<Arc<dyn StaffRoleStore>>,
 ) -> Response {
     let me = match caller(&auth, users.as_ref()).await {
         Ok(u) => u,
         Err(r) => return r,
     };
-    match status_for(&me, chat.as_ref(), restrictions.as_ref(), &signer).await {
-        Ok(s) => Json(s).into_response(),
-        Err(r) => r,
-    }
+    let mut status = match status_for(&me, chat.as_ref(), restrictions.as_ref(), &signer).await {
+        Ok(s) => s,
+        Err(r) => return r,
+    };
+    // Staff are looked up only when it matters. A failed lookup offers
+    // nothing: this is what a client shows, never what it may do.
+    let is_staff = *launch == ChatLaunch::Staff
+        && match staff.list_active_for_user(me.id).await {
+            Ok(roles) => !roles.as_strings().is_empty(),
+            Err(e) => {
+                tracing::warn!(error = %e, "chat: staff lookup failed; not offering chat");
+                false
+            }
+        };
+    status.offered = status.available && launch.offers(is_staff);
+    Json(status).into_response()
 }
 
 /// Declare you meet the minimum age for chat. Idempotent.
@@ -406,11 +429,17 @@ mod tests {
         issuer: TokenIssuer,
         users: Arc<MemoryUserStore>,
         restrictions: Arc<MemoryAccountRestrictionStore>,
+        staff: Arc<crate::staff_roles::test_support::MemoryStaffRoleStore>,
         decoding: jsonwebtoken::DecodingKey,
     }
 
     fn fixture_with(chat_on: bool) -> Fixture {
+        fixture_launch(chat_on, ChatLaunch::On)
+    }
+
+    fn fixture_launch(chat_on: bool, launch: ChatLaunch) -> Fixture {
         let users = Arc::new(MemoryUserStore::new());
+        let staff = Arc::new(crate::staff_roles::test_support::MemoryStaffRoleStore::new());
         let restrictions = Arc::new(MemoryAccountRestrictionStore::new());
         let (issuer, verifier) = fresh_pair();
         let (s, decoding) = signer();
@@ -425,12 +454,15 @@ mod tests {
             ))
             .layer(Extension(signer))
             .layer(Extension(Arc::new(ChatTokenLimiter::new())))
+            .layer(Extension(Arc::new(launch)))
+            .layer(Extension(staff.clone() as Arc<dyn StaffRoleStore>))
             .layer(Extension(Arc::new(verifier)));
         Fixture {
             app,
             issuer,
             users,
             restrictions,
+            staff,
             decoding,
         }
     }
@@ -579,6 +611,33 @@ mod tests {
         f.restrictions.upsert(id, &r).await.unwrap();
         let (s, _) = f.call("POST", "/v1/me/matrix/login-token", &me, None).await;
         assert_eq!(s, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn chat_is_offered_as_the_launch_switch_says() {
+        use crate::staff_roles::StaffRole;
+        async fn offered(f: &Fixture, token: &str) -> serde_json::Value {
+            f.call("GET", "/v1/me/chat", token, None).await.1["offered"].clone()
+        }
+        for (launch, player, moderator) in [
+            (ChatLaunch::Off, false, false),
+            (ChatLaunch::Staff, false, true),
+            (ChatLaunch::On, true, true),
+        ] {
+            let f = fixture_launch(true, launch);
+            let (p, _) = f.user("Player", true).await;
+            let (m, mod_id) = f.user("Mod", true).await;
+            f.staff
+                .grant(mod_id, StaffRole::Moderator, None, None)
+                .await
+                .unwrap();
+            assert_eq!(offered(&f, &p).await, player, "{launch:?} player");
+            assert_eq!(offered(&f, &m).await, moderator, "{launch:?} moderator");
+        }
+        // Switched on but with no homeserver, nothing is offered.
+        let f = fixture_launch(false, ChatLaunch::On);
+        let (p, _) = f.user("Player", true).await;
+        assert_eq!(offered(&f, &p).await, false);
     }
 
     #[tokio::test]

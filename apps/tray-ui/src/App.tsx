@@ -343,8 +343,8 @@ function AppInner() {
           {view === 'whats-new' && (
             <WhatsNewPane webOrigin={config?.web_origin ?? null} />
           )}
-          {view === 'social' && <SocialPane />}
-          {view === 'lfg' && <LfgPane />}
+          {view === 'social' && <SocialPane webOrigin={config?.web_origin ?? null} />}
+          {view === 'lfg' && <LfgPane webOrigin={config?.web_origin ?? null} />}
           {view === 'review' && (
             <SubmissionsPane
               onCountChange={setUnknownCount}

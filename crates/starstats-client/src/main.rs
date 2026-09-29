@@ -738,6 +738,7 @@ fn main() {
             commands::social_get_presence,
             commands::lfg_options,
             commands::lfg_summary,
+            commands::chat_status,
             commands::crew_mine,
             commands::crew_commend,
             commands::crew_withdraw_commend,

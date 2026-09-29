@@ -680,6 +680,10 @@ async fn main() -> anyhow::Result<()> {
             None => None,
         });
     let chat_token_limiter = Arc::new(crate::chat_routes::ChatTokenLimiter::new());
+    // Whether clients offer chat (`ChatStatus::offered`); the web reads the
+    // same variable itself.
+    let chat_launch = Arc::new(crate::chat::ChatLaunch::from_env());
+    tracing::info!(launch = ?*chat_launch, "chat: launch switch");
     // Chat reports (migration 0080).
     let chat_reports_dyn: Arc<dyn crate::chat_reports::ChatReportStore> = Arc::new(
         crate::chat_reports::PostgresChatReportStore::new(pool.clone()),
@@ -1135,6 +1139,7 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(chat_access_dyn))
         .layer(Extension(matrix_signer))
         .layer(Extension(chat_token_limiter))
+        .layer(Extension(chat_launch))
         .layer(Extension(chat_reports_dyn))
         .layer(Extension(chat_rooms))
         .layer(Extension(presence_hub))

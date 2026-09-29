@@ -4909,6 +4909,13 @@ pub async fn lfg_summary() -> Result<serde_json::Value, String> {
     lfg_call(reqwest::Method::GET, "/v1/me/lfg/summary", None).await
 }
 
+/// Chat status, for whether to offer chat (`offered`). The tray has no
+/// chat of its own yet; the Chat card opens the web's.
+#[tauri::command(rename_all = "snake_case")]
+pub async fn chat_status() -> Result<serde_json::Value, String> {
+    lfg_call(reqwest::Method::GET, "/v1/me/chat", None).await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn lfg_options() -> Result<serde_json::Value, String> {
     lfg_call(reqwest::Method::GET, "/v1/lfg/options", None).await

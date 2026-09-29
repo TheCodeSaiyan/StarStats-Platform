@@ -15,6 +15,7 @@
  * (portal fixed elements to `document.body`) does not apply here.
  */
 
+import { ChatLinkCard } from '../components/tray/ChatLinkCard';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { open as openShell } from '@tauri-apps/plugin-shell';
@@ -135,7 +136,7 @@ const rowStyle = {
   borderTop: '1px solid var(--border)',
 };
 
-export function SocialPane() {
+export function SocialPane({ webOrigin = null }: { webOrigin?: string | null } = {}) {
   const [friends, setFriends] = useState<FriendsResponse | null>(null);
   const [notes, setNotes] = useState<NotificationsResponse | null>(null);
   const [blocks, setBlocks] = useState<ListedHandle[]>([]);
@@ -286,6 +287,7 @@ export function SocialPane() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {error ? <Banner tone="danger">{error}</Banner> : null}
       {notice ? <Banner tone="info">{notice}</Banner> : null}
+      <ChatLinkCard webOrigin={webOrigin} />
 
       <TrayCard
         title="Notifications"
