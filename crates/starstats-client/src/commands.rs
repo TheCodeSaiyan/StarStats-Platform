@@ -3591,6 +3591,16 @@ mod tests {
         assert!(url("not a url").is_err());
     }
 
+    #[test]
+    fn the_chat_window_signs_in_through_the_redeem_page() {
+        let url = super::chat_signin_url("https://starstats.app/x?y=1", "ab&c=d").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://starstats.app/auth/magic-link/redeem?token=ab%26c%3Dd&next=%2Fchat"
+        );
+        assert!(super::chat_signin_url("http://starstats.app", "t").is_err());
+    }
+
     /// Build a single TimelineEntry fixture for the session-summary
     /// formatter tests. Synced/raw_line/log_source aren't surfaced by
     /// the summary text, so they get throwaway placeholders.
@@ -4948,11 +4958,29 @@ pub(crate) fn chat_page_url(web_origin: &str) -> Result<tauri::Url, String> {
     base.join("/chat").map_err(|e| e.to_string())
 }
 
+/// The chat page reached through a one-use sign-in token: the web's
+/// magic-link redemption, told to land in chat. Same origin rules as
+/// [`chat_page_url`].
+pub(crate) fn chat_signin_url(web_origin: &str, token: &str) -> Result<tauri::Url, String> {
+    let mut url = chat_page_url(web_origin)?;
+    url.set_path("/auth/magic-link/redeem");
+    url.query_pairs_mut()
+        .clear()
+        .append_pair("token", token)
+        .append_pair("next", "/chat");
+    Ok(url)
+}
+
 /// Chat in its own tray window: the web's /chat page. It is a remote page,
 /// so it gets no Tauri capabilities (capabilities/default.json names only
 /// `main`), and it keeps its own sign-in and chat keys in the webview's
 /// storage. Async because building a window from a sync command deadlocks
 /// on Windows.
+///
+/// The window opens signed in: no password manager reaches a WebView, so
+/// the tray trades its paired session for a one-use sign-in token
+/// (`POST /v1/me/chat/web-session`). If that fails (an older server, chat
+/// not offered, rate-limited) the plain page opens and asks for a sign-in.
 #[tauri::command(rename_all = "snake_case")]
 pub async fn open_chat_window(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
@@ -4965,7 +4993,16 @@ pub async fn open_chat_window(app: tauri::AppHandle) -> Result<(), String> {
     let origin = cfg
         .effective_web_origin()
         .ok_or_else(|| "no web origin configured".to_string())?;
-    let url = chat_page_url(&origin)?;
+    let url = match lfg_call(reqwest::Method::POST, "/v1/me/chat/web-session", None).await {
+        Ok(v) => match v.get("token").and_then(|t| t.as_str()) {
+            Some(token) => chat_signin_url(&origin, token)?,
+            None => chat_page_url(&origin)?,
+        },
+        Err(e) => {
+            tracing::info!(error = %e, "chat window: no sign-in hand-off; opening the page");
+            chat_page_url(&origin)?
+        }
+    };
     tauri::WebviewWindowBuilder::new(&app, "chat", tauri::WebviewUrl::External(url))
         .title("StarStats Chat")
         .inner_size(960.0, 720.0)

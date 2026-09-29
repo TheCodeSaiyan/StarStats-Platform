@@ -10,10 +10,12 @@
 
 use crate::account_restrictions::{AccountRestrictionStore, Capability};
 use crate::api_error::ApiErrorBody;
+use crate::audit::{AuditEntry, AuditLog};
 use crate::auth::AuthenticatedUser;
 use crate::chat::{
     declared_for_chat, ChatAccessStore, ChatLaunch, MatrixLoginSigner, CHAT_MIN_AGE,
 };
+use crate::magic_link::MagicLinkStore;
 use crate::social_routes::caller;
 use crate::staff_roles::StaffRoleStore;
 use crate::users::{User, UserStore};
@@ -34,6 +36,7 @@ pub fn routes() -> Router {
         .route("/v1/me/chat", get(chat_status))
         .route("/v1/me/chat/age-declaration", post(declare_age))
         .route("/v1/me/matrix/login-token", post(login_token))
+        .route("/v1/me/chat/web-session", post(web_session))
         .route("/v1/me/chat/dm/{handle}", post(open_dm))
         .route("/v1/me/chat/rooms", get(my_rooms))
 }
@@ -178,9 +181,14 @@ pub async fn chat_status(
         Ok(s) => s,
         Err(r) => return r,
     };
-    // Staff are looked up only when it matters. A failed lookup offers
-    // nothing: this is what a client shows, never what it may do.
-    let is_staff = *launch == ChatLaunch::Staff
+    status.offered = status.available && offered_to(&me, *launch, staff.as_ref()).await;
+    Json(status).into_response()
+}
+
+/// Whether the launch switch includes this player. Staff are looked up
+/// only when it matters, and a failed lookup offers nothing.
+async fn offered_to(me: &User, launch: ChatLaunch, staff: &dyn StaffRoleStore) -> bool {
+    let is_staff = launch == ChatLaunch::Staff
         && match staff.list_active_for_user(me.id).await {
             Ok(roles) => !roles.as_strings().is_empty(),
             Err(e) => {
@@ -188,8 +196,79 @@ pub async fn chat_status(
                 false
             }
         };
-    status.offered = status.available && launch.offers(is_staff);
-    Json(status).into_response()
+    launch.offers(is_staff)
+}
+
+/// How long a chat-window sign-in token lives. The tray redeems it the
+/// moment it arrives; a minute covers a slow first page load.
+pub const WEB_SESSION_TTL: chrono::Duration = chrono::Duration::seconds(60);
+
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
+pub struct WebSessionToken {
+    /// One use, for `/auth/magic-link/redeem?token=…&next=/chat`.
+    pub token: String,
+    pub expires_in: i64,
+}
+
+/// Sign the tray's chat window in to the web, so a player never types a
+/// password into it (no password manager reaches a WebView). The tray
+/// holds a paired-device token; this trades it for a one-use sign-in link
+/// through the same redemption as an emailed magic link, so two-factor is
+/// still asked for. Narrowed to what chat needs: only while chat is
+/// offered to the caller, a minute's lifetime, rate-limited, and audited.
+#[utoipa::path(
+    post,
+    path = "/v1/me/chat/web-session",
+    tag = "chat",
+    operation_id = "chat_web_session",
+    responses(
+        (status = 200, description = "A one-use sign-in token", body = WebSessionToken),
+        (status = 403, description = "chat_not_offered", body = ApiErrorBody),
+        (status = 429, description = "Too many requests", body = ApiErrorBody),
+    ),
+    security(("bearer" = [])),
+)]
+#[allow(clippy::too_many_arguments)]
+pub async fn web_session(
+    auth: AuthenticatedUser,
+    Extension(users): Extension<Arc<dyn UserStore>>,
+    Extension(signer): Extension<Arc<Option<MatrixLoginSigner>>>,
+    Extension(launch): Extension<Arc<ChatLaunch>>,
+    Extension(staff): Extension<Arc<dyn StaffRoleStore>>,
+    Extension(limiter): Extension<Arc<ChatTokenLimiter>>,
+    Extension(magic): Extension<Arc<dyn MagicLinkStore>>,
+    Extension(audit): Extension<Arc<dyn AuditLog>>,
+) -> Response {
+    let me = match caller(&auth, users.as_ref()).await {
+        Ok(u) => u,
+        Err(r) => return r,
+    };
+    if signer.is_none() || !offered_to(&me, *launch, staff.as_ref()).await {
+        return err(StatusCode::FORBIDDEN, "chat_not_offered");
+    }
+    if !limiter.check(&me.claimed_handle) {
+        return err(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
+    }
+    let token = match magic.issue_for(me.id, WEB_SESSION_TTL).await {
+        Ok(t) => t,
+        Err(e) => return internal("web_session", e),
+    };
+    if let Err(e) = audit
+        .append(AuditEntry {
+            actor_sub: Some(auth.sub.clone()),
+            actor_handle: Some(me.claimed_handle.clone()),
+            action: "auth.chat_window_signin".into(),
+            payload: serde_json::json!({ "device_id": auth.device_id }),
+        })
+        .await
+    {
+        tracing::warn!(error = %e, "audit log append failed");
+    }
+    Json(WebSessionToken {
+        token,
+        expires_in: WEB_SESSION_TTL.num_seconds(),
+    })
+    .into_response()
 }
 
 /// Declare you meet the minimum age for chat. Idempotent.
@@ -430,6 +509,8 @@ mod tests {
         users: Arc<MemoryUserStore>,
         restrictions: Arc<MemoryAccountRestrictionStore>,
         staff: Arc<crate::staff_roles::test_support::MemoryStaffRoleStore>,
+        magic: Arc<crate::magic_link::test_support::MemoryMagicLinkStore>,
+        audit: Arc<crate::audit::test_support::MemoryAuditLog>,
         decoding: jsonwebtoken::DecodingKey,
     }
 
@@ -440,6 +521,8 @@ mod tests {
     fn fixture_launch(chat_on: bool, launch: ChatLaunch) -> Fixture {
         let users = Arc::new(MemoryUserStore::new());
         let staff = Arc::new(crate::staff_roles::test_support::MemoryStaffRoleStore::new());
+        let magic = Arc::new(crate::magic_link::test_support::MemoryMagicLinkStore::default());
+        let audit = Arc::new(crate::audit::test_support::MemoryAuditLog::default());
         let restrictions = Arc::new(MemoryAccountRestrictionStore::new());
         let (issuer, verifier) = fresh_pair();
         let (s, decoding) = signer();
@@ -456,6 +539,8 @@ mod tests {
             .layer(Extension(Arc::new(ChatTokenLimiter::new())))
             .layer(Extension(Arc::new(launch)))
             .layer(Extension(staff.clone() as Arc<dyn StaffRoleStore>))
+            .layer(Extension(magic.clone() as Arc<dyn MagicLinkStore>))
+            .layer(Extension(audit.clone() as Arc<dyn AuditLog>))
             .layer(Extension(Arc::new(verifier)));
         Fixture {
             app,
@@ -463,6 +548,8 @@ mod tests {
             users,
             restrictions,
             staff,
+            magic,
+            audit,
             decoding,
         }
     }
@@ -611,6 +698,44 @@ mod tests {
         f.restrictions.upsert(id, &r).await.unwrap();
         let (s, _) = f.call("POST", "/v1/me/matrix/login-token", &me, None).await;
         assert_eq!(s, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn the_chat_window_signs_in_only_where_chat_is_offered() {
+        use crate::staff_roles::StaffRole;
+        // Staff-only: a player is refused, a moderator gets a one-use,
+        // short-lived link that redeems to them, and it is audited.
+        let f = fixture_launch(true, ChatLaunch::Staff);
+        let (p, _) = f.user("Player", true).await;
+        let (m, mod_id) = f.user("Mod", true).await;
+        f.staff
+            .grant(mod_id, StaffRole::Moderator, None, None)
+            .await
+            .unwrap();
+        let (s, v) = f.call("POST", "/v1/me/chat/web-session", &p, None).await;
+        assert_eq!(s, StatusCode::FORBIDDEN);
+        assert_eq!(v["error"], "chat_not_offered");
+        let (s, v) = f.call("POST", "/v1/me/chat/web-session", &m, None).await;
+        assert_eq!(s, StatusCode::OK);
+        assert_eq!(v["expires_in"], 60);
+        let token = v["token"].as_str().unwrap().to_string();
+        let redeemed = f.magic.redeem(&token).await.unwrap().unwrap();
+        assert_eq!(redeemed.user_id, mod_id);
+        assert!(f.magic.redeem(&token).await.unwrap().is_none(), "one use");
+        let entries = f.audit.snapshot();
+        assert_eq!(entries.last().unwrap().action, "auth.chat_window_signin");
+        assert_eq!(entries.last().unwrap().actor_handle.as_deref(), Some("Mod"));
+
+        // Off, or no homeserver: nobody.
+        for f in [
+            fixture_launch(true, ChatLaunch::Off),
+            fixture_launch(false, ChatLaunch::On),
+        ] {
+            let (p, _) = f.user("Player", true).await;
+            let (s, _) = f.call("POST", "/v1/me/chat/web-session", &p, None).await;
+            assert_eq!(s, StatusCode::FORBIDDEN);
+            assert!(f.audit.snapshot().is_empty());
+        }
     }
 
     #[tokio::test]
