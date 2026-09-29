@@ -16,6 +16,12 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Tray 0.1.41] - 2026-09-29
+
+### New
+- Open chat from Friends and Crew.
+- Open chat in its own tray window.
+
 ## [Platform 0.1.75] - 2026-09-28
 
 No player-facing changes.
