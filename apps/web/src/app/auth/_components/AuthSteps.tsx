@@ -39,7 +39,7 @@ const TITLES: Record<string, [string, string]> = {
   '/auth/login': ['Sign in', 'Your manifest is where you left it'],
   '/auth/signup': ['Create account', 'Beta · invite only'],
   '/auth/magic-link': ['Magic link', 'No password, one email'],
-  '/auth/magic-link/redeem': ['Magic link', 'Opening your session'],
+  '/auth/magic-link/redeem/invalid': ['Magic link', 'That link cannot be used'],
   '/auth/forgot-password': ['Reset passphrase', 'We send a single-use link'],
   '/auth/reset-password': ['Reset passphrase', 'Choose a new one'],
   '/auth/totp-verify': [
