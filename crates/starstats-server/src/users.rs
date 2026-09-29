@@ -473,7 +473,7 @@ impl UserStore for PostgresUserStore {
              VALUES ($1, lower($2), $3, $4) \
              RETURNING {USER_SELECT}"
         );
-        let row: Result<UserRow, sqlx::Error> = sqlx::query_as(&sql)
+        let row: Result<UserRow, sqlx::Error> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(id)
             .bind(email)
             .bind(password_hash)
@@ -495,7 +495,7 @@ impl UserStore for PostgresUserStore {
 
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, UserError> {
         let sql = format!("SELECT {USER_SELECT} FROM users WHERE lower(email) = lower($1)");
-        let row: Option<UserRow> = sqlx::query_as(&sql)
+        let row: Option<UserRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(email)
             .fetch_optional(&self.pool)
             .await?;
@@ -505,7 +505,7 @@ impl UserStore for PostgresUserStore {
     async fn find_by_handle(&self, handle: &str) -> Result<Option<User>, UserError> {
         let sql =
             format!("SELECT {USER_SELECT} FROM users WHERE lower(claimed_handle) = lower($1)");
-        let row: Option<UserRow> = sqlx::query_as(&sql)
+        let row: Option<UserRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(handle)
             .fetch_optional(&self.pool)
             .await?;
@@ -514,7 +514,7 @@ impl UserStore for PostgresUserStore {
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, UserError> {
         let sql = format!("SELECT {USER_SELECT} FROM users WHERE id = $1");
-        let row: Option<UserRow> = sqlx::query_as(&sql)
+        let row: Option<UserRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(id)
             .fetch_optional(&self.pool)
             .await?;
@@ -537,7 +537,7 @@ impl UserStore for PostgresUserStore {
                  ORDER BY created_at DESC
                  LIMIT $2 OFFSET $3"
             );
-            sqlx::query_as(&sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(pattern)
                 .bind(limit)
                 .bind(offset)
@@ -549,7 +549,7 @@ impl UserStore for PostgresUserStore {
                  ORDER BY created_at DESC
                  LIMIT $1 OFFSET $2"
             );
-            sqlx::query_as(&sql)
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
                 .bind(limit)
                 .bind(offset)
                 .fetch_all(&self.pool)
@@ -591,7 +591,7 @@ impl UserStore for PostgresUserStore {
              FROM users \
              WHERE email_verification_token = $1"
         );
-        let row: Option<UserRowWithExpiry> = sqlx::query_as(&sql)
+        let row: Option<UserRowWithExpiry> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(token)
             .fetch_optional(&self.pool)
             .await?;
@@ -668,7 +668,7 @@ impl UserStore for PostgresUserStore {
              FROM users \
              WHERE password_reset_token = $1"
         );
-        let row: Option<UserRowWithExpiry> = sqlx::query_as(&sql)
+        let row: Option<UserRowWithExpiry> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(token)
             .fetch_optional(&self.pool)
             .await?;
@@ -738,7 +738,7 @@ impl UserStore for PostgresUserStore {
              FROM users \
              WHERE pending_email_token = $1"
         );
-        let row: Option<UserRowWithExpiry> = sqlx::query_as(&sql)
+        let row: Option<UserRowWithExpiry> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(token)
             .fetch_optional(&self.pool)
             .await?;
@@ -1104,9 +1104,9 @@ impl UserStore for PostgresUserStore {
                 // Table names are a fixed literal list, never user
                 // input -- format! here cannot interpolate anything a
                 // caller controls. The HANDLE is still bound.
-                sqlx::query(&format!(
+                sqlx::query(sqlx::AssertSqlSafe(format!(
                     "DELETE FROM {table} WHERE claimed_handle = lower($1)"
-                ))
+                )))
                 .bind(&h)
                 .execute(&mut *tx)
                 .await?;

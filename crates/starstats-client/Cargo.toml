@@ -50,7 +50,7 @@ futures-util = "0.3"
 notify = "8.2"
 
 # Local storage (bundled SQLite, no system dep)
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
 
 # Cross-platform user dirs
 directories = "6.0"

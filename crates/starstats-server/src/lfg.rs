@@ -421,9 +421,9 @@ impl LfgStore for PostgresLfgStore {
     }
 
     async fn get_post(&self, id: Uuid) -> Result<Option<LfgPost>, LfgError> {
-        let row: Option<PostRow> = sqlx::query_as(&format!(
+        let row: Option<PostRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {POST_COLUMNS} FROM lfg_posts p WHERE p.id = $1"
-        ))
+        )))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -435,12 +435,12 @@ impl LfgStore for PostgresLfgStore {
         host: &str,
         now: DateTime<Utc>,
     ) -> Result<Option<LfgPost>, LfgError> {
-        let row: Option<PostRow> = sqlx::query_as(&format!(
+        let row: Option<PostRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {POST_COLUMNS} FROM lfg_posts p
              WHERE lower(p.host_handle) = lower($1)
                AND p.closed_at IS NULL AND p.removed_at IS NULL AND p.expires_at > $2
              ORDER BY p.created_at DESC LIMIT 1"
-        ))
+        )))
         .bind(host)
         .bind(now)
         .fetch_optional(&self.pool)
@@ -466,14 +466,14 @@ impl LfgStore for PostgresLfgStore {
         system: Option<&str>,
         limit: i64,
     ) -> Result<Vec<LfgPost>, LfgError> {
-        let rows: Vec<PostRow> = sqlx::query_as(&format!(
+        let rows: Vec<PostRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {POST_COLUMNS} FROM lfg_posts p
              WHERE p.closed_at IS NULL AND p.removed_at IS NULL AND p.expires_at > $1
                AND ($2::text IS NULL OR p.activity = $2)
                AND ($3::text IS NULL OR lower(p.system) = lower($3))
              ORDER BY p.created_at DESC
              LIMIT $4"
-        ))
+        )))
         .bind(now)
         .bind(activity.map(|a| a.as_str()))
         .bind(system)
@@ -593,11 +593,11 @@ impl LfgStore for PostgresLfgStore {
         details: Option<&str>,
     ) -> Result<LfgReport, LfgError> {
         let snapshot = serde_json::to_value(post).unwrap_or(serde_json::Value::Null);
-        let row: ReportRow = sqlx::query_as(&format!(
+        let row: ReportRow = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "INSERT INTO lfg_reports (post_id, reporter_handle, host_handle, reason, details, post_snapshot)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING {REPORT_COLUMNS}"
-        ))
+        )))
         .bind(post.id)
         .bind(reporter)
         .bind(&post.host_handle)
@@ -631,11 +631,11 @@ impl LfgStore for PostgresLfgStore {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<LfgReport>, LfgError> {
-        let rows: Vec<ReportRow> = sqlx::query_as(&format!(
+        let rows: Vec<ReportRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {REPORT_COLUMNS} FROM lfg_reports
              WHERE ($1::text IS NULL OR status = $1)
              ORDER BY created_at DESC LIMIT $2 OFFSET $3"
-        ))
+        )))
         .bind(status.map(|s| s.as_str()))
         .bind(limit)
         .bind(offset)
@@ -645,9 +645,9 @@ impl LfgStore for PostgresLfgStore {
     }
 
     async fn get_report(&self, id: Uuid) -> Result<Option<LfgReport>, LfgError> {
-        let row: Option<ReportRow> = sqlx::query_as(&format!(
+        let row: Option<ReportRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {REPORT_COLUMNS} FROM lfg_reports WHERE id = $1"
-        ))
+        )))
         .bind(id)
         .fetch_optional(&self.pool)
         .await?;
@@ -662,12 +662,12 @@ impl LfgStore for PostgresLfgStore {
         note: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<LfgReport, LfgError> {
-        let row: Option<ReportRow> = sqlx::query_as(&format!(
+        let row: Option<ReportRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "UPDATE lfg_reports
              SET status = $2, resolved_at = $3, resolved_by = $4, resolution_note = $5
              WHERE id = $1 AND status = 'open'
              RETURNING {REPORT_COLUMNS}"
-        ))
+        )))
         .bind(id)
         .bind(outcome.as_str())
         .bind(now)

@@ -3474,7 +3474,7 @@ impl EventQuery for PostgresStore {
         }
         sql.push_str("\n             GROUP BY day\n             ORDER BY day ASC");
 
-        let mut q = sqlx::query_as::<_, (NaiveDate, i64)>(&sql)
+        let mut q = sqlx::query_as::<_, (NaiveDate, i64)>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(claimed_handle)
             .bind(days as i32);
         if let Some(allow) = allow_owned.as_ref() {
@@ -3770,7 +3770,7 @@ impl EventQuery for PostgresStore {
                 )
                 SELECT MAX(dur_secs), MAX(event_count), MAX(death_count) FROM per_session"
         );
-        let mut records_query = sqlx::query_as(&records_sql)
+        let mut records_query = sqlx::query_as(sqlx::AssertSqlSafe(records_sql.as_str()))
             .bind(claimed_handle)
             .bind(gap_minutes as i32);
         if let Some(ts) = since {
@@ -3798,7 +3798,8 @@ impl EventQuery for PostgresStore {
             )
             SELECT MAX(EXTRACT(EPOCH FROM gap))::BIGINT FROM death_gaps"
         );
-        let mut streak_query = sqlx::query_scalar(&streak_sql).bind(claimed_handle);
+        let mut streak_query =
+            sqlx::query_scalar(sqlx::AssertSqlSafe(streak_sql.as_str())).bind(claimed_handle);
         if let Some(ts) = since {
             streak_query = streak_query.bind(ts);
         }
@@ -3840,7 +3841,8 @@ impl EventQuery for PostgresStore {
               AND event_timestamp IS NOT NULL{since_filter}
             ORDER BY event_timestamp ASC, idempotency_key ASC"
         );
-        let mut lives_query = sqlx::query_as(&lives_sql).bind(claimed_handle);
+        let mut lives_query =
+            sqlx::query_as(sqlx::AssertSqlSafe(lives_sql.as_str())).bind(claimed_handle);
         if let Some(ts) = since {
             lives_query = lives_query.bind(ts);
         }
@@ -3926,7 +3928,7 @@ impl EventQuery for PostgresStore {
                 Option<i64>,
                 Option<i64>,
             ),
-        >(&sql)
+        >(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(actor_handle)
         .bind(limit)
         .bind(offset);
@@ -4491,7 +4493,8 @@ impl EventQuery for PostgresStore {
              WHERE claimed_handle = LOWER($1){since_filter}
              ORDER BY accepted_at DESC, mission_id ASC"
         );
-        let mut q = sqlx::query_as::<_, ContractRunSqlRow>(&sql).bind(claimed_handle);
+        let mut q = sqlx::query_as::<_, ContractRunSqlRow>(sqlx::AssertSqlSafe(sql.as_str()))
+            .bind(claimed_handle);
         if let Some(ts) = since {
             q = q.bind(ts);
         }
@@ -6385,11 +6388,13 @@ mod tests {
             "stat_rollup_state",
             "character_records",
         ] {
-            sqlx::query(&format!("DELETE FROM {t} WHERE claimed_handle = $1"))
-                .bind(handle)
-                .execute(&pool)
-                .await
-                .expect("clean probe rows");
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DELETE FROM {t} WHERE claimed_handle = $1"
+            )))
+            .bind(handle)
+            .execute(&pool)
+            .await
+            .expect("clean probe rows");
         }
 
         let store = PostgresStore::new(pool.clone());
