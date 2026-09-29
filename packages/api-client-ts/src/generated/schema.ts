@@ -4881,6 +4881,12 @@ export interface components {
             homeserver_url?: string | null;
             /** Format: int32 */
             minimum_age: number;
+            /**
+             * @description Clients should offer a way into chat: it is available and its
+             *     launch switch (`STARSTATS_CHAT_ENABLED`) includes the caller. Only
+             *     `GET /v1/me/chat` works this out; other responses say false.
+             */
+            offered?: boolean;
             /** @description A moderator has restricted the caller from chat. */
             restricted: boolean;
             rsi_verified: boolean;

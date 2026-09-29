@@ -101,6 +101,46 @@ pub fn declared_for_chat(declaration: Option<(DateTime<Utc>, i16)>) -> bool {
     declaration.is_some_and(|(_, min)| min >= CHAT_MIN_AGE)
 }
 
+/// Chat's launch switch, `STARSTATS_CHAT_ENABLED`: the same variable, and
+/// the same values, the web reads (`apps/web/src/lib/chat/flag.ts`). It
+/// decides whether clients OFFER chat, reported as `ChatStatus::offered`
+/// so the tray can follow the web without a switch of its own. It is not
+/// an access check; the gates in `ChatStatus` are.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ChatLaunch {
+    /// Nobody is offered chat. Unset or unknown values land here.
+    #[default]
+    Off,
+    /// Staff only, for testing in production before launch.
+    Staff,
+    /// Everyone.
+    On,
+}
+
+impl ChatLaunch {
+    pub fn parse(value: Option<&str>) -> Self {
+        match value.map(str::trim) {
+            Some("on") => Self::On,
+            Some("staff") => Self::Staff,
+            _ => Self::Off,
+        }
+    }
+
+    pub fn from_env() -> Self {
+        Self::parse(std::env::var("STARSTATS_CHAT_ENABLED").ok().as_deref())
+    }
+
+    /// Whether a caller is offered chat. `is_staff` is any staff grant,
+    /// as on the web.
+    pub fn offers(self, is_staff: bool) -> bool {
+        match self {
+            Self::Off => false,
+            Self::Staff => is_staff,
+            Self::On => true,
+        }
+    }
+}
+
 /// The Matrix localpart for a handle. Synapse accepts `a-z 0-9 _ - . / = +`
 /// and does not lowercase, and handles are `[A-Za-z0-9_-]`, so lowercasing
 /// is enough. The handle as written becomes the display name.
@@ -240,6 +280,19 @@ mod tests {
     use super::test_support::*;
     use super::*;
     use jsonwebtoken::{decode, Validation};
+
+    #[test]
+    fn the_launch_switch_reads_like_the_web() {
+        assert_eq!(ChatLaunch::parse(None), ChatLaunch::Off);
+        assert_eq!(ChatLaunch::parse(Some("off")), ChatLaunch::Off);
+        assert_eq!(ChatLaunch::parse(Some("yes")), ChatLaunch::Off);
+        assert_eq!(ChatLaunch::parse(Some("staff")), ChatLaunch::Staff);
+        assert_eq!(ChatLaunch::parse(Some("on")), ChatLaunch::On);
+        assert!(!ChatLaunch::Off.offers(true));
+        assert!(ChatLaunch::Staff.offers(true));
+        assert!(!ChatLaunch::Staff.offers(false));
+        assert!(ChatLaunch::On.offers(false));
+    }
 
     #[test]
     fn a_login_token_carries_what_synapse_checks() {
