@@ -163,7 +163,7 @@ const COLS: &str = "id, track, tag, version, channel, released_on, summary, note
 #[async_trait]
 impl ReleaseStore for PostgresReleaseStore {
     async fn upsert(&self, r: &ReleaseWrite) -> Result<Release, ReleaseError> {
-        let row: Row = sqlx::query_as(&format!(
+        let row: Row = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "INSERT INTO releases (track, tag, version, channel, released_on, summary, notes)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (tag) DO UPDATE SET
@@ -175,7 +175,7 @@ impl ReleaseStore for PostgresReleaseStore {
                  notes = EXCLUDED.notes,
                  updated_at = NOW()
              RETURNING {COLS}"
-        ))
+        )))
         .bind(&r.track)
         .bind(&r.tag)
         .bind(&r.version)
@@ -194,13 +194,13 @@ impl ReleaseStore for PostgresReleaseStore {
         channels: &[String],
         limit: i64,
     ) -> Result<Vec<Release>, ReleaseError> {
-        let rows: Vec<Row> = sqlx::query_as(&format!(
+        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {COLS} FROM releases
              WHERE ($1::text IS NULL OR track = $1)
                AND (cardinality($2::text[]) = 0 OR channel = ANY($2))
              ORDER BY released_on DESC, created_at DESC
              LIMIT $3"
-        ))
+        )))
         .bind(track)
         .bind(channels)
         .bind(limit.clamp(1, LIST_MAX))

@@ -484,7 +484,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             RETURNING {ROADMAP_ITEM_COLS}
             "#
         );
-        let row: RoadmapItemRow = sqlx::query_as(&sql)
+        let row: RoadmapItemRow = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(payload.slug)
             .bind(payload.github_project_item_id)
             .bind(payload.title)
@@ -523,7 +523,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             "SELECT {ROADMAP_ITEM_COLS} FROM roadmap_items \
              WHERE slug = $1 AND deleted_at IS NULL"
         );
-        let row: Option<RoadmapItemRow> = sqlx::query_as(&sql)
+        let row: Option<RoadmapItemRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(slug)
             .fetch_optional(&self.pool)
             .await?;
@@ -538,7 +538,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             "SELECT {ROADMAP_ITEM_COLS} FROM roadmap_items \
              WHERE github_project_item_id = $1 AND deleted_at IS NULL"
         );
-        let row: Option<RoadmapItemRow> = sqlx::query_as(&sql)
+        let row: Option<RoadmapItemRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(github_project_item_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -552,13 +552,17 @@ impl RoadmapStore for PostgresRoadmapStore {
                  WHERE deleted_at IS NULL AND public = TRUE \
                  ORDER BY created_at DESC"
             );
-            sqlx::query_as(&sql).fetch_all(&self.pool).await?
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+                .fetch_all(&self.pool)
+                .await?
         } else {
             let sql = format!(
                 "SELECT {ROADMAP_ITEM_COLS} FROM roadmap_items \
                  WHERE deleted_at IS NULL ORDER BY created_at DESC"
             );
-            sqlx::query_as(&sql).fetch_all(&self.pool).await?
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+                .fetch_all(&self.pool)
+                .await?
         };
         Ok(rows.into_iter().map(row_to_item).collect())
     }
@@ -602,7 +606,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             "SELECT {CHANNEL_STATUS_COLS} FROM roadmap_channel_statuses \
              WHERE roadmap_item_id = $1 ORDER BY channel"
         );
-        let rows: Vec<ChannelStatusRow> = sqlx::query_as(&sql)
+        let rows: Vec<ChannelStatusRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(roadmap_item_id)
             .fetch_all(&self.pool)
             .await?;
@@ -633,7 +637,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             RETURNING {CHANNEL_STATUS_COLS}
             "#
         );
-        let row: ChannelStatusRow = sqlx::query_as(&sql)
+        let row: ChannelStatusRow = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(payload.roadmap_item_id)
             .bind(payload.channel.as_str())
             .bind(payload.status.as_str())
@@ -730,7 +734,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             RETURNING {CHANNEL_STATUS_COLS}
             "#
         );
-        let row: Option<ChannelStatusRow> = sqlx::query_as(&sql)
+        let row: Option<ChannelStatusRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(roadmap_item_id)
             .bind(channel.as_str())
             .fetch_optional(&self.pool)
@@ -896,7 +900,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             RETURNING {CHANGELOG_COLS}
             "#
         );
-        let row: ChangelogRow = sqlx::query_as(&sql)
+        let row: ChangelogRow = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(payload.roadmap_item_id)
             .bind(payload.channel.as_str())
             .bind(payload.title)
@@ -913,7 +917,7 @@ impl RoadmapStore for PostgresRoadmapStore {
         id: Uuid,
     ) -> Result<Option<RoadmapChangelogEntry>, RoadmapStoreError> {
         let sql = format!("SELECT {CHANGELOG_COLS} FROM roadmap_changelog WHERE id = $1");
-        let row: Option<ChangelogRow> = sqlx::query_as(&sql)
+        let row: Option<ChangelogRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(id)
             .fetch_optional(&self.pool)
             .await?;
@@ -925,7 +929,9 @@ impl RoadmapStore for PostgresRoadmapStore {
             "SELECT {CHANGELOG_COLS} FROM roadmap_changelog \
              WHERE published_at IS NULL ORDER BY created_at DESC"
         );
-        let rows: Vec<ChangelogRow> = sqlx::query_as(&sql).fetch_all(&self.pool).await?;
+        let rows: Vec<ChangelogRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+            .fetch_all(&self.pool)
+            .await?;
         rows.into_iter().map(row_to_changelog).collect()
     }
 
@@ -939,7 +945,7 @@ impl RoadmapStore for PostgresRoadmapStore {
              WHERE published_at IS NOT NULL \
              ORDER BY published_at DESC LIMIT $1"
         );
-        let rows: Vec<ChangelogRow> = sqlx::query_as(&sql)
+        let rows: Vec<ChangelogRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(limit)
             .fetch_all(&self.pool)
             .await?;
@@ -963,7 +969,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             RETURNING {CHANGELOG_COLS}
             "#
         );
-        let row: Option<ChangelogRow> = sqlx::query_as(&sql)
+        let row: Option<ChangelogRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(id)
             .bind(published_by)
             .fetch_optional(&self.pool)
@@ -989,7 +995,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             RETURNING {CHANGELOG_COLS}
             "#
         );
-        let row: Option<ChangelogRow> = sqlx::query_as(&sql)
+        let row: Option<ChangelogRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(id)
             .bind(title)
             .bind(body)
@@ -1090,7 +1096,7 @@ impl RoadmapStore for PostgresRoadmapStore {
             LIMIT $1
             "#
         );
-        let rows: Vec<RoadmapItemRow> = sqlx::query_as(&sql)
+        let rows: Vec<RoadmapItemRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(limit)
             .fetch_all(&self.pool)
             .await?;

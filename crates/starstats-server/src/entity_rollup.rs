@@ -2339,11 +2339,13 @@ mod tests {
 
         for (name, rows) in &fixtures {
             for tbl in cleanup_tables {
-                sqlx::query(&format!("DELETE FROM {tbl} WHERE claimed_handle = $1"))
-                    .bind(handle)
-                    .execute(&pool)
-                    .await
-                    .unwrap_or_else(|e| panic!("clean {tbl}: {e}"));
+                sqlx::query(sqlx::AssertSqlSafe(format!(
+                    "DELETE FROM {tbl} WHERE claimed_handle = $1"
+                )))
+                .bind(handle)
+                .execute(&pool)
+                .await
+                .unwrap_or_else(|e| panic!("clean {tbl}: {e}"));
             }
 
             for (i, row) in rows.iter().enumerate() {
@@ -2409,11 +2411,13 @@ mod tests {
         }
 
         for tbl in cleanup_tables {
-            sqlx::query(&format!("DELETE FROM {tbl} WHERE claimed_handle = $1"))
-                .bind(handle)
-                .execute(&pool)
-                .await
-                .ok();
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DELETE FROM {tbl} WHERE claimed_handle = $1"
+            )))
+            .bind(handle)
+            .execute(&pool)
+            .await
+            .ok();
         }
     }
 }

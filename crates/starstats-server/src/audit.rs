@@ -518,7 +518,7 @@ impl AuditQuery for PostgresAuditLog {
                 String,
                 Value,
             ),
-        >(&sql);
+        >(sqlx::AssertSqlSafe(sql.as_str()));
         if let Some(handle) = filters.actor_handle.as_ref() {
             q = q.bind(format!("%{handle}%"));
         }

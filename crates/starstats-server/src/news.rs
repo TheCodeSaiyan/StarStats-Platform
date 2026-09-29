@@ -150,11 +150,11 @@ impl NewsStore for PostgresNewsStore {
         author: &str,
         publish: bool,
     ) -> Result<NewsPost, NewsError> {
-        let row: Row = sqlx::query_as(&format!(
+        let row: Row = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "INSERT INTO news_posts (title, body, link_url, created_by, published_at)
              VALUES ($1, $2, $3, $4, CASE WHEN $5 THEN NOW() ELSE NULL END)
              RETURNING {COLS}"
-        ))
+        )))
         .bind(&draft.title)
         .bind(&draft.body)
         .bind(&draft.link_url)
@@ -166,11 +166,11 @@ impl NewsStore for PostgresNewsStore {
     }
 
     async fn update(&self, id: Uuid, draft: &NewsDraft) -> Result<NewsPost, NewsError> {
-        let row: Option<Row> = sqlx::query_as(&format!(
+        let row: Option<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "UPDATE news_posts SET title = $2, body = $3, link_url = $4, updated_at = NOW()
              WHERE id = $1 AND deleted_at IS NULL
              RETURNING {COLS}"
-        ))
+        )))
         .bind(id)
         .bind(&draft.title)
         .bind(&draft.body)
@@ -184,13 +184,13 @@ impl NewsStore for PostgresNewsStore {
         // COALESCE keeps the ORIGINAL publish time on a re-publish of a
         // post that is already live, so a no-op click does not bump it to
         // the top of everyone's feed.
-        let row: Option<Row> = sqlx::query_as(&format!(
+        let row: Option<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "UPDATE news_posts
              SET published_at = CASE WHEN $2 THEN COALESCE(published_at, NOW()) ELSE NULL END,
                  updated_at = NOW()
              WHERE id = $1 AND deleted_at IS NULL
              RETURNING {COLS}"
-        ))
+        )))
         .bind(id)
         .bind(published)
         .fetch_optional(&self.pool)
@@ -212,10 +212,10 @@ impl NewsStore for PostgresNewsStore {
     }
 
     async fn list_all(&self, limit: i64) -> Result<Vec<NewsPost>, NewsError> {
-        let rows: Vec<Row> = sqlx::query_as(&format!(
+        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {COLS} FROM news_posts WHERE deleted_at IS NULL
              ORDER BY created_at DESC LIMIT $1"
-        ))
+        )))
         .bind(limit.clamp(1, LIST_MAX))
         .fetch_all(&self.pool)
         .await?;
@@ -223,11 +223,11 @@ impl NewsStore for PostgresNewsStore {
     }
 
     async fn list_published(&self, limit: i64) -> Result<Vec<NewsPost>, NewsError> {
-        let rows: Vec<Row> = sqlx::query_as(&format!(
+        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {COLS} FROM news_posts
              WHERE deleted_at IS NULL AND published_at IS NOT NULL
              ORDER BY published_at DESC LIMIT $1"
-        ))
+        )))
         .bind(limit.clamp(1, LIST_MAX))
         .fetch_all(&self.pool)
         .await?;

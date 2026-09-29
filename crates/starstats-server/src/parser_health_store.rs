@@ -305,9 +305,9 @@ impl ParserHealthStore for PostgresParserHealthStore {
     }
 
     async fn list_findings(&self) -> Result<Vec<StoredFinding>, RepoError> {
-        let rows: Vec<FindingRow> = sqlx::query_as(&format!(
+        let rows: Vec<FindingRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {FINDING_COLS} FROM parser_health_finding ORDER BY last_seen_at DESC, event_type"
-        ))
+        )))
         .fetch_all(&self.pool)
         .await?;
         Ok(rows.into_iter().map(row_to_finding).collect())

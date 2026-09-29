@@ -177,7 +177,7 @@ impl ProfileStore for PostgresProfileStore {
              WHERE user_id = $1 \
              ORDER BY captured_at DESC LIMIT 1"
         );
-        let row: Option<SnapshotRow> = sqlx::query_as(&sql)
+        let row: Option<SnapshotRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await?;
@@ -195,7 +195,7 @@ impl ProfileStore for PostgresProfileStore {
              WHERE user_id = $1 \
              ORDER BY captured_at ASC"
         );
-        let rows: Vec<SnapshotRow> = sqlx::query_as(&sql)
+        let rows: Vec<SnapshotRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(user_id)
             .fetch_all(&self.pool)
             .await?;
@@ -220,7 +220,7 @@ impl ProfileStore for PostgresProfileStore {
                 .collect::<Vec<_>>()
                 .join(", ")
         );
-        let row: Option<SnapshotRow> = sqlx::query_as(&sql)
+        let row: Option<SnapshotRow> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(handle)
             .fetch_optional(&self.pool)
             .await?;

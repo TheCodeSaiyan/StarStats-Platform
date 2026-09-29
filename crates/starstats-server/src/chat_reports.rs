@@ -203,12 +203,12 @@ impl ChatReportStore for PostgresChatReportStore {
     async fn create(&self, r: NewChatReport<'_>) -> Result<ChatReport, ChatReportError> {
         let messages =
             serde_json::to_value(r.messages).map_err(|e| ChatReportError::Domain(e.to_string()))?;
-        let row: Row = sqlx::query_as(&format!(
+        let row: Row = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "INSERT INTO chat_reports
                  (reporter_handle, reported_handle, room_id, reason, details, messages)
              VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING {COLUMNS}"
-        ))
+        )))
         .bind(r.reporter)
         .bind(r.reported)
         .bind(r.room_id)
@@ -242,12 +242,12 @@ impl ChatReportStore for PostgresChatReportStore {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<ChatReport>, ChatReportError> {
-        let rows: Vec<Row> = sqlx::query_as(&format!(
+        let rows: Vec<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "SELECT {COLUMNS} FROM chat_reports
              WHERE ($1::text IS NULL OR status = $1)
              ORDER BY created_at DESC
              LIMIT $2 OFFSET $3"
-        ))
+        )))
         .bind(status.map(|s| s.as_str()))
         .bind(limit)
         .bind(offset)
@@ -257,11 +257,12 @@ impl ChatReportStore for PostgresChatReportStore {
     }
 
     async fn get(&self, id: Uuid) -> Result<Option<ChatReport>, ChatReportError> {
-        let row: Option<Row> =
-            sqlx::query_as(&format!("SELECT {COLUMNS} FROM chat_reports WHERE id = $1"))
-                .bind(id)
-                .fetch_optional(&self.pool)
-                .await?;
+        let row: Option<Row> = sqlx::query_as(sqlx::AssertSqlSafe(format!(
+            "SELECT {COLUMNS} FROM chat_reports WHERE id = $1"
+        )))
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
         row.map(from_row).transpose()
     }
 
@@ -273,12 +274,12 @@ impl ChatReportStore for PostgresChatReportStore {
         note: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<ChatReport, ChatReportError> {
-        let row: Row = sqlx::query_as(&format!(
+        let row: Row = sqlx::query_as(sqlx::AssertSqlSafe(format!(
             "UPDATE chat_reports
              SET status = $2, resolved_by = $3, resolution_note = $4, resolved_at = $5
              WHERE id = $1
              RETURNING {COLUMNS}"
-        ))
+        )))
         .bind(id)
         .bind(status.as_str())
         .bind(by)

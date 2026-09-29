@@ -135,10 +135,11 @@ impl ProfileLayoutStore for PostgresProfileLayoutStore {
             "SELECT {} FROM users WHERE lower(claimed_handle) = lower($1) LIMIT 1",
             surface.column(),
         );
-        let row: Option<(Option<serde_json::Value>,)> = sqlx::query_as(&sql)
-            .bind(owner_handle)
-            .fetch_optional(&self.pool)
-            .await?;
+        let row: Option<(Option<serde_json::Value>,)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(owner_handle)
+                .fetch_optional(&self.pool)
+                .await?;
 
         match row {
             None => Ok(None),          // user not found
@@ -165,7 +166,7 @@ impl ProfileLayoutStore for PostgresProfileLayoutStore {
             "UPDATE users SET {} = $1 WHERE lower(claimed_handle) = lower($2)",
             surface.column(),
         );
-        sqlx::query(&sql)
+        sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(json_value)
             .bind(owner_handle)
             .execute(&self.pool)

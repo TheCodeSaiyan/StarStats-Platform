@@ -265,9 +265,9 @@ pub async fn delete_social_rows_for(
         ("notifications", "recipient_handle"),
         ("notifications", "actor_handle"),
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM {table} WHERE lower({column}) = lower($1)"
-        ))
+        )))
         .bind(handle)
         .execute(&mut *conn)
         .await?;
@@ -1521,9 +1521,9 @@ mod postgres_tests {
         // Put the rows back as written, for the assertions below.
         for h in [A, B] {
             for col in ["handle_a", "handle_b"] {
-                sqlx::query(&format!(
+                sqlx::query(sqlx::AssertSqlSafe(format!(
                     "UPDATE friendships SET {col} = $1 WHERE lower({col}) = lower($1)"
-                ))
+                )))
                 .bind(h)
                 .execute(&pool)
                 .await
