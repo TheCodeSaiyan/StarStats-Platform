@@ -5,6 +5,7 @@
  *  - GET  /v1/me/chat                 — which gates are open
  *  - POST /v1/me/chat/age-declaration — the age declaration
  *  - GET  /v1/me/chat/rooms           — rooms and what each is for
+ *  - GET  /v1/me/friends              — who a new message can go to
  *  - POST /v1/me/matrix/login-token   — via chatLoginAction, for the browser
  *
  * Hidden entirely unless STARSTATS_CHAT_ENABLED allows this account
@@ -15,7 +16,15 @@ import { notFound, redirect } from 'next/navigation';
 import React from 'react';
 import { BeamAlert, BeamButton } from 'holo';
 import type { Calibration } from 'holo';
-import { ApiCallError, getChatStatus, getMyChatRooms, type ChatStatus, type MyChatRoom } from '@/lib/api';
+import {
+  ApiCallError,
+  getChatStatus,
+  getFriends,
+  getMyChatRooms,
+  type ChatStatus,
+  type Friend,
+  type MyChatRoom,
+} from '@/lib/api';
 import { chatEnabledFor } from '@/lib/chat/flag';
 import { logger } from '@/lib/logger';
 import { navSections } from '@/lib/nav';
@@ -25,6 +34,7 @@ import { setCalibrationAction } from '@/app/me/_projection/actions';
 import { ChatApp } from '@/components/chat/ChatApp';
 import { ChatProjection, type ChatSection } from './_projection/ChatProjection';
 import { declareAgeAction } from './actions';
+import { StartChat } from './StartChat';
 
 export const metadata = { title: 'Chat' };
 
@@ -57,13 +67,15 @@ export default async function ChatPage(props: { searchParams: Promise<SearchPara
     logger.warn({ err: e, call: 'chat.theme' }, 'load theme failed');
   }
 
-  const [statusRes, roomsRes] = await Promise.allSettled([
+  const [statusRes, roomsRes, friendsRes] = await Promise.allSettled([
     getChatStatus(session.token),
     getMyChatRooms(session.token),
+    getFriends(session.token),
   ]);
   for (const [r, call] of [
     [statusRes, 'chat.status'],
     [roomsRes, 'chat.rooms'],
+    [friendsRes, 'chat.friends'],
   ] as const) {
     if (r.status === 'rejected') {
       const status = r.reason instanceof ApiCallError ? r.reason.status : undefined;
@@ -73,6 +85,8 @@ export default async function ChatPage(props: { searchParams: Promise<SearchPara
   }
   const status: ChatStatus | null = statusRes.status === 'fulfilled' ? statusRes.value : null;
   const rooms: MyChatRoom[] = roomsRes.status === 'fulfilled' ? roomsRes.value.rooms : [];
+  const friends: Friend[] | null =
+    friendsRes.status === 'fulfilled' ? friendsRes.value.friends : null;
 
   let node: React.ReactNode;
   if (!status) {
@@ -106,7 +120,14 @@ export default async function ChatPage(props: { searchParams: Promise<SearchPara
       </form>
     );
   } else {
-    node = <ChatApp handle={session.claimedHandle} rooms={rooms} initialRoom={params.room} />;
+    node = (
+      <>
+        {/* If the friend list failed to load, say nothing rather than
+            claim the player has no friends. */}
+        {friends ? <StartChat friends={friends} /> : null}
+        <ChatApp handle={session.claimedHandle} rooms={rooms} initialRoom={params.room} />
+      </>
+    );
   }
 
   const sections: ChatSection[] = [{ id: 'chat', title: 'Chat', group: 'chat', node }];

@@ -105,7 +105,7 @@ describe('navFor', () => {
   });
 
   it('gives a signed-in reader every public and user entry', () => {
-    const out = navFor({ signedIn: true }).map((n) => n.id);
+    const out = navFor({ signedIn: true, chat: 'on' }).map((n) => n.id);
     const expected = SITE_NAV.filter((n) => n.access !== 'admin').map(
       (n) => n.id,
     );
@@ -130,6 +130,54 @@ describe('navFor', () => {
       (n) => n.id,
     );
     expect(ids).not.toContain('admin');
+  });
+});
+
+describe('the chat entry', () => {
+  /**
+   * Chat follows the web's launch switch (`STARSTATS_CHAT_ENABLED`), the
+   * same rule the /chat page applies: a link that 404s is worse than none.
+   */
+  const hasChat = (signedIn: boolean, chat: 'off' | 'staff' | 'on', staffRoles?: string[]) =>
+    navFor({ signedIn, staffRoles, chat }).some((n) => n.id === 'chat');
+
+  it('is absent while chat is off, even for staff', () => {
+    expect(hasChat(true, 'off', ['admin'])).toBe(false);
+    expect(hasChat(true, 'off')).toBe(false);
+  });
+
+  it('is offered to staff only while chat is staff-only', () => {
+    expect(hasChat(true, 'staff', ['admin'])).toBe(true);
+    expect(hasChat(true, 'staff', ['moderator'])).toBe(true);
+    expect(hasChat(true, 'staff', [])).toBe(false);
+    expect(hasChat(true, 'staff')).toBe(false);
+  });
+
+  it('is offered to every signed-in reader once chat is on', () => {
+    expect(hasChat(true, 'on')).toBe(true);
+  });
+
+  it('is never offered signed out', () => {
+    expect(hasChat(false, 'on', ['admin'])).toBe(false);
+  });
+
+  it('lives in the menu, not the inline row', () => {
+    const chat = navFor({ signedIn: true, chat: 'on' }).find((n) => n.id === 'chat');
+    expect(chat).toBeDefined();
+    expect(isPrimaryNav(chat!, true)).toBe(false);
+  });
+
+  it('follows the environment when no mode is passed', () => {
+    const before = process.env.STARSTATS_CHAT_ENABLED;
+    try {
+      process.env.STARSTATS_CHAT_ENABLED = 'on';
+      expect(navFor({ signedIn: true }).some((n) => n.id === 'chat')).toBe(true);
+      delete process.env.STARSTATS_CHAT_ENABLED;
+      expect(navFor({ signedIn: true }).some((n) => n.id === 'chat')).toBe(false);
+    } finally {
+      if (before === undefined) delete process.env.STARSTATS_CHAT_ENABLED;
+      else process.env.STARSTATS_CHAT_ENABLED = before;
+    }
   });
 });
 
@@ -181,7 +229,7 @@ describe('the inline row', () => {
     for (const id of userIds) expect(ids).toContain(id);
     // A held-out entry is still a destination — it is in the menu.
     for (const n of SITE_NAV.filter((n) => n.rowExempt)) {
-      expect(navFor({ signedIn: true }).map((e) => e.id)).toContain(n.id);
+      expect(navFor({ signedIn: true, chat: 'on' }).map((e) => e.id)).toContain(n.id);
       expect(ids).not.toContain(n.id);
     }
     for (const id of ['features', 'docs', 'guides', 'trust', 'privacy', 'terms']) {

@@ -17,6 +17,7 @@
  * Plain data with no React and no server-only import, so both server chrome and
  * client chrome can read it.
  */
+import { chatEnabledFor, chatMode, type ChatMode } from './chat/flag';
 import type { RangeId } from './range';
 import { withRange } from './range-href';
 import type { Route } from 'next';
@@ -44,6 +45,12 @@ export interface NavDestination {
    * Default is primary, so nothing existing changes.
    */
   rowExempt?: boolean;
+  /**
+   * Offered only while this feature's launch switch lets the session in.
+   * The route applies the same check itself; this only stops the chrome
+   * offering a link that would 404.
+   */
+  feature?: 'chat';
 }
 
 /**
@@ -120,6 +127,16 @@ export const SITE_NAV: readonly NavDestination[] = [
     access: 'user',
     rowExempt: true,
   },
+  // Menu only, like Friends: the row is full at 1440px. Offered only while
+  // chat's launch switch lets the reader in (see `feature`).
+  {
+    id: 'chat',
+    label: 'Chat',
+    href: '/chat' as Route,
+    access: 'user',
+    rowExempt: true,
+    feature: 'chat',
+  },
   // In the row, as "Crew" (the tray tab's name, and short: the row's fit
   // is measured at 1440px by chrome-nav.spec.ts). Calibrate moved to the
   // menu to make room for it.
@@ -161,6 +178,11 @@ export interface NavOpts {
    * with no window never gets a parameter implying a filter it does not apply.
    */
   range?: RangeId;
+  /**
+   * Chat's launch switch. Defaults to `STARSTATS_CHAT_ENABLED`, read at
+   * runtime on the server like the /chat page does; passed in tests.
+   */
+  chat?: ChatMode;
 }
 
 /**
@@ -216,7 +238,7 @@ export function isPrimaryNav(n: NavDestination, signedIn: boolean): boolean {
  * every consumer already goes through; doing it per-page is how three of the
  * six links got fixed and the rest did not.
  */
-export function navFor({ signedIn, staffRoles, range }: NavOpts): NavDestination[] {
+export function navFor({ signedIn, staffRoles, range, chat }: NavOpts): NavDestination[] {
   const isStaff = (staffRoles ?? []).some(
     (r) => r === 'admin' || r === 'moderator',
   );
@@ -224,6 +246,9 @@ export function navFor({ signedIn, staffRoles, range }: NavOpts): NavDestination
     if (n.access === 'public') return true;
     if (!signedIn) return false;
     if (n.access === 'admin') return isStaff;
+    if (n.feature === 'chat') {
+      return chatEnabledFor({ staffRoles: staffRoles ?? [] }, chat ?? chatMode());
+    }
     return true;
   }).map((n) =>
     range ? { ...n, href: withRange(n.href, range) } : n,

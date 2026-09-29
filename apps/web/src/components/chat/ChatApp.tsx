@@ -277,7 +277,7 @@ export function ChatApp({
   if (rooms.length === 0) {
     return (
       <p className="hp-prose">
-        No chats yet. Message a friend from the Friends page, or join a crew on Looking for
+        No chats yet. Message a friend with New message, or join a crew on Looking for
         Group: its crew get a chat room when the host accepts them.
       </p>
     );

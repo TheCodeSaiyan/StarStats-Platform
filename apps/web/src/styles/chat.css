@@ -35,6 +35,14 @@
   overflow-wrap: anywhere;
 }
 
+.ss-chat__start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+}
+
 .ss-chat__muted {
   color: var(--fg-muted);
   font-size: 12px;
