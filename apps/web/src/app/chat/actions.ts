@@ -88,11 +88,13 @@ export async function chatLoginAction(): Promise<
 export async function openDmAction(formData: FormData) {
   const s = await chatSession();
   const handle = String(formData.get('handle') ?? '').trim();
+  // Errors go back to where the player asked from.
+  const back = formData.get('from') === 'chat' ? '/chat' : '/friends';
   let room: string;
   try {
     room = (await openDm(s.token, handle)).room_id;
   } catch (e) {
-    fail(e, 'chat.open_dm', '/friends');
+    fail(e, 'chat.open_dm', back);
   }
   redirect(`/chat?room=${encodeURIComponent(room)}`);
 }

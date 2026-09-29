@@ -17,7 +17,7 @@ export function chatMode(env: string | undefined = process.env.STARSTATS_CHAT_EN
 }
 
 export function chatEnabledFor(
-  session: { staffRoles: string[] } | null,
+  session: { staffRoles: readonly string[] } | null,
   mode: ChatMode = chatMode(),
 ): boolean {
   if (!session || mode === 'off') return false;

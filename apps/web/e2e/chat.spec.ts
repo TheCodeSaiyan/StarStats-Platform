@@ -131,3 +131,66 @@ test('a friend has a Message button that opens the DM', async ({ page, request }
     .click({ timeout: 30_000 });
   await expect(page).toHaveURL(/\/chat\?room=/, { timeout: 30_000 });
 });
+
+const FRIENDS = {
+  status: 200,
+  body: {
+    friends: [{ handle: 'SSDemoWingman', since: '2026-08-01T12:00:00Z', rsi_verified: true }],
+    incoming: [],
+    outgoing: [],
+    friend_request_policy: 'everyone',
+    discoverable: true,
+  },
+};
+
+test('a new message can be started from /chat itself', async ({ page, request }) => {
+  await setScenario(
+    request,
+    scenarioFor('chat_start', {
+      ...BASE,
+      'GET /v1/me/chat': status({ age_declared: true, can_chat: true }),
+      'GET /v1/me/friends': FRIENDS,
+      'POST /v1/me/chat/dm/SSDemoWingman': { status: 200, body: { room_id: DM_ROOM } },
+    }),
+  );
+  await visit(page);
+  const start = page.getByTestId('start-chat');
+  await start.getByLabel('New message').selectOption('SSDemoWingman', { timeout: 30_000 });
+  await start.getByRole('button', { name: 'Message' }).click({ timeout: 30_000 });
+  await expect(page).toHaveURL(`/chat?room=${encodeURIComponent(DM_ROOM)}`, {
+    timeout: 30_000,
+  });
+});
+
+test('a refused new message says why on /chat', async ({ page, request }) => {
+  await setScenario(
+    request,
+    scenarioFor('chat_start_refused', {
+      ...BASE,
+      'GET /v1/me/chat': status({ age_declared: true, can_chat: true }),
+      'GET /v1/me/friends': FRIENDS,
+      'POST /v1/me/chat/dm/SSDemoWingman': { status: 409, body: { error: 'cannot_message' } },
+    }),
+  );
+  await visit(page);
+  const start = page.getByTestId('start-chat');
+  await start.getByLabel('New message').selectOption('SSDemoWingman', { timeout: 30_000 });
+  await start.getByRole('button', { name: 'Message' }).click({ timeout: 30_000 });
+  await expect(page).toHaveURL(/\/chat\?error=cannot_message/, { timeout: 30_000 });
+  await expect(page.getByText('That player cannot be messaged.')).toBeVisible();
+});
+
+test('with no friends, /chat says how to get one', async ({ page, request }) => {
+  await setScenario(
+    request,
+    scenarioFor('chat_start_empty', {
+      ...BASE,
+      'GET /v1/me/chat': status({ age_declared: true, can_chat: true }),
+    }),
+  );
+  await visit(page);
+  const start = page.getByTestId('start-chat');
+  await expect(start.getByRole('link', { name: 'Add friends' })).toHaveAttribute('href', '/friends', {
+    timeout: 30_000,
+  });
+});
