@@ -611,6 +611,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/retention/policies/{tier}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * POST /v1/admin/retention/purge -- run a sweep right now.
+         *     Synchronous: returns the sweep summary when the pass completes.
+         *     The scheduled loop in main.rs runs the same code on a 24h cadence;
+         *     this endpoint exists for ad-hoc operator runs.
+         *     PUT /v1/admin/retention/policies/{tier} -- change a tier's window.
+         *     Admin only, audited as `retention.policy_changed`. The next sweep uses
+         *     it; shortening a window deletes events that fall outside it then.
+         */
+        put: operations["set_policy"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/admin/retention/purge": {
         parameters: {
             query?: never;
@@ -620,12 +645,6 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /**
-         * POST /v1/admin/retention/purge -- run a sweep right now.
-         *     Synchronous: returns the sweep summary when the pass completes.
-         *     The scheduled loop in main.rs runs the same code on a 24h cadence;
-         *     this endpoint exists for ad-hoc operator runs.
-         */
         post: operations["trigger_purge"];
         delete?: never;
         options?: never;
@@ -8923,6 +8942,14 @@ export interface components {
         SessionsResponse: {
             sessions: components["schemas"]["SessionDto"][];
         };
+        /**
+         * @description A tier's new window. `retention_days` null or absent means unlimited:
+         *     nothing is purged for that tier.
+         */
+        SetRetentionPolicy: {
+            /** Format: int32 */
+            retention_days?: number | null;
+        };
         SetSyncRequest: {
             enabled: boolean;
         };
@@ -11849,6 +11876,68 @@ export interface operations {
             };
             /** @description Caller lacks admin role */
             403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Database error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    set_policy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description free | supporter */
+                tier: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetRetentionPolicy"];
+            };
+        };
+        responses: {
+            /** @description The policies after the change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionPoliciesResponse"];
+                };
+            };
+            /** @description invalid_retention_days */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller lacks admin role */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description unknown_tier */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

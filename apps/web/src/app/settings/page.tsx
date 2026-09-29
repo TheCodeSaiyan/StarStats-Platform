@@ -462,15 +462,18 @@ export default async function SettingsPage(props: {
               cannot hand the browser a file. */}
           <HoloKV
             items={[
-              { k: 'Window', v: '365 days (server maximum)' },
+              { k: 'Window', v: '365 days from upload' },
+              { k: 'Supporters', v: 'No limit while support is active' },
               { k: 'Beyond the window', v: 'Deleted, not archived' },
               { k: 'Export', v: 'NDJSON · CSV · ZIP, streamed' },
             ]}
           />
           <p className="hp-prose">
-            Nothing older than a year is kept, which is why the widest range is
-            called All rather than all time — it is everything there is, not
-            everything there ever was.
+            Events you uploaded more than a year ago are deleted, which is why
+            the widest range is called All rather than all time — it is
+            everything there is, not everything there ever was. While you
+            support StarStats nothing is deleted; if support lapses, the year
+            applies again.
           </p>
           <p className="hp-prose">
             Take it all with you. The export holds your account record, paired

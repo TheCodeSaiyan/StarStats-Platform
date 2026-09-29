@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import {
+  getCalls,
   loginAs,
   resetScenario,
   scenarioFor,
@@ -221,4 +222,35 @@ test('admin_settings_renders_all_three_config_sections', async ({
   ]) {
     await expect(page.getByRole('heading', { name: heading })).toBeVisible();
   }
+});
+
+test('admin_sets_an_event_retention_window', async ({ page, request }) => {
+  await setScenario(
+    request,
+    scenarioFor('admin_retention', {
+      'GET /v1/admin/retention/policies': {
+        status: 200,
+        body: { policies: [{ tier: 'free', retention_days: 90 }, { tier: 'supporter' }] },
+      },
+      'PUT /v1/admin/retention/policies/free': {
+        status: 200,
+        body: { policies: [{ tier: 'free', retention_days: 365 }, { tier: 'supporter' }] },
+      },
+    }),
+  );
+  await loginAs(page, { handle: 'TheCodeSaiyan', staffRoles: ['admin'] });
+  await page.goto('/admin/settings');
+
+  const free = page.getByTestId('retention-free');
+  await expect(free).toContainText('90 days', { timeout: 30_000 });
+  await expect(page.getByTestId('retention-supporter')).toContainText('unlimited');
+  await free.getByLabel('Days').fill('365');
+  page.once('dialog', (d) => void d.accept());
+  await free.getByRole('button', { name: 'Save' }).click({ timeout: 30_000 });
+
+  await expect(page).toHaveURL(/retention=saved/, { timeout: 30_000 });
+  const put = (await getCalls(request)).find(
+    (c) => c.method === 'PUT' && c.path === '/v1/admin/retention/policies/free',
+  );
+  expect(put?.body).toEqual({ retention_days: 365 });
 });
