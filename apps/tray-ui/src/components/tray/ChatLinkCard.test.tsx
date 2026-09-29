@@ -3,17 +3,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { invoke } from '@tauri-apps/api/core';
 import { ChatLinkCard } from './ChatLinkCard';
 
-const { openMock } = vi.hoisted(() => ({
-  openMock: vi.fn(async () => {}),
-}));
-vi.mock('@tauri-apps/plugin-shell', () => ({
-  open: openMock,
-}));
-
 const mockedInvoke = vi.mocked(invoke);
 
-function status(result: unknown) {
+function status(result: unknown, openResult: unknown = undefined) {
   mockedInvoke.mockImplementation(async (cmd: string) => {
+    if (cmd === 'open_chat_window') {
+      if (openResult instanceof Error) throw openResult;
+      return openResult;
+    }
     if (cmd !== 'chat_status') throw new Error(`unexpected ${cmd}`);
     if (result instanceof Error) throw result;
     return result;
@@ -23,14 +20,21 @@ function status(result: unknown) {
 describe('ChatLinkCard', () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
-    openMock.mockClear();
   });
 
-  it('opens web chat when the server offers chat', async () => {
+  it('opens the chat window when the server offers chat', async () => {
     status({ offered: true });
     render(<ChatLinkCard webOrigin="https://starstats.app" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Open chat' }));
-    expect(openMock).toHaveBeenCalledWith('https://starstats.app/chat');
+    await waitFor(() => expect(mockedInvoke).toHaveBeenCalledWith('open_chat_window'));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('says so when the window cannot open', async () => {
+    status({ offered: true }, new Error('no web origin configured'));
+    render(<ChatLinkCard webOrigin="https://starstats.app" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open chat' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('no web origin configured');
   });
 
   it.each([

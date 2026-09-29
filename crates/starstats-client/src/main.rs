@@ -739,6 +739,7 @@ fn main() {
             commands::lfg_options,
             commands::lfg_summary,
             commands::chat_status,
+            commands::open_chat_window,
             commands::crew_mine,
             commands::crew_commend,
             commands::crew_withdraw_commend,
