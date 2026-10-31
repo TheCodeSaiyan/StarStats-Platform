@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.77] - 2026-09-29
+
+### Fixed
+- Sign in from an emailed link again.
+
 ## [Platform 0.1.76] - 2026-09-29
 
 ### New
