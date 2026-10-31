@@ -64,6 +64,11 @@ export function healthStrings(p: HealthParams): HealthStrings {
         summary: 'Hangar sync skipped.',
         detail: `${p.reason} · ${fmtAge(p.since)}`,
       };
+    case 'rsi_session_expired':
+      return {
+        summary: 'Your RSI session has expired, so hangar sync has stopped.',
+        detail: `Sign in to robertsspaceindustries.com, then paste a fresh Rsi-Token cookie in Settings. Expired ${fmtAge(p.since)}.`,
+      };
     case 'email_unverified':
       return {
         summary: 'Your email isn’t verified.',

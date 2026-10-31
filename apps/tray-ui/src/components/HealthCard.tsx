@@ -31,6 +31,9 @@ const CTA_LABEL: Record<string, string> = {
 // volume) — "Re-pair" is the truthful affordance.
 const CTA_LABEL_BY_ID: Partial<Record<HealthId, string>> = {
   auth_lost: 'Re-pair',
+  // The cookie WAS set and RSI stopped accepting it; the fix is a
+  // fresh paste, not first-time setup.
+  rsi_session_expired: 'Paste new cookie',
 };
 
 function ctaLabel(it: HealthItem): string {

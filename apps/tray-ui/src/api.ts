@@ -577,6 +577,7 @@ export type HealthId =
   | 'cookie_missing'
   | 'sync_failing'
   | 'hangar_skip'
+  | 'rsi_session_expired'
   | 'email_unverified'
   | 'game_log_stale'
   | 'update_available'
@@ -604,6 +605,7 @@ export type HealthParams =
   | { id: 'cookie_missing' }
   | { id: 'sync_failing'; last_error: string; attempts_since_success: number }
   | { id: 'hangar_skip'; reason: string; since: string }
+  | { id: 'rsi_session_expired'; since: string }
   | { id: 'email_unverified' }
   | { id: 'game_log_stale'; last_event_at: string }
   | { id: 'update_available'; version: string }

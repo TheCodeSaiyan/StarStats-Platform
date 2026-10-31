@@ -359,7 +359,7 @@ async fn fetch_pledges_page(
         );
         let mut s = hangar_stats.lock();
         s.last_error = Some("RSI cookie expired or invalid".into());
-        s.last_skip_reason = Some("rsi_cookie_invalid".into());
+        s.last_skip_reason = Some(crate::health::RSI_COOKIE_INVALID.into());
         return Ok(None);
     }
     if !status.is_success() {
