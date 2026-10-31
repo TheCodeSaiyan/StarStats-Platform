@@ -38,6 +38,18 @@ struct IngestResponse {
     accepted: u32,
     duplicate: u32,
     rejected: u32,
+    /// Set when the account was renamed since this device paired: the
+    /// batch was accepted under the new handle, and the server hands over
+    /// a device token that names it. Absent from older servers.
+    #[serde(default)]
+    handle_changed: Option<HandleChanged>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+struct HandleChanged {
+    claimed_handle: String,
+    #[serde(default)]
+    device_token: Option<String>,
 }
 
 /// Shape returned by `GET /v1/auth/me`. Mirrors the server's
@@ -534,13 +546,16 @@ impl GameProbe {
 }
 
 /// What one `drain_lane` pass learned about the queue behind it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct DrainOutcome {
     /// The page came back FULL, so there is almost certainly more
     /// behind it. Drives catch-up: the lane loops again immediately
     /// instead of sleeping its interval. Inferred from the page rather
     /// than a `COUNT(*)` so the hot path stays a single query.
     page_was_full: bool,
+    /// The server reported a handle rename during this drain, and it has
+    /// been saved. The lane switches to it for its next drain.
+    handle_changed: Option<HandleChanged>,
 }
 
 /// Rough serialized size of one envelope, used to keep a POST body
@@ -590,6 +605,48 @@ fn chunk_by_bytes(events: Vec<UnsentEvent>, max_bytes: usize) -> Vec<Vec<UnsentE
         chunks.push(current);
     }
     chunks
+}
+
+#[cfg(test)]
+mod handle_change_tests {
+    use super::*;
+
+    #[test]
+    fn an_older_server_response_has_no_handle_change() {
+        let r: IngestResponse =
+            serde_json::from_str(r#"{"batch_id":"b","accepted":1,"duplicate":0,"rejected":0}"#)
+                .unwrap();
+        assert_eq!(r.handle_changed, None);
+    }
+
+    #[test]
+    fn a_renamed_account_hands_over_handle_and_token() {
+        let r: IngestResponse = serde_json::from_str(
+            r#"{"batch_id":"b","accepted":1,"duplicate":0,"rejected":0,
+                "handle_changed":{"claimed_handle":"NewPilot","device_token":"tok2"}}"#,
+        )
+        .unwrap();
+        let hc = r.handle_changed.unwrap();
+        let mut cfg = config::Config::default();
+        cfg.remote_sync.claimed_handle = Some("OldPilot".into());
+        cfg.remote_sync.access_token = Some("tok1".into());
+        apply_handle_change(&mut cfg, &hc);
+        assert_eq!(cfg.remote_sync.claimed_handle.as_deref(), Some("NewPilot"));
+        assert_eq!(cfg.remote_sync.access_token.as_deref(), Some("tok2"));
+    }
+
+    #[test]
+    fn a_handle_change_without_a_token_keeps_the_current_token() {
+        let hc = HandleChanged {
+            claimed_handle: "NewPilot".into(),
+            device_token: None,
+        };
+        let mut cfg = config::Config::default();
+        cfg.remote_sync.access_token = Some("tok1".into());
+        apply_handle_change(&mut cfg, &hc);
+        assert_eq!(cfg.remote_sync.claimed_handle.as_deref(), Some("NewPilot"));
+        assert_eq!(cfg.remote_sync.access_token.as_deref(), Some("tok1"));
+    }
 }
 
 #[cfg(test)]
@@ -853,6 +910,10 @@ fn spawn_lane(
     location_catalog: Arc<parking_lot::RwLock<Arc<LocationCatalog>>>,
 ) -> tauri::async_runtime::JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
+        // Replaced when the server reports a handle rename (see
+        // DrainOutcome::handle_changed); every later drain uses the new pair.
+        let mut access_token = access_token;
+        let mut claimed_handle = claimed_handle;
         // Consecutive drain failures, for the inter-cycle backoff. Reset to 0
         // on any successful drain; grows the sleep exponentially otherwise.
         let mut consecutive_failures: u32 = 0;
@@ -949,6 +1010,12 @@ fn spawn_lane(
                 .await
                 {
                     Ok(outcome) => {
+                        if let Some(hc) = outcome.handle_changed {
+                            claimed_handle = hc.claimed_handle;
+                            if let Some(token) = hc.device_token {
+                                access_token = token;
+                            }
+                        }
                         // Reachable server (even an empty drain) clears the
                         // backoff so the lane returns to its normal cadence.
                         consecutive_failures = 0;
@@ -1203,6 +1270,7 @@ async fn drain_lane(
         }
         return Ok(DrainOutcome {
             page_was_full: false,
+            handle_changed: None,
         });
     }
 
@@ -1257,6 +1325,7 @@ async fn drain_lane(
     let mut total_duplicate = 0u32;
     let mut total_rejected = 0u32;
     let mut total_quarantined = 0u32;
+    let mut handle_changed: Option<HandleChanged> = None;
 
     while let Some(sub_batch) = stack.pop() {
         // Peek (do NOT consume) the next per-device batch ordinal. It is
@@ -1302,6 +1371,26 @@ async fn drain_lane(
                 total_accepted += parsed.accepted;
                 total_duplicate += parsed.duplicate;
                 total_rejected += parsed.rejected;
+                // The rest of this page keeps the old handle and token:
+                // the server goes on accepting both while the old handle
+                // is held, so there is no need to stop mid-page.
+                if let Some(hc) = parsed.handle_changed {
+                    if handle_changed.is_none() {
+                        match adopt_renamed_handle(&hc) {
+                            Ok(()) => {
+                                tracing::info!(
+                                    lane = lane.label(),
+                                    "account handle changed on the server; adopted the new handle and device token"
+                                );
+                                handle_changed = Some(hc);
+                            }
+                            Err(e) => tracing::warn!(
+                                error = %e,
+                                "could not save the renamed handle; will retry on the next batch"
+                            ),
+                        }
+                    }
+                }
             }
             Err(SendError::Auth { status, body }) => {
                 // `device_sync_disabled` is NOT auth loss. A freshly-paired
@@ -1426,7 +1515,10 @@ async fn drain_lane(
         "drain: batch shipped"
     );
 
-    Ok(DrainOutcome { page_was_full })
+    Ok(DrainOutcome {
+        page_was_full,
+        handle_changed,
+    })
 }
 
 /// Outcome of one POST /v1/ingest attempt, classified so the caller
@@ -1492,6 +1584,22 @@ async fn try_send_batch(
     resp.json::<IngestResponse>()
         .await
         .map_err(|e| SendError::Transient(anyhow::Error::from(e).context("parse ingest response")))
+}
+
+/// Save the handle and device token the server issued after the account
+/// was renamed. Saving a config with a token writes it to the keychain.
+fn adopt_renamed_handle(hc: &HandleChanged) -> Result<()> {
+    let mut cfg = config::load().context("load config to adopt renamed handle")?;
+    apply_handle_change(&mut cfg, hc);
+    config::save(&cfg).context("save config after handle rename")
+}
+
+/// The config edit behind [`adopt_renamed_handle`], kept pure for tests.
+fn apply_handle_change(cfg: &mut config::Config, hc: &HandleChanged) {
+    cfg.remote_sync.claimed_handle = Some(hc.claimed_handle.clone());
+    if let Some(token) = &hc.device_token {
+        cfg.remote_sync.access_token = Some(token.clone());
+    }
 }
 
 /// Wipe the persisted device token + claimed_handle from the on-disk

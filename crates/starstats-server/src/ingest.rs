@@ -103,6 +103,22 @@ pub struct IngestResponse {
     pub accepted: u32,
     pub duplicate: u32,
     pub rejected: u32,
+    /// Present when the batch was stamped with a handle the account has
+    /// since renamed away from. The batch was accepted under the current
+    /// handle; the tray adopts `claimed_handle` and `device_token`, which
+    /// names it. Trays that predate this field ignore it and keep working,
+    /// because ingest goes on accepting their old handle while it is held.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handle_changed: Option<HandleChanged>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct HandleChanged {
+    pub claimed_handle: String,
+    /// A fresh device token for this device. Absent when the request was
+    /// made with a user token, or the token could not be minted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_token: Option<String>,
 }
 
 /// OpenAPI-only mirror of `starstats_core::wire::IngestBatch`. The
@@ -763,6 +779,8 @@ pub async fn handle<S: EventStore>(
     State(store): State<Arc<S>>,
     Extension(audit): Extension<Arc<dyn AuditLog>>,
     Extension(devices): Extension<Arc<dyn DeviceStore>>,
+    handle_index: Option<Extension<Arc<crate::handle_renames::HandleIndex>>>,
+    issuer: Option<Extension<Arc<crate::auth::TokenIssuer>>>,
     guard: RequireUnrestricted<Ingest>,
     Json(mut batch): Json<IngestBatch>,
 ) -> impl IntoResponse {
@@ -801,6 +819,43 @@ pub async fn handle<S: EventStore>(
             }),
         )
             .into_response();
+    }
+
+    // A tray paired before a handle rename still stamps its batches with
+    // the old handle. The extractor has already moved the token on to the
+    // current handle; if the batch carries one this account renamed away
+    // from (and still holds), accept it under the current handle and hand
+    // the tray a token that names it. Only the account's OWN old handles
+    // qualify, so the cross-check below still stops user A writing as B.
+    let mut handle_changed: Option<HandleChanged> = None;
+    if !batch
+        .claimed_handle
+        .eq_ignore_ascii_case(&user.preferred_username)
+    {
+        let renamed = handle_index.as_ref().and_then(|Extension(index)| {
+            let id = Uuid::parse_str(&user.sub).ok()?;
+            index.get(id)
+        });
+        if let Some(acct) = renamed.filter(|a| {
+            a.previous_handles
+                .iter()
+                .any(|h| h.eq_ignore_ascii_case(&batch.claimed_handle))
+        }) {
+            counter!("starstats_ingest_batches_restamped", "reason" => "handle_renamed")
+                .increment(1);
+            let device_token = match (user.device_id, issuer.as_ref()) {
+                (Some(device_id), Some(Extension(issuer))) => issuer
+                    .sign_device(&user.sub, &acct.current_handle, device_id)
+                    .inspect_err(|e| tracing::warn!(error = %e, "device token re-issue failed"))
+                    .ok(),
+                _ => None,
+            };
+            batch.claimed_handle = acct.current_handle.clone();
+            handle_changed = Some(HandleChanged {
+                claimed_handle: acct.current_handle,
+                device_token,
+            });
+        }
     }
 
     // Cross-check: the bearer token's preferred_username must match
@@ -1050,6 +1105,7 @@ pub async fn handle<S: EventStore>(
             accepted,
             duplicate,
             rejected,
+            handle_changed,
         }),
     )
         .into_response()
@@ -1405,6 +1461,96 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(parse_response(&bytes).accepted, 1);
         assert_eq!(store.snapshot().len(), 1);
+    }
+
+    /// A tray paired before a rename: device token and batch both carry
+    /// the old handle. Returns the router and the device's token.
+    async fn renamed_tray(
+        store: Arc<MemoryStore>,
+        env: &TestEnv,
+        old: &str,
+        new: &str,
+    ) -> (Router, String) {
+        use crate::handle_renames::{HandleIndex, HandleRename, RESERVATION};
+        let devices = Arc::new(MemoryDeviceStore::new());
+        let user_id = Uuid::new_v4();
+        let device_id = devices
+            .seed_paired_device(user_id, "Test PC")
+            .await
+            .unwrap();
+        devices
+            .set_sync_enabled(user_id, device_id, true)
+            .await
+            .unwrap();
+        let token = env
+            .issuer
+            .sign_device(&user_id.to_string(), old, device_id)
+            .unwrap();
+        let index = Arc::new(HandleIndex::new());
+        let now = chrono::Utc::now();
+        index.record(&HandleRename {
+            id: Uuid::new_v4(),
+            user_id,
+            old_handle: old.into(),
+            new_handle: new.into(),
+            was_verified: true,
+            free_change: false,
+            renamed_at: now,
+            reserved_until: now + RESERVATION,
+            spicedb_moved_at: None,
+        });
+        let app = router_with_devices(
+            store,
+            env.verifier.clone(),
+            Arc::new(MemoryAuditLog::default()),
+            devices,
+        )
+        .layer(Extension(index))
+        .layer(Extension(Arc::new(env.issuer.clone())));
+        (app, token)
+    }
+
+    #[tokio::test]
+    async fn a_tray_from_before_a_rename_is_accepted_and_handed_a_new_token() {
+        let store = Arc::new(MemoryStore::new());
+        let env = test_env();
+        let (app, token) = renamed_tray(store.clone(), &env, HANDLE, "NewSaiyan").await;
+
+        let body = batch(vec![sample_envelope("evt-1")]);
+        let (status, bytes) = post_batch_with(&app, Some(&token), &body).await;
+        assert_eq!(
+            status,
+            StatusCode::OK,
+            "{}",
+            String::from_utf8_lossy(&bytes)
+        );
+
+        let resp = parse_response(&bytes);
+        assert_eq!(resp.accepted, 1);
+        let changed = resp
+            .handle_changed
+            .expect("the tray is told the handle changed");
+        assert_eq!(changed.claimed_handle, "NewSaiyan");
+        let claims = env
+            .verifier
+            .verify(&changed.device_token.expect("a fresh device token"))
+            .unwrap();
+        assert_eq!(claims.preferred_username, "NewSaiyan");
+        assert_eq!(claims.token_type, crate::auth::TokenType::Device);
+        assert_eq!(store.snapshot()[0].claimed_handle, "newsaiyan");
+    }
+
+    #[tokio::test]
+    async fn a_handle_the_account_never_held_is_still_refused() {
+        let store = Arc::new(MemoryStore::new());
+        let env = test_env();
+        let (app, token) = renamed_tray(store.clone(), &env, HANDLE, "NewSaiyan").await;
+
+        let mut body = batch(vec![sample_envelope("evt-1")]);
+        body.claimed_handle = "SomeoneElse".into();
+        let (status, _) = post_batch_with(&app, Some(&token), &body).await;
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(store.snapshot().is_empty());
     }
 
     #[tokio::test]

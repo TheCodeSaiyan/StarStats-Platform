@@ -468,21 +468,31 @@ impl UserStore for PostgresUserStore {
         // give us free contention checks. Map their constraint codes
         // back into typed errors so handlers can return 409 with a
         // useful body instead of 500.
+        //
+        // A handle another account renamed away from stays held for that
+        // account for 90 days (handle_renames, migration 0081), so nobody
+        // can sign up as a player who has just changed name. A held
+        // handle inserts nothing and reads as taken.
         let sql = format!(
             "INSERT INTO users (id, email, password_hash, claimed_handle) \
-             VALUES ($1, lower($2), $3, $4) \
+             SELECT $1, lower($2), $3, $4 \
+             WHERE NOT EXISTS (SELECT 1 FROM handle_renames \
+                               WHERE lower(old_handle) = lower($4) \
+                                 AND reserved_until > now()) \
              RETURNING {USER_SELECT}"
         );
-        let row: Result<UserRow, sqlx::Error> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
-            .bind(id)
-            .bind(email)
-            .bind(password_hash)
-            .bind(claimed_handle)
-            .fetch_one(&self.pool)
-            .await;
+        let row: Result<Option<UserRow>, sqlx::Error> =
+            sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
+                .bind(id)
+                .bind(email)
+                .bind(password_hash)
+                .bind(claimed_handle)
+                .fetch_optional(&self.pool)
+                .await;
 
         match row {
-            Ok(row) => Ok(user_from_row(row)),
+            Ok(Some(row)) => Ok(user_from_row(row)),
+            Ok(None) => Err(UserError::HandleTaken),
             Err(sqlx::Error::Database(db)) if db.constraint() == Some("users_email_uq") => {
                 Err(UserError::EmailTaken)
             }
@@ -1177,6 +1187,21 @@ pub mod test_support {
     impl MemoryUserStore {
         pub fn new() -> Self {
             Self::default()
+        }
+
+        /// The rename's effect on the user row, for
+        /// `MemoryHandleRenameStore`: new handle, RSI verification and
+        /// any in-flight code cleared. Returns the row as it was before,
+        /// or `None` for an unknown user.
+        pub fn apply_handle_rename(&self, user_id: Uuid, new_handle: &str) -> Option<User> {
+            let mut rows = self.rows.lock().unwrap();
+            let user = rows.values_mut().find(|u| u.id == user_id)?;
+            let before = user.clone();
+            user.claimed_handle = new_handle.to_owned();
+            user.rsi_verified_at = None;
+            user.rsi_verify_code = None;
+            user.rsi_verify_expires_at = None;
+            Some(before)
         }
     }
 

@@ -17,6 +17,7 @@ use chrono::{DateTime, Utc};
 use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::Serialize;
 use sqlx::PgPool;
+use std::sync::Arc;
 
 /// The minimum age for chat: the publisher's, since Star Citizen has no
 /// formal age rating yet (social design §4.7). One value, so a future
@@ -166,6 +167,9 @@ pub struct MatrixLoginSigner {
     server_name: String,
     /// Where clients reach the homeserver (its client API base URL).
     pub public_url: String,
+    /// Resolves a handle to the chat localpart, which differs from the
+    /// lower-cased handle after a rename. `None` (tests) derives it.
+    localparts: Option<Arc<dyn crate::chat_rooms::ChatLocalparts>>,
 }
 
 impl MatrixLoginSigner {
@@ -182,7 +186,29 @@ impl MatrixLoginSigner {
             issuer,
             server_name,
             public_url,
+            localparts: None,
         })
+    }
+
+    /// Resolve handles through `localparts`. Production always sets it: a
+    /// derived localpart can belong to a renamed player.
+    pub fn with_localparts(
+        mut self,
+        localparts: Arc<dyn crate::chat_rooms::ChatLocalparts>,
+    ) -> Self {
+        self.localparts = Some(localparts);
+        self
+    }
+
+    /// The chat localpart of the player holding `handle`.
+    pub async fn localpart_for(&self, handle: &str) -> Result<String, ChatError> {
+        match &self.localparts {
+            Some(r) => r
+                .localpart(handle)
+                .await
+                .map_err(|e| ChatError::Signing(format!("localpart lookup: {e}"))),
+            None => Ok(localpart(handle)),
+        }
     }
 
     /// The player's Matrix user ID.
@@ -190,13 +216,26 @@ impl MatrixLoginSigner {
         format!("@{}:{}", localpart(handle), self.server_name)
     }
 
-    /// A login token for `handle`, and when it expires.
+    /// A login token for `handle`, and when it expires. Tests only: it
+    /// derives the localpart, which is wrong for a renamed player. Routes
+    /// resolve one and call [`Self::mint_as`].
+    #[cfg(test)]
     pub fn mint(&self, handle: &str, now: DateTime<Utc>) -> Result<(String, i64), ChatError> {
+        self.mint_as(&localpart(handle), handle, now)
+    }
+
+    /// A login token for the chat account `localpart`, shown as `name`.
+    pub fn mint_as(
+        &self,
+        localpart: &str,
+        name: &str,
+        now: DateTime<Utc>,
+    ) -> Result<(String, i64), ChatError> {
         let iat = now.timestamp();
         let exp = iat + LOGIN_TOKEN_TTL_SECS;
         let claims = LoginClaims {
-            sub: localpart(handle),
-            name: handle,
+            sub: localpart.to_string(),
+            name,
             iss: &self.issuer,
             aud: LOGIN_TOKEN_AUDIENCE,
             iat,
@@ -292,6 +331,32 @@ mod tests {
         assert!(ChatLaunch::Staff.offers(true));
         assert!(!ChatLaunch::Staff.offers(false));
         assert!(ChatLaunch::On.offers(false));
+    }
+
+    #[tokio::test]
+    async fn a_renamed_player_signs_in_to_the_chat_account_they_had() {
+        use crate::chat_rooms::test_support::MemoryChatLocalparts;
+        let (signer, decoding) = signer();
+        let pins = Arc::new(MemoryChatLocalparts::default());
+        pins.pinned
+            .lock()
+            .unwrap()
+            .insert("newpilot".into(), "oldpilot".into());
+        let signer = signer.with_localparts(pins);
+
+        let localpart = signer.localpart_for("NewPilot").await.unwrap();
+        assert_eq!(localpart, "oldpilot");
+        assert_eq!(signer.user_id(&localpart), "@oldpilot:starstats.app");
+
+        let (token, _) = signer.mint_as(&localpart, "NewPilot", Utc::now()).unwrap();
+        let mut v = Validation::new(Algorithm::RS256);
+        v.set_audience(&["matrix"]);
+        v.set_issuer(&["starstats-test"]);
+        let claims = decode::<serde_json::Value>(&token, &decoding, &v)
+            .unwrap()
+            .claims;
+        assert_eq!(claims["sub"], "oldpilot", "the account they already had");
+        assert_eq!(claims["name"], "NewPilot", "shown under the new handle");
     }
 
     #[test]

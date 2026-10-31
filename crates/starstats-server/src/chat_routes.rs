@@ -142,6 +142,16 @@ async fn status_for(
     let rsi_verified = me.rsi_verified_at.is_some();
     let age_declared = declared_for_chat(declaration);
     let available = signer.is_some();
+    let user_id = match signer.as_ref() {
+        Some(s) => Some(
+            s.user_id(
+                &s.localpart_for(&me.claimed_handle)
+                    .await
+                    .map_err(|e| internal("chat_localpart", e))?,
+            ),
+        ),
+        None => None,
+    };
     Ok(ChatStatus {
         available,
         can_chat: available && rsi_verified && age_declared && !restricted,
@@ -149,7 +159,7 @@ async fn status_for(
         age_declared,
         minimum_age: CHAT_MIN_AGE,
         restricted,
-        user_id: signer.as_ref().map(|s| s.user_id(&me.claimed_handle)),
+        user_id,
         homeserver_url: signer.as_ref().map(|s| s.public_url.clone()),
         offered: false,
     })
@@ -355,10 +365,16 @@ pub async fn login_token(
         return err(StatusCode::TOO_MANY_REQUESTS, "rate_limited");
     }
     let now = Utc::now();
-    match s.mint(&me.claimed_handle, now) {
+    // A renamed player signs in to the chat account they already had; the
+    // handle they have now is only its display name.
+    let localpart = match s.localpart_for(&me.claimed_handle).await {
+        Ok(lp) => lp,
+        Err(e) => return internal("chat_localpart", e),
+    };
+    match s.mint_as(&localpart, &me.claimed_handle, now) {
         Ok((token, exp)) => Json(MatrixLoginToken {
             token,
-            user_id: s.user_id(&me.claimed_handle),
+            user_id: s.user_id(&localpart),
             homeserver_url: s.public_url.clone(),
             expires_in: exp - now.timestamp(),
         })
@@ -483,7 +499,11 @@ pub async fn my_rooms(
     let Some(rooms) = rooms.as_ref() else {
         return Json(MyChatRooms { rooms: Vec::new() }).into_response();
     };
-    match rooms.store.rooms_of(&me.claimed_handle).await {
+    let localpart = match rooms.chat_id(&me.claimed_handle).await {
+        Ok(lp) => lp,
+        Err(e) => return internal("chat_localpart", e),
+    };
+    match rooms.store.rooms_of(&localpart).await {
         Ok(rooms) => Json(MyChatRooms { rooms }).into_response(),
         Err(e) => internal("rooms_of", e),
     }

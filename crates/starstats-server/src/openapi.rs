@@ -37,6 +37,7 @@ use crate::entity_rollup;
 use crate::event_timeline;
 use crate::export_routes;
 use crate::facts_routes;
+use crate::handle_rename_routes;
 use crate::hangar_routes;
 use crate::hangar_store;
 use crate::health;
@@ -178,6 +179,10 @@ impl Modify for SecurityAddon {
         device_routes::set_sync,
         rsi_verify_routes::start,
         rsi_verify_routes::verify,
+        rsi_verify_routes::reverify,
+        handle_rename_routes::status,
+        handle_rename_routes::change,
+        handle_rename_routes::current_handle,
         rsi_profile_routes::refresh,
         rsi_profile_routes::me,
         rsi_profile_routes::public_profile,
@@ -416,6 +421,7 @@ impl Modify for SecurityAddon {
         well_known::OidcDiscovery,
         // Ingest
         ingest::IngestResponse,
+        ingest::HandleChanged,
         ingest::IngestBatchSchema,
         ingest::EventEnvelopeSchema,
         ingest::ResolvedLocationSchema,
@@ -706,6 +712,11 @@ impl Modify for SecurityAddon {
         // RSI verify
         rsi_verify_routes::RsiStartResponse,
         rsi_verify_routes::RsiVerifyResponse,
+        // RSI handle rename
+        handle_rename_routes::HandleStatusResponse,
+        handle_rename_routes::HandleChangeRequest,
+        handle_rename_routes::HandleChangeResponse,
+        handle_rename_routes::CurrentHandleResponse,
         // RSI profile
         rsi_profile_routes::ProfileResponse,
         rsi_verify::Badge,
