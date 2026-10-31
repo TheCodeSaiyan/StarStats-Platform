@@ -21,6 +21,10 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 ### New
 - Reach chat from the nav, and start a chat from /chat.
 
+## [Tray 0.1.42] - 2026-09-29
+
+No player-facing changes.
+
 ## [Tray 0.1.41] - 2026-09-29
 
 ### New
