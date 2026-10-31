@@ -1226,6 +1226,19 @@ export function scenarioFor(
     // measure the error state. `POST /v1/auth/rsi/start` is
     // DELIBERATELY left unmocked: it is a mutation, and a silent
     // default would mask a test asserting a failed verify-start.
+    // `/settings` reads the handle-rename state for the RSI pane. A read,
+    // so it gets a default: a never-renamed, unverified account, which
+    // offers the free change and no cooldown.
+    'GET /v1/auth/rsi/handle': {
+      status: 200,
+      body: {
+        claimed_handle: 'TestPilot',
+        verified: false,
+        free_change_available: true,
+        cooldown_days: 30,
+        reservation_days: 90,
+      },
+    },
     'GET /v1/me/profile-views': noProfileViews,
     'GET /v1/discover/profiles': noDiscoverProfiles,
     // The `/me` page (Plan 4 redirect target) also fetches the RSI

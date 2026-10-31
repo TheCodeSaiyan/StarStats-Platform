@@ -66,6 +66,9 @@ export type EmailChangeVerifyResponse =
 
 export type RsiStartResponse = apiSchema['schemas']['RsiStartResponse'];
 export type RsiVerifyResponse = apiSchema['schemas']['RsiVerifyResponse'];
+export type HandleStatusResponse = apiSchema['schemas']['HandleStatusResponse'];
+export type HandleChangeResponse = apiSchema['schemas']['HandleChangeResponse'];
+export type CurrentHandleResponse = apiSchema['schemas']['CurrentHandleResponse'];
 
 export type MagicLinkStartRequest =
   apiSchema['schemas']['MagicLinkStartRequest'];
@@ -751,6 +754,59 @@ export async function rsiVerifyCheck(
   bearer: string,
 ): Promise<RsiVerifyResponse> {
   return postJson<RsiVerifyResponse>('/v1/auth/rsi/verify', {}, bearer);
+}
+
+/** Issue (or reuse) a bio code even when the handle is already verified. */
+export async function rsiReverify(bearer: string): Promise<RsiStartResponse> {
+  return postJson<RsiStartResponse>('/v1/auth/rsi/reverify', {}, bearer);
+}
+
+// -- RSI handle rename ----------------------------------------------
+
+export async function getHandleStatus(
+  bearer: string,
+): Promise<HandleStatusResponse> {
+  return request<HandleStatusResponse>(
+    'GET',
+    '/v1/auth/rsi/handle',
+    undefined,
+    bearer,
+  );
+}
+
+/**
+ * Change the account's handle. The response carries a user token naming
+ * the new handle; the caller's token still names the old one, so the
+ * session must be updated from it.
+ */
+export async function changeHandle(
+  bearer: string,
+  newHandle: string,
+): Promise<HandleChangeResponse> {
+  return postJson<HandleChangeResponse>(
+    '/v1/auth/rsi/handle',
+    { new_handle: newHandle },
+    bearer,
+  );
+}
+
+/**
+ * Where a link built on `handle` should go after its owner renamed. `null`
+ * when there is no redirect (live handle, unknown, or its hold has ended).
+ */
+export async function getCurrentHandle(handle: string): Promise<string | null> {
+  try {
+    const r = await request<CurrentHandleResponse>(
+      'GET',
+      `/v1/handles/${encodeURIComponent(handle)}/current`,
+      undefined,
+      undefined,
+    );
+    return r.handle;
+  } catch (e) {
+    if (e instanceof ApiCallError && e.status === 404) return null;
+    throw e;
+  }
 }
 
 // -- RSI citizen profile snapshot ----------------------------------

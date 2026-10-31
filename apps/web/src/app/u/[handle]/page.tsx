@@ -40,6 +40,7 @@ import {
 import { formatEventType } from '@/lib/event-types';
 import { logger } from '@/lib/logger';
 import { getSession } from '@/lib/session';
+import { redirectIfRenamed } from '@/lib/handle-redirect';
 import { ProfileProjection } from './_projection/ProfileProjection';
 import { SharedEventFeed } from './_projection/SharedEventFeed';
 import { loadAllReferenceBundles } from '@/lib/reference';
@@ -207,6 +208,16 @@ async function fetchRecipientScopes(
 export default async function PublicProfilePage(props: PageProps) {
   const { handle } = await props.params;
   const view = await resolveProfile(handle);
+  if (view.kind === 'denied') {
+    // A link built on a handle its owner has since renamed away from: send
+    // it on to the current one while the old handle is held. The range
+    // (the only query that changes what is shown) goes with it.
+    const sp = props.searchParams ? await props.searchParams : {};
+    await redirectIfRenamed(handle, (current) => {
+      const path = `/u/${encodeURIComponent(current)}`;
+      return sp.range ? `${path}?range=${encodeURIComponent(sp.range)}` : path;
+    });
+  }
   const session = await getSession();
 
   let calibration: Calibration = 'terra';
