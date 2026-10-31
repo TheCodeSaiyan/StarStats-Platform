@@ -176,7 +176,10 @@ pub async fn report(
     if body.messages.is_empty() || body.messages.len() > MAX_REVEALED {
         return err(StatusCode::BAD_REQUEST, "messages_count");
     }
-    let expected_sender = rooms.user_id(reported);
+    let expected_sender = match rooms.user_id_for(reported).await {
+        Ok(id) => id,
+        Err(e) => return internal("chat_localpart", e),
+    };
     for m in &body.messages {
         if !m.event_id.starts_with('$') || m.event_id.len() > 255 {
             return err(StatusCode::BAD_REQUEST, "messages_invalid");
@@ -191,7 +194,11 @@ pub async fn report(
     }
     // Both must be in the room: you report what you saw, in a chat you share.
     for h in [me.claimed_handle.as_str(), reported] {
-        match rooms.store.is_member(&body.room_id, h).await {
+        let localpart = match rooms.chat_id(h).await {
+            Ok(lp) => lp,
+            Err(e) => return internal("chat_localpart", e),
+        };
+        match rooms.store.is_member(&body.room_id, &localpart).await {
             Ok(true) => {}
             Ok(false) => return err(StatusCode::NOT_FOUND, "not_found"),
             Err(e) => return internal("is_member", e),

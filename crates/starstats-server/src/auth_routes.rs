@@ -674,6 +674,12 @@ pub async fn delete_account<U: UserStore>(
         return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
     }
 
+    // Resolved while the user row exists: a renamed player's chat account
+    // is named there (see ChatRooms::close_account).
+    let chat_localpart = match crate::chat_rooms::from_ext(&chat) {
+        Some(rooms) => rooms.chat_id(&user.claimed_handle).await.ok(),
+        None => None,
+    };
     if let Err(e) = users.delete_user(user.id).await {
         tracing::error!(error = %e, user_id = %user.id, "delete user failed");
         return error(StatusCode::INTERNAL_SERVER_ERROR, "internal", None);
@@ -687,11 +693,9 @@ pub async fn delete_account<U: UserStore>(
     }
     // And out of every chat room, so the handle leaves nothing behind.
     if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
-        crate::chat_rooms::best_effort(
-            "remove_everywhere",
-            rooms.close_account(&user.claimed_handle),
-        )
-        .await;
+        let localpart =
+            chat_localpart.unwrap_or_else(|| crate::chat::localpart(&user.claimed_handle));
+        crate::chat_rooms::best_effort("remove_everywhere", rooms.close_account(&localpart)).await;
     }
 
     (

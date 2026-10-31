@@ -33,9 +33,11 @@ use spicedb_client::builder::{
 };
 use spicedb_grpc::authzed::api::v1::{
     check_permission_response::Permissionship, consistency::Requirement as ConsistencyRequirement,
+    relationship_update::Operation as RelationshipOperation,
     schema_service_client::SchemaServiceClient, CheckPermissionRequest, Consistency,
     DeleteRelationshipsRequest, ObjectReference, ReadRelationshipsRequest, ReadSchemaRequest,
-    RelationshipFilter, SubjectFilter, SubjectReference, WriteRelationshipsRequest,
+    Relationship, RelationshipFilter, RelationshipUpdate, SubjectFilter, SubjectReference,
+    WriteRelationshipsRequest,
 };
 use tonic::{metadata::MetadataValue, Code, Status};
 
@@ -850,46 +852,7 @@ impl SpicedbClient {
     /// Every filter is attempted even if one fails, and the first error is
     /// returned, so one bad RPC does not leave the rest in place.
     pub async fn delete_everything_for_handle(&self, handle: &str) -> Result<()> {
-        let subject = |t: &str| {
-            Some(SubjectFilter {
-                subject_type: t.to_string(),
-                optional_subject_id: handle.to_string(),
-                optional_relation: None,
-            })
-        };
-        let mut filters = vec![
-            // The handle's own resources.
-            RelationshipFilter {
-                resource_type: "stats_record".to_string(),
-                optional_resource_id: handle.to_string(),
-                optional_resource_id_prefix: String::new(),
-                optional_relation: String::new(),
-                optional_subject_filter: None,
-            },
-            RelationshipFilter {
-                resource_type: "user".to_string(),
-                optional_resource_id: handle.to_string(),
-                optional_resource_id_prefix: String::new(),
-                optional_relation: String::new(),
-                optional_subject_filter: None,
-            },
-        ];
-        // The handle as the subject, on every definition that can name a user.
-        for resource_type in [
-            "stats_record",
-            "organization",
-            "user",
-            "oauth_app",
-            "oauth_token",
-        ] {
-            filters.push(RelationshipFilter {
-                resource_type: resource_type.to_string(),
-                optional_resource_id: String::new(),
-                optional_resource_id_prefix: String::new(),
-                optional_relation: String::new(),
-                optional_subject_filter: subject("user"),
-            });
-        }
+        let filters = handle_filters(handle);
         let mut first_err: Option<anyhow::Error> = None;
         for filter in filters {
             let what = filter.resource_type.clone();
@@ -910,6 +873,89 @@ impl SpicedbClient {
             Some(e) => Err(e),
             None => Ok(()),
         }
+    }
+
+    /// Move every relationship that names `user:<old>` or
+    /// `stats_record:<old>` (as resource or subject) to the new handle,
+    /// after a handle rename. Shares, friendships, org membership and
+    /// public visibility survive the rename this way.
+    ///
+    /// Reads with the same filters [`Self::delete_everything_for_handle`]
+    /// deletes with, both for the handle as written and lower-cased, since
+    /// callers have not always normalised case. Each moved relationship is
+    /// a DELETE of the old one and a TOUCH of the new one in the same
+    /// write, so a chunk lands whole or not at all. Re-running after a
+    /// partial failure is safe: what already moved no longer matches the
+    /// read, and TOUCH is idempotent. That is what lets the reconciler
+    /// retry a rename whose move did not land.
+    pub async fn move_handle(&self, old: &str, new: &str) -> Result<usize> {
+        let mut ids = vec![old.to_string()];
+        if old.to_lowercase() != old {
+            ids.push(old.to_lowercase());
+        }
+        let mut updates: Vec<RelationshipUpdate> = Vec::new();
+        for id in &ids {
+            // The replacement keeps the stored id's case convention.
+            let target = if id == &id.to_lowercase() {
+                new.to_lowercase()
+            } else {
+                new.to_string()
+            };
+            for filter in handle_filters(id) {
+                let what = filter.resource_type.clone();
+                let req = ReadRelationshipsRequest {
+                    consistency: consistency_requirement(true),
+                    relationship_filter: Some(filter),
+                    optional_limit: 0,
+                    optional_cursor: None,
+                };
+                let mut inner = self.inner.clone();
+                let mut stream = inner
+                    .read_relationships(req)
+                    .await
+                    .with_context(|| format!("SpiceDB ReadRelationships ({what}) failed"))?;
+                loop {
+                    match stream.message().await {
+                        Ok(Some(msg)) => {
+                            if let Some(rel) = msg.relationship {
+                                if let Some(moved) = renamed_relationship(&rel, id, &target) {
+                                    updates.push(RelationshipUpdate {
+                                        operation: RelationshipOperation::Delete as i32,
+                                        relationship: Some(rel),
+                                    });
+                                    updates.push(RelationshipUpdate {
+                                        operation: RelationshipOperation::Touch as i32,
+                                        relationship: Some(moved),
+                                    });
+                                }
+                            }
+                        }
+                        Ok(None) => break,
+                        Err(e) => {
+                            return Err(anyhow!("SpiceDB ReadRelationships stream error: {e}"))
+                        }
+                    }
+                }
+            }
+        }
+        // A relationship naming the handle as both resource and subject
+        // (stats_record:<h>#owner@user:<h>) is read by two filters.
+        let mut seen = std::collections::HashSet::new();
+        updates.retain(|u| seen.insert(format!("{}:{:?}", u.operation, u.relationship)));
+        let moved = updates.len() / 2;
+        // SpiceDB caps updates per write (1000 by default); keep pairs together.
+        for chunk in updates.chunks(MOVE_UPDATES_PER_WRITE) {
+            let req = WriteRelationshipsRequest {
+                updates: chunk.to_vec(),
+                ..Default::default()
+            };
+            let mut inner = self.inner.clone();
+            inner
+                .write_relationships(req)
+                .await
+                .context("SpiceDB WriteRelationships (handle move) failed")?;
+        }
+        Ok(moved)
     }
 
     /// Fully consistent [`Self::check_permission`], for a decision
@@ -1158,6 +1204,77 @@ impl PublicAccessChecker for SpicedbClient {
         // PR #59-followup review team).
         self.has_public_view(handle).await
     }
+}
+
+/// Updates per WriteRelationships call when moving a handle. Even, so a
+/// DELETE and its TOUCH always land in the same write; under SpiceDB's
+/// default cap of 1000.
+const MOVE_UPDATES_PER_WRITE: usize = 500;
+
+/// Every relationship filter that can match a handle: its own
+/// `stats_record` and `user` resources, and the handle as a `user`
+/// subject on every definition that can name one. Shared by the delete
+/// sweep and the rename move so the two can never cover different ground.
+fn handle_filters(handle: &str) -> Vec<RelationshipFilter> {
+    let mut filters = vec![
+        RelationshipFilter {
+            resource_type: "stats_record".to_string(),
+            optional_resource_id: handle.to_string(),
+            optional_resource_id_prefix: String::new(),
+            optional_relation: String::new(),
+            optional_subject_filter: None,
+        },
+        RelationshipFilter {
+            resource_type: "user".to_string(),
+            optional_resource_id: handle.to_string(),
+            optional_resource_id_prefix: String::new(),
+            optional_relation: String::new(),
+            optional_subject_filter: None,
+        },
+    ];
+    for resource_type in [
+        "stats_record",
+        "organization",
+        "user",
+        "oauth_app",
+        "oauth_token",
+    ] {
+        filters.push(RelationshipFilter {
+            resource_type: resource_type.to_string(),
+            optional_resource_id: String::new(),
+            optional_resource_id_prefix: String::new(),
+            optional_relation: String::new(),
+            optional_subject_filter: Some(SubjectFilter {
+                subject_type: "user".to_string(),
+                optional_subject_id: handle.to_string(),
+                optional_relation: None,
+            }),
+        });
+    }
+    filters
+}
+
+/// `rel` with every reference to the handle `old` replaced by `new`, or
+/// `None` when it does not name `old`. Only `stats_record` and `user`
+/// object ids are handles; an organization slug that happens to equal
+/// the handle is left alone. Relation, subject relation and caveat carry
+/// over unchanged.
+fn renamed_relationship(rel: &Relationship, old: &str, new: &str) -> Option<Relationship> {
+    let mut out = rel.clone();
+    let mut changed = false;
+    if let Some(res) = out.resource.as_mut() {
+        if matches!(res.object_type.as_str(), "stats_record" | "user") && res.object_id == old {
+            res.object_id = new.to_string();
+            changed = true;
+        }
+    }
+    if let Some(obj) = out.subject.as_mut().and_then(|s| s.object.as_mut()) {
+        if obj.object_type == "user" && obj.object_id == old {
+            obj.object_id = new.to_string();
+            changed = true;
+        }
+    }
+    changed.then_some(out)
 }
 
 /// Test doubles for [`PublicAccessChecker`].
@@ -1574,5 +1691,67 @@ mod tests {
             vec!["haulers".to_string(), "miners".to_string()]
         );
         assert!(c.list_orgs_for_user("Carol").await.unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod handle_move_tests {
+    use super::*;
+
+    fn rel(rt: &str, rid: &str, relation: &str, st: &str, sid: &str) -> Relationship {
+        Relationship {
+            resource: Some(ObjectReference {
+                object_type: rt.into(),
+                object_id: rid.into(),
+            }),
+            relation: relation.into(),
+            subject: Some(SubjectReference {
+                object: Some(ObjectReference {
+                    object_type: st.into(),
+                    object_id: sid.into(),
+                }),
+                optional_relation: String::new(),
+            }),
+            optional_caveat: None,
+        }
+    }
+
+    #[test]
+    fn owner_tuple_moves_on_both_sides() {
+        let r = rel("stats_record", "old", "owner", "user", "old");
+        let moved = renamed_relationship(&r, "old", "new").unwrap();
+        assert_eq!(moved, rel("stats_record", "new", "owner", "user", "new"));
+    }
+
+    #[test]
+    fn a_share_to_the_handle_moves_only_the_subject() {
+        let r = rel("stats_record", "friend", "share_with_user", "user", "old");
+        let moved = renamed_relationship(&r, "old", "new").unwrap();
+        assert_eq!(
+            moved,
+            rel("stats_record", "friend", "share_with_user", "user", "new")
+        );
+    }
+
+    #[test]
+    fn an_org_with_the_same_slug_is_not_renamed() {
+        let r = rel("organization", "old", "member", "user", "someone");
+        assert_eq!(renamed_relationship(&r, "old", "new"), None);
+        let r = rel("organization", "old", "member", "user", "old");
+        assert_eq!(
+            renamed_relationship(&r, "old", "new"),
+            Some(rel("organization", "old", "member", "user", "new"))
+        );
+    }
+
+    #[test]
+    fn the_public_wildcard_is_left_alone() {
+        let r = rel("stats_record", "other", "public_view", "user", "*");
+        assert_eq!(renamed_relationship(&r, "old", "new"), None);
+    }
+
+    #[test]
+    fn move_chunks_keep_delete_and_touch_together() {
+        assert_eq!(MOVE_UPDATES_PER_WRITE % 2, 0);
     }
 }

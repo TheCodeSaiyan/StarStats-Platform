@@ -86,6 +86,8 @@ mod facts;
 mod facts_routes;
 mod facts_store;
 mod friend_sync;
+mod handle_rename_routes;
+mod handle_renames;
 mod hangar_routes;
 mod hangar_store;
 mod health;
@@ -665,6 +667,11 @@ async fn main() -> anyhow::Result<()> {
     // to see at once, not a feature that quietly vanishes.
     let chat_access_dyn: Arc<dyn crate::chat::ChatAccessStore> =
         Arc::new(crate::chat::PostgresChatAccessStore::new(pool.clone()));
+    // Handle -> chat localpart (they differ after a rename, migration 0082).
+    // Shared by the login signer and the room service so both name a
+    // player the same way.
+    let chat_localparts: Arc<dyn crate::chat_rooms::ChatLocalparts> =
+        Arc::new(crate::chat_rooms::PostgresChatLocalparts::new(pool.clone()));
     let matrix_signer: Arc<Option<crate::chat::MatrixLoginSigner>> =
         Arc::new(match cfg.matrix.as_ref() {
             Some(m) => Some(
@@ -678,7 +685,8 @@ async fn main() -> anyhow::Result<()> {
                     anyhow::anyhow!(
                         "STARSTATS_MATRIX_LOGIN_KEY is not a usable RSA private key: {e}"
                     )
-                })?,
+                })?
+                .with_localparts(chat_localparts.clone()),
             ),
             None => None,
         });
@@ -699,6 +707,7 @@ async fn main() -> anyhow::Result<()> {
                 Some(as_token) => {
                     let service_user = format!("@starstats:{}", m.server_name);
                     Some(crate::chat_rooms::ChatRooms {
+                        localparts: chat_localparts.clone(),
                         store: Arc::new(crate::chat_rooms::PostgresChatRoomStore::new(
                             pool.clone(),
                         )),
@@ -799,6 +808,24 @@ async fn main() -> anyhow::Result<()> {
     // shares_paused_until on the owner.
     let users_dyn: Arc<dyn crate::users::UserStore> = users.clone();
     let rsi_router = rsi_verify_routes::routes(users.clone());
+    // Handle renames: one transaction across every handle-keyed table,
+    // then a SpiceDB move the reconciler retries if it fails.
+    let handle_renames_dyn: Arc<dyn crate::handle_renames::HandleRenameStore> = Arc::new(
+        crate::handle_renames::PostgresHandleRenameStore::new(pool.clone()),
+    );
+    let handle_rename_router = handle_rename_routes::routes(users.clone());
+    // Old tokens name the old handle; the auth extractor consults this
+    // index to act as the current one. Reloaded every minute so a rename
+    // on another instance arrives too.
+    let handle_index = Arc::new(crate::handle_renames::HandleIndex::new());
+    crate::handle_renames::spawn_handle_index_refresh(
+        handle_renames_dyn.clone(),
+        handle_index.clone(),
+    );
+    if let Some(client) = spicedb.as_ref().as_ref() {
+        let mover: Arc<dyn crate::handle_renames::HandleMover> = Arc::new(client.clone());
+        crate::handle_renames::spawn_spicedb_reconciler(handle_renames_dyn.clone(), mover);
+    }
     let profile_router =
         rsi_profile_routes::routes(users.clone(), profiles.clone(), profile_view_stats.clone());
     let rsi_orgs_router = rsi_org_routes::routes(users.clone(), rsi_orgs.clone());
@@ -1071,6 +1098,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(news_routes::routes())
         .merge(release_routes::routes())
         .merge(rsi_router)
+        .merge(handle_rename_router)
         .merge(profile_router)
         .merge(rsi_orgs_router)
         .merge(hangar_router)
@@ -1130,6 +1158,8 @@ async fn main() -> anyhow::Result<()> {
         .layer(Extension(public_access_checker))
         .layer(Extension(supporter_store_dyn))
         .layer(Extension(share_metadata_dyn))
+        .layer(Extension(handle_renames_dyn))
+        .layer(Extension(handle_index))
         .layer(Extension(admin_user_insights_dyn))
         .layer(Extension(account_restrictions_dyn))
         .layer(Extension(share_reports_dyn))

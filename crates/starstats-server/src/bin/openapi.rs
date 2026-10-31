@@ -100,6 +100,10 @@ mod facts;
 mod facts_routes;
 #[path = "../facts_store.rs"]
 mod facts_store;
+#[path = "../handle_rename_routes.rs"]
+mod handle_rename_routes;
+#[path = "../handle_renames.rs"]
+mod handle_renames;
 #[path = "../hangar_routes.rs"]
 mod hangar_routes;
 #[path = "../hangar_store.rs"]

@@ -1044,6 +1044,13 @@ pub trait EventQuery: Send + Sync + 'static {
 /// take `Option<PayloadFilter<'_>>` apply it as a `payload->>field =
 /// value` predicate on the `events` table. Borrowed form so the
 /// caller doesn't have to allocate.
+///
+/// `equals` is matched as a PLAYER NAME: the Postgres impl also matches
+/// every handle that account renamed away from (`handle_renames`),
+/// because the game log names a player as they were called at the time.
+/// Its only caller filters `victim = <caller's handle>`. A filter on a
+/// value that is not a handle finds no rename rows and behaves as a plain
+/// equality.
 #[derive(Debug, Clone, Copy)]
 pub struct PayloadFilter<'a> {
     pub field: &'a str,
@@ -4190,14 +4197,22 @@ impl EventQuery for PostgresStore {
         // `events_lower_handle_event_type_idx`; actor_death is a small
         // fraction of the table, so no further index is warranted until a
         // plan says otherwise.
+        // `names`: the subject and every handle its account renamed away
+        // from. The game log names the player as they were called at the
+        // time, so kills from before a rename carry the old handle.
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
-            "SELECT payload->>$2 AS value, COUNT(*)::BIGINT AS count
-               FROM events
+            "WITH names AS (
+                 SELECT ARRAY[$3::text] || ARRAY(
+                     SELECT r.old_handle FROM handle_renames r
+                       JOIN users u ON u.id = r.user_id
+                      WHERE lower(u.claimed_handle) = lower($3)) AS n)
+             SELECT payload->>$2 AS value, COUNT(*)::BIGINT AS count
+               FROM events, names
               WHERE claimed_handle = LOWER($1)
                 AND event_type = 'actor_death'
-                AND payload->>'killer' = $3
+                AND payload->>'killer' = ANY(names.n)
                 -- A self-kill is a death, not a kill.
-                AND payload->>'victim' IS DISTINCT FROM $3
+                AND NOT COALESCE(payload->>'victim' = ANY(names.n), FALSE)
                 AND ($4::timestamptz IS NULL OR event_timestamp >= $4)
                 AND payload ? $2
               GROUP BY payload->>$2
@@ -4229,14 +4244,20 @@ impl EventQuery for PostgresStore {
         // to the empty string. That is the same edge `strip_entity_id` guards
         // in Rust, and the two must agree: Memory-backed tests assert on the
         // Rust one and would otherwise pass while production disagreed.
+        // `names` as in kill_field_breakdown: the subject and its old handles.
         let rows: Vec<(Option<String>, i64)> = sqlx::query_as(
-            "SELECT regexp_replace(payload->>'victim', '(.)_[0-9]+$', '\\1') AS value,
+            "WITH names AS (
+                 SELECT ARRAY[$2::text] || ARRAY(
+                     SELECT r.old_handle FROM handle_renames r
+                       JOIN users u ON u.id = r.user_id
+                      WHERE lower(u.claimed_handle) = lower($2)) AS n)
+             SELECT regexp_replace(payload->>'victim', '(.)_[0-9]+$', '\\1') AS value,
                     COUNT(*)::BIGINT AS count
-               FROM events
+               FROM events, names
               WHERE claimed_handle = LOWER($1)
                 AND event_type = 'actor_death'
-                AND payload->>'killer' = $2
-                AND payload->>'victim' IS DISTINCT FROM $2
+                AND payload->>'killer' = ANY(names.n)
+                AND NOT COALESCE(payload->>'victim' = ANY(names.n), FALSE)
                 AND ($3::timestamptz IS NULL OR event_timestamp >= $3)
                 AND payload ? 'victim'
               GROUP BY 1
@@ -4286,7 +4307,11 @@ impl EventQuery for PostgresStore {
                 AND ($4::timestamptz IS NULL OR event_timestamp >= $4)
                 AND ($8::timestamptz IS NULL OR event_timestamp < $8)
                 AND payload ? $2
-                AND ($5::text IS NULL OR payload->>$5 = $6)
+                AND ($5::text IS NULL OR payload->>$5 = ANY(
+                    ARRAY[$6::text] || ARRAY(
+                        SELECT r.old_handle FROM handle_renames r
+                          JOIN users u ON u.id = r.user_id
+                         WHERE lower(u.claimed_handle) = lower($6))))
               GROUP BY payload->>$2
               ORDER BY count DESC, value ASC
               LIMIT $7",
@@ -4557,7 +4582,11 @@ impl EventQuery for PostgresStore {
                 AND event_type = $2
                 AND ($3::timestamptz IS NULL OR event_timestamp >= $3)
                 AND ($6::timestamptz IS NULL OR event_timestamp < $6)
-                AND ($4::text IS NULL OR payload->>$4 = $5)",
+                AND ($4::text IS NULL OR payload->>$4 = ANY(
+                    ARRAY[$5::text] || ARRAY(
+                        SELECT r.old_handle FROM handle_renames r
+                          JOIN users u ON u.id = r.user_id
+                         WHERE lower(u.claimed_handle) = lower($5))))",
         )
         .bind(claimed_handle)
         .bind(event_type)
@@ -4636,15 +4665,22 @@ impl EventQuery for PostgresStore {
         // One scan of the handle's actor_death + player_death rows, splitting
         // kills / actor-deaths / player-deaths with FILTER — replaces three
         // separate count_event_type index scans with identical results.
+        // `names` as in kill_field_breakdown: the subject and its old handles.
         let (kills, deaths_actor, deaths_player): (i64, i64, i64) = sqlx::query_as(
-            "SELECT
+            "WITH names AS (
+                 SELECT ARRAY[$2::text] || ARRAY(
+                     SELECT r.old_handle FROM handle_renames r
+                       JOIN users u ON u.id = r.user_id
+                      WHERE lower(u.claimed_handle) = lower($2)) AS n)
+             SELECT
                  COUNT(*) FILTER (WHERE event_type = 'actor_death'
-                                    AND payload->>'killer' = $2
+                                    AND payload->>'killer' = ANY(names.n)
                                     -- A self-kill is a death, not a kill.
-                                    AND payload->>'victim' IS DISTINCT FROM $2)::BIGINT,
-                 COUNT(*) FILTER (WHERE event_type = 'actor_death' AND payload->>'victim' = $2)::BIGINT,
+                                    AND NOT COALESCE(payload->>'victim' = ANY(names.n), FALSE))::BIGINT,
+                 COUNT(*) FILTER (WHERE event_type = 'actor_death'
+                                    AND payload->>'victim' = ANY(names.n))::BIGINT,
                  COUNT(*) FILTER (WHERE event_type = 'player_death')::BIGINT
-               FROM events
+               FROM events, names
               WHERE claimed_handle = LOWER($1)
                 AND event_type IN ('actor_death', 'player_death')
                 AND ($3::timestamptz IS NULL OR event_timestamp >= $3)",

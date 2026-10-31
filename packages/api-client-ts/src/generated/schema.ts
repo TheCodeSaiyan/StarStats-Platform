@@ -1348,6 +1348,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/rsi/handle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["status"];
+        put?: never;
+        post: operations["change"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/rsi/orgs/refresh": {
         parameters: {
             query?: never;
@@ -1374,6 +1390,27 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["rsi_profile_refresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/rsi/reverify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-prove the current handle at any time. Unlike `/start`, this issues
+         *     a code even to a verified account (reusing one still in flight);
+         *     `/verify` then checks it.
+         */
+        post: operations["rsi_verify_reverify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1624,6 +1661,27 @@ export interface paths {
             cookie?: never;
         };
         get: operations["donate_list_tiers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/handles/{handle}/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a profile or share link built on an old handle should go. Public:
+         *     the rename is already visible to anyone who follows such a link, and
+         *     the answer only exists for the 90 days the old handle is held.
+         */
+        get: operations["current_handle"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5441,6 +5499,9 @@ export interface components {
             /** @description Open commend windows, soonest to close first. */
             windows: components["schemas"]["CommendWindow"][];
         };
+        CurrentHandleResponse: {
+            handle: string;
+        };
         CurrentLocationResponse: {
             location: components["schemas"]["ResolvedLocation"];
         };
@@ -6538,6 +6599,63 @@ export interface components {
             reason?: string | null;
             role: string;
         };
+        HandleChangeRequest: {
+            new_handle: string;
+        };
+        HandleChangeResponse: {
+            claimed_handle: string;
+            /** Format: date-time */
+            cooldown_until: string;
+            free_change: boolean;
+            previous_handle: string;
+            /** Format: date-time */
+            previous_handle_reserved_until: string;
+            /**
+             * @description A user token naming the new handle. The caller's token still names
+             *     the old one; the web stores this in the session.
+             */
+            token: string;
+            /** @description Always false: the new handle is unproven until the bio check. */
+            verified: boolean;
+        };
+        HandleChanged: {
+            claimed_handle: string;
+            /**
+             * @description A fresh device token for this device. Absent when the request was
+             *     made with a user token, or the token could not be minted.
+             */
+            device_token?: string | null;
+        };
+        HandleStatusResponse: {
+            claimed_handle: string;
+            /**
+             * Format: int64
+             * @description Days between renames, and days an old handle is held, so the UI
+             *     states the consequences from the server's numbers.
+             */
+            cooldown_days: number;
+            /**
+             * Format: date-time
+             * @description When the next rename is allowed. Absent when one is allowed now.
+             */
+            cooldown_until?: string | null;
+            /**
+             * @description True while the account has never been verified and never renamed:
+             *     its first rename skips the cooldown.
+             */
+            free_change_available: boolean;
+            /**
+             * @description The handle before the most recent rename, while it is still held
+             *     for this account.
+             */
+            previous_handle?: string | null;
+            /** Format: date-time */
+            previous_handle_reserved_until?: string | null;
+            /** Format: int64 */
+            reservation_days: number;
+            /** @description Whether the current handle is proven by the RSI bio check. */
+            verified: boolean;
+        };
         HangarPushRequestSchema: {
             /** Format: int32 */
             schema_version: number;
@@ -6698,6 +6816,7 @@ export interface components {
             batch_id: string;
             /** Format: int32 */
             duplicate: number;
+            handle_changed?: null | components["schemas"]["HandleChanged"];
             /** Format: int32 */
             rejected: number;
         };
@@ -8759,12 +8878,13 @@ export interface components {
             claimed_handle: string;
             /**
              * @description The string the user must paste into their RSI bio. Absent when
-             *     `verified` is true.
+             *     `verified` is true, except from `/reverify`, which re-checks a
+             *     verified handle.
              */
             code?: string | null;
             /**
              * Format: date-time
-             * @description ISO-8601 UTC. Absent when `verified` is true.
+             * @description ISO-8601 UTC. Present exactly when `code` is.
              */
             expires_at?: string | null;
             /**
@@ -14298,6 +14418,113 @@ export interface operations {
             };
         };
     };
+    status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Handle and rename state */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandleStatusResponse"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Device token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    change: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HandleChangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Handle changed; verification reset */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HandleChangeResponse"];
+                };
+            };
+            /** @description invalid_handle or handle_unchanged */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Device token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description handle_taken or handle_reserved */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description rename_cooldown; detail carries the time it ends */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
     rsi_orgs_refresh: {
         parameters: {
             query?: never;
@@ -14433,6 +14660,51 @@ export interface operations {
             };
             /** @description RSI upstream unreachable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+        };
+    };
+    rsi_verify_reverify: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fresh verification code issued; `verified` is the current state, which a failed re-check does not change */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RsiStartResponse"];
+                };
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is a device token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
+                };
+            };
+            /** @description Server error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -15258,6 +15530,38 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TierListResponse"];
+                };
+            };
+        };
+    };
+    current_handle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description A handle that may have been renamed away from */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The handle's owner renamed within the last 90 days; this is their handle now */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CurrentHandleResponse"];
+                };
+            };
+            /** @description No redirect: the handle is live, unknown, or its hold has ended */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorBody"];
                 };
             };
         };

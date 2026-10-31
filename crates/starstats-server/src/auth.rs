@@ -479,7 +479,25 @@ where
             .expect("AuthVerifier extension not installed");
 
         let claims = verifier.verify(bearer.token())?;
-        let user: AuthenticatedUser = claims.into();
+        let issued_at = claims.iat;
+        let mut user: AuthenticatedUser = claims.into();
+
+        // A token issued before a handle rename still names the old
+        // handle, and handlers use `preferred_username` as the handle.
+        // Act as the current one instead, so an old token can neither
+        // read the wrong data nor write rows under a handle that has
+        // gone. Optional: a router without the index (most unit tests)
+        // trusts the token as before.
+        if let Some(index) = parts
+            .extensions
+            .get::<Arc<crate::handle_renames::HandleIndex>>()
+        {
+            if let Ok(sub) = Uuid::parse_str(&user.sub) {
+                if let Some(current) = index.resolve(sub, &user.preferred_username, issued_at) {
+                    user.preferred_username = current;
+                }
+            }
+        }
 
         // Device tokens are subject to server-side revocation: the
         // signed JWT is valid for 90 days, but the user can hit
@@ -815,5 +833,60 @@ mod tests {
             StatusCode::SERVICE_UNAVAILABLE,
             "a dependency failure must tell the client to RETRY, never to re-pair"
         );
+    }
+
+    async fn extract_with_index(
+        token: &str,
+        verifier: AuthVerifier,
+        index: Option<Arc<crate::handle_renames::HandleIndex>>,
+    ) -> AuthenticatedUser {
+        use axum::http::Request;
+        let mut parts = Request::builder()
+            .uri("/v1/me")
+            .header("authorization", format!("Bearer {token}"))
+            .body(())
+            .unwrap()
+            .into_parts()
+            .0;
+        parts.extensions.insert(Arc::new(verifier));
+        if let Some(index) = index {
+            parts.extensions.insert(index);
+        }
+        <AuthenticatedUser as FromRequestParts<()>>::from_request_parts(&mut parts, &())
+            .await
+            .expect("a valid user token authenticates")
+    }
+
+    /// A web token minted before a handle rename names the old handle for
+    /// up to an hour, and handlers read the handle from the token. The
+    /// extractor must hand them the current one.
+    #[tokio::test]
+    async fn a_token_from_before_a_rename_acts_as_the_new_handle() {
+        use crate::handle_renames::{HandleIndex, HandleRename, RESERVATION};
+        let (issuer, verifier) = test_support::fresh_pair();
+        let user_id = Uuid::new_v4();
+        let token = issuer.sign_user(&user_id.to_string(), "OldPilot").unwrap();
+
+        let index = Arc::new(HandleIndex::new());
+        let now = chrono::Utc::now();
+        index.record(&HandleRename {
+            id: Uuid::new_v4(),
+            user_id,
+            old_handle: "OldPilot".into(),
+            new_handle: "NewPilot".into(),
+            was_verified: true,
+            free_change: false,
+            renamed_at: now,
+            reserved_until: now + RESERVATION,
+            spicedb_moved_at: None,
+        });
+
+        let user = extract_with_index(&token, verifier.clone(), Some(index)).await;
+        assert_eq!(user.preferred_username, "NewPilot");
+        assert_eq!(user.sub, user_id.to_string());
+
+        // Without the index installed, the token is taken as it stands.
+        let user = extract_with_index(&token, verifier, None).await;
+        assert_eq!(user.preferred_username, "OldPilot");
     }
 }

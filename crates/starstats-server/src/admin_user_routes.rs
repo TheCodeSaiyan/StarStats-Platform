@@ -744,6 +744,12 @@ pub async fn delete_user_admin<U: UserStore>(
         return err_response(StatusCode::INTERNAL_SERVER_ERROR, "internal");
     }
 
+    // Resolved while the user row exists: a renamed player's chat account
+    // is named there (see ChatRooms::close_account).
+    let chat_localpart = match crate::chat_rooms::from_ext(&chat) {
+        Some(rooms) => rooms.chat_id(&target.claimed_handle).await.ok(),
+        None => None,
+    };
     let outcome = match body.mode {
         DeleteMode::Pseudonymise => users.delete_user(target_id).await,
         DeleteMode::Purge => users.purge_user(target_id).await,
@@ -759,11 +765,9 @@ pub async fn delete_user_admin<U: UserStore>(
             .await;
     }
     if let Some(rooms) = crate::chat_rooms::from_ext(&chat) {
-        crate::chat_rooms::best_effort(
-            "remove_everywhere",
-            rooms.close_account(&target.claimed_handle),
-        )
-        .await;
+        let localpart =
+            chat_localpart.unwrap_or_else(|| crate::chat::localpart(&target.claimed_handle));
+        crate::chat_rooms::best_effort("remove_everywhere", rooms.close_account(&localpart)).await;
     }
 
     (
