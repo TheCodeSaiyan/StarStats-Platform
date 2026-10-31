@@ -19,6 +19,7 @@ describe('healthStrings', () => {
     cookie_missing: { id: 'cookie_missing' },
     sync_failing: { id: 'sync_failing', last_error: '502 Bad Gateway', attempts_since_success: 3 },
     hangar_skip: { id: 'hangar_skip', reason: 'rate limited', since: '2026-05-16T08:00:00Z' },
+    rsi_session_expired: { id: 'rsi_session_expired', since: '2026-05-16T08:00:00Z' },
     email_unverified: { id: 'email_unverified' },
     game_log_stale: { id: 'game_log_stale', last_event_at: '2026-05-16T07:00:00Z' },
     update_available: { id: 'update_available', version: '0.4.1-beta' },

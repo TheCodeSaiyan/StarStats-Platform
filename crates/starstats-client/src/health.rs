@@ -28,6 +28,7 @@ pub enum HealthId {
     CookieMissing,
     SyncFailing,
     HangarSkip,
+    RsiSessionExpired,
     EmailUnverified,
     GameLogStale,
     UpdateAvailable,
@@ -70,6 +71,9 @@ pub enum HealthParams {
     },
     HangarSkip {
         reason: String,
+        since: String,
+    },
+    RsiSessionExpired {
         since: String,
     },
     EmailUnverified,
@@ -138,6 +142,9 @@ pub struct HealthInputs {
 }
 
 const GAME_LOG_STALE_MIN: i64 = 30;
+/// The skip reason `hangar::fetch_pledges_page` records when RSI answers
+/// 401/403 to the stored cookie.
+pub const RSI_COOKIE_INVALID: &str = "rsi_cookie_invalid";
 const DISK_FREE_LOW_THRESHOLD: u64 = 1_073_741_824; // 1 GiB
 
 /// Derive the ordered list of HealthItems from a snapshot. Pure — no I/O.
@@ -235,8 +242,34 @@ pub fn current_health(inputs: &HealthInputs) -> Vec<HealthItem> {
         ));
     }
 
-    // HangarSkip — only when never-succeeded.
-    if inputs.hangar_last_skip_reason.is_some() && inputs.hangar_last_success_at.is_none() {
+    // RsiSessionExpired — RSI rejected the stored cookie. Fires whether
+    // or not hangar sync ever worked: the usual case is a cookie that
+    // worked for weeks and then expired, which HangarSkip's
+    // never-succeeded rule kept silent. refresh_once clears the skip
+    // reason on the next real attempt, so a fresh paste that fetches
+    // successfully clears this item.
+    let cookie_expired = inputs.hangar_last_skip_reason.as_deref() == Some(RSI_COOKIE_INVALID);
+    if cookie_expired {
+        let since = inputs
+            .hangar_last_attempt_at
+            .map(|t| t.to_rfc3339())
+            .unwrap_or_else(|| inputs.now.to_rfc3339());
+        items.push(item(
+            HealthId::RsiSessionExpired,
+            Severity::Warn,
+            HealthParams::RsiSessionExpired { since },
+            Some(HealthAction::GoToSettings {
+                field: SettingsField::RsiCookie,
+            }),
+        ));
+    }
+
+    // HangarSkip — only when never-succeeded, and not for an expired
+    // cookie, which has its own item above.
+    if !cookie_expired
+        && inputs.hangar_last_skip_reason.is_some()
+        && inputs.hangar_last_success_at.is_none()
+    {
         let reason = inputs.hangar_last_skip_reason.clone().unwrap();
         let since = inputs
             .hangar_last_attempt_at
@@ -364,6 +397,9 @@ fn id_order(id: HealthId) -> u8 {
         HealthId::CookieMissing => 4,
         HealthId::SyncFailing => 5,
         HealthId::HangarSkip => 6,
+        // Same slot as HangarSkip: it takes over that item for the
+        // rsi_cookie_invalid reason, so the two never both show.
+        HealthId::RsiSessionExpired => 6,
         HealthId::EmailUnverified => 7,
         // Same slot as GamelogMissing — the two are mutually
         // exclusive, so they never compete for a position.
@@ -693,6 +729,53 @@ mod tests {
         inputs.hangar_last_success_at = Some(inputs.now - chrono::Duration::hours(2));
         let items = current_health(&inputs);
         assert!(items.iter().all(|i| i.id != HealthId::HangarSkip));
+    }
+
+    #[test]
+    fn rsi_session_expired_fires_even_after_a_prior_success() {
+        // The common case: hangar sync worked for weeks, then the RSI
+        // cookie expired. HangarSkip stays silent after a success, which
+        // is why an expired cookie used to go unreported.
+        let mut inputs = empty_inputs();
+        inputs.gamelog_override_set = true;
+        inputs.hangar_last_skip_reason = Some("rsi_cookie_invalid".into());
+        inputs.hangar_last_attempt_at = Some(inputs.now);
+        inputs.hangar_last_success_at = Some(inputs.now - chrono::Duration::days(3));
+        let items = current_health(&inputs);
+        let item = items
+            .iter()
+            .find(|i| i.id == HealthId::RsiSessionExpired)
+            .expect("an expired RSI cookie raises a health item");
+        assert_eq!(item.severity, Severity::Warn);
+        assert_eq!(
+            item.action,
+            Some(HealthAction::GoToSettings {
+                field: SettingsField::RsiCookie
+            })
+        );
+    }
+
+    #[test]
+    fn rsi_session_expired_replaces_hangar_skip_for_that_reason() {
+        let mut inputs = empty_inputs();
+        inputs.gamelog_override_set = true;
+        inputs.hangar_last_skip_reason = Some("rsi_cookie_invalid".into());
+        inputs.hangar_last_attempt_at = Some(inputs.now);
+        let items = current_health(&inputs);
+        assert!(items.iter().any(|i| i.id == HealthId::RsiSessionExpired));
+        assert!(items.iter().all(|i| i.id != HealthId::HangarSkip));
+    }
+
+    #[test]
+    fn rsi_session_expired_clears_once_the_skip_reason_is_gone() {
+        // refresh_once clears last_skip_reason on every real attempt, so a
+        // successful fetch after a re-paste leaves no reason behind.
+        let mut inputs = empty_inputs();
+        inputs.gamelog_override_set = true;
+        inputs.hangar_last_skip_reason = None;
+        inputs.hangar_last_success_at = Some(inputs.now);
+        let items = current_health(&inputs);
+        assert!(items.iter().all(|i| i.id != HealthId::RsiSessionExpired));
     }
 
     #[test]
