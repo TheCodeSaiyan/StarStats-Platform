@@ -13,15 +13,19 @@ import {
   refreshProfile,
   refreshRsiOrgs,
   resendVerification,
+  changeHandle,
+  getHandleStatus,
+  rsiReverify,
   rsiVerifyCheck,
   rsiVerifyStart,
+  type HandleStatusResponse,
   type HangarSnapshot,
   type MeResponse,
   type ProfileResponse,
   type RsiStartResponse,
 } from '@/lib/api';
 import { logger } from '@/lib/logger';
-import { clearSession, getSession } from '@/lib/session';
+import { clearSession, getSession, setSession } from '@/lib/session';
 import { getTheme, isTheme, setTheme, type Theme } from '@/lib/theme';
 import {
   DEFAULT_WAVE_SPEED,
@@ -45,6 +49,7 @@ import {
 } from './_projection/SettingsProjection';
 import { TimezoneField, WaveSpeedField } from './_projection/controls';
 import { HangarPane } from './_projection/HangarPane';
+import { HandlePane } from './_projection/HandlePane';
 import { SETTINGS_GROUPS } from './_projection/groups';
 
 export const metadata = { title: "Settings" };
@@ -64,6 +69,10 @@ interface SearchParams {
    * where it still works (a plain navigation, a copied link).
    */
   pane?: string;
+  /** Opens the confirm step of a handle change for this handle. */
+  rename?: string;
+  /** `1` shows the bio-code steps to re-prove an already verified handle. */
+  reverify?: string;
 }
 
 // ----- Layout style helpers ------------------------------------------------
@@ -92,7 +101,7 @@ export default async function SettingsPage(props: {
   const session = await getSession();
   if (!session) redirect('/auth/login?next=/settings');
 
-  const { status, error, pane } = await props.searchParams;
+  const { status, error, pane, rename, reverify } = await props.searchParams;
 
   // /v1/auth/me is the source of truth — the cookie may be stale.
   let me: MeResponse;
@@ -113,11 +122,16 @@ export default async function SettingsPage(props: {
   // Failure here degrades to "couldn't load" rather than throwing,
   // because verification is opt-in and the rest of the page is
   // unrelated.
+  // A verified user who asked to re-prove the handle gets a code too, from
+  // /reverify (which reuses a code still in flight, so a reload is safe).
+  const reverifying = me.rsi_verified && reverify === '1';
   let rsiState: RsiStartResponse | null = null;
   let rsiLoadFailed = false;
-  if (!me.rsi_verified) {
+  if (!me.rsi_verified || reverifying) {
     try {
-      rsiState = await rsiVerifyStart(session.token);
+      rsiState = reverifying
+        ? await rsiReverify(session.token)
+        : await rsiVerifyStart(session.token);
     } catch (e) {
       if (e instanceof ApiCallError && e.status === 401) {
         redirect('/auth/login?next=/settings');
@@ -125,6 +139,18 @@ export default async function SettingsPage(props: {
       logger.warn({ err: e }, 'rsi verify start failed');
       rsiLoadFailed = true;
     }
+  }
+
+  // Handle rename state (cooldown, free change, held old handle). Failure
+  // degrades to the pane saying it couldn't load; the rest renders.
+  let handleStatus: HandleStatusResponse | null = null;
+  try {
+    handleStatus = await getHandleStatus(session.token);
+  } catch (e) {
+    if (e instanceof ApiCallError && e.status === 401) {
+      redirect('/auth/login?next=/settings');
+    }
+    logger.warn({ err: e }, 'call=handle_status failed');
   }
 
   // Active theme. Source-of-truth order:
@@ -290,6 +316,43 @@ export default async function SettingsPage(props: {
       verified
         ? '/settings?status=rsi_verified#rsi'
         : '/settings?error=rsi_unknown#rsi',
+    );
+  }
+
+  async function changeHandleAction(formData: FormData) {
+    'use server';
+    const session = await getSession();
+    if (!session) redirect('/auth/login?next=/settings');
+    const newHandle = String(formData.get('new_handle') ?? '').trim();
+    let changedTo: string | null = null;
+    try {
+      const resp = await changeHandle(session.token, newHandle);
+      // The token we hold names the old handle. Keep the session's token
+      // and handle in step with the server's answer, not with what was
+      // typed: a no-op would otherwise show a success it didn't have.
+      await setSession({
+        ...session,
+        token: resp.token,
+        claimedHandle: resp.claimed_handle,
+      });
+      changedTo = resp.claimed_handle;
+    } catch (e) {
+      if (e instanceof ApiCallError) {
+        if (e.status === 401) redirect('/auth/login?next=/settings');
+        if (e.status === 400 || e.status === 409 || e.status === 429) {
+          redirect(
+            `/settings?error=${encodeURIComponent(e.body.error)}&pane=rsi#rsi`,
+          );
+        }
+      }
+      logger.error({ err: e }, 'handle change failed');
+      redirect('/settings?error=unexpected&pane=rsi#rsi');
+    }
+    revalidatePath('/', 'layout');
+    redirect(
+      changedTo
+        ? '/settings?status=handle_changed&pane=rsi#rsi'
+        : '/settings?error=unexpected&pane=rsi#rsi',
     );
   }
 
@@ -615,112 +678,123 @@ export default async function SettingsPage(props: {
       title: 'RSI handle ownership',
       ctx: me.rsi_verified ? 'Proven' : 'Unproven',
       group: 'account',
-      node: me.rsi_verified ? (
+      node: (
         <>
-          <p className="hp-prose">
-            <span className="val">{me.claimed_handle}</span> is verified.
-            Sharing, org access and your public profile are unlocked.
-          </p>
-          <Plane
-            tilt="flat"
-            cap="Citizen profile snapshot"
-            style={{ marginTop: 20 }}
-          >
-            {profileLoadFailed ? (
-              <p className="hp-prose" style={{ marginTop: 0 }}>
-                Couldn&apos;t load the snapshot. Refresh the page or try again.
+          {me.rsi_verified && !reverifying ? (
+            <>
+              <p className="hp-prose">
+                <span className="val">{me.claimed_handle}</span> is verified.
+                Sharing, org access and your public profile are unlocked.
               </p>
-            ) : profile ? (
-              <p className="hp-prose" style={{ marginTop: 0 }}>
-                Last refreshed:{' '}
-                <span className="val">
-                  {new Date(profile.captured_at).toLocaleString()}
-                </span>
-                .
-              </p>
-            ) : (
-              <p className="hp-prose" style={{ marginTop: 0 }}>
-                You haven&apos;t snapshotted your RSI profile yet. Snapshots
-                cache your display name, badges, bio and primary org so they
-                show up on your projection and public profile.
-              </p>
-            )}
-            <div
-              style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 10,
-                marginTop: 16,
-              }}
-            >
-              <form action={refreshProfileAction}>
-                <BeamButton type="submit" variant="ghost">
-                  Refresh profile
-                </BeamButton>
-              </form>
-              <form action={refreshRsiOrgsAction}>
-                <BeamButton type="submit" variant="ghost">
-                  Refresh orgs
-                </BeamButton>
-              </form>
-            </div>
-          </Plane>
-        </>
-      ) : rsiLoadFailed ? (
-        <p className="hp-prose">
-          Couldn&apos;t load the verification code right now. Refresh the page
-          to try again.
-        </p>
-      ) : rsiState ? (
-        <>
-          <p className="hp-prose">
-            Public profiles and shares display{' '}
-            <span className="val">{me.claimed_handle}</span> as your name. To
-            stop someone signing up as a handle that isn&apos;t theirs, we ask
-            you to prove ownership by pasting a short code into your RSI public
-            bio. Once verified, you can take the code back out — we only check
-            it once.
-          </p>
-          <ol className="hp-steps">
-            <li>
-              Open{' '}
-              <a
-                href={`https://robertsspaceindustries.com/citizens/${encodeURIComponent(me.claimed_handle)}`}
-                target="_blank"
-                rel="noopener noreferrer"
+              <Plane
+                tilt="flat"
+                cap="Citizen profile snapshot"
+                style={{ marginTop: 20 }}
               >
-                your RSI public profile
-              </a>{' '}
-              and click <em>Edit Profile</em> → <em>Bio</em>.
-            </li>
-            <li>
-              Paste this code anywhere in the bio:
-              <div className="hp-secret">{rsiState.code}</div>
-              <p className="hp-prose" style={{ marginTop: 8 }}>
-                Expires{' '}
-                <span className="val">
-                  {rsiState.expires_at
-                    ? new Date(rsiState.expires_at).toLocaleString()
-                    : '(unknown)'}
-                </span>
-                . Save the bio in RSI before pressing the button below.
-              </p>
-            </li>
-            <li>
-              <form action={rsiCheckAction} className="hp-formcol">
-                <BeamButton
-                  type="submit"
-                  variant="primary"
-                  style={{ alignSelf: 'flex-start' }}
+                {profileLoadFailed ? (
+                  <p className="hp-prose" style={{ marginTop: 0 }}>
+                    Couldn&apos;t load the snapshot. Refresh the page or try again.
+                  </p>
+                ) : profile ? (
+                  <p className="hp-prose" style={{ marginTop: 0 }}>
+                    Last refreshed:{' '}
+                    <span className="val">
+                      {new Date(profile.captured_at).toLocaleString()}
+                    </span>
+                    .
+                  </p>
+                ) : (
+                  <p className="hp-prose" style={{ marginTop: 0 }}>
+                    You haven&apos;t snapshotted your RSI profile yet. Snapshots
+                    cache your display name, badges, bio and primary org so they
+                    show up on your projection and public profile.
+                  </p>
+                )}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 10,
+                    marginTop: 16,
+                  }}
                 >
-                  Check now
-                </BeamButton>
-              </form>
-            </li>
-          </ol>
+                  <form action={refreshProfileAction}>
+                    <BeamButton type="submit" variant="ghost">
+                      Refresh profile
+                    </BeamButton>
+                  </form>
+                  <form action={refreshRsiOrgsAction}>
+                    <BeamButton type="submit" variant="ghost">
+                      Refresh orgs
+                    </BeamButton>
+                  </form>
+                </div>
+              </Plane>
+            </>
+          ) : rsiLoadFailed ? (
+            <p className="hp-prose">
+              Couldn&apos;t load the verification code right now. Refresh the page
+              to try again.
+            </p>
+          ) : rsiState ? (
+            <>
+              <p className="hp-prose">
+                Public profiles and shares display{' '}
+                <span className="val">{me.claimed_handle}</span> as your name. To
+                stop someone signing up as a handle that isn&apos;t theirs, we ask
+                you to prove ownership by pasting a short code into your RSI public
+                bio. Once verified, you can take the code back out — we only check
+                it once.
+              </p>
+              <ol className="hp-steps">
+                <li>
+                  Open{' '}
+                  <a
+                    href={`https://robertsspaceindustries.com/citizens/${encodeURIComponent(me.claimed_handle)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    your RSI public profile
+                  </a>{' '}
+                  and click <em>Edit Profile</em> → <em>Bio</em>.
+                </li>
+                <li>
+                  Paste this code anywhere in the bio:
+                  <div className="hp-secret">{rsiState.code}</div>
+                  <p className="hp-prose" style={{ marginTop: 8 }}>
+                    Expires{' '}
+                    <span className="val">
+                      {rsiState.expires_at
+                        ? new Date(rsiState.expires_at).toLocaleString()
+                        : '(unknown)'}
+                    </span>
+                    . Save the bio in RSI before pressing the button below.
+                  </p>
+                </li>
+                <li>
+                  <form action={rsiCheckAction} className="hp-formcol">
+                    <BeamButton
+                      type="submit"
+                      variant="primary"
+                      style={{ alignSelf: 'flex-start' }}
+                    >
+                      Check now
+                    </BeamButton>
+                  </form>
+                </li>
+              </ol>
+            </>
+          ) : (
+            <p className="hp-prose">Loading verification state…</p>
+          )}
+          <HandlePane
+            currentHandle={me.claimed_handle}
+            verified={me.rsi_verified}
+            status={handleStatus}
+            candidate={rename?.trim() ? rename.trim() : null}
+            changeAction={changeHandleAction}
+          />
         </>
-      ) : (
-        <p className="hp-prose">Loading verification state…</p>
       ),
     },
     {
@@ -898,6 +972,8 @@ function labelForStatus(code: string): string {
       return 'Confirmation link sent. Check the new inbox to finish the change.';
     case 'rsi_verified':
       return 'RSI handle verified. You can take the code back out of your bio now.';
+    case 'handle_changed':
+      return 'Handle changed. Prove it with the bio code below to unlock sharing and your public profile again.';
     case 'profile_refreshed':
       return 'Profile snapshot refreshed.';
     case 'orgs_refreshed':
@@ -953,6 +1029,16 @@ function labelForError(code: string): string {
       return 'The verification code expired. Refresh this page to get a fresh one.';
     case 'rsi_unavailable':
       return 'RSI is unreachable right now. Please try again in a few minutes.';
+    case 'invalid_handle':
+      return 'That handle looks invalid. Use letters, digits, _ or -, up to 64 characters.';
+    case 'handle_unchanged':
+      return "That's already your handle. Nothing changed.";
+    case 'handle_taken':
+      return 'Another StarStats account already uses that handle. Nothing changed.';
+    case 'handle_reserved':
+      return 'That handle was recently used by another account and is held for them. Nothing changed.';
+    case 'rename_cooldown':
+      return 'You changed your handle recently, so you need to wait before changing it again. Nothing changed.';
     case 'rsi_unknown':
       return 'Something went wrong checking your bio. Please try again.';
     case 'refresh_too_soon':
