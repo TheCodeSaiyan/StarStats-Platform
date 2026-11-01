@@ -21,7 +21,7 @@
     "prepare": "node -e \"try{require('./scripts/install-hooks.cjs').main()}catch(e){}\""
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11.4",
+    "@tauri-apps/cli": "^2.12.4",
     "turbo": "^2.10.12",
     "typescript": "^5.7.2",
     "@types/node": "^26.5.1"
@@ -30,9 +30,12 @@
     "overrides": {
       "protobufjs@>=7 <7.5.8": ">=7.5.8 <8",
       "protobufjs@>=8 <8.0.2": ">=8.0.2",
-      "vite@<6.4.2": ">=6.4.2",
+      "vite@<6.4.4": ">=6.4.4 <7",
       "esbuild@<0.25.0": ">=0.25.0",
       "brace-expansion@<1.1.21": ">=1.1.21 <2",
+      "brace-expansion@>=2.0.0 <2.1.7": ">=2.1.7 <3",
+      "systeminformation@<5.33.16": ">=5.33.16 <6",
+      "zod@<4.6.6": ">=4.6.6 <5",
       "brace-expansion@>=4.0.0 <5.0.10": ">=5.0.10",
       "undici@>=8.0.0 <8.12.2": ">=8.12.2 <9",
       "source-map-js@<1.2.2": ">=1.2.2 <2",
@@ -41,7 +44,7 @@
       "postcss@<8.5.23": ">=8.5.23",
       "nanoid@<3.3.18": ">=3.3.18",
       "js-yaml@<4.3.2": ">=4.3.2 <5",
-      "sharp@<0.35.4": ">=0.35.4",
+      "sharp@<0.35.5": ">=0.35.5",
       "@babel/core@<=7.29.0": ">=7.29.6",
       "browserslist@<4.28.7": ">=4.28.7",
       "baseline-browser-mapping@<2.11.0": ">=2.11.0"
