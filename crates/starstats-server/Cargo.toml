@@ -81,7 +81,7 @@ hmac = "0.12"
 # public key.
 ed25519-dalek = "3"
 rsa = "0.9"
-rand = "0.8"
+rand = "0.10"
 hex = "0.4"
 subtle = "2.6"
 # Per-IP rate limiting on auth endpoints. Pinned to 0.4 (axum 0.7
