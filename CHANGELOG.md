@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Platform 0.1.78] - 2026-10-31
+
+### New
+- Change and re-verify the RSI handle from settings.
+
 ## [Tray 0.1.43] - 2026-10-31
 
 ### New
