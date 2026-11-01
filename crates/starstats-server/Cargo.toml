@@ -74,7 +74,7 @@ aws-smithy-runtime-api.workspace = true
 utoipa.workspace = true
 axum-extra = { version = "0.12", features = ["typed-header"] }
 base64 = "0.22"
-sha2 = "0.10"
+sha2 = "0.11"
 hmac = "0.12"
 # Signs the parser-definition manifest (F10). Off unless
 # STARSTATS_PARSER_SIGNING_KEY is set; the client verifies against a pinned
