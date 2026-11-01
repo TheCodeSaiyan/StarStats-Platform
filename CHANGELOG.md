@@ -16,6 +16,11 @@ Tag-suffix → release-channel mapping (see `release-manifests/`):
 
 <!-- generated:start (scripts/update-changelog.mjs; do not edit by hand) -->
 
+## [Tray 0.1.43] - 2026-10-31
+
+### New
+- Say when the RSI session has expired.
+
 ## [Platform 0.1.77] - 2026-09-29
 
 ### Fixed
